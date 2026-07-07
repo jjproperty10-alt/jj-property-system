@@ -343,12 +343,13 @@ const s = StyleSheet.create({
 
 function fmt(n: number): string {
   const abs = Math.abs(n)
-  const s = Math.floor(abs).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-  return `€${s}`
+  const [intPart, decPart] = abs.toFixed(2).split('.')
+  const formatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return `€${formatted}.${decPart}`
 }
 
 function fmtSigned(n: number): string {
-  if (Math.abs(n) < 0.005) return '€0'
+  if (Math.abs(n) < 0.005) return '€0.00'
   return n > 0 ? `+${fmt(n)}` : `−${fmt(n)}`
 }
 
@@ -449,13 +450,13 @@ function SummaryBlock({ data }: { data: OwnerPdfData }) {
       {data.totalPlatform !== 0 && (
         <View style={s.summaryRow}>
           <Text style={s.summaryLabel}>Platform Income &amp; Rent</Text>
-          <Text style={[s.summaryAmt, s.summaryCredit]}>{fmtSigned(-data.totalPlatform)}</Text>
+          <Text style={[s.summaryAmt, s.summaryCredit]}>+{fmt(data.totalPlatform)}</Text>
         </View>
       )}
       {data.totalClientPmts !== 0 && (
         <View style={s.summaryRow}>
           <Text style={s.summaryLabel}>Client Payments Received</Text>
-          <Text style={[s.summaryAmt, s.summaryCredit]}>{fmtSigned(-data.totalClientPmts)}</Text>
+          <Text style={[s.summaryAmt, s.summaryCredit]}>+{fmt(data.totalClientPmts)}</Text>
         </View>
       )}
 
@@ -467,10 +468,19 @@ function SummaryBlock({ data }: { data: OwnerPdfData }) {
         </View>
       )}
 
+      {/* Balance equation */}
+      <View style={{ backgroundColor: C.grayBg, borderRadius: 3, paddingHorizontal: 8, paddingVertical: 5, marginBottom: 6 }}>
+        <Text style={{ fontSize: 7.5, color: C.grayText, textAlign: 'center' }}>
+          {`Opening ${fmt(Math.abs(data.openingBalance))} + Income ${fmt((data.totalPlatform ?? 0) + (data.totalClientPmts ?? 0))} − Expenses ${fmt((data.totalCharges ?? 0) + (data.totalExpenses ?? 0) + (data.totalRenovation ?? 0))} = Closing ${fmt(Math.abs(closing))}`}
+        </Text>
+      </View>
+
       {/* Closing */}
       <View style={s.dividerRow} />
       <View style={s.summaryRow}>
-        <Text style={s.summaryLabel}>Opening Balance</Text>
+        <Text style={s.summaryLabel}>
+          {`Opening Balance${data.openingBalanceAsOf ? ` (as of ${fmtDate(data.openingBalanceAsOf)})` : ''}`}
+        </Text>
         <Text style={s.summaryAmt}>{fmt(Math.abs(data.openingBalance))}</Text>
       </View>
       <View style={s.summaryRow}>
@@ -504,7 +514,7 @@ function SummaryBlock({ data }: { data: OwnerPdfData }) {
 
 function TxTable({ section }: { section: PdfSection }) {
   return (
-    <View style={s.txBlock} wrap={false}>
+    <View style={s.txBlock}>
       <Text style={s.sectionHeading}>{section.title}</Text>
 
       {/* Table header */}
@@ -591,6 +601,15 @@ export function OwnerSettlementPdf({ data }: { data: OwnerPdfData }) {
 
         {/* ── Summary ── */}
         <SummaryBlock data={data} />
+
+        {/* ── Pending review disclosure ── */}
+        {(data.pendingReviewCount ?? 0) > 0 && (
+          <View style={{ marginBottom: 14, padding: 8, backgroundColor: '#fffbeb', borderWidth: 1, borderColor: '#fbbf24', borderRadius: 4 }}>
+            <Text style={{ fontSize: 8, color: '#92400e' }}>
+              {`Note: ${data.pendingReviewCount} transaction${data.pendingReviewCount === 1 ? '' : 's'} are pending review and not included in the balance calculation above.`}
+            </Text>
+          </View>
+        )}
 
         {/* ── Operating sections ── */}
         {operatingSections.length > 0 && (
