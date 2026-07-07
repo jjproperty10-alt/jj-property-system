@@ -39,6 +39,10 @@ export interface OwnerPdfData {
   toDate:       string
   generatedAt:  string   // display string e.g. "07 Jul 2026, 14:30"
 
+  // Opening balance metadata
+  openingBalanceAsOf?: string | null   // ISO date of the opening balance source record
+  pendingReviewCount?: number           // rows classified as pending_review (excluded from balance)
+
   // Balance components
   openingBalance:    number
   totalPlatform:     number
