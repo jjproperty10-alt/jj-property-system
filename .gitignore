@@ -1,0 +1,11 @@
+node_modules/
+.next/
+.env.local
+*.log
+
+# Hebrew scripts (contain Supabase credentials)
+הרץ_*.py
+הרץ_*.sql
+הדרכה*.md
+*.env.local
+scripts/import_data.py

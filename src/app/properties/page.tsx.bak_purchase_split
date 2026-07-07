@@ -1,0 +1,273 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+import { Building2, TrendingUp, TrendingDown, Search } from 'lucide-react'
+
+const EUR = (n: number) =>
+  new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n)
+
+const STATUS_BADGE: Record<string, string> = {
+  'Airbnb':     'bg-pink-100 text-pink-700',
+  'Rent':       'bg-blue-100 text-blue-700',
+  'Sale':       'bg-green-100 text-green-700',
+  'Sold':       'bg-emerald-100 text-emerald-700',
+  'Rent&Sale':  'bg-purple-100 text-purple-700',
+  'Renovation': 'bg-orange-100 text-orange-700',
+  'Purchased':  'bg-indigo-100 text-indigo-700',
+  'Other':      'bg-gray-100 text-gray-500',
+}
+
+type P = {
+  id: string; name: string; nickname: string | null; status: string | null; transaction_count: number
+  purchase_contract: number; purchase_paid: number
+  sale_contract: number; sale_received: number; third_party_payment: number; sale_costs: number
+  renovation_contract: number; renovation_extras_charge: number; renovation_received: number
+  renovation_costs: number; renovation_extras_cost: number
+  management_income: number; management_expenses: number; management_fees: number; paid_to_owner: number
+  airbnb_platform_income: number; airbnb_expenses: number; airbnb_management_fee: number; airbnb_paid_to_owner: number
+}
+
+const FILTERS = [
+  { key: 'all',        label: 'All' },
+  { key: 'Airbnb',     label: 'Airbnb' },
+  { key: 'Rent',       label: 'Rent' },
+  { key: 'sale',       label: 'Sale / Rent&Sale' },
+  { key: 'Sold',       label: 'Sold' },
+  { key: 'Renovation', label: 'Renovation' },
+  { key: 'purchase',   label: 'Purchase' },
+]
+
+function n(v: unknown): number { return Number(v) || 0 }
+
+function hasRenovation(p: P) {
+  return n(p.renovation_contract) > 0 || n(p.renovation_costs) > 0 || n(p.renovation_received) > 0
+}
+function hasPurchase(p: P) {
+  return n(p.purchase_contract) > 0 || n(p.purchase_paid) > 0
+}
+
+function countFilter(properties: P[], key: string): number {
+  if (key === 'all')          return properties.length
+  if (key === 'sale')         return properties.filter(p => p.status === 'Sale' || p.status === 'Rent&Sale').length
+  if (key === 'Renovation')   return properties.filter(hasRenovation).length
+  if (key === 'purchase')     return properties.filter(hasPurchase).length
+  return properties.filter(p => p.status === key).length
+}
+
+export default function PropertiesPage() {
+  const [properties, setProperties] = useState<P[]>([])
+  const [loading, setLoading]       = useState(true)
+  const [filter, setFilter]         = useState('all')
+  const [search, setSearch]         = useState('')
+  const router = useRouter()
+
+  useEffect(() => {
+    supabase.from('v_property_summary').select('*').order('name').then(({ data }) => {
+      setProperties((data ?? []) as P[])
+      setLoading(false)
+    })
+  }, [])
+
+  const filtered = properties.filter(p => {
+    let matchStatus = false
+    if (filter === 'all')             matchStatus = true
+    else if (filter === 'sale')       matchStatus = p.status === 'Sale' || p.status === 'Rent&Sale'
+    else if (filter === 'Renovation') matchStatus = hasRenovation(p)
+    else if (filter === 'purchase')   matchStatus = hasPurchase(p)
+    else matchStatus = p.status === filter
+    const matchSearch = !search
+      || p.name.toLowerCase().includes(search.toLowerCase())
+      || (p.nickname ?? '').toLowerCase().includes(search.toLowerCase())
+    return matchStatus && matchSearch
+  })
+
+  return (
+    <div className="p-8">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Properties</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{properties.length} properties &middot; click any card for details</p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3 mb-6 flex-wrap">
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search..." className="input pl-8 w-52" />
+        </div>
+        {FILTERS.map(f => {
+          const count = countFilter(properties, f.key)
+          if (count === 0 && f.key !== 'all') return null
+          return (
+            <button key={f.key} onClick={() => setFilter(f.key)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                filter === f.key ? 'bg-brand-500 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+              }`}>
+              {f.label}
+              <span className="ml-1 opacity-60">({count})</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {loading && <div className="text-sm text-gray-400">Loading...</div>}
+
+      <div className="grid grid-cols-3 gap-4">
+        {filtered.map(p => (
+          <PropertyCard key={p.id} p={p}
+            onClick={() => router.push(`/properties/${encodeURIComponent(p.name)}`)} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Section block inside card ───────────────────────────────────────────────
+function CatSection({ label, color, children }: {
+  label: string; color: string; children: React.ReactNode
+}) {
+  return (
+    <div className="mt-3 pt-2 border-t border-gray-100">
+      <div className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 ${color}`}>{label}</div>
+      <div className="space-y-1">{children}</div>
+    </div>
+  )
+}
+
+function Row({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div className="flex justify-between items-center text-xs">
+      <span className="text-gray-500">{label}</span>
+      <span className={`font-semibold ${color}`}>{value}</span>
+    </div>
+  )
+}
+
+// ─── Property Card ────────────────────────────────────────────────────────────
+function PropertyCard({ p, onClick }: { p: P; onClick: () => void }) {
+  const status = p.status ?? ''
+
+  const hasSale   = n(p.sale_contract)  > 0
+  const hasRent   = n(p.management_income) > 0 || (status === 'Rent' || status === 'Rent&Sale')
+  const hasAirbnb = n(p.airbnb_platform_income) > 0 || status === 'Airbnb'
+  const hasReno   = hasRenovation(p)
+  const hasPurch  = hasPurchase(p)
+
+  // ── Purchase numbers
+  const purchaseBalance   = n(p.purchase_contract) - n(p.purchase_paid)
+
+  // ── Sale numbers
+  const totalSaleReceived = n(p.sale_received) + n(p.third_party_payment)
+  const saleBalance       = n(p.sale_contract) - totalSaleReceived
+  const expectedProfit    = n(p.sale_contract) - n(p.purchase_contract) - n(p.sale_costs)
+  const realCashPosition  = n(p.sale_received) - n(p.purchase_paid) - n(p.sale_costs)
+
+  // ── Rent numbers
+  const ownerBalance = n(p.management_income) - n(p.management_expenses) - n(p.management_fees) - n(p.paid_to_owner)
+
+  // ── Airbnb numbers
+  const airbnbBalance = n(p.airbnb_platform_income) - n(p.airbnb_expenses) - n(p.airbnb_management_fee) - n(p.airbnb_paid_to_owner)
+
+  // ── Renovation numbers
+  const totalClientCharge = n(p.renovation_contract) + n(p.renovation_extras_charge)
+  const renoClientBalance = totalClientCharge - n(p.renovation_received)
+  const renoRealProfit    = n(p.renovation_received) - n(p.renovation_costs)
+
+  // ── Overall Real P&L (actual cash in - cash out, all categories)
+  const realPL = renoRealProfit + realCashPosition
+    + (n(p.management_income) - n(p.management_expenses) - n(p.management_fees))
+    + (n(p.airbnb_platform_income) - n(p.airbnb_expenses))
+
+  return (
+    <div onClick={onClick}
+      className="card p-5 hover:shadow-md hover:border-brand-300 transition-all cursor-pointer group">
+
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-2">
+          <Building2 size={15} className="text-gray-400 shrink-0 group-hover:text-brand-500 transition-colors" />
+          <div>
+            <div className="font-semibold text-gray-900 text-sm leading-tight group-hover:text-brand-600 transition-colors">{p.name}</div>
+            {p.nickname && <div className="text-xs text-gray-400 mt-0.5">{p.nickname}</div>}
+          </div>
+        </div>
+        {p.status && (
+          <span className={`badge shrink-0 ml-2 ${STATUS_BADGE[p.status] ?? 'bg-gray-100 text-gray-600'}`}>{p.status}</span>
+        )}
+      </div>
+
+      {/* ── PURCHASE section ── */}
+      {hasPurch && (
+        <CatSection label="Purchase" color="text-indigo-600">
+          {n(p.purchase_contract) > 0 && <Row label="Contract Value" value={EUR(n(p.purchase_contract))} color="text-indigo-600" />}
+          {n(p.purchase_paid) > 0     && <Row label="Paid to Seller" value={EUR(n(p.purchase_paid))}    color="text-gray-700" />}
+          {purchaseBalance > 0        && <Row label="Balance Due"     value={EUR(purchaseBalance)}        color="text-red-500" />}
+        </CatSection>
+      )}
+
+      {/* ── SALE section ── */}
+      {hasSale && (
+        <CatSection label="Sale" color="text-green-600">
+          <Row label="Sale Contract"   value={EUR(n(p.sale_contract))}  color="text-green-600" />
+          {n(p.sale_received) > 0       && <Row label="Client Paid"     value={EUR(n(p.sale_received))}       color="text-green-500" />}
+          {n(p.third_party_payment) > 0 && <Row label="3rd Party"       value={EUR(n(p.third_party_payment))} color="text-blue-500" />}
+          {totalSaleReceived > 0        && <Row label="Total Received"   value={EUR(totalSaleReceived)}        color="text-green-600" />}
+          {saleBalance > 0              && <Row label="Outstanding"      value={EUR(saleBalance)}              color="text-orange-500" />}
+          {n(p.sale_costs) > 0          && <Row label="Sale Costs"       value={EUR(n(p.sale_costs))}         color="text-gray-400" />}
+          <Row label="Expected Profit"  value={EUR(expectedProfit)}   color={expectedProfit  >= 0 ? 'text-green-600' : 'text-red-500'} />
+          <Row label="Real Cash"        value={EUR(realCashPosition)} color={realCashPosition >= 0 ? 'text-green-600' : 'text-red-500'} />
+        </CatSection>
+      )}
+
+      {/* ── RENT / MANAGEMENT section ── */}
+      {hasRent && n(p.management_income) > 0 && (
+        <CatSection label="Rent / Management" color="text-blue-600">
+          <Row label="Rent Collected"   value={EUR(n(p.management_income))}    color="text-blue-600" />
+          {n(p.management_expenses) > 0 && <Row label="Owner Expenses" value={EUR(n(p.management_expenses))} color="text-gray-500" />}
+          {n(p.management_fees) > 0     && <Row label="Mgmt Fee"        value={EUR(n(p.management_fees))}    color="text-gray-500" />}
+          {n(p.paid_to_owner) > 0       && <Row label="Paid to Owner"   value={EUR(n(p.paid_to_owner))}      color="text-gray-500" />}
+          <Row label="Due to Owner"     value={EUR(ownerBalance)} color={ownerBalance > 0 ? 'text-red-500' : 'text-green-600'} />
+        </CatSection>
+      )}
+
+      {/* ── AIRBNB section ── */}
+      {hasAirbnb && n(p.airbnb_platform_income) > 0 && (
+        <CatSection label="Airbnb" color="text-pink-600">
+          <Row label="Platform Income"  value={EUR(n(p.airbnb_platform_income))} color="text-pink-600" />
+          {n(p.airbnb_expenses) > 0       && <Row label="Expenses"  value={EUR(n(p.airbnb_expenses))}       color="text-gray-500" />}
+          {n(p.airbnb_management_fee) > 0 && <Row label="Mgmt Fee"  value={EUR(n(p.airbnb_management_fee))} color="text-gray-500" />}
+          {n(p.airbnb_paid_to_owner) > 0  && <Row label="To Owner"  value={EUR(n(p.airbnb_paid_to_owner))}  color="text-gray-500" />}
+          <Row label="Balance"          value={EUR(airbnbBalance)} color={airbnbBalance >= 0 ? 'text-green-600' : 'text-red-500'} />
+        </CatSection>
+      )}
+
+      {/* ── RENOVATION section ── */}
+      {hasReno && (
+        <CatSection label="Renovation" color="text-orange-600">
+          {n(p.renovation_contract) > 0      && <Row label="Contract"    value={EUR(n(p.renovation_contract))}      color="text-orange-600" />}
+          {n(p.renovation_extras_charge) > 0 && <Row label="Extras"      value={EUR(n(p.renovation_extras_charge))} color="text-orange-500" />}
+          {n(p.renovation_received) > 0      && <Row label="Client Paid" value={EUR(n(p.renovation_received))}      color="text-orange-500" />}
+          {renoClientBalance > 0             && <Row label="Client Owes" value={EUR(renoClientBalance)}              color="text-red-500" />}
+          {n(p.renovation_costs) > 0         && <Row label="Actual Costs" value={EUR(n(p.renovation_costs))}        color="text-gray-400" />}
+          <Row label="Real Profit"           value={EUR(renoRealProfit)} color={renoRealProfit >= 0 ? 'text-green-600' : 'text-red-500'} />
+        </CatSection>
+      )}
+
+      {/* ── TOTAL REAL P&L ── */}
+      <div className="mt-4 pt-3 border-t-2 border-gray-200 flex items-center justify-between">
+        <span className="text-xs font-bold text-gray-600 uppercase tracking-wide">Real P&amp;L (Total)</span>
+        <div className={`flex items-center gap-1 text-base font-bold ${realPL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+          {realPL >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+          {EUR(realPL)}
+        </div>
+      </div>
+      <div className="mt-1 text-xs text-gray-400 flex items-center justify-between">
+        <span>{p.transaction_count} transactions</span>
+        <span className="text-brand-400 opacity-0 group-hover:opacity-100 transition-opacity">View details &rarr;</span>
+      </div>
+    </div>
+  )
+}
