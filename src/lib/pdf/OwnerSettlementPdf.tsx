@@ -14,6 +14,7 @@ import {
   StyleSheet,
 } from '@react-pdf/renderer'
 import type { OwnerPdfData, PdfSection, BalanceDirection } from './types'
+import { fmt, fmtSigned } from './formatters'
 
 /* ─────────────────────────── palette ─────────────────────────── */
 
@@ -340,18 +341,6 @@ const s = StyleSheet.create({
 })
 
 /* ─────────────────────────── helpers ─────────────────────────── */
-
-function fmt(n: number): string {
-  const abs = Math.abs(n)
-  const [intPart, decPart] = abs.toFixed(2).split('.')
-  const formatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-  return `€${formatted}.${decPart}`
-}
-
-function fmtSigned(n: number): string {
-  if (Math.abs(n) < 0.005) return '€0.00'
-  return n > 0 ? `+${fmt(n)}` : `−${fmt(n)}`
-}
 
 function fmtDate(iso: string): string {
   try {
