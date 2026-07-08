@@ -1179,8 +1179,12 @@ export default function ClientReportPage() {
       bal.remainingBalance < -0.005 ? 'owed_to_owner' as const :
       bal.remainingBalance >  0.005 ? 'owed_to_jj'   as const : 'settled' as const
 
+    const CLIENT_PDF_HIDDEN_SECTIONS = new Set([
+      'sale_info', 'purchase_info', 'platform_info', 'pending_review', 'other',
+    ])
+
     const sections: PdfSection[] = SECTION_DEFS
-      .filter(d => (sectionTotals[d.key]?.rows.length ?? 0) > 0)
+      .filter(d => (sectionTotals[d.key]?.rows.length ?? 0) > 0 && !CLIENT_PDF_HIDDEN_SECTIONS.has(d.key))
       .map(d => {
         const st = sectionTotals[d.key]
         return {
@@ -1195,6 +1199,7 @@ export default function ClientReportPage() {
             type:        r.subcategory ?? '',
             description: r.description ?? '',
             amount:      n(r.amount_eur),
+            clientAmount: (n(r.client_charge) > 0.005) ? n(r.client_charge) : n(r.amount_eur),
             balEff:      r._cls.balEff,
             payer:       r.payer ?? undefined,
             payee:       r.payee ?? undefined,
@@ -1221,6 +1226,7 @@ export default function ClientReportPage() {
       remainingBalance:  bal.remainingBalance,
       direction:         dir,
       sections,
+      includeReferenceInfo: false,
     }
   }
 
