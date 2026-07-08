@@ -1166,7 +1166,16 @@ export default function ClientReportPage() {
   /* ── PDF engine ── */
   function buildPdfData(): OwnerPdfData {
     if (!bal || !sectionTotals) throw new Error('No report data')
-    const dir =
+    // Derive opening balance as-of date (earliest DB-sourced date across properties)
+    const obDates = Array.from(openingBalanceMap.values())
+      .filter(e => e.source === 'db' && e.as_of_date)
+      .map(e => e.as_of_date as string)
+    const openingBalanceAsOf = obDates.length > 0 ? obDates.sort()[0] : null
+
+    // Count pending_review rows (excluded from balance)
+    const pendingReviewCount = sectionTotals['pending_review']?.rows.length ?? 0
+
+        const dir =
       bal.remainingBalance < -0.005 ? 'owed_to_owner' as const :
       bal.remainingBalance >  0.005 ? 'owed_to_jj'   as const : 'settled' as const
 
@@ -1199,6 +1208,8 @@ export default function ClientReportPage() {
       fromDate,
       toDate,
       generatedAt,
+      openingBalanceAsOf,
+      pendingReviewCount,
       openingBalance,
       totalPlatform:     bal.totalPlatform,
       totalClientPmts:   bal.totalClientPmts,
@@ -1766,13 +1777,13 @@ export default function ClientReportPage() {
                         onClick={() => handlePdf('whatsapp')}
                         className="w-full flex items-center gap-2 px-3 py-2 text-gray-700
                                    hover:bg-gray-50 transition-colors text-left">
-                        <MessageSquare size={11} /> WhatsApp
+                        <MessageSquare size={11} /> Download for WhatsApp
                       </button>
                       <button
                         onClick={() => handlePdf('email')}
                         className="w-full flex items-center gap-2 px-3 py-2 text-gray-700
                                    hover:bg-gray-50 transition-colors text-left">
-                        <Mail size={11} /> Email
+                        <Mail size={11} /> Download + Open Email
                       </button>
                     </div>
                   </>
