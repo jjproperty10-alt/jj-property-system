@@ -1,19 +1,14 @@
 /**
- * JJ Property 10 — PDF Formatting Utilities
- *
- * Pure number-to-string formatters shared by the PDF engine.
- * Extracted from OwnerSettlementPdf.tsx so they can be unit-tested
- * independently of the React-PDF renderer.
+ * JJ Property 10 — PDF formatting utilities.
+ * Pure functions — no React, no side effects.
  *
  * Place at: src/lib/pdf/formatters.ts
  */
 
 /**
- * Format an absolute euro amount with thousands separator and exactly 2 decimal places.
- * Negative inputs are treated as positive (use fmtSigned for signed display).
- *
- * @example fmt(1234.567)  → "€1,234.57"
- * @example fmt(0)         → "€0.00"
+ * Format a number as a Euro amount with thousands separator and 2 decimal places.
+ * Always positive — caller decides sign/label.
+ * Example: fmt(1234567.8) → "€1,234,567.80"
  */
 export function fmt(n: number): string {
   const abs = Math.abs(n)
@@ -23,15 +18,13 @@ export function fmt(n: number): string {
 }
 
 /**
- * Format a signed euro amount.
- * Values within ±€0.005 are treated as zero and rendered as "€0.00".
- * Positive values get a "+" prefix; negative values get a "−" (Unicode minus U+2212) prefix.
- *
- * @example fmtSigned(1234.56)  → "+€1,234.56"
- * @example fmtSigned(-1234.56) → "−€1,234.56"   (Unicode minus, not ASCII hyphen)
- * @example fmtSigned(0)        → "€0.00"
+ * Format a number with an explicit +/- prefix.
+ * Uses ASCII hyphen-minus (U+002D) — safe for all PDF fonts including Heebo.
+ * Example: fmtSigned(-1234) → "-€1,234.00"
+ *          fmtSigned(1234)  → "+€1,234.00"
+ *          fmtSigned(0)     → "€0.00"
  */
 export function fmtSigned(n: number): string {
   if (Math.abs(n) < 0.005) return '€0.00'
-  return n > 0 ? `+${fmt(n)}` : `−${fmt(n)}`
+  return n > 0 ? `+${fmt(n)}` : `-${fmt(n)}`
 }
