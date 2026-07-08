@@ -75,17 +75,17 @@ describe('fmtSigned()', () => {
     expect(fmtSigned(1234.56)).toBe('+€1,234.56')
   })
 
-  test('negative value uses Unicode minus (U+2212), not ASCII hyphen', () => {
+  test('negative value uses ASCII hyphen-minus (U+002D), not Unicode minus', () => {
     const result = fmtSigned(-1234.56)
     // Primary assertion: full expected string
-    expect(result).toBe('−€1,234.56')
-    // Guard: must NOT start with ASCII hyphen (U+002D)
-    expect(result.charCodeAt(0)).toBe(0x2212)
-    expect(result.startsWith('-')).toBe(false)
+    expect(result).toBe('-€1,234.56')
+    // Guard: must start with ASCII hyphen (U+002D), not Unicode minus (U+2212)
+    expect(result.charCodeAt(0)).toBe(0x002D)
+    expect(result.startsWith('-')).toBe(true)
   })
 
-  test('small negative value just above threshold uses Unicode minus', () => {
-    expect(fmtSigned(-0.01)).toBe('−€0.01')
+  test('small negative value just above threshold uses ASCII hyphen-minus', () => {
+    expect(fmtSigned(-0.01)).toBe('-€0.01')
   })
 
   test('threshold boundary — exactly 0.005 is treated as non-zero positive', () => {
@@ -93,7 +93,7 @@ describe('fmtSigned()', () => {
   })
 
   test('threshold boundary — exactly -0.005 is treated as non-zero negative', () => {
-    expect(fmtSigned(-0.005)).toBe('−€0.01')
+    expect(fmtSigned(-0.005)).toBe('-€0.01')
   })
 
 })
