@@ -13,8 +13,8 @@ import type { OwnerPdfData, PdfSection, BalanceDirection } from './types'
 Font.register({
   family: 'Heebo',
   fonts: [
-    { src: '/fonts/Heebo-Regular.ttf' },
-    { src: '/fonts/Heebo-Bold.ttf', fontWeight: 'bold' },
+    { src: 'https://fonts.gstatic.com/s/heebo/v28/NGSpv5_NC0k9P_v6ZUCbLRAHxK1EiSycckOnz02SXQ.ttf' },
+    { src: 'https://fonts.gstatic.com/s/heebo/v28/NGSpv5_NC0k9P_v6ZUCbLRAHxK1EbiucckOnz02SXQ.ttf', fontWeight: 'bold' },
   ],
 })
 
