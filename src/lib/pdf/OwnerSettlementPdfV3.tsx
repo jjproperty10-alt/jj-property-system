@@ -619,7 +619,8 @@ function TxGroupTable({
       </View>
       {rows.map((row, i) => {
         const overriddenLabel = overrideDisplayLabel(row.display_label ?? '')
-        const desc = (row.description ?? '').trim() || overriddenLabel || '—'
+        // Client report: always show clean display_label — never expose raw internal notes
+        const desc = overriddenLabel || '—'
         return (
           <View
             key={row.id}
@@ -660,7 +661,8 @@ function RefSection({ rows, lang }: { rows: RC3AccountRow[]; lang: Lang }) {
       </View>
       {rows.map((row) => {
         const overriddenLabel = overrideDisplayLabel(row.display_label ?? '')
-        const desc = (row.description ?? '').trim() || overriddenLabel || '—'
+        // Client report: always show clean display_label — never expose raw internal notes
+        const desc = overriddenLabel || '—'
         return (
           <View key={row.id} style={s.refRow} wrap={false}>
             <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date)}</Text>
