@@ -27,20 +27,14 @@ const PDFDownloadLink = nextDynamic(
   { ssr: false, loading: () => <span>Preparing PDF…</span> },
 )
 
-// OwnerSettlementPdfV3 must use dynamic({ ssr: false }) so Next.js excludes
-// @react-pdf/renderer from the server/SSR bundle (it uses browser-only APIs).
-// A plain import() without ssr:false causes the Vercel build to fail.
-//
-// Runtime null-crash fix: PDFDownloadLink.document must never receive a null
-// document (which happens when dynamic() hasn't loaded yet). We gate rendering
-// on pdfModuleReady (set by useEffect) — both load the same webpack chunk, so
-// once the useEffect import resolves, dynamic() is also ready.
-const OwnerSettlementPdfV3 = nextDynamic(
-  () => import('@/lib/pdf/OwnerSettlementPdfV3').then(m => ({
-    default: m.OwnerSettlementPdfV3,
-  })),
-  { ssr: false },
-)
+// NOTE: OwnerSettlementPdfV3 is NOT loaded via nextDynamic here.
+// react-pdf's custom renderer cannot handle Next.js's dynamic() wrapper
+// (it doesn't support useSyncExternalStore / Suspense used internally by nextDynamic).
+// Instead we import the raw module function via a plain dynamic import() in useEffect
+// and store the component reference in state (PdfDoc). The PDFDownloadLink.document
+// prop receives the raw component — which react-pdf's renderer can handle correctly.
+// The ssr:false exclusion is enforced by the dynamic import being inside useEffect
+// (useEffect never runs on the server).
 
 /* ─── PDF Error Boundary — catches react-pdf render crashes without killing page ─ */
 
@@ -311,14 +305,17 @@ function ClientReportRC3Content() {
   const [report,        setReport]        = useState<RC3PropertyReport | null>(null)
   const [loading,       setLoading]       = useState(false)
   const [error,         setError]         = useState<string | null>(null)
-  const [pdfReady,        setPdfReady]        = useState(false)
-  // Pre-load the PDF module chunk so dynamic() is ready when PDFDownloadLink renders.
-  // Gating on pdfModuleReady ensures document prop is never null — no @react-pdf crash.
-  const [pdfModuleReady,  setPdfModuleReady]  = useState(false)
+  const [pdfReady,  setPdfReady]  = useState(false)
+  // PdfDoc holds the raw OwnerSettlementPdfV3 component function (not a nextDynamic wrapper).
+  // react-pdf's reconciler requires the actual component — it cannot render components
+  // wrapped with Next.js's dynamic() (which uses hooks/Suspense incompatible with the PDF renderer).
+  const [PdfDoc, setPdfDoc] = useState<React.ComponentType<{report: RC3PropertyReport}> | null>(null)
 
   useEffect(() => {
-    import('@/lib/pdf/OwnerSettlementPdfV3').then(() => {
-      setPdfModuleReady(true)
+    import('@/lib/pdf/OwnerSettlementPdfV3').then(m => {
+      // Store component function reference (use functional update to avoid useState treating
+      // a function as a state-update callback)
+      setPdfDoc(() => m.OwnerSettlementPdfV3)
     })
   }, [])
 
@@ -426,10 +423,10 @@ function ClientReportRC3Content() {
             {loading ? 'Loading…' : 'Load Report'}
           </button>
 
-          {report && pdfReady && pdfModuleReady && (
+          {report && pdfReady && PdfDoc && (
             <PDFErrorBoundary>
               <PDFDownloadLink
-                document={<OwnerSettlementPdfV3 report={report} />}
+                document={<PdfDoc report={report} />}
                 fileName={pdfFilename}
                 className="px-4 py-2 bg-green-700 text-white text-sm rounded hover:bg-green-800"
               >
