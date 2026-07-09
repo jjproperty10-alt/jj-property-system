@@ -26,13 +26,10 @@ const PDFDownloadLink = dynamic(
   () => import('@react-pdf/renderer').then(m => m.PDFDownloadLink),
   { ssr: false, loading: () => <span>Preparing PDF…</span> },
 )
-const OwnerSettlementPdfV3 = dynamic(
-  () =>
-    import('@/lib/pdf/OwnerSettlementPdfV3').then(m => ({
-      default: m.OwnerSettlementPdfV3,
-    })),
-  { ssr: false },
-)
+
+// OwnerSettlementPdfV3 is loaded via useEffect (not dynamic()) so that
+// PDFDownloadLink.document always receives the real component — never null.
+// A dynamic() wrapper returns null while loading, which crashes @react-pdf/renderer.
 
 /* ─── Format helpers ─────────────────────────────────────────────────────────── */
 
@@ -281,6 +278,15 @@ export default function ClientReportRC3Page() {
   const [loading,       setLoading]       = useState(false)
   const [error,         setError]         = useState<string | null>(null)
   const [pdfReady,      setPdfReady]      = useState(false)
+  // Loaded via useEffect — guarantees document prop is non-null when PDFDownloadLink renders
+  const [PdfDoc,        setPdfDoc]        = useState<React.ComponentType<{ report: RC3PropertyReport }> | null>(null)
+
+  // Load PDF component on mount (avoids null-document crash in @react-pdf/renderer)
+  useEffect(() => {
+    import('@/lib/pdf/OwnerSettlementPdfV3').then(m => {
+      setPdfDoc(() => m.OwnerSettlementPdfV3 as React.ComponentType<{ report: RC3PropertyReport }>)
+    })
+  }, [])
 
   // Load property list on mount
   useEffect(() => {
@@ -386,10 +392,9 @@ export default function ClientReportRC3Page() {
             {loading ? 'Loading…' : 'Load Report'}
           </button>
 
-          {report && pdfReady && (
+          {report && pdfReady && PdfDoc && (
             <PDFDownloadLink
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              document={<OwnerSettlementPdfV3 report={report} />}
+              document={<PdfDoc report={report} />}
               fileName={pdfFilename}
               className="px-4 py-2 bg-green-700 text-white text-sm rounded hover:bg-green-800"
             >
