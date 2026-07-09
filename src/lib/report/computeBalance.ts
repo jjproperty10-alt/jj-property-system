@@ -138,12 +138,14 @@ function classifyRentalRow(row: RC3Row): RowClassification {
     }
   }
 
-  // All other rows are expenses paid by JJ on owner's behalf â decrease owner credit
+  // Unknown subcategory â do not affect balance; flag for review.
+  // Safety rule (2026-07-09, approved ChatGPT/Yossi): unknown subcategories must never
+  // silently charge or credit. Display as info row and require manual verification.
   return {
-    balance_effect:       -row.client_amount,
-    is_balance_affecting: true,
-    display_group:        'expense',
-    display_label:        sub || 'Expense',
+    balance_effect:       0,
+    is_balance_affecting: false,
+    display_group:        'info',
+    display_label:        `${sub || 'Unknown'} (Needs Review)`,
   }
 }
 
@@ -210,15 +212,14 @@ function classifyAirbnbRow(row: RC3Row): RowClassification {
     }
   }
 
-  // All other non-tracking rows decrease owner credit:
-  //   - Operating expenses (JJ paid for property)
-  //   - Management Fee / Cleaning where payer â  Airbnb (real expense)
-  //   - Design Fee, Guest Service Expenses (JJ services billed to owner)
+  // Unknown subcategory â do not affect balance; flag for review.
+  // Safety rule (2026-07-09, approved ChatGPT/Yossi): unknown subcategories must never
+  // silently charge or credit. Display as info row and require manual verification.
   return {
-    balance_effect:       -row.client_amount,
-    is_balance_affecting: true,
-    display_group:        'expense',
-    display_label:        sub || 'Expense',
+    balance_effect:       0,
+    is_balance_affecting: false,
+    display_group:        'info',
+    display_label:        `${sub || 'Unknown'} (Needs Review)`,
   }
 }
 
@@ -278,13 +279,14 @@ function classifySaleRow(row: RC3Row): RowClassification {
     }
   }
 
-  // Debits â increase what client owes
-  // Client Sale Expenses, Sale Tax, and any other Sale subcategory
+  // Unknown subcategory â do not affect balance; flag for review.
+  // Safety rule (2026-07-09, approved ChatGPT/Yossi): Sale unknowns previously added to
+  // client debt silently. Changed to zero: safer to flag than to silently charge client.
   return {
-    balance_effect:       row.client_amount,
-    is_balance_affecting: true,
-    display_group:        'expense',
-    display_label:        sub || 'Expense',
+    balance_effect:       0,
+    is_balance_affecting: false,
+    display_group:        'info',
+    display_label:        `${sub || 'Unknown'} (Needs Review)`,
   }
 }
 
@@ -342,13 +344,14 @@ function classifyRenovationRow(row: RC3Row): RowClassification {
     }
   }
 
-  // Unknown subcategory â treat as internal until confirmed
-  // (safer to exclude from balance than to silently add to client debt)
+  // Unknown subcategory â do not affect balance; flag for review.
+  // Safety rule (2026-07-09, approved ChatGPT/Yossi): unknown subcategories must never
+  // silently charge or credit. Display as info row and require manual verification.
   return {
     balance_effect:       0,
     is_balance_affecting: false,
     display_group:        'info',
-    display_label:        `${sub} (Unclassified)`,
+    display_label:        `${sub || 'Unknown'} (Needs Review)`,
   }
 }
 
