@@ -151,7 +151,8 @@ function TxRow({ row, idx }: { row: RC3AccountRow; idx: number }) {
 
   const overriddenLabel = overrideDisplayLabel(row.display_label ?? '')
   // Use clean description first; fall back to overridden label
-  const primaryText = (row.description ?? '').trim() || overriddenLabel || '—'
+  // Client report: always show clean display_label — never expose raw internal notes
+  const primaryText = overriddenLabel || '—'
 
   return (
     <tr className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
@@ -162,9 +163,6 @@ function TxRow({ row, idx }: { row: RC3AccountRow; idx: number }) {
         <div className={`text-xs ${isInfo ? 'text-gray-400 italic' : 'text-gray-800'}`}>
           {primaryText}
         </div>
-        {!isInfo && overriddenLabel && primaryText !== overriddenLabel && (
-          <div className="text-[10px] text-gray-400 mt-0.5">{overriddenLabel}</div>
-        )}
       </td>
       <td className={`px-4 py-2 text-xs text-right font-mono ${amtClass}`}>
         {eur(row.client_amount)}
