@@ -299,7 +299,7 @@ function DocHeader({ report }: { report: RC3PropertyReport }) {
     <View style={s.header} fixed>
       <View>
         <Text style={s.companyName}>JJ Property 10</Text>
-        <Text style={s.reportTitle}>Owner Settlement Report — RC3</Text>
+        <Text style={s.reportTitle}>Owner Settlement Report — {report.reporting_name}</Text>
       </View>
       <View style={s.headerRight}>
         <Text style={s.headerDate}>{fmtGenerated(report.generated_at)}</Text>
@@ -532,7 +532,7 @@ export interface OwnerSettlementPdfV3Props {
 export function OwnerSettlementPdfV3({ report }: OwnerSettlementPdfV3Props) {
   return (
     <Document
-      title={`${report.reporting_name} — Owner Settlement Report`}
+      title={`RC3 Owner Settlement Report — ${report.reporting_name}`}
       author="JJ Property 10"
       creator="JJ Property 10 Platform (RC3)"
     >
