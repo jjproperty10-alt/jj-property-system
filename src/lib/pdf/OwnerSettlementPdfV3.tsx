@@ -204,6 +204,39 @@ const s = StyleSheet.create({
   cDesc:   { flex: 1 },
   cAmt:    { width: 74, textAlign: 'right' },
 
+  // Reference section (Section A — contract values, balance_effect = 0)
+  refSection: {
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: C.grayBorder,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  refHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#f0f4f8',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: C.grayBorder,
+  },
+  refHeaderLabel: {
+    fontSize: 7, fontWeight: 'bold', color: C.grayText,
+    textTransform: 'uppercase', letterSpacing: 0.3,
+  },
+  refHeaderNote: {
+    fontSize: 6.5, color: C.grayMid,
+  },
+  refRow: {
+    flexDirection: 'row',
+    paddingVertical: 3.5,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: C.grayLine,
+  },
+
   // Balance strip
   balStrip: {
     flexDirection: 'row',
@@ -299,7 +332,7 @@ function DocHeader({ report }: { report: RC3PropertyReport }) {
     <View style={s.header} fixed>
       <View>
         <Text style={s.companyName}>JJ Property 10</Text>
-        <Text style={s.reportTitle}>Owner Settlement Report — RC3</Text>
+        <Text style={s.reportTitle}>Owner Settlement Report — {report.reporting_name}</Text>
       </View>
       <View style={s.headerRight}>
         <Text style={s.headerDate}>{fmtGenerated(report.generated_at)}</Text>
@@ -427,16 +460,49 @@ function InfoRows({ rows }: { rows: RC3AccountRow[] }) {
   )
 }
 
+/**
+ * Section A — Reference rows (contracts, internal JJ entries).
+ * balance_effect = 0 for all rows here. Shown at the top of each account block
+ * so the client can see the contract value that anchors the settlement.
+ */
+function RefSection({ rows }: { rows: RC3AccountRow[] }) {
+  if (rows.length === 0) return null
+  return (
+    <View style={s.refSection}>
+      <View style={s.refHeader}>
+        <Text style={s.refHeaderLabel}>Section A — Contract Reference</Text>
+        <Text style={s.refHeaderNote}>Reference only — does not affect settlement balance</Text>
+      </View>
+      {rows.map((row) => {
+        const desc = (row.description ?? '').trim() || row.display_label || '—'
+        return (
+          <View key={row.id} style={s.refRow} wrap={false}>
+            <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date)}</Text>
+            <View style={s.cDesc}>
+              <Text style={s.tdInfo}>{desc}</Text>
+              <Text style={s.tdInfo}>{row.display_label}</Text>
+            </View>
+            <Text style={[s.cAmt, s.tdInfo]}>{fmt(row.client_amount)}</Text>
+          </View>
+        )
+      })}
+    </View>
+  )
+}
+
 function AccountBlock({ section }: { section: RC3AccountSection }) {
   const acColor  = ACCOUNT_COLOURS[section.account_type]
   const balColor = balanceColor(section)
   const balText  = balanceLabel(section)
 
-  const incomeRows   = section.rows.filter(r => r.display_group === 'income')
-  const expenseRows  = section.rows.filter(r => r.display_group === 'expense')
-  const payoutRows   = section.rows.filter(r => r.display_group === 'payment_out')
-  const infoRows     = section.rows.filter(r => r.display_group === 'info')
-  // reference rows (contracts, internals) are omitted from client PDF
+  // Section A: contract reference rows (balance_effect = 0)
+  const referenceRows = section.rows.filter(r => r.display_group === 'reference')
+  // Section B: balance-affecting rows
+  const incomeRows    = section.rows.filter(r => r.display_group === 'income')
+  const expenseRows   = section.rows.filter(r => r.display_group === 'expense')
+  const payoutRows    = section.rows.filter(r => r.display_group === 'payment_out')
+  // Section C: informational rows (platform tracking, cost tracking, trust, needs review)
+  const infoRows      = section.rows.filter(r => r.display_group === 'info')
 
   const incomeLabel  = section.balance_convention === 'owner_credit'
     ? 'Money Received For You'
@@ -466,12 +532,17 @@ function AccountBlock({ section }: { section: RC3AccountSection }) {
         </View>
       </View>
 
-      {/* Transaction groups */}
+      {/* Section A — Reference (contract values, balance_effect = 0) */}
+      <RefSection rows={referenceRows} />
+
+      {/* Section B — Balance-affecting transactions */}
       <TxGroupTable rows={incomeRows}  groupLabel={incomeLabel}  isIncome={true}  />
       <TxGroupTable rows={expenseRows} groupLabel={expenseLabel} isIncome={false} />
       {payoutRows.length > 0 && (
         <TxGroupTable rows={payoutRows} groupLabel="Payments Sent to You" isIncome={false} />
       )}
+
+      {/* Section C — Informational (cost tracking, platform tracking, trust, needs review) */}
       <InfoRows rows={infoRows} />
 
       {/* Balance strip */}
@@ -532,7 +603,7 @@ export interface OwnerSettlementPdfV3Props {
 export function OwnerSettlementPdfV3({ report }: OwnerSettlementPdfV3Props) {
   return (
     <Document
-      title={`${report.reporting_name} — Owner Settlement Report`}
+      title={`RC3 Owner Settlement Report — ${report.reporting_name}`}
       author="JJ Property 10"
       creator="JJ Property 10 Platform (RC3)"
     >
@@ -553,11 +624,4 @@ export function OwnerSettlementPdfV3({ report }: OwnerSettlementPdfV3Props) {
       </Page>
     </Document>
   )
-}
-
-/* ─── PDF generation helper (for server-side PDF blob) ──────────────────────── */
-
-export async function generateRC3Pdf(report: RC3PropertyReport): Promise<Blob> {
-  const { pdf } = await import('@react-pdf/renderer')
-  return await pdf(<OwnerSettlementPdfV3 report={report} />).toBlob()
 }
