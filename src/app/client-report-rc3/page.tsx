@@ -19,6 +19,7 @@ import React, { useCallback, useEffect, useState, Suspense } from 'react'
 import nextDynamic from 'next/dynamic'
 import { fetchRC3Report, fetchRC3PropertyList } from '@/lib/report/fetchReport'
 import type { RC3PropertyReport, RC3AccountSection, RC3AccountRow } from '@/lib/report/types'
+import { overrideDisplayLabel, SECTION_LABELS } from '@/lib/report/labels'
 
 /* ─── Dynamic PDF import (client-only) ──────────────────────────────────────── */
 
@@ -100,6 +101,10 @@ function TxRow({ row, idx }: { row: RC3AccountRow; idx: number }) {
       ? 'text-green-700 font-medium'
       : 'text-gray-800'
 
+  // Apply client-facing label overrides (Sale → Purchase, etc.)
+  const overriddenLabel = overrideDisplayLabel(row.display_label ?? '')
+  const primaryText = (row.description ?? '').trim() || overriddenLabel || '—'
+
   return (
     <tr className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
       <td className="px-3 py-1.5 text-xs text-gray-500 whitespace-nowrap w-24">
@@ -107,13 +112,13 @@ function TxRow({ row, idx }: { row: RC3AccountRow; idx: number }) {
       </td>
       <td className="px-3 py-1.5">
         <div className={`text-xs ${isInfo ? 'text-gray-400 italic' : 'text-gray-800'}`}>
-          {(row.description ?? '').trim() || row.display_label || '—'}
+          {primaryText}
         </div>
-        {row.display_label && !isInfo && (
-          <div className="text-[10px] text-gray-400 mt-0.5">{row.display_label}</div>
+        {overriddenLabel && !isInfo && primaryText !== overriddenLabel && (
+          <div className="text-[10px] text-gray-400 mt-0.5">{overriddenLabel}</div>
         )}
-        {isInfo && (
-          <div className="text-[10px] text-gray-400">{row.display_label}</div>
+        {isInfo && primaryText !== overriddenLabel && (
+          <div className="text-[10px] text-gray-400">{overriddenLabel}</div>
         )}
       </td>
       <td className={`px-3 py-1.5 text-xs text-right font-mono ${amtClass}`}>
@@ -203,8 +208,11 @@ function AccountCard({ section }: { section: RC3AccountSection }) {
           {/* Section A — Reference (contract values, always visible) */}
           {referenceRows.length > 0 && (
             <div className="border-b border-gray-200 bg-slate-50 px-4 py-2">
-              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">
-                Section A — Contract Reference (does not affect balance)
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">
+                {SECTION_LABELS.contractInfo}
+              </div>
+              <div className="text-[9px] text-gray-400 mb-1.5 italic">
+                {SECTION_LABELS.contractInfoNote}
               </div>
               <table className="w-full text-xs">
                 <tbody className="divide-y divide-gray-100">
@@ -264,8 +272,10 @@ function AccountCard({ section }: { section: RC3AccountSection }) {
             </table>
           </div>
 
-          {/* Section C — Informational rows toggle */}
-          {infoRows.length > 0 && (
+          {/* Section C — Informational rows toggle
+              Renovation cost-tracking rows (internal JJ costs) are hidden from client view.
+              Other account types may show platform tracking / trust account rows on request. */}
+          {infoRows.length > 0 && section.account_type !== 'renovation' && (
             <div className="border-t border-dashed border-gray-200 bg-gray-50 px-4 py-2">
               <button
                 onClick={() => setShowInfo(!showInfo)}
@@ -274,7 +284,7 @@ function AccountCard({ section }: { section: RC3AccountSection }) {
                 {showInfo ? '▲ Hide' : '▼ Show'} {infoRows.length} informational rows
                 {!showInfo && (
                   <span className="ml-2 text-gray-400">
-                    (platform tracking, cost tracking, trust account, needs review)
+                    (platform tracking, trust account, needs review)
                   </span>
                 )}
               </button>
