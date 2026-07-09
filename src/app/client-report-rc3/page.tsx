@@ -27,9 +27,20 @@ const PDFDownloadLink = dynamic(
   { ssr: false, loading: () => <span>Preparing PDF…</span> },
 )
 
-// OwnerSettlementPdfV3 is loaded via useEffect (not dynamic()) so that
-// PDFDownloadLink.document always receives the real component — never null.
-// A dynamic() wrapper returns null while loading, which crashes @react-pdf/renderer.
+// OwnerSettlementPdfV3 must use dynamic({ ssr: false }) so Next.js excludes
+// @react-pdf/renderer from the server/SSR bundle (it uses browser-only APIs).
+// A plain import() without ssr:false causes the Vercel build to fail.
+//
+// Runtime null-crash fix: PDFDownloadLink.document must never receive a null
+// document (which happens when dynamic() hasn't loaded yet). We gate rendering
+// on pdfModuleReady (set by useEffect) — both load the same webpack chunk, so
+// once the useEffect import resolves, dynamic() is also ready.
+const OwnerSettlementPdfV3 = dynamic(
+  () => import('@/lib/pdf/OwnerSettlementPdfV3').then(m => ({
+    default: m.OwnerSettlementPdfV3,
+  })),
+  { ssr: false },
+)
 
 /* ─── Format helpers ─────────────────────────────────────────────────────────── */
 
@@ -277,14 +288,14 @@ export default function ClientReportRC3Page() {
   const [report,        setReport]        = useState<RC3PropertyReport | null>(null)
   const [loading,       setLoading]       = useState(false)
   const [error,         setError]         = useState<string | null>(null)
-  const [pdfReady,      setPdfReady]      = useState(false)
-  // Loaded via useEffect — guarantees document prop is non-null when PDFDownloadLink renders
-  const [PdfDoc,        setPdfDoc]        = useState<React.ComponentType<{ report: RC3PropertyReport }> | null>(null)
+  const [pdfReady,        setPdfReady]        = useState(false)
+  // Pre-load the PDF module chunk so dynamic() is ready when PDFDownloadLink renders.
+  // Gating on pdfModuleReady ensures document prop is never null — no @react-pdf crash.
+  const [pdfModuleReady,  setPdfModuleReady]  = useState(false)
 
-  // Load PDF component on mount (avoids null-document crash in @react-pdf/renderer)
   useEffect(() => {
-    import('@/lib/pdf/OwnerSettlementPdfV3').then(m => {
-      setPdfDoc(() => m.OwnerSettlementPdfV3 as React.ComponentType<{ report: RC3PropertyReport }>)
+    import('@/lib/pdf/OwnerSettlementPdfV3').then(() => {
+      setPdfModuleReady(true)
     })
   }, [])
 
@@ -392,9 +403,9 @@ export default function ClientReportRC3Page() {
             {loading ? 'Loading…' : 'Load Report'}
           </button>
 
-          {report && pdfReady && PdfDoc && (
+          {report && pdfReady && pdfModuleReady && (
             <PDFDownloadLink
-              document={<PdfDoc report={report} />}
+              document={<OwnerSettlementPdfV3 report={report} />}
               fileName={pdfFilename}
               className="px-4 py-2 bg-green-700 text-white text-sm rounded hover:bg-green-800"
             >
