@@ -15,12 +15,7 @@
 
 'use client'
 
-// force-dynamic: opt out of Next.js static shell optimisation that leaves
-// shared-chunk context (SearchParams / Pathname providers) null during hydration,
-// causing `TypeError: Cannot read properties of null (reading 'get')` in useMemo.
-export const dynamic = 'force-dynamic'
-
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState, Suspense } from 'react'
 import nextDynamic from 'next/dynamic'
 import { fetchRC3Report, fetchRC3PropertyList } from '@/lib/report/fetchReport'
 import type { RC3PropertyReport, RC3AccountSection, RC3AccountRow } from '@/lib/report/types'
@@ -285,7 +280,7 @@ function AccountCard({ section }: { section: RC3AccountSection }) {
 
 /* ─── Main page ─────────────────────────────────────────────────────────────── */
 
-export default function ClientReportRC3Page() {
+function ClientReportRC3Content() {
   const [properties,    setProperties]    = useState<string[]>([])
   const [selectedProp,  setSelectedProp]  = useState<string>('')
   const [fromDate,      setFromDate]      = useState<string>('')
@@ -472,5 +467,21 @@ export default function ClientReportRC3Page() {
         )}
       </div>
     </div>
+  )
+}
+
+/* ─── Suspense shell (fixes shared-chunk SearchParams null crash on hydration) ─ */
+
+export default function ClientReportRC3Page() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+          <p className="text-sm text-gray-500">Loading report…</p>
+        </div>
+      }
+    >
+      <ClientReportRC3Content />
+    </Suspense>
   )
 }
