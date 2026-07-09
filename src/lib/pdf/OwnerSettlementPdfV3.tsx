@@ -1,9 +1,9 @@
 /**
- * JJ Property 10 â Owner Settlement Report V3
- * Phase 3 â 2026-07-09
+ * JJ Property 10 — Owner Settlement Report V3
+ * Phase 3 — 2026-07-09
  *
  * Account-based PDF report. Renders one section per account type
- * in the canonical order: Property Purchase â Renovation â Rental â Airbnb.
+ * in the canonical order: Property Purchase → Renovation → Rental → Airbnb.
  *
  * Balance conventions:
  *   Rental / Airbnb : positive closing balance = JJ owes owner (shown in green)
@@ -28,7 +28,7 @@ import {
 import { fmt } from './formatters'
 import type { RC3PropertyReport, RC3AccountSection, RC3AccountRow } from '../report/types'
 
-/* âââ Font ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
+/* ─── Font ──────────────────────────────────────────────────────────────────── */
 
 Font.register({
   family: 'Heebo',
@@ -38,7 +38,7 @@ Font.register({
   ],
 })
 
-/* âââ Palette âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
+/* ─── Palette ───────────────────────────────────────────────────────────────── */
 
 const C = {
   navy:        '#1e3a5f',
@@ -63,7 +63,7 @@ const C = {
   purpleBg:    '#f5f3ff',
 }
 
-/* âââ Account colours âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
+/* ─── Account colours ───────────────────────────────────────────────────────── */
 
 const ACCOUNT_COLOURS = {
   sale:       C.navy,
@@ -72,7 +72,7 @@ const ACCOUNT_COLOURS = {
   airbnb:     C.navyLight,
 } as const
 
-/* âââ Styles ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
+/* ─── Styles ────────────────────────────────────────────────────────────────── */
 
 const s = StyleSheet.create({
   page: {
@@ -243,7 +243,7 @@ const s = StyleSheet.create({
   disclosureText: { fontSize: 7, color: C.amber, lineHeight: 1.5 },
 })
 
-/* âââ Helpers âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
+/* ─── Helpers ───────────────────────────────────────────────────────────────── */
 
 function fmtDate(iso: string): string {
   try {
@@ -259,7 +259,7 @@ function fmtPeriod(report: RC3PropertyReport): string {
   if (!report.from_date && !report.to_date) return 'All Dates'
   if (!report.from_date) return `Up to ${fmtDate(report.to_date!)}`
   if (!report.to_date)   return `From ${fmtDate(report.from_date)}`
-  return `${fmtDate(report.from_date)} â ${fmtDate(report.to_date)}`
+  return `${fmtDate(report.from_date)} – ${fmtDate(report.to_date)}`
 }
 
 function fmtGenerated(iso: string): string {
@@ -292,14 +292,14 @@ function balanceColor(section: RC3AccountSection): string {
   else                         return b > 0 ? C.red   : C.green
 }
 
-/* âââ Sub-components ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
+/* ─── Sub-components ────────────────────────────────────────────────────────── */
 
 function DocHeader({ report }: { report: RC3PropertyReport }) {
   return (
     <View style={s.header} fixed>
       <View>
         <Text style={s.companyName}>JJ Property 10</Text>
-        <Text style={s.reportTitle}>Owner Settlement Report â RC3</Text>
+        <Text style={s.reportTitle}>Owner Settlement Report — RC3</Text>
       </View>
       <View style={s.headerRight}>
         <Text style={s.headerDate}>{fmtGenerated(report.generated_at)}</Text>
@@ -368,7 +368,7 @@ function TxGroupTable({
         <Text style={[s.th, s.cAmt]}>Amount</Text>
       </View>
       {rows.map((row, i) => {
-        const desc = (row.description ?? '').trim() || row.display_label || 'â'
+        const desc = (row.description ?? '').trim() || row.display_label || '—'
         return (
           <View
             key={row.id}
@@ -417,7 +417,7 @@ function InfoRows({ rows }: { rows: RC3AccountRow[] }) {
         >
           <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date)}</Text>
           <View style={s.cDesc}>
-            <Text style={s.tdInfo}>{(row.description ?? '').trim() || row.display_label || 'â'}</Text>
+            <Text style={s.tdInfo}>{(row.description ?? '').trim() || row.display_label || '—'}</Text>
             <Text style={s.tdInfo}>{row.display_label}</Text>
           </View>
           <Text style={[s.cAmt, s.tdInfo]}>{fmt(row.client_amount)}</Text>
@@ -477,7 +477,7 @@ function AccountBlock({ section }: { section: RC3AccountSection }) {
       {/* Balance strip */}
       <View style={s.balStrip}>
         <Text style={s.balLabel}>
-          {section.account_label} â {balText}
+          {section.account_label} — {balText}
         </Text>
         <Text style={[s.balValue, { color: balColor }]}>
           {fmt(Math.abs(section.closing_balance))}
@@ -492,7 +492,7 @@ function DocFooter({ report }: { report: RC3PropertyReport }) {
   return (
     <View style={s.footer} fixed>
       <Text style={s.footerText}>
-        JJ Property 10 Â· {report.reporting_name} Â· {period} Â· Confidential
+        JJ Property 10 · {report.reporting_name} · {period} · Confidential
       </Text>
       <Text
         style={s.footerText}
@@ -505,16 +505,25 @@ function DocFooter({ report }: { report: RC3PropertyReport }) {
 function Disclosure() {
   return (
     <View style={s.disclosure}>
+      <Text style={[s.disclosureText, { fontWeight: 'bold' }]}>
+        ⚠ Opening Balance Not Included:
+      </Text>
       <Text style={s.disclosureText}>
-        Note: This report is generated from accounting records and is pending final review.
-        Opening balances are not yet included. Some transactions may be subject to reclassification.
-        This document is confidential and intended solely for the named property owner.
+        Opening balances from prior periods are not yet carried forward. Date-filtered reports may
+        show incorrect closing balances. Use all-time (unfiltered) reports only for financial review
+        until opening balances are implemented.
+      </Text>
+      <Text style={[s.disclosureText, { marginTop: 4 }]}>
+        This report is generated from accounting records and is pending final review.
+        Some transactions may be subject to reclassification. Rows marked "Needs Review" require
+        manual verification before financial use. This document is confidential and intended
+        solely for the named property owner.
       </Text>
     </View>
   )
 }
 
-/* âââ Main document âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
+/* ─── Main document ─────────────────────────────────────────────────────────── */
 
 export interface OwnerSettlementPdfV3Props {
   report: RC3PropertyReport
@@ -523,7 +532,7 @@ export interface OwnerSettlementPdfV3Props {
 export function OwnerSettlementPdfV3({ report }: OwnerSettlementPdfV3Props) {
   return (
     <Document
-      title={`${report.reporting_name} â Owner Settlement Report`}
+      title={`${report.reporting_name} — Owner Settlement Report`}
       author="JJ Property 10"
       creator="JJ Property 10 Platform (RC3)"
     >
@@ -534,7 +543,7 @@ export function OwnerSettlementPdfV3({ report }: OwnerSettlementPdfV3Props) {
         {/* Account-level summary strip */}
         {report.accounts.length > 1 && <SummaryCard report={report} />}
 
-        {/* One section per account â in canonical order */}
+        {/* One section per account — in canonical order */}
         {report.accounts.map(acc => (
           <AccountBlock key={acc.account_type} section={acc} />
         ))}
@@ -546,7 +555,7 @@ export function OwnerSettlementPdfV3({ report }: OwnerSettlementPdfV3Props) {
   )
 }
 
-/* âââ PDF generation helper (for server-side PDF blob) ââââââââââââââââââââââââ */
+/* ─── PDF generation helper (for server-side PDF blob) ──────────────────────── */
 
 export async function generateRC3Pdf(report: RC3PropertyReport): Promise<Blob> {
   const { pdf } = await import('@react-pdf/renderer')
