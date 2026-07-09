@@ -2,17 +2,63 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createSupabaseBrowserClient } from '@/lib/supabase'
-import { Lock, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucide-react'
+import { createBrowserClient } from '@supabase/ssr'
+import { Lock, Eye, EyeOff, CheckCircle, AlertCircle, Loader } from 'lucide-react'
+
+/**
+ * Uses createBrowserClient from @supabase/ssr (cookie-aware) so it reads the
+ * session that /auth/callback set via its server-side exchangeCodeForSession()
+ * call. The plain createClient() uses localStorage and would miss the cookie.
+ */
+function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+}
+
+type SessionState = 'loading' | 'ready' | 'invalid'
 
 function ResetForm() {
   const router = useRouter()
-  const [password, setPassword]   = useState('')
-  const [confirm, setConfirm]     = useState('')
-  const [showPass, setShowPass]   = useState(false)
-  const [loading, setLoading]     = useState(false)
-  const [error, setError]         = useState('')
-  const [success, setSuccess]     = useState(false)
+  const [password, setPassword]     = useState('')
+  const [confirm, setConfirm]       = useState('')
+  const [showPass, setShowPass]     = useState(false)
+  const [loading, setLoading]       = useState(false)
+  const [error, setError]           = useState('')
+  const [success, setSuccess]       = useState(false)
+  const [sessionState, setSessionState] = useState<SessionState>('loading')
+
+  useEffect(() => {
+    const supabase = createClient()
+    let resolved = false
+
+    function resolve(hasSession: boolean) {
+      if (resolved) return
+      resolved = true
+      setSessionState(hasSession ? 'ready' : 'invalid')
+    }
+
+    // Primary: check if the session cookie was set by /auth/callback
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      resolve(!!session)
+    })
+
+    // Fallback: listen for PASSWORD_RECOVERY event (implicit / hash-based flow)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY' && session) {
+        resolve(true)
+      }
+    })
+
+    // Safety timeout: if neither fires in 4 s, show "link expired"
+    const timeout = setTimeout(() => resolve(false), 4000)
+
+    return () => {
+      subscription.unsubscribe()
+      clearTimeout(timeout)
+    }
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -26,7 +72,7 @@ function ResetForm() {
     }
     setLoading(true)
     setError('')
-    const supabase = createSupabaseBrowserClient()
+    const supabase = createClient()
     const { error: err } = await supabase.auth.updateUser({ password })
     if (err) {
       setError(err.message)
@@ -37,16 +83,47 @@ function ResetForm() {
     setTimeout(() => router.push('/'), 2500)
   }
 
+  /* ── Loading ────────────────────────────────────────────────────────────── */
+  if (sessionState === 'loading') {
+    return (
+      <div className="bg-white rounded-2xl shadow-2xl p-8 text-center">
+        <Loader size={24} className="animate-spin text-brand-500 mx-auto mb-3" />
+        <p className="text-sm text-gray-500">Verifying your recovery link…</p>
+      </div>
+    )
+  }
+
+  /* ── Invalid / expired ──────────────────────────────────────────────────── */
+  if (sessionState === 'invalid') {
+    return (
+      <div className="bg-white rounded-2xl shadow-2xl p-8 text-center">
+        <AlertCircle size={36} className="text-red-400 mx-auto mb-4" />
+        <h2 className="text-lg font-bold text-gray-900 mb-2">Link Expired or Invalid</h2>
+        <p className="text-sm text-gray-500 mb-5">
+          This password reset link has expired or has already been used.
+          Please request a new reset email.
+        </p>
+        <a
+          href="/login"
+          className="inline-block bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold px-6 py-2.5 rounded-lg transition-colors">
+          Back to Sign In
+        </a>
+      </div>
+    )
+  }
+
+  /* ── Success ────────────────────────────────────────────────────────────── */
   if (success) {
     return (
       <div className="bg-white rounded-2xl shadow-2xl p-8 text-center">
         <CheckCircle size={40} className="text-green-500 mx-auto mb-4" />
         <h2 className="text-xl font-bold text-gray-900 mb-2">Password Updated!</h2>
-        <p className="text-sm text-gray-500">Redirecting to dashboard...</p>
+        <p className="text-sm text-gray-500">Redirecting to dashboard…</p>
       </div>
     )
   }
 
+  /* ── Form ───────────────────────────────────────────────────────────────── */
   return (
     <div className="bg-white rounded-2xl shadow-2xl p-8">
       <form onSubmit={handleSubmit} className="space-y-5">
@@ -91,7 +168,7 @@ function ResetForm() {
           type="submit"
           disabled={loading}
           className="w-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm">
-          {loading ? 'Saving...' : 'Set New Password'}
+          {loading ? 'Saving…' : 'Set New Password'}
         </button>
       </form>
     </div>
@@ -109,7 +186,7 @@ export default function ResetPage() {
           <h1 className="text-2xl font-bold text-white">Set New Password</h1>
           <p className="text-slate-400 text-sm mt-1">JJ Property 10</p>
         </div>
-        <Suspense fallback={<div className="bg-white rounded-2xl p-8 text-center text-gray-400">Loading...</div>}>
+        <Suspense fallback={<div className="bg-white rounded-2xl p-8 text-center text-gray-400">Loading…</div>}>
           <ResetForm />
         </Suspense>
       </div>
