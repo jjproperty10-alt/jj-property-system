@@ -125,12 +125,24 @@ function AccountCard({ section }: { section: RC3AccountSection }) {
     balClass = b > 0 ? 'text-red-700' : 'text-green-700'
   }
 
-  const incomeRows  = section.rows.filter(r => r.display_group === 'income')
-  const expenseRows = section.rows.filter(r => r.display_group === 'expense')
-  const payoutRows  = section.rows.filter(r => r.display_group === 'payment_out')
-  const infoRows    = section.rows.filter(r => r.display_group === 'info' || r.display_group === 'reference')
+  // Section A: reference rows (contract values, balance_effect = 0)
+  const referenceRows = section.rows.filter(r => r.display_group === 'reference')
+  // Section B: balance-affecting rows
+  const incomeRows    = section.rows.filter(r => r.display_group === 'income')
+  const expenseRows   = section.rows.filter(r => r.display_group === 'expense')
+  const payoutRows    = section.rows.filter(r => r.display_group === 'payment_out')
+  // Section C: informational only (platform tracking, cost tracking, trust, needs review)
+  const infoRows      = section.rows.filter(r => r.display_group === 'info')
 
   const allBalanceRows = [...incomeRows, ...expenseRows, ...payoutRows]
+
+  // Convention-aware labels for the mini-summary.
+  // client_debt (Sale/Renovation): positive balance_effect = amounts charged to client;
+  //   negative balance_effect = payments received from client.
+  // owner_credit (Rental/Airbnb): positive = income received; negative = expenses paid.
+  const isClientDebt = section.balance_convention === 'client_debt'
+  const incomeLabel   = isClientDebt ? 'charged to client'    : 'received'
+  const expenseLabel  = isClientDebt ? 'received from client' : 'expenses'
 
   return (
     <div className={`rounded-lg border ${colours.border} ${colours.bg} mb-4 overflow-hidden`}>
@@ -162,16 +174,33 @@ function AccountCard({ section }: { section: RC3AccountSection }) {
       {/* Expanded body */}
       {expanded && (
         <div className="border-t border-gray-200 bg-white">
-          {/* Mini summary */}
+
+          {/* Section A — Reference (contract values, always visible) */}
+          {referenceRows.length > 0 && (
+            <div className="border-b border-gray-200 bg-slate-50 px-4 py-2">
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">
+                Section A — Contract Reference (does not affect balance)
+              </div>
+              <table className="w-full text-xs">
+                <tbody className="divide-y divide-gray-100">
+                  {referenceRows.map((row, i) => (
+                    <TxRow key={row.id} row={row} idx={i} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Section B — Mini summary */}
           <div className="flex gap-6 px-4 py-2 border-b border-gray-100 bg-gray-50 text-xs">
             {section.total_income > 0 && (
-              <span className="text-green-700">
-                + {eur(section.total_income)} received
+              <span className={isClientDebt ? 'text-red-700' : 'text-green-700'}>
+                {isClientDebt ? '+ ' : '+ '}{eur(section.total_income)} {incomeLabel}
               </span>
             )}
             {section.total_expenses > 0 && (
-              <span className="text-red-700">
-                − {eur(section.total_expenses)} expenses
+              <span className={isClientDebt ? 'text-green-700' : 'text-red-700'}>
+                {isClientDebt ? '' : '− '}{eur(section.total_expenses)} {expenseLabel}
               </span>
             )}
             {section.total_bpo > 0 && (
@@ -181,7 +210,7 @@ function AccountCard({ section }: { section: RC3AccountSection }) {
             )}
           </div>
 
-          {/* Transaction table */}
+          {/* Section B — Transaction table */}
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
@@ -210,7 +239,7 @@ function AccountCard({ section }: { section: RC3AccountSection }) {
             </table>
           </div>
 
-          {/* Informational rows toggle */}
+          {/* Section C — Informational rows toggle */}
           {infoRows.length > 0 && (
             <div className="border-t border-dashed border-gray-200 bg-gray-50 px-4 py-2">
               <button
@@ -220,7 +249,7 @@ function AccountCard({ section }: { section: RC3AccountSection }) {
                 {showInfo ? '▲ Hide' : '▼ Show'} {infoRows.length} informational rows
                 {!showInfo && (
                   <span className="ml-2 text-gray-400">
-                    (platform tracking, internal cost records)
+                    (platform tracking, cost tracking, trust account, needs review)
                   </span>
                 )}
               </button>
@@ -291,7 +320,7 @@ export default function ClientReportRC3Page() {
   }, [selectedProp])
 
   const pdfFilename = report
-    ? `${report.reporting_name.replace(/\s+/g, '_')}_RC3_${new Date().toISOString().slice(0, 10)}.pdf`
+    ? `RC3_Owner_Report_${report.reporting_name.replace(/\s+/g, '_')}_${report.from_date || 'all'}_to_${report.to_date || 'all'}.pdf`
     : 'report.pdf'
 
   return (
@@ -414,17 +443,9 @@ export default function ClientReportRC3Page() {
             <div className="bg-red-50 border border-red-300 rounded p-3 mt-4 text-xs text-red-800">
               <span className="font-bold">⚠ Opening Balance Not Included.</span>{' '}
               Date-filtered reports may show incorrect closing balances because prior-period
-              balances are not carried forward yet. <span className="font-bold">Use all-time
-              (unfiltered) reports only for financial review</span> until opening balances
-              are implemented.
-            </div>
-
-            {/* Disclosure */}
-            <div className="bg-amber-50 border border-amber-200 rounded p-3 mt-2 text-xs text-amber-800">
-              This report is generated from accounting records and is pending final review.
-              Some transactions may be subject to reclassification. Rows marked
-              &quot;Needs Review&quot; require manual verification before financial use.
-              This document is confidential and intended solely for the named property owner.
+              balances are not carried forward yet.{' '}
+              <span className="font-bold">Use all-time (unfiltered) reports only</span> for
+              financial review until opening balances are implemented.
             </div>
           </>
         )}
