@@ -21,26 +21,26 @@
 // causing `TypeError: Cannot read properties of null (reading 'get')` in useMemo.
 export const dynamic = 'force-dynamic'
 import React, { useCallback, useEffect, useState } from 'react'
-import dynamic from 'next/dynamic'
+import nextDynamic from 'next/dynamic'
 import { fetchRC3Report, fetchRC3PropertyList } from '@/lib/report/fetchReport'
 import type { RC3PropertyReport, RC3AccountSection, RC3AccountRow } from '@/lib/report/types'
 
 /* ─── Dynamic PDF import (client-only) ──────────────────────────────────────── */
 
-const PDFDownloadLink = dynamic(
+const PDFDownloadLink = nextDynamic(
   () => import('@react-pdf/renderer').then(m => m.PDFDownloadLink),
   { ssr: false, loading: () => <span>Preparing PDF…</span> },
 )
 
-// OwnerSettlementPdfV3 must use dynamic({ ssr: false }) so Next.js excludes
+// OwnerSettlementPdfV3 must use nextDynamic({ ssr: false }) so Next.js excludes
 // @react-pdf/renderer from the server/SSR bundle (it uses browser-only APIs).
 // A plain import() without ssr:false causes the Vercel build to fail.
 //
 // Runtime null-crash fix: PDFDownloadLink.document must never receive a null
-// document (which happens when dynamic() hasn't loaded yet). We gate rendering
+// document (which happens when nextDynamic() hasn't loaded yet). We gate rendering
 // on pdfModuleReady (set by useEffect) — both load the same webpack chunk, so
-// once the useEffect import resolves, dynamic() is also ready.
-const OwnerSettlementPdfV3 = dynamic(
+// once the useEffect import resolves, nextDynamic() is also ready.
+const OwnerSettlementPdfV3 = nextDynamic(
   () => import('@/lib/pdf/OwnerSettlementPdfV3').then(m => ({
     default: m.OwnerSettlementPdfV3,
   })),
@@ -294,7 +294,7 @@ export default function ClientReportRC3Page() {
   const [loading,       setLoading]       = useState(false)
   const [error,         setError]         = useState<string | null>(null)
   const [pdfReady,        setPdfReady]        = useState(false)
-  // Pre-load the PDF module chunk so dynamic() is ready when PDFDownloadLink renders.
+  // Pre-load the PDF module chunk so nextDynamic() is ready when PDFDownloadLink renders.
   // Gating on pdfModuleReady ensures document prop is never null — no @react-pdf crash.
   const [pdfModuleReady,  setPdfModuleReady]  = useState(false)
 
@@ -473,4 +473,4 @@ export default function ClientReportRC3Page() {
       </div>
     </div>
   )
-}
+   }
