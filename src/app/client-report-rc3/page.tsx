@@ -42,6 +42,29 @@ const OwnerSettlementPdfV3 = nextDynamic(
   { ssr: false },
 )
 
+/* ─── PDF Error Boundary — catches react-pdf render crashes without killing page ─ */
+
+class PDFErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+  static getDerivedStateFromError() { return { hasError: true } }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <span className="text-xs text-red-400 px-3 py-1 border border-red-200 rounded">
+          PDF unavailable — refresh to retry
+        </span>
+      )
+    }
+    return this.props.children
+  }
+}
+
 /* ─── Format helpers ─────────────────────────────────────────────────────────── */
 
 function eur(n: number): string {
@@ -404,15 +427,17 @@ function ClientReportRC3Content() {
           </button>
 
           {report && pdfReady && pdfModuleReady && (
-            <PDFDownloadLink
-              document={<OwnerSettlementPdfV3 report={report} />}
-              fileName={pdfFilename}
-              className="px-4 py-2 bg-green-700 text-white text-sm rounded hover:bg-green-800"
-            >
-              {({ loading: pdfLoading }: { loading: boolean }) =>
-                pdfLoading ? 'Building PDF…' : '⬇ Download PDF'
-              }
-            </PDFDownloadLink>
+            <PDFErrorBoundary>
+              <PDFDownloadLink
+                document={<OwnerSettlementPdfV3 report={report} />}
+                fileName={pdfFilename}
+                className="px-4 py-2 bg-green-700 text-white text-sm rounded hover:bg-green-800"
+              >
+                {({ loading: pdfLoading }: { loading: boolean }) =>
+                  pdfLoading ? 'Building PDF…' : '⬇ Download PDF'
+                }
+              </PDFDownloadLink>
+            </PDFErrorBoundary>
           )}
         </div>
 

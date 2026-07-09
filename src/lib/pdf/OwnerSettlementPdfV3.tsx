@@ -411,9 +411,9 @@ function TxGroupTable({
             <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date)}</Text>
             <View style={s.cDesc}>
               <Text style={s.td}>{desc}</Text>
-              {row.display_label !== desc && (
+              {row.display_label !== desc ? (
                 <Text style={s.tdInfo}>{row.display_label}</Text>
-              )}
+              ) : null}
             </View>
             <Text style={[s.cAmt, s.td, { color: isIncome ? C.green : C.grayDark }]}>
               {fmt(row.client_amount)}
@@ -538,9 +538,9 @@ function AccountBlock({ section }: { section: RC3AccountSection }) {
       {/* Section B — Balance-affecting transactions */}
       <TxGroupTable rows={incomeRows}  groupLabel={incomeLabel}  isIncome={true}  />
       <TxGroupTable rows={expenseRows} groupLabel={expenseLabel} isIncome={false} />
-      {payoutRows.length > 0 && (
+      {payoutRows.length > 0 ? (
         <TxGroupTable rows={payoutRows} groupLabel="Payments Sent to You" isIncome={false} />
-      )}
+      ) : null}
 
       {/* Section C — Informational (cost tracking, platform tracking, trust, needs review) */}
       <InfoRows rows={infoRows} />
@@ -612,7 +612,7 @@ export function OwnerSettlementPdfV3({ report }: OwnerSettlementPdfV3Props) {
         <MetaBlock report={report} />
 
         {/* Account-level summary strip */}
-        {report.accounts.length > 1 && <SummaryCard report={report} />}
+        {report.accounts.length > 1 ? <SummaryCard report={report} /> : null}
 
         {/* One section per account — in canonical order */}
         {report.accounts.map(acc => (
