@@ -15,6 +15,11 @@
 
 'use client'
 
+
+// force-dynamic: opt out of Next.js static shell optimisation that leaves
+// shared-chunk context (SearchParams / Pathname providers) null during hydration,
+// causing `TypeError: Cannot read properties of null (reading 'get')` in useMemo.
+export const dynamic = 'force-dynamic'
 import React, { useCallback, useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { fetchRC3Report, fetchRC3PropertyList } from '@/lib/report/fetchReport'
