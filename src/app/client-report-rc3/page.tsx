@@ -15,24 +15,49 @@
 
 'use client'
 
-import React, { useCallback, useEffect, useState } from 'react'
-import dynamic from 'next/dynamic'
+import React, { useCallback, useEffect, useState, Suspense } from 'react'
+import nextDynamic from 'next/dynamic'
 import { fetchRC3Report, fetchRC3PropertyList } from '@/lib/report/fetchReport'
 import type { RC3PropertyReport, RC3AccountSection, RC3AccountRow } from '@/lib/report/types'
 
 /* ─── Dynamic PDF import (client-only) ──────────────────────────────────────── */
 
-const PDFDownloadLink = dynamic(
+const PDFDownloadLink = nextDynamic(
   () => import('@react-pdf/renderer').then(m => m.PDFDownloadLink),
   { ssr: false, loading: () => <span>Preparing PDF…</span> },
 )
-const OwnerSettlementPdfV3 = dynamic(
-  () =>
-    import('@/lib/pdf/OwnerSettlementPdfV3').then(m => ({
-      default: m.OwnerSettlementPdfV3,
-    })),
-  { ssr: false },
-)
+
+// NOTE: OwnerSettlementPdfV3 is NOT loaded via nextDynamic here.
+// react-pdf's custom renderer cannot handle Next.js's dynamic() wrapper
+// (it doesn't support useSyncExternalStore / Suspense used internally by nextDynamic).
+// Instead we import the raw module function via a plain dynamic import() in useEffect
+// and store the component reference in state (PdfDoc). The PDFDownloadLink.document
+// prop receives the raw component — which react-pdf's renderer can handle correctly.
+// The ssr:false exclusion is enforced by the dynamic import being inside useEffect
+// (useEffect never runs on the server).
+
+/* ─── PDF Error Boundary — catches react-pdf render crashes without killing page ─ */
+
+class PDFErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+  static getDerivedStateFromError() { return { hasError: true } }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <span className="text-xs text-red-400 px-3 py-1 border border-red-200 rounded">
+          PDF unavailable — refresh to retry
+        </span>
+      )
+    }
+    return this.props.children
+  }
+}
 
 /* ─── Format helpers ─────────────────────────────────────────────────────────── */
 
@@ -125,12 +150,24 @@ function AccountCard({ section }: { section: RC3AccountSection }) {
     balClass = b > 0 ? 'text-red-700' : 'text-green-700'
   }
 
-  const incomeRows  = section.rows.filter(r => r.display_group === 'income')
-  const expenseRows = section.rows.filter(r => r.display_group === 'expense')
-  const payoutRows  = section.rows.filter(r => r.display_group === 'payment_out')
-  const infoRows    = section.rows.filter(r => r.display_group === 'info' || r.display_group === 'reference')
+  // Section A: reference rows (contract values, balance_effect = 0)
+  const referenceRows = section.rows.filter(r => r.display_group === 'reference')
+  // Section B: balance-affecting rows
+  const incomeRows    = section.rows.filter(r => r.display_group === 'income')
+  const expenseRows   = section.rows.filter(r => r.display_group === 'expense')
+  const payoutRows    = section.rows.filter(r => r.display_group === 'payment_out')
+  // Section C: informational only (platform tracking, cost tracking, trust, needs review)
+  const infoRows      = section.rows.filter(r => r.display_group === 'info')
 
   const allBalanceRows = [...incomeRows, ...expenseRows, ...payoutRows]
+
+  // Convention-aware labels for the mini-summary.
+  // client_debt (Sale/Renovation): positive balance_effect = amounts charged to client;
+  //   negative balance_effect = payments received from client.
+  // owner_credit (Rental/Airbnb): positive = income received; negative = expenses paid.
+  const isClientDebt = section.balance_convention === 'client_debt'
+  const incomeLabel   = isClientDebt ? 'charged to client'    : 'received'
+  const expenseLabel  = isClientDebt ? 'received from client' : 'expenses'
 
   return (
     <div className={`rounded-lg border ${colours.border} ${colours.bg} mb-4 overflow-hidden`}>
@@ -162,16 +199,33 @@ function AccountCard({ section }: { section: RC3AccountSection }) {
       {/* Expanded body */}
       {expanded && (
         <div className="border-t border-gray-200 bg-white">
-          {/* Mini summary */}
+
+          {/* Section A — Reference (contract values, always visible) */}
+          {referenceRows.length > 0 && (
+            <div className="border-b border-gray-200 bg-slate-50 px-4 py-2">
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">
+                Section A — Contract Reference (does not affect balance)
+              </div>
+              <table className="w-full text-xs">
+                <tbody className="divide-y divide-gray-100">
+                  {referenceRows.map((row, i) => (
+                    <TxRow key={row.id} row={row} idx={i} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Section B — Mini summary */}
           <div className="flex gap-6 px-4 py-2 border-b border-gray-100 bg-gray-50 text-xs">
             {section.total_income > 0 && (
-              <span className="text-green-700">
-                + {eur(section.total_income)} received
+              <span className={isClientDebt ? 'text-red-700' : 'text-green-700'}>
+                {isClientDebt ? '+ ' : '+ '}{eur(section.total_income)} {incomeLabel}
               </span>
             )}
             {section.total_expenses > 0 && (
-              <span className="text-red-700">
-                − {eur(section.total_expenses)} expenses
+              <span className={isClientDebt ? 'text-green-700' : 'text-red-700'}>
+                {isClientDebt ? '' : '− '}{eur(section.total_expenses)} {expenseLabel}
               </span>
             )}
             {section.total_bpo > 0 && (
@@ -181,7 +235,7 @@ function AccountCard({ section }: { section: RC3AccountSection }) {
             )}
           </div>
 
-          {/* Transaction table */}
+          {/* Section B — Transaction table */}
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
@@ -210,7 +264,7 @@ function AccountCard({ section }: { section: RC3AccountSection }) {
             </table>
           </div>
 
-          {/* Informational rows toggle */}
+          {/* Section C — Informational rows toggle */}
           {infoRows.length > 0 && (
             <div className="border-t border-dashed border-gray-200 bg-gray-50 px-4 py-2">
               <button
@@ -220,7 +274,7 @@ function AccountCard({ section }: { section: RC3AccountSection }) {
                 {showInfo ? '▲ Hide' : '▼ Show'} {infoRows.length} informational rows
                 {!showInfo && (
                   <span className="ml-2 text-gray-400">
-                    (platform tracking, internal cost records)
+                    (platform tracking, cost tracking, trust account, needs review)
                   </span>
                 )}
               </button>
@@ -243,7 +297,7 @@ function AccountCard({ section }: { section: RC3AccountSection }) {
 
 /* ─── Main page ─────────────────────────────────────────────────────────────── */
 
-export default function ClientReportRC3Page() {
+function ClientReportRC3Content() {
   const [properties,    setProperties]    = useState<string[]>([])
   const [selectedProp,  setSelectedProp]  = useState<string>('')
   const [fromDate,      setFromDate]      = useState<string>('')
@@ -251,7 +305,19 @@ export default function ClientReportRC3Page() {
   const [report,        setReport]        = useState<RC3PropertyReport | null>(null)
   const [loading,       setLoading]       = useState(false)
   const [error,         setError]         = useState<string | null>(null)
-  const [pdfReady,      setPdfReady]      = useState(false)
+  const [pdfReady,  setPdfReady]  = useState(false)
+  // PdfDoc holds the raw OwnerSettlementPdfV3 component function (not a nextDynamic wrapper).
+  // react-pdf's reconciler requires the actual component — it cannot render components
+  // wrapped with Next.js's dynamic() (which uses hooks/Suspense incompatible with the PDF renderer).
+  const [PdfDoc, setPdfDoc] = useState<React.ComponentType<{report: RC3PropertyReport}> | null>(null)
+
+  useEffect(() => {
+    import('@/lib/pdf/OwnerSettlementPdfV3').then(m => {
+      // Store component function reference (use functional update to avoid useState treating
+      // a function as a state-update callback)
+      setPdfDoc(() => m.OwnerSettlementPdfV3)
+    })
+  }, [])
 
   // Load property list on mount
   useEffect(() => {
@@ -291,7 +357,7 @@ export default function ClientReportRC3Page() {
   }, [selectedProp])
 
   const pdfFilename = report
-    ? `${report.reporting_name.replace(/\s+/g, '_')}_RC3_${new Date().toISOString().slice(0, 10)}.pdf`
+    ? `RC3_Owner_Report_${report.reporting_name.replace(/\s+/g, '_')}_${report.from_date || 'all'}_to_${report.to_date || 'all'}.pdf`
     : 'report.pdf'
 
   return (
@@ -357,17 +423,18 @@ export default function ClientReportRC3Page() {
             {loading ? 'Loading…' : 'Load Report'}
           </button>
 
-          {report && pdfReady && (
-            <PDFDownloadLink
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              document={<OwnerSettlementPdfV3 report={report} />}
-              fileName={pdfFilename}
-              className="px-4 py-2 bg-green-700 text-white text-sm rounded hover:bg-green-800"
-            >
-              {({ loading: pdfLoading }: { loading: boolean }) =>
-                pdfLoading ? 'Building PDF…' : '⬇ Download PDF'
-              }
-            </PDFDownloadLink>
+          {report && pdfReady && PdfDoc && (
+            <PDFErrorBoundary>
+              <PDFDownloadLink
+                document={<PdfDoc report={report} />}
+                fileName={pdfFilename}
+                className="px-4 py-2 bg-green-700 text-white text-sm rounded hover:bg-green-800"
+              >
+                {({ loading: pdfLoading }: { loading: boolean }) =>
+                  pdfLoading ? 'Building PDF…' : '⬇ Download PDF'
+                }
+              </PDFDownloadLink>
+            </PDFErrorBoundary>
           )}
         </div>
 
@@ -414,21 +481,29 @@ export default function ClientReportRC3Page() {
             <div className="bg-red-50 border border-red-300 rounded p-3 mt-4 text-xs text-red-800">
               <span className="font-bold">⚠ Opening Balance Not Included.</span>{' '}
               Date-filtered reports may show incorrect closing balances because prior-period
-              balances are not carried forward yet. <span className="font-bold">Use all-time
-              (unfiltered) reports only for financial review</span> until opening balances
-              are implemented.
-            </div>
-
-            {/* Disclosure */}
-            <div className="bg-amber-50 border border-amber-200 rounded p-3 mt-2 text-xs text-amber-800">
-              This report is generated from accounting records and is pending final review.
-              Some transactions may be subject to reclassification. Rows marked
-              &quot;Needs Review&quot; require manual verification before financial use.
-              This document is confidential and intended solely for the named property owner.
+              balances are not carried forward yet.{' '}
+              <span className="font-bold">Use all-time (unfiltered) reports only</span> for
+              financial review until opening balances are implemented.
             </div>
           </>
         )}
       </div>
     </div>
+  )
+}
+
+/* ─── Suspense shell (fixes shared-chunk SearchParams null crash on hydration) ─ */
+
+export default function ClientReportRC3Page() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+          <p className="text-sm text-gray-500">Loading report…</p>
+        </div>
+      }
+    >
+      <ClientReportRC3Content />
+    </Suspense>
   )
 }
