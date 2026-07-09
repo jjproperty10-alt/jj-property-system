@@ -1,15 +1,15 @@
 /**
- * JJ Property 10 â Client Report RC3
- * Phase 3 â 2026-07-09
+ * JJ Property 10 — Client Report RC3
+ * Phase 3 — 2026-07-09
  *
  * Account-based owner settlement report using the RC3 view layer.
- * Parallel to /client-report (existing) â does not modify it.
+ * Parallel to /client-report (existing) — does not modify it.
  *
  * Routes: /client-report-rc3
  *
  * Architecture:
- *   fetchRC3Report() â RC3PropertyReport
- *   buildAccountSection() per account type â RC3AccountSection
+ *   fetchRC3Report() → RC3PropertyReport
+ *   buildAccountSection() per account type → RC3AccountSection
  *   OwnerSettlementPdfV3 renders the PDF
  */
 
@@ -20,11 +20,11 @@ import dynamic from 'next/dynamic'
 import { fetchRC3Report, fetchRC3PropertyList } from '@/lib/report/fetchReport'
 import type { RC3PropertyReport, RC3AccountSection, RC3AccountRow } from '@/lib/report/types'
 
-/* âââ Dynamic PDF import (client-only) ââââââââââââââââââââââââââââââââââââââââ */
+/* ─── Dynamic PDF import (client-only) ──────────────────────────────────────── */
 
 const PDFDownloadLink = dynamic(
   () => import('@react-pdf/renderer').then(m => m.PDFDownloadLink),
-  { ssr: false, loading: () => <span>Preparing PDFâ¦</span> },
+  { ssr: false, loading: () => <span>Preparing PDF…</span> },
 )
 const OwnerSettlementPdfV3 = dynamic(
   () =>
@@ -34,7 +34,7 @@ const OwnerSettlementPdfV3 = dynamic(
   { ssr: false },
 )
 
-/* âââ Format helpers âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
+/* ─── Format helpers ─────────────────────────────────────────────────────────── */
 
 function eur(n: number): string {
   return new Intl.NumberFormat('en-IE', {
@@ -54,7 +54,7 @@ function fmtDate(iso: string): string {
   }
 }
 
-/* âââ Account type colours (Tailwind classes) ââââââââââââââââââââââââââââââââââ */
+/* ─── Account type colours (Tailwind classes) ────────────────────────────────── */
 
 const ACCOUNT_COLOURS: Record<string, { bg: string; border: string; text: string; badge: string }> = {
   sale:       { bg: 'bg-blue-50',   border: 'border-blue-200',  text: 'text-blue-900',  badge: 'bg-blue-700 text-white'   },
@@ -63,7 +63,7 @@ const ACCOUNT_COLOURS: Record<string, { bg: string; border: string; text: string
   airbnb:     { bg: 'bg-sky-50',    border: 'border-sky-200',   text: 'text-sky-900',   badge: 'bg-sky-700 text-white'   },
 }
 
-/* âââ Transaction row ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
+/* ─── Transaction row ────────────────────────────────────────────────────────── */
 
 function TxRow({ row, idx }: { row: RC3AccountRow; idx: number }) {
   const isInfo = row.display_group === 'info' || row.display_group === 'reference'
@@ -82,7 +82,7 @@ function TxRow({ row, idx }: { row: RC3AccountRow; idx: number }) {
       </td>
       <td className="px-3 py-1.5">
         <div className={`text-xs ${isInfo ? 'text-gray-400 italic' : 'text-gray-800'}`}>
-          {(row.description ?? '').trim() || row.display_label || 'â'}
+          {(row.description ?? '').trim() || row.display_label || '—'}
         </div>
         {row.display_label && !isInfo && (
           <div className="text-[10px] text-gray-400 mt-0.5">{row.display_label}</div>
@@ -98,7 +98,7 @@ function TxRow({ row, idx }: { row: RC3AccountRow; idx: number }) {
   )
 }
 
-/* âââ Account section card âââââââââââââââââââââââââââââââââââââââââââââââââââââ */
+/* ─── Account section card ───────────────────────────────────────────────────── */
 
 function AccountCard({ section }: { section: RC3AccountSection }) {
   const [expanded, setExpanded] = useState(true)
@@ -155,7 +155,7 @@ function AccountCard({ section }: { section: RC3AccountSection }) {
             </div>
             <div className={`text-[11px] ${balClass}`}>{balLabel}</div>
           </div>
-          <span className="text-gray-400">{expanded ? 'â²' : 'â¼'}</span>
+          <span className="text-gray-400">{expanded ? '▲' : '▼'}</span>
         </div>
       </div>
 
@@ -171,12 +171,12 @@ function AccountCard({ section }: { section: RC3AccountSection }) {
             )}
             {section.total_expenses > 0 && (
               <span className="text-red-700">
-                â {eur(section.total_expenses)} expenses
+                − {eur(section.total_expenses)} expenses
               </span>
             )}
             {section.total_bpo > 0 && (
               <span className="text-orange-700">
-                â {eur(section.total_bpo)} paid to you
+                − {eur(section.total_bpo)} paid to you
               </span>
             )}
           </div>
@@ -200,7 +200,7 @@ function AccountCard({ section }: { section: RC3AccountSection }) {
                 <tr className="bg-gray-100 border-t border-gray-300">
                   <td className="px-3 py-2" />
                   <td className="px-3 py-2 text-xs font-bold text-gray-700">
-                    {section.account_label} â {balLabel}
+                    {section.account_label} — {balLabel}
                   </td>
                   <td className={`px-3 py-2 text-right text-sm font-bold font-mono ${balClass}`}>
                     {eur(Math.abs(b))}
@@ -217,7 +217,7 @@ function AccountCard({ section }: { section: RC3AccountSection }) {
                 onClick={() => setShowInfo(!showInfo)}
                 className="text-xs text-gray-500 hover:text-gray-700"
               >
-                {showInfo ? 'â² Hide' : 'â¼ Show'} {infoRows.length} informational rows
+                {showInfo ? '▲ Hide' : '▼ Show'} {infoRows.length} informational rows
                 {!showInfo && (
                   <span className="ml-2 text-gray-400">
                     (platform tracking, internal cost records)
@@ -241,7 +241,7 @@ function AccountCard({ section }: { section: RC3AccountSection }) {
   )
 }
 
-/* âââ Main page âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
+/* ─── Main page ─────────────────────────────────────────────────────────────── */
 
 export default function ClientReportRC3Page() {
   const [properties,    setProperties]    = useState<string[]>([])
@@ -300,7 +300,7 @@ export default function ClientReportRC3Page() {
       <div className="bg-[#1e3a5f] text-white px-6 py-4 flex items-center justify-between">
         <div>
           <h1 className="text-lg font-bold tracking-wide">JJ Property 10</h1>
-          <p className="text-blue-200 text-xs mt-0.5">Owner Settlement Report â RC3</p>
+          <p className="text-blue-200 text-xs mt-0.5">Owner Settlement Report — RC3</p>
         </div>
         <span className="text-xs bg-blue-800 text-blue-100 px-2 py-1 rounded">
           Phase 3 Preview
@@ -354,7 +354,7 @@ export default function ClientReportRC3Page() {
             disabled={loading || !selectedProp}
             className="px-4 py-2 bg-[#1e3a5f] text-white text-sm rounded hover:bg-[#2d5a9e] disabled:opacity-50"
           >
-            {loading ? 'Loadingâ¦' : 'Load Report'}
+            {loading ? 'Loading…' : 'Load Report'}
           </button>
 
           {report && pdfReady && (
@@ -365,7 +365,7 @@ export default function ClientReportRC3Page() {
               className="px-4 py-2 bg-green-700 text-white text-sm rounded hover:bg-green-800"
             >
               {({ loading: pdfLoading }: { loading: boolean }) =>
-                pdfLoading ? 'Building PDFâ¦' : 'â¬ Download PDF'
+                pdfLoading ? 'Building PDF…' : '⬇ Download PDF'
               }
             </PDFDownloadLink>
           )}
@@ -381,7 +381,7 @@ export default function ClientReportRC3Page() {
         {/* Loading */}
         {loading && (
           <div className="text-center py-12 text-gray-500 text-sm">
-            Loading report for <strong>{selectedProp}</strong>â¦
+            Loading report for <strong>{selectedProp}</strong>…
           </div>
         )}
 
@@ -393,9 +393,9 @@ export default function ClientReportRC3Page() {
               <h2 className="text-base font-bold text-gray-900">{report.reporting_name}</h2>
               <div className="text-xs text-gray-500 mt-1">
                 {report.from_date || report.to_date
-                  ? `${report.from_date ? fmtDate(report.from_date) : 'â'} to ${report.to_date ? fmtDate(report.to_date) : 'â'}`
+                  ? `${report.from_date ? fmtDate(report.from_date) : '—'} to ${report.to_date ? fmtDate(report.to_date) : '—'}`
                   : 'All dates'
-                } Â· {report.accounts.length} account{report.accounts.length !== 1 ? 's' : ''}
+                } · {report.accounts.length} account{report.accounts.length !== 1 ? 's' : ''}
               </div>
             </div>
 
@@ -410,10 +410,21 @@ export default function ClientReportRC3Page() {
               ))
             )}
 
+            {/* Opening balance warning */}
+            <div className="bg-red-50 border border-red-300 rounded p-3 mt-4 text-xs text-red-800">
+              <span className="font-bold">⚠ Opening Balance Not Included.</span>{' '}
+              Date-filtered reports may show incorrect closing balances because prior-period
+              balances are not carried forward yet. <span className="font-bold">Use all-time
+              (unfiltered) reports only for financial review</span> until opening balances
+              are implemented.
+            </div>
+
             {/* Disclosure */}
-            <div className="bg-amber-50 border border-amber-200 rounded p-3 mt-4 text-xs text-amber-800">
+            <div className="bg-amber-50 border border-amber-200 rounded p-3 mt-2 text-xs text-amber-800">
               This report is generated from accounting records and is pending final review.
-              Opening balances are not yet included. Some transactions may be subject to reclassification.
+              Some transactions may be subject to reclassification. Rows marked
+              &quot;Needs Review&quot; require manual verification before financial use.
+              This document is confidential and intended solely for the named property owner.
             </div>
           </>
         )}
