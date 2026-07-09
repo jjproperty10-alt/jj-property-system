@@ -27,6 +27,7 @@ import {
 } from '@react-pdf/renderer'
 import { fmt } from './formatters'
 import type { RC3PropertyReport, RC3AccountSection, RC3AccountRow } from '../report/types'
+import { overrideDisplayLabel, SECTION_LABELS } from '../report/labels'
 
 /* ─── Font ──────────────────────────────────────────────────────────────────── */
 
@@ -401,7 +402,8 @@ function TxGroupTable({
         <Text style={[s.th, s.cAmt]}>Amount</Text>
       </View>
       {rows.map((row, i) => {
-        const desc = (row.description ?? '').trim() || row.display_label || '—'
+        const overriddenLabel = overrideDisplayLabel(row.display_label ?? '')
+        const desc = (row.description ?? '').trim() || overriddenLabel || '—'
         return (
           <View
             key={row.id}
@@ -411,8 +413,8 @@ function TxGroupTable({
             <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date)}</Text>
             <View style={s.cDesc}>
               <Text style={s.td}>{desc}</Text>
-              {row.display_label !== desc ? (
-                <Text style={s.tdInfo}>{row.display_label}</Text>
+              {overriddenLabel && overriddenLabel !== desc ? (
+                <Text style={s.tdInfo}>{overriddenLabel}</Text>
               ) : null}
             </View>
             <Text style={[s.cAmt, s.td, { color: isIncome ? C.green : C.grayDark }]}>
@@ -470,17 +472,20 @@ function RefSection({ rows }: { rows: RC3AccountRow[] }) {
   return (
     <View style={s.refSection}>
       <View style={s.refHeader}>
-        <Text style={s.refHeaderLabel}>Section A — Contract Reference</Text>
-        <Text style={s.refHeaderNote}>Reference only — does not affect settlement balance</Text>
+        <Text style={s.refHeaderLabel}>{SECTION_LABELS.contractInfo}</Text>
+        <Text style={s.refHeaderNote}>{SECTION_LABELS.contractInfoNote}</Text>
       </View>
       {rows.map((row) => {
-        const desc = (row.description ?? '').trim() || row.display_label || '—'
+        const overriddenLabel = overrideDisplayLabel(row.display_label ?? '')
+        const desc = (row.description ?? '').trim() || overriddenLabel || '—'
         return (
           <View key={row.id} style={s.refRow} wrap={false}>
             <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date)}</Text>
             <View style={s.cDesc}>
               <Text style={s.tdInfo}>{desc}</Text>
-              <Text style={s.tdInfo}>{row.display_label}</Text>
+              {overriddenLabel && overriddenLabel !== desc ? (
+                <Text style={s.tdInfo}>{overriddenLabel}</Text>
+              ) : null}
             </View>
             <Text style={[s.cAmt, s.tdInfo]}>{fmt(row.client_amount)}</Text>
           </View>
@@ -501,8 +506,9 @@ function AccountBlock({ section }: { section: RC3AccountSection }) {
   const incomeRows    = section.rows.filter(r => r.display_group === 'income')
   const expenseRows   = section.rows.filter(r => r.display_group === 'expense')
   const payoutRows    = section.rows.filter(r => r.display_group === 'payment_out')
-  // Section C: informational rows (platform tracking, cost tracking, trust, needs review)
-  const infoRows      = section.rows.filter(r => r.display_group === 'info')
+  // Section C (info rows): suppressed from client PDF.
+  // Info rows contain internal cost-tracking, platform-tracking, and needs-review data
+  // that should not appear in the client-facing document.
 
   const incomeLabel  = section.balance_convention === 'owner_credit'
     ? 'Money Received For You'
@@ -542,8 +548,9 @@ function AccountBlock({ section }: { section: RC3AccountSection }) {
         <TxGroupTable rows={payoutRows} groupLabel="Payments Sent to You" isIncome={false} />
       ) : null}
 
-      {/* Section C — Informational (cost tracking, platform tracking, trust, needs review) */}
-      <InfoRows rows={infoRows} />
+      {/* Section C — Informational rows are suppressed from the client-facing PDF.
+          Cost tracking, platform tracking, trust account, and needs-review rows
+          are internal JJ data and must not appear in documents sent to clients. */}
 
       {/* Balance strip */}
       <View style={s.balStrip}>
