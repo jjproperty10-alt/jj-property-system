@@ -1,6 +1,7 @@
 /**
  * JJ Property 10 — RC3 Balance Engine
  * Phase 3 — 2026-07-09 (updated 2026-07-09: Rental/Airbnb expense handlers, Sale Tax/CSE handlers)
+ * (updated 2026-07-09: contract_baseline for Sale and Renovation accounts)
  *
  * Implements the business rules from docs/HISTORICAL_BUSINESS_RULES_V1.md.
  * This file must remain in sync with that document — update both together.
@@ -14,7 +15,8 @@
  * ────────────────────────────────────────────────────────────────────────────
  * Key rules (see HISTORICAL_BUSINESS_RULES_V1.md for full rationale)
  * ────────────────────────────────────────────────────────────────────────────
- *   is_contract_value = TRUE  → balance_effect = 0  (reference row)
+ *   is_contract_value = TRUE  → balance_effect = 0  (reference row display)
+ *                             → client_amount added to contract_baseline (see below)
  *   is_platform_tracking = TRUE → balance_effect = 0  (payer=Airbnb; already in Platform Income)
  *   is_bpo = TRUE             → balance_effect = -client_amount (payment sent to owner)
  *
@@ -46,6 +48,20 @@
  *   Section B — Balance-Affecting  (display_group = 'income' | 'expense' | 'payment_out')
  *   Section C — Informational  (display_group = 'info', balance_effect = 0)
  *   Only Section B rows enter the closing balance equation.
+ *
+ * ────────────────────────────────────────────────────────────────────────────
+ * Contract Baseline (approved Yossi 2026-07-09)
+ * ────────────────────────────────────────────────────────────────────────────
+ *   Sale / Renovation: contract value IS the client debt baseline.
+ *   The contract row stays in Section A (reference, balance_effect=0 for display),
+ *   but its client_amount is extracted and added to closing_balance.
+ *
+ *   Sale:       Contract + Sale Expenses − Client Payments − Third-Party Payments = Balance
+ *   Renovation: Contract + Extras − Client Payments = Balance
+ *   Rental / Airbnb: no contract baseline (P&L accounts, no fixed obligation)
+ *
+ *   Example — Liron & Alon:
+ *     200,000 + 4,765 − 70,765 − 134,000 = 0
  */
 
 import type {
@@ -233,9 +249,6 @@ function classifyRentalRow(row: RC3Row): RowClassification {
 /**
  * AIRBNB row classifier.
  * Convention: positive = JJ owes owner (owner_credit)
- *
- * is_platform_tracking = TRUE (payer=Airbnb): already netted from Platform Income → 0
- * is_platform_tracking = FALSE (payer≠Airbnb): real expense → -client_amount
  */
 function classifyAirbnbRow(row: RC3Row): RowClassification {
   const sub = row.subcategory ?? ''
@@ -288,8 +301,7 @@ function classifyAirbnbRow(row: RC3Row): RowClassification {
     }
   }
 
-  // Real expenses — AFTER is_platform_tracking guard. No double-count risk.
-  // 'Corrections' and 'Other' intentionally remain in catch-all.
+  // Real expenses — reduce what JJ owes the owner.
   if (AIRBNB_EXPENSE_SUBS.has(sub)) {
     return {
       balance_effect:       -row.client_amount,
@@ -312,15 +324,18 @@ function classifyAirbnbRow(row: RC3Row): RowClassification {
  * SALE (Property Purchase) row classifier.
  * Convention: positive = client owes JJ (client_debt)
  *
- * Client Payment, Third-Party Payment: decrease debt (credits)
- * Client Sale Expenses, Sale Tax: increase debt
+ * NOTE: The contract value (Sale Contract) is NOT in the balance_effect here.
+ * It is extracted separately as contract_baseline in buildAccountSection.
+ *
+ * Client Payment, Third-Party Payment: decrease debt (credits, negative balance_effect)
+ * Client Sale Expenses, Sale Tax: increase debt (positive balance_effect)
  * Broker Fee: internal — balance_effect = 0
- * Sale Contract: is_contract_value = TRUE — balance_effect = 0
+ * Sale Contract: is_contract_value = TRUE — balance_effect = 0 (baseline handled separately)
  */
 function classifySaleRow(row: RC3Row): RowClassification {
   const sub = row.subcategory ?? ''
 
-  // Contract reference
+  // Contract reference — shown in Section A; value used as contract_baseline (see buildAccountSection)
   if (row.is_contract_value) {
     return {
       balance_effect:       0,
@@ -381,17 +396,17 @@ function classifySaleRow(row: RC3Row): RowClassification {
  * RENOVATION row classifier.
  * Convention: positive = client owes JJ (client_debt)
  *
- * The renovation account is contract-based, not line-item-based (§3.2 / §4.3):
- *   - Renovation Contract: reference only (is_contract_value = TRUE)
- *   - Client Payment: reduces client debt
- *   - Extras: additional work beyond contract scope, billed to client at client_charge
- *   - Materials / Contractors / Workers / all other expense rows: internal cost tracking
- *     (balance_effect = 0, shown as informational rows)
+ * NOTE: The contract value (Renovation Contract) is NOT in the balance_effect here.
+ * It is extracted separately as contract_baseline in buildAccountSection.
+ *
+ *   Client Payment: reduces client debt (negative balance_effect)
+ *   Extras: additional work beyond contract scope, billed to client (positive balance_effect)
+ *   All other expense rows: internal cost tracking (balance_effect = 0)
  */
 function classifyRenovationRow(row: RC3Row): RowClassification {
   const sub = row.subcategory ?? ''
 
-  // Contract reference
+  // Contract reference — shown in Section A; value used as contract_baseline (see buildAccountSection)
   if (row.is_contract_value) {
     return {
       balance_effect:       0,
@@ -479,6 +494,21 @@ export function enrichRows(rows: RC3Row[], accountType: RC3AccountType): RC3Acco
 /**
  * Build a complete RC3AccountSection from raw rows.
  * openingBalance defaults to 0 (Task 5 — contact_opening_balances — is not yet implemented).
+ *
+ * ────────────────────────────────────────────────────────────────────────────
+ * Contract Baseline Rule (approved Yossi 2026-07-09)
+ * ────────────────────────────────────────────────────────────────────────────
+ * For Sale and Renovation accounts the contract value is the CLIENT'S DEBT BASELINE.
+ * The contract row stays in Section A (display_group='reference', balance_effect=0 for
+ * row display), but its client_amount is extracted here and added to closing_balance.
+ *
+ *   Sale:       Contract + Sale Expenses − Client Payments − Third-Party Payments = Balance
+ *   Renovation: Contract + Extras − Client Payments = Balance
+ *   Rental:     No contract baseline (P&L account)
+ *   Airbnb:     No contract baseline (P&L account)
+ *
+ * Example — Liron & Alon:
+ *   200,000 + 4,765 − 70,765 − 134,000 = 0
  */
 export function buildAccountSection(
   accountType:    RC3AccountType,
@@ -489,6 +519,16 @@ export function buildAccountSection(
   const rows = enrichRows(rawRows, accountType)
 
   const balanceRows = rows.filter(r => r.is_balance_affecting)
+
+  // Contract baseline: sum of all reference (is_contract_value) rows' client_amount.
+  // Applied to sale and renovation only — the contract value is what the client owes.
+  // For rental / airbnb this is always 0.
+  const contract_baseline =
+    accountType === 'sale' || accountType === 'renovation'
+      ? rows
+          .filter(r => r.is_contract_value)
+          .reduce((sum, r) => sum + r.client_amount, 0)
+      : 0
 
   const total_income = balanceRows
     .filter(r => r.balance_effect > 0)
@@ -503,7 +543,7 @@ export function buildAccountSection(
     .reduce((sum, r) => sum + Math.abs(r.balance_effect), 0)
 
   const closing_balance =
-    openingBalance + balanceRows.reduce((sum, r) => sum + r.balance_effect, 0)
+    openingBalance + contract_baseline + balanceRows.reduce((sum, r) => sum + r.balance_effect, 0)
 
   return {
     account_type:       accountType,
@@ -511,6 +551,7 @@ export function buildAccountSection(
     account_label_he:   meta.he,
     balance_convention: meta.convention,
     opening_balance:    openingBalance,
+    contract_baseline,
     rows,
     total_income,
     total_expenses,
