@@ -27,7 +27,7 @@ import {
 import { fmt } from './formatters'
 import type { RC3PropertyReport, RC3AccountSection, RC3AccountRow } from '../report/types'
 import {
-  overrideDisplayLabel,
+  buildRowLabel,
   t, type Lang,
 } from '../report/labels'
 
@@ -342,6 +342,60 @@ const s = StyleSheet.create({
   balValue: { fontSize: 8.5, fontWeight: 'bold' },
   balSub:   { fontSize: 7, color: C.grayText, marginTop: 1 },
 
+  // Final Summary block
+  finalSection: {
+    marginTop: 16,
+    backgroundColor: '#1e3a5f',
+    borderRadius: 5,
+    padding: 14,
+  },
+  finalTitle: {
+    fontSize: 6.5, fontWeight: 'bold', color: '#93c5fd',
+    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8,
+  },
+  finalKpiRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  finalKpiCell: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 4,
+    padding: 8,
+    marginRight: 5,
+  },
+  finalKpiCellLast: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 4,
+    padding: 8,
+  },
+  finalKpiLabel: { fontSize: 5.5, color: '#93c5fd', marginBottom: 3 },
+  finalKpiValue: { fontSize: 9, fontWeight: 'bold', color: '#ffffff' },
+  finalBalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 4,
+    padding: 10,
+    marginBottom: 10,
+  },
+  finalBalLabel: { fontSize: 8, fontWeight: 'bold', color: '#bfdbfe' },
+  finalBalValue: { fontSize: 14, fontWeight: 'bold' },
+  finalBalSub:   { fontSize: 6.5, marginTop: 1 },
+  finalDiscBorder: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.2)',
+    paddingTop: 8,
+  },
+  finalDiscTitle: {
+    fontSize: 6, fontWeight: 'bold', color: '#60a5fa',
+    textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 3,
+  },
+  finalDiscText: { fontSize: 6.5, color: '#bfdbfe', lineHeight: 1.5 },
+  finalDiscGen:  { fontSize: 6, color: '#60a5fa', marginTop: 4 },
+
   // Footer
   footer: {
     position: 'absolute',
@@ -602,10 +656,12 @@ function TxGroupTable({
   rows,
   groupLabel: label,
   isIncome,
+  lang,
 }: {
   rows:       RC3AccountRow[]
   groupLabel: string
   isIncome:   boolean
+  lang:       Lang
 }) {
   if (rows.length === 0) return null
   const total = rows.reduce((s, r) => s + r.client_amount, 0)
@@ -613,14 +669,13 @@ function TxGroupTable({
     <View>
       <Text style={s.groupLabel}>{label}</Text>
       <View style={s.tableHead}>
-        <Text style={[s.th, s.cDate]}>Date</Text>
-        <Text style={[s.th, s.cDesc]}>Description</Text>
-        <Text style={[s.th, s.cAmt]}>Amount</Text>
+        <Text style={[s.th, s.cDate]}>{t('thDate', lang)}</Text>
+        <Text style={[s.th, s.cDesc]}>{t('thDescription', lang)}</Text>
+        <Text style={[s.th, s.cAmt]}>{t('thAmount', lang)}</Text>
       </View>
       {rows.map((row, i) => {
-        const overriddenLabel = overrideDisplayLabel(row.display_label ?? '')
-        // Client report: always show clean display_label — never expose raw internal notes
-        const desc = overriddenLabel || '—'
+        // Client report: use buildRowLabel — never expose raw internal notes
+        const desc = buildRowLabel(row, lang)
         return (
           <View
             key={row.id}
@@ -630,9 +685,6 @@ function TxGroupTable({
             <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date)}</Text>
             <View style={s.cDesc}>
               <Text style={s.td}>{desc}</Text>
-              {overriddenLabel && overriddenLabel !== desc ? (
-                <Text style={s.tdInfo}>{overriddenLabel}</Text>
-              ) : null}
             </View>
             <Text style={[s.cAmt, s.td, { color: isIncome ? C.green : C.grayDark }]}>
               {fmt(row.client_amount)}
@@ -642,7 +694,7 @@ function TxGroupTable({
       })}
       <View style={s.tableTot}>
         <Text style={[s.tdBold, s.cDate]} />
-        <Text style={[s.tdBold, s.cDesc]}>Total</Text>
+        <Text style={[s.tdBold, s.cDesc]}>{t('total', lang)}</Text>
         <Text style={[s.tdBold, s.cAmt, { color: isIncome ? C.green : C.grayDark }]}>
           {fmt(total)}
         </Text>
@@ -660,17 +712,13 @@ function RefSection({ rows, lang }: { rows: RC3AccountRow[]; lang: Lang }) {
         <Text style={s.refHeaderNote}>{t('contractInfoNote', lang)}</Text>
       </View>
       {rows.map((row) => {
-        const overriddenLabel = overrideDisplayLabel(row.display_label ?? '')
-        // Client report: always show clean display_label — never expose raw internal notes
-        const desc = overriddenLabel || '—'
+        // Client report: use buildRowLabel — never expose raw internal notes
+        const desc = buildRowLabel(row, lang)
         return (
           <View key={row.id} style={s.refRow} wrap={false}>
             <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date)}</Text>
             <View style={s.cDesc}>
               <Text style={s.tdInfo}>{desc}</Text>
-              {overriddenLabel && overriddenLabel !== desc ? (
-                <Text style={s.tdInfo}>{overriddenLabel}</Text>
-              ) : null}
             </View>
             <Text style={[s.cAmt, s.tdInfo]}>{fmt(row.client_amount)}</Text>
           </View>
@@ -734,10 +782,10 @@ function AccountBlock({ section, lang }: { section: RC3AccountSection; lang: Lan
       <RefSection rows={referenceRows} lang={lang} />
 
       {/* Section B — Balance-affecting transactions */}
-      <TxGroupTable rows={incomeRows}  groupLabel={incomeLabel}  isIncome={true}  />
-      <TxGroupTable rows={expenseRows} groupLabel={expenseLabel} isIncome={false} />
+      <TxGroupTable rows={incomeRows}  groupLabel={incomeLabel}  isIncome={true}  lang={lang} />
+      <TxGroupTable rows={expenseRows} groupLabel={expenseLabel} isIncome={false} lang={lang} />
       {payoutRows.length > 0 ? (
-        <TxGroupTable rows={payoutRows} groupLabel={t('bpoLabel', lang)} isIncome={false} />
+        <TxGroupTable rows={payoutRows} groupLabel={t('bpoLabel', lang)} isIncome={false} lang={lang} />
       ) : null}
 
       {/* Section C — suppressed from client PDF */}
@@ -751,6 +799,68 @@ function AccountBlock({ section, lang }: { section: RC3AccountSection; lang: Lan
         <Text style={[s.balValue, { color: balColor }]}>
           {fmt(Math.abs(section.closing_balance))}
         </Text>
+      </View>
+    </View>
+  )
+}
+
+/** Final settlement summary + disclaimer (dark navy block at end of PDF) */
+function FinalSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
+  const { totalIncome, totalExpenses, totalTransfers, netOwnerBalance } = computeDashboard(report.accounts)
+
+  let balLabel: string; let balColor: string
+  if (Math.abs(netOwnerBalance) < 0.005) {
+    balLabel = t('balSettled', lang); balColor = C.grayText
+  } else if (netOwnerBalance > 0) {
+    balLabel = t('balPayableToYou', lang); balColor = '#86efac'  // green-300
+  } else {
+    balLabel = t('balPayableByYou', lang); balColor = '#fca5a5'  // red-300
+  }
+
+  const genDate = (() => {
+    try {
+      return new Date(report.generated_at).toLocaleDateString('en-GB', {
+        day: '2-digit', month: 'short', year: 'numeric',
+      })
+    } catch { return '' }
+  })()
+
+  const kpis = [
+    { label: t('finalTotalIncome',    lang), value: totalIncome    },
+    { label: t('finalTotalExpenses',  lang), value: totalExpenses  },
+    { label: t('finalTotalTransfers', lang), value: totalTransfers },
+  ]
+
+  return (
+    <View style={s.finalSection}>
+      <Text style={s.finalTitle}>{t('finalTitle', lang)}</Text>
+
+      {/* 3 KPI cells */}
+      <View style={s.finalKpiRow}>
+        {kpis.map((k, i) => (
+          <View key={i} style={i < kpis.length - 1 ? s.finalKpiCell : s.finalKpiCellLast}>
+            <Text style={s.finalKpiLabel}>{k.label}</Text>
+            <Text style={s.finalKpiValue}>{fmt(k.value)}</Text>
+          </View>
+        ))}
+      </View>
+
+      {/* Net balance */}
+      <View style={s.finalBalRow}>
+        <Text style={s.finalBalLabel}>{t('finalCurrentBalance', lang)}</Text>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={[s.finalBalValue, { color: balColor }]}>
+            {fmt(Math.abs(netOwnerBalance))}
+          </Text>
+          <Text style={[s.finalBalSub, { color: balColor }]}>{balLabel}</Text>
+        </View>
+      </View>
+
+      {/* Disclaimer */}
+      <View style={s.finalDiscBorder}>
+        <Text style={s.finalDiscTitle}>{t('finalNoteTitle', lang)}</Text>
+        <Text style={s.finalDiscText}>{t('finalDisclaimer', lang)}</Text>
+        <Text style={s.finalDiscGen}>{t('finalGenerated', lang)}: {genDate}</Text>
       </View>
     </View>
   )
@@ -818,8 +928,8 @@ export function OwnerSettlementPdfV3({ report, lang = 'en' }: OwnerSettlementPdf
           <AccountBlock key={acc.account_type} section={acc} lang={lang} />
         ))}
 
-        <Disclosure lang={lang} />
-        <DocFooter  report={report} lang={lang} />
+        <FinalSummaryPdf report={report} lang={lang} />
+        <DocFooter       report={report} lang={lang} />
       </Page>
     </Document>
   )

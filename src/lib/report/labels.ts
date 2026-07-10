@@ -1,13 +1,15 @@
 /**
  * JJ Property 10 — Client-Facing Label Overrides & i18n
  * Phase A: display label overrides (Sale → Purchase perspective)
- * Phase B: full EN / HE label system, expense group mapping
+ * Phase B: full EN / HE label system, expense group mapping, buildRowLabel()
  *
  * Rules:
  *  - NEVER write these values to the database
  *  - NEVER modify accounting logic, client_amount, or balance calculations
  *  - All client-visible strings must come from this file
  */
+
+import type { RC3AccountRow } from './types'
 
 /* ──────────────────────────────────────────────────────────────────────────────
  * PHASE A — Display label overrides (kept for backward compatibility)
@@ -77,11 +79,13 @@ const L = {
   accountAirbnb:        { en: 'Short-Term Rental',   he: 'השכרה לטווח קצר'   },
 
   /* ── Owner Dashboard — aggregate KPIs ───────────────────────────────────── */
-  dashTitle:            { en: 'Owner Dashboard',         he: 'לוח בקרה לבעלים'    },
-  dashIncome:           { en: 'Total Income',             he: 'סך הכנסות'           },
-  dashExpenses:         { en: 'Total Expenses',           he: 'סך הוצאות'           },
-  dashTransfers:        { en: 'Transfers to Owner',       he: 'העברות לבעלים'       },
-  dashBalance:          { en: 'Current Balance (Net)',    he: 'יתרה כוללת נטו'      },
+  dashTitle:            { en: 'Owner Dashboard',                  he: 'לוח בקרה לבעלים'        },
+  dashSubtitle:         { en: 'Your complete financial overview',  he: 'סקירה פיננסית מלאה'     },
+  dashIncome:           { en: 'Total Income',                     he: 'סך הכנסות'              },
+  dashExpenses:         { en: 'Total Expenses',                   he: 'סך הוצאות'              },
+  dashTransfers:        { en: 'Transfers to Owner',               he: 'העברות לבעלים'          },
+  dashBalance:          { en: 'Current Balance',                  he: 'יתרה כוללת'             },
+  dashStatusLabel:      { en: 'Account Status',                   he: 'סטטוס חשבון'            },
 
   /* ── Executive summary ───────────────────────────────────────────────────── */
   execTitle:            { en: 'Financial Summary',   he: 'סיכום פיננסי'       },
@@ -114,17 +118,45 @@ const L = {
   cardAirbnbBpo:        { en: 'Transfers to Owner',          he: 'העברות לבעלים'     },
   cardAirbnbBalance:    { en: 'Current Balance',             he: 'יתרה נוכחית'       },
 
-  /* ── Expense categories (Rental / Airbnb grouping) ──────────────────────── */
-  expElectricity:       { en: 'Electricity',             he: 'חשמל'                 },
-  expWater:             { en: 'Water',                   he: 'מים'                  },
-  expInternet:          { en: 'Internet',                he: 'אינטרנט'              },
-  expHoa:               { en: 'HOA / Building Fees',     he: 'ועד בית / דמי ניהול'  },
-  expRepairs:           { en: 'Repairs & Maintenance',   he: 'תיקונים ותחזוקה'       },
-  expCleaning:          { en: 'Cleaning',                he: 'ניקיון'               },
-  expInsurance:         { en: 'Insurance',               he: 'ביטוח'                },
-  expFurniture:         { en: 'Furniture / Equipment',   he: 'ריהוט / ציוד'         },
-  expSoftware:          { en: 'Software / Hostaway',     he: 'תוכנה / Hostaway'     },
-  expOther:             { en: 'Other Property Expenses', he: 'הוצאות נכס אחרות'     },
+  /* ── Row-level labels (transaction descriptions shown to client) ──────────── */
+  rowClientPayment:     { en: 'Client Payment',                  he: 'תשלום לקוח'              },
+  rowDirectSeller:      { en: 'Direct Payment to Seller',        he: 'תשלום ישיר למוכר'        },
+  rowPurchaseExpense:   { en: 'Purchase Expense',                he: 'הוצאת רכישה'             },
+  rowPurchaseTax:       { en: 'Purchase / Transfer Tax',         he: 'מס רכישה / העברה'        },
+  rowRenovPayment:      { en: 'Renovation Payment',              he: 'תשלום שיפוץ'             },
+  rowApprovedExtra:     { en: 'Approved Extra',                  he: 'תוספת מאושרת'            },
+  rowRentalPayment:     { en: 'Rental Payment',                  he: 'תשלום שכירות'            },
+  rowOwnerTransfer:     { en: 'Transfer to Owner',               he: 'העברה לבעלים'            },
+  rowPlatformIncome:    { en: 'Platform Income',                 he: 'הכנסות פלטפורמה'         },
+  rowPropertyExpense:   { en: 'Property Expense',                he: 'הוצאת נכס'               },
+  rowContractRef:       { en: 'Purchase Contract (Reference)',   he: 'חוזה רכישה (לעיון)'      },
+  rowRenovContractRef:  { en: 'Renovation Contract (Reference)', he: 'חוזה שיפוץ (לעיון)'      },
+  rowInfoInternal:      { en: 'Internal (Tracking Only)',        he: 'פנימי (מעקב בלבד)'       },
+
+  /* ── Subcategory display labels (for individual expense row labels) ───────── */
+  subElectricity:       { en: 'Electricity',             he: 'חשמל'               },
+  subWater:             { en: 'Water',                   he: 'מים'                },
+  subInternet:          { en: 'Internet',                he: 'אינטרנט'            },
+  subHoa:               { en: 'Building / HOA',          he: 'ועד בית'            },
+  subMaintenance:       { en: 'Maintenance',             he: 'תחזוקה'             },
+  subCleaning:          { en: 'Cleaning',                he: 'ניקיון'             },
+  subInsurance:         { en: 'Insurance',               he: 'ביטוח'              },
+  subManagementFee:     { en: 'Management Fee',          he: 'דמי ניהול'          },
+  subFurniture:         { en: 'Furniture & Equipment',   he: 'ריהוט וציוד'        },
+  subGuestSupplies:     { en: 'Guest Supplies',          he: 'אביזרי אורחים'     },
+  subSoftware:          { en: 'Software',                he: 'תוכנה'              },
+
+  /* ── Expense group headers (Rental / Airbnb grouping — 10 groups) ─────────── */
+  expUtilities:         { en: 'Utilities',               he: 'שירותים'                      },
+  expMaintenance:       { en: 'Maintenance',             he: 'תחזוקה'                       },
+  expBuildingHoa:       { en: 'Building / HOA',          he: 'ועד בית'                      },
+  expCleaning:          { en: 'Cleaning',                he: 'ניקיון'                       },
+  expInsurance:         { en: 'Insurance',               he: 'ביטוח'                        },
+  expManagement:        { en: 'Management',              he: 'ניהול'                        },
+  expFurniture:         { en: 'Furniture & Equipment',   he: 'ריהוט וציוד'                  },
+  expGuestSupplies:     { en: 'Guest Supplies',          he: 'אביזרי אורחים'               },
+  expSoftware:          { en: 'Software',                he: 'תוכנה'                        },
+  expOther:             { en: 'Other Property Expenses', he: 'הוצאות נכס אחרות'            },
 
   /* ── Section labels ──────────────────────────────────────────────────────── */
   contractInfo:         { en: 'Contract Information',
@@ -148,6 +180,17 @@ const L = {
   incomeAirbnb:         { en: 'Platform Income',                 he: 'הכנסות פלטפורמה'      },
   expensesAirbnb:       { en: 'Property Expenses',               he: 'הוצאות נכס'           },
   bpoLabel:             { en: 'Payments Sent to You',            he: 'תשלומים שהועברו אליך'  },
+
+  /* ── Final Summary ───────────────────────────────────────────────────────── */
+  finalTitle:           { en: 'Settlement Summary',              he: 'סיכום התחשבנות'          },
+  finalTotalIncome:     { en: 'Total Income Received',           he: 'סך הכנסות שהתקבלו'       },
+  finalTotalExpenses:   { en: 'Total Property Expenses',         he: 'סך הוצאות הנכס'           },
+  finalTotalTransfers:  { en: 'Total Transfers to Owner',        he: 'סך העברות לבעלים'         },
+  finalCurrentBalance:  { en: 'Current Balance',                 he: 'יתרה נוכחית'              },
+  finalNoteTitle:       { en: 'Important Note',                  he: 'הערה חשובה'               },
+  finalDisclaimer:      { en: 'This report is prepared for informational purposes. Figures are based on recorded transactions and are subject to final audit and reconciliation. Opening balances from prior periods are not yet included.',
+                          he: 'דוח זה נערך למטרות מידע בלבד. הנתונים מבוססים על עסקאות שנרשמו וכפופים לביקורת ופיוס סופי. יתרות פתיחה מתקופות קודמות אינן כלולות עדיין.' },
+  finalGenerated:       { en: 'Report generated',                he: 'הדוח נוצר'                },
 
   /* ── Controls ────────────────────────────────────────────────────────────── */
   property:             { en: 'Property',     he: 'נכס'         },
@@ -191,42 +234,188 @@ export function t(key: LabelKey, lang: Lang = 'en'): string {
 }
 
 /* ──────────────────────────────────────────────────────────────────────────────
- * PHASE B — Expense group mapping (Rental / Airbnb)
+ * PHASE B — Expense group mapping (Rental / Airbnb — 10 groups)
  * ──────────────────────────────────────────────────────────────────────────── */
 
 /** Maps transaction subcategory strings → expense group label key */
 export const EXPENSE_GROUP_MAP: Partial<Record<string, LabelKey>> = {
-  'Electricity':         'expElectricity',
-  'Electric':            'expElectricity',
-  'Water':               'expWater',
-  'Internet':            'expInternet',
-  'HOA':                 'expHoa',
-  'HOA Fee':             'expHoa',
-  'Building Fee':        'expHoa',
-  'Building Fees':       'expHoa',
-  'Municipal Charges':   'expHoa',
-  'Municipality':        'expHoa',
-  'Municipality Tax':    'expHoa',
-  'Repairs':             'expRepairs',
-  'Repair':              'expRepairs',
-  'Maintenance':         'expRepairs',
-  'General Maintenance': 'expRepairs',
-  'Cleaning':            'expCleaning',
-  'Cleaning Fee':        'expCleaning',
-  'Insurance':           'expInsurance',
-  'Furniture':           'expFurniture',
-  'Equipment':           'expFurniture',
-  'Appliances':          'expFurniture',
-  'Software':            'expSoftware',
-  'Hostaway':            'expSoftware',
-  'Platform Fee':        'expSoftware',
-  'Management Fee':      'expOther',
-  'Pool':                'expOther',
-  'Garden':              'expOther',
+  // Utilities (Electricity + Water + Internet)
+  'Electricity':           'expUtilities',
+  'Electricity bill':      'expUtilities',
+  'Electric':              'expUtilities',
+  'Water':                 'expUtilities',
+  'Internet':              'expUtilities',
+  // Maintenance
+  'Repairs':               'expMaintenance',
+  'Repair':                'expMaintenance',
+  'Maintenance':           'expMaintenance',
+  'General Maintenance':   'expMaintenance',
+  'Pool':                  'expMaintenance',
+  'Pool Service':          'expMaintenance',
+  'Workers':               'expMaintenance',
+  'Materials':             'expMaintenance',
+  'Plumber':               'expMaintenance',
+  'Key Duplication':       'expMaintenance',
+  'Minor Renovation':      'expMaintenance',
+  // Building / HOA
+  'HOA':                   'expBuildingHoa',
+  'HOA Fee':               'expBuildingHoa',
+  'Building Fee':          'expBuildingHoa',
+  'Building Fees':         'expBuildingHoa',
+  'Municipal Charges':     'expBuildingHoa',
+  'Municipality':          'expBuildingHoa',
+  'Municipality Tax':      'expBuildingHoa',
+  // Cleaning
+  'Cleaning':              'expCleaning',
+  'Cleaning Fee':          'expCleaning',
+  'Laundry':               'expCleaning',
+  // Insurance
+  'Insurance':             'expInsurance',
+  // Management
+  'Management Fee':        'expManagement',
+  // Furniture & Equipment
+  'Furniture':             'expFurniture',
+  'Equipment':             'expFurniture',
+  'Appliances':            'expFurniture',
+  'Electrical Appliances': 'expFurniture',
+  'Airbnb Equipment':      'expFurniture',
+  'Curtains':              'expFurniture',
+  'Kitchen':               'expFurniture',
+  'Kitchen Supply':        'expFurniture',
+  // Guest Supplies
+  'Guest Supplies':        'expGuestSupplies',
+  'Bedding/Pillows/Blankets': 'expGuestSupplies',
+  'Bedding':               'expGuestSupplies',
+  'Pillows':               'expGuestSupplies',
+  'Consumable Supplies':   'expGuestSupplies',
+  'Wine':                  'expGuestSupplies',
+  'Sweets':                'expGuestSupplies',
+  // Software
+  'Software':              'expSoftware',
+  'Hostaway':              'expSoftware',
+  'Software/Hostaway':     'expSoftware',
+  'Platform Fee':          'expSoftware',
 }
 
 /** Returns the expense group label key for a given subcategory. Defaults to 'expOther'. */
 export function getExpenseGroupKey(subcategory: string | null): LabelKey {
   if (!subcategory) return 'expOther'
   return EXPENSE_GROUP_MAP[subcategory.trim()] ?? 'expOther'
+}
+
+/* ──────────────────────────────────────────────────────────────────────────────
+ * Internal: subcategory → label key (used by buildRowLabel for expense rows)
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+const SUBCATEGORY_LABEL_KEYS: Partial<Record<string, LabelKey>> = {
+  'Electricity':               'subElectricity',
+  'Electricity bill':          'subElectricity',
+  'Electric':                  'subElectricity',
+  'Water':                     'subWater',
+  'Internet':                  'subInternet',
+  'HOA':                       'subHoa',
+  'HOA Fee':                   'subHoa',
+  'Building Fee':              'subHoa',
+  'Building Fees':             'subHoa',
+  'Municipal Charges':         'subHoa',
+  'Municipality':              'subHoa',
+  'Municipality Tax':          'subHoa',
+  'Repairs':                   'subMaintenance',
+  'Repair':                    'subMaintenance',
+  'Maintenance':               'subMaintenance',
+  'General Maintenance':       'subMaintenance',
+  'Pool':                      'subMaintenance',
+  'Pool Service':              'subMaintenance',
+  'Workers':                   'subMaintenance',
+  'Materials':                 'subMaintenance',
+  'Plumber':                   'subMaintenance',
+  'Key Duplication':           'subMaintenance',
+  'Minor Renovation':          'subMaintenance',
+  'Cleaning':                  'subCleaning',
+  'Cleaning Fee':              'subCleaning',
+  'Laundry':                   'subCleaning',
+  'Insurance':                 'subInsurance',
+  'Management Fee':            'subManagementFee',
+  'Furniture':                 'subFurniture',
+  'Equipment':                 'subFurniture',
+  'Appliances':                'subFurniture',
+  'Electrical Appliances':     'subFurniture',
+  'Airbnb Equipment':          'subFurniture',
+  'Curtains':                  'subFurniture',
+  'Kitchen':                   'subFurniture',
+  'Kitchen Supply':            'subFurniture',
+  'Guest Supplies':            'subGuestSupplies',
+  'Bedding/Pillows/Blankets':  'subGuestSupplies',
+  'Bedding':                   'subGuestSupplies',
+  'Pillows':                   'subGuestSupplies',
+  'Consumable Supplies':       'subGuestSupplies',
+  'Wine':                      'subGuestSupplies',
+  'Sweets':                    'subGuestSupplies',
+  'Software':                  'subSoftware',
+  'Hostaway':                  'subSoftware',
+  'Software/Hostaway':         'subSoftware',
+  'Platform Fee':              'subSoftware',
+}
+
+/* ──────────────────────────────────────────────────────────────────────────────
+ * PHASE B — buildRowLabel: client-facing label per transaction row
+ *
+ * Maps display_group + display_label + account_type + subcategory → translated string.
+ *
+ * ACCOUNTING FREEZE: reads display_group/display_label from computeBalance.ts output.
+ * Does NOT modify balance_effect, client_amount, or any accounting field.
+ * Presentation-only. Do not change behavior in response to accounting questions.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+export function buildRowLabel(row: RC3AccountRow, lang: Lang): string {
+  const dl   = row.display_label ?? ''
+  const grp  = row.display_group
+  const acct = row.account_type
+  const sub  = row.subcategory ?? ''
+
+  // ── payment_out (Bank Payment to Owner / BPO) ────────────────────────────
+  if (grp === 'payment_out') return t('rowOwnerTransfer', lang)
+
+  // ── income ───────────────────────────────────────────────────────────────
+  if (grp === 'income') {
+    if (dl === 'Payment Received')
+      return acct === 'renovation' ? t('rowRenovPayment', lang) : t('rowClientPayment', lang)
+    if (dl === 'Third-Party Payment (Bank Transfer to Seller)')
+      return t('rowDirectSeller', lang)
+    if (dl === 'Rent Collected')
+      return t('rowRentalPayment', lang)
+    if (dl === 'Platform Income (Net to You)')
+      return t('rowPlatformIncome', lang)
+    if (dl === 'Client Payment')
+      return t('rowClientPayment', lang)
+    return dl || '—'
+  }
+
+  // ── expense ──────────────────────────────────────────────────────────────
+  if (grp === 'expense') {
+    if (dl === 'Client Sale Expenses' || sub === 'Client Sale Expenses')
+      return t('rowPurchaseExpense', lang)
+    if (dl === 'Sale Tax' || sub === 'Sale Tax')
+      return t('rowPurchaseTax', lang)
+    if (dl === 'Extras (Additional Work)')
+      return t('rowApprovedExtra', lang)
+    // Rental / Airbnb: clean subcategory label
+    const key = SUBCATEGORY_LABEL_KEYS[sub.trim()]
+    if (key) return t(key, lang)
+    return sub || t('rowPropertyExpense', lang)
+  }
+
+  // ── reference ────────────────────────────────────────────────────────────
+  if (grp === 'reference') {
+    if (dl === 'Sale Contract (Reference)' || dl === 'Sale Contract')
+      return t('rowContractRef', lang)
+    if (dl === 'Renovation Contract (Reference)')
+      return t('rowRenovContractRef', lang)
+    if (dl.endsWith(' (Internal)'))
+      return t('rowInfoInternal', lang)
+    return overrideDisplayLabel(dl) || '—'
+  }
+
+  // ── info (platform tracking, trust account, needs review) ────────────────
+  return overrideDisplayLabel(dl) || '—'
 }

@@ -22,7 +22,7 @@ import nextDynamic from 'next/dynamic'
 import { fetchRC3Report, fetchRC3PropertyList } from '@/lib/report/fetchReport'
 import type { RC3PropertyReport, RC3AccountSection, RC3AccountRow } from '@/lib/report/types'
 import {
-  overrideDisplayLabel,
+  buildRowLabel,
   t, type Lang, type LabelKey,
   getExpenseGroupKey,
 } from '@/lib/report/labels'
@@ -139,8 +139,8 @@ const DEFAULT_COLOURS = {
 
 /* ─── Transaction row ─────────────────────────────────────────────────────────── */
 
-function TxRow({ row, idx }: { row: RC3AccountRow; idx: number }) {
-  const isInfo = row.display_group === 'info' || row.display_group === 'reference'
+function TxRow({ row, idx, lang }: { row: RC3AccountRow; idx: number; lang: Lang }) {
+  const isInfo   = row.display_group === 'info' || row.display_group === 'reference'
   const isIncome = row.display_group === 'income'
 
   const amtClass = isInfo
@@ -149,10 +149,8 @@ function TxRow({ row, idx }: { row: RC3AccountRow; idx: number }) {
       ? 'text-green-700 font-medium'
       : 'text-gray-800'
 
-  const overriddenLabel = overrideDisplayLabel(row.display_label ?? '')
-  // Use clean description first; fall back to overridden label
-  // Client report: always show clean display_label — never expose raw internal notes
-  const primaryText = overriddenLabel || '—'
+  // Client report: use buildRowLabel for all rows — never expose raw internal notes
+  const primaryText = buildRowLabel(row, lang)
 
   return (
     <tr className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
@@ -217,7 +215,7 @@ function ExpenseGroupBlock({ rows, lang }: { rows: RC3AccountRow[]; lang: Lang }
                 <table className="w-full text-xs">
                   <tbody className="divide-y divide-gray-100">
                     {groupRows.map((row, i) => (
-                      <TxRow key={row.id} row={row} idx={i} />
+                      <TxRow key={row.id} row={row} idx={i} lang={lang} />
                     ))}
                   </tbody>
                 </table>
@@ -369,74 +367,67 @@ function computeDashboard(accounts: RC3AccountSection[]) {
   return { totalIncome, totalExpenses, totalTransfers, netOwnerBalance }
 }
 
-function DashKpiCard({
-  label,
-  value,
-  highlight = false,
-  colorClass = 'text-gray-900',
-  subLabel,
-}: {
-  label: string
-  value: number
-  highlight?: boolean
-  colorClass?: string
-  subLabel?: string
-}) {
-  return (
-    <div className={`flex-1 min-w-0 bg-white rounded-2xl border ${highlight ? 'border-[#1e3a5f]' : 'border-gray-200'} px-5 py-4 shadow-sm`}>
-      <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">
-        {label}
-      </div>
-      <div className={`text-xl font-bold font-mono ${highlight ? colorClass : 'text-gray-900'}`}>
-        {eur(value)}
-      </div>
-      {subLabel && (
-        <div className={`text-[10px] mt-1 font-medium ${highlight ? colorClass : 'text-gray-500'} leading-tight`}>
-          {subLabel}
-        </div>
-      )}
-    </div>
-  )
-}
-
 function OwnerDashboard({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
   const { totalIncome, totalExpenses, totalTransfers, netOwnerBalance } = computeDashboard(report.accounts)
 
-  // Balance wording for the net position (always from owner's perspective)
   let balLabel: string
   let balColorClass: string
+  let statusBg: string
+  let statusBorder: string
   if (Math.abs(netOwnerBalance) < 0.005) {
     balLabel      = t('balSettled', lang)
-    balColorClass = 'text-gray-500'
+    balColorClass = 'text-gray-600'
+    statusBg      = 'bg-gray-50'
+    statusBorder  = 'border-gray-200'
   } else if (netOwnerBalance > 0) {
     balLabel      = t('balPayableToYou', lang)
     balColorClass = 'text-green-700'
+    statusBg      = 'bg-green-50'
+    statusBorder  = 'border-green-200'
   } else {
     balLabel      = t('balPayableByYou', lang)
     balColorClass = 'text-red-700'
+    statusBg      = 'bg-red-50'
+    statusBorder  = 'border-red-200'
   }
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm mb-5 overflow-hidden">
-      {/* Dashboard header */}
-      <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-        <span className="text-xs font-bold text-[#1e3a5f] uppercase tracking-widest">
+      {/* Header */}
+      <div className="px-6 pt-5 pb-4 border-b border-gray-100">
+        <div className="text-[11px] font-bold text-[#1e3a5f] uppercase tracking-widest">
           {t('dashTitle', lang)}
-        </span>
-        <span className="text-xs text-gray-400">{report.reporting_name}</span>
+        </div>
+        <div className="text-xs text-gray-400 mt-0.5">{t('dashSubtitle', lang)}</div>
       </div>
-      {/* KPI strip */}
-      <div className="flex gap-4 p-4 flex-wrap">
-        <DashKpiCard label={t('dashIncome',    lang)} value={totalIncome}    />
-        <DashKpiCard label={t('dashExpenses',  lang)} value={totalExpenses}  />
-        <DashKpiCard label={t('dashTransfers', lang)} value={totalTransfers} />
-        <DashKpiCard
-          label={t('dashBalance', lang)}
-          value={Math.abs(netOwnerBalance)}
-          highlight
-          colorClass={balColorClass}
-          subLabel={balLabel}
-        />
+
+      {/* Status card — large balance, colored */}
+      <div className={`mx-5 mt-5 mb-4 rounded-xl border ${statusBorder} ${statusBg} px-6 py-5 flex items-center justify-between`}>
+        <div className="text-xs font-bold text-gray-500 uppercase tracking-widest">
+          {t('dashBalance', lang)}
+        </div>
+        <div className="text-right">
+          <div className={`text-4xl font-bold font-mono ${balColorClass} leading-none`}>
+            {eur(Math.abs(netOwnerBalance))}
+          </div>
+          <div className={`text-xs font-semibold mt-1.5 ${balColorClass}`}>{balLabel}</div>
+        </div>
+      </div>
+
+      {/* 3 KPI cells */}
+      <div className="grid grid-cols-3 gap-3 px-5 pb-5">
+        {[
+          { label: t('dashIncome',    lang), value: totalIncome    },
+          { label: t('dashExpenses',  lang), value: totalExpenses  },
+          { label: t('dashTransfers', lang), value: totalTransfers },
+        ].map(kpi => (
+          <div key={kpi.label} className="bg-gray-50 rounded-xl px-4 py-3">
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">
+              {kpi.label}
+            </div>
+            <div className="text-base font-bold font-mono text-gray-900">{eur(kpi.value)}</div>
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -496,6 +487,79 @@ function ExecutiveSummary({ report, lang }: { report: RC3PropertyReport; lang: L
             </div>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+/* ─── Final Summary ───────────────────────────────────────────────────────────── */
+
+function FinalSummary({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
+  const { totalIncome, totalExpenses, totalTransfers, netOwnerBalance } = computeDashboard(report.accounts)
+
+  let balLabel: string
+  let balColor: string
+  if (Math.abs(netOwnerBalance) < 0.005) {
+    balLabel = t('balSettled', lang); balColor = 'text-gray-300'
+  } else if (netOwnerBalance > 0) {
+    balLabel = t('balPayableToYou', lang); balColor = 'text-green-300'
+  } else {
+    balLabel = t('balPayableByYou', lang); balColor = 'text-red-300'
+  }
+
+  const kpis = [
+    { label: t('finalTotalIncome',    lang), value: totalIncome    },
+    { label: t('finalTotalExpenses',  lang), value: totalExpenses  },
+    { label: t('finalTotalTransfers', lang), value: totalTransfers },
+  ]
+
+  const genDate = (() => {
+    try {
+      return new Date(report.generated_at).toLocaleDateString('en-GB', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      })
+    } catch { return '' }
+  })()
+
+  return (
+    <div className="bg-[#1e3a5f] rounded-2xl p-6 mt-5 text-white shadow-lg">
+      <div className="text-[10px] font-bold uppercase tracking-widest text-blue-300 mb-4">
+        {t('finalTitle', lang)}
+      </div>
+
+      {/* 3 KPI cards */}
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        {kpis.map(k => (
+          <div key={k.label} className="bg-white/10 rounded-xl px-4 py-3">
+            <div className="text-[10px] text-blue-300 mb-1.5 font-medium">{k.label}</div>
+            <div className="text-base font-bold font-mono text-white">{eur(k.value)}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Net balance highlight */}
+      <div className="bg-white/10 rounded-xl px-5 py-4 mb-5 flex items-center justify-between">
+        <div className="text-sm font-bold text-blue-200">{t('finalCurrentBalance', lang)}</div>
+        <div className="text-right">
+          <div className={`text-2xl font-bold font-mono ${balColor}`}>
+            {eur(Math.abs(netOwnerBalance))}
+          </div>
+          <div className={`text-[11px] mt-0.5 font-medium ${balColor}`}>{balLabel}</div>
+        </div>
+      </div>
+
+      {/* Disclaimer */}
+      <div className="border-t border-white/20 pt-4">
+        <div className="text-[10px] font-bold uppercase tracking-widest text-blue-400 mb-1.5">
+          {t('finalNoteTitle', lang)}
+        </div>
+        <p className="text-[11px] text-blue-200 leading-relaxed">
+          {t('finalDisclaimer', lang)}
+        </p>
+        <p className="text-[10px] text-blue-400 mt-2">
+          {t('finalGenerated', lang)}: {genDate}
+        </p>
       </div>
     </div>
   )
@@ -591,7 +655,7 @@ function AccountCard({ section, lang }: { section: RC3AccountSection; lang: Lang
               <table className="w-full text-xs">
                 <tbody className="divide-y divide-gray-100">
                   {referenceRows.map((row, i) => (
-                    <TxRow key={row.id} row={row} idx={i} />
+                    <TxRow key={row.id} row={row} idx={i} lang={lang} />
                   ))}
                 </tbody>
               </table>
@@ -642,7 +706,7 @@ function AccountCard({ section, lang }: { section: RC3AccountSection; lang: Lang
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {incomeRows.map((row, i) => (
-                      <TxRow key={row.id} row={row} idx={i} />
+                      <TxRow key={row.id} row={row} idx={i} lang={lang} />
                     ))}
                   </tbody>
                 </table>
@@ -678,7 +742,7 @@ function AccountCard({ section, lang }: { section: RC3AccountSection; lang: Lang
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {expenseRows.map((row, i) => (
-                        <TxRow key={row.id} row={row} idx={i} />
+                        <TxRow key={row.id} row={row} idx={i} lang={lang} />
                       ))}
                     </tbody>
                   </table>
@@ -699,7 +763,7 @@ function AccountCard({ section, lang }: { section: RC3AccountSection; lang: Lang
                 <table className="w-full text-xs">
                   <tbody className="divide-y divide-gray-100">
                     {payoutRows.map((row, i) => (
-                      <TxRow key={row.id} row={row} idx={i} />
+                      <TxRow key={row.id} row={row} idx={i} lang={lang} />
                     ))}
                   </tbody>
                 </table>
@@ -747,7 +811,7 @@ function AccountCard({ section, lang }: { section: RC3AccountSection; lang: Lang
                 <table className="w-full mt-2 text-xs">
                   <tbody className="divide-y divide-gray-100">
                     {infoRows.map((row, i) => (
-                      <TxRow key={row.id} row={row} idx={i} />
+                      <TxRow key={row.id} row={row} idx={i} lang={lang} />
                     ))}
                   </tbody>
                 </table>
@@ -971,11 +1035,8 @@ function ClientReportRC3Content() {
               ))
             )}
 
-            {/* Opening balance warning */}
-            <div className="bg-red-50 border border-red-300 rounded-xl p-4 mt-5 text-xs text-red-800">
-              <span className="font-bold">⚠ {t('openingBalTitle', lang)}</span>{' '}
-              {t('openingBalDetail', lang)}
-            </div>
+            {/* Final Summary — accounting summary + disclaimer */}
+            <FinalSummary report={report} lang={lang} />
           </>
         )}
       </div>
