@@ -25,6 +25,7 @@ import {
   Font,
 } from '@react-pdf/renderer'
 import { fmt } from './formatters'
+import { filterSectionsByReportType, type ReportType } from '../report/reportTypes'
 import type { RC3PropertyReport, RC3AccountSection } from '../report/types'
 import { toClientRow } from '../report/clientRow'
 import type { ClientDisplayRow } from '../report/clientRow'
@@ -471,13 +472,13 @@ function fmtGenerated(iso: string): string {
 
 /* ─── Sub-components ────────────────────────────────────────────────────────── */
 
-function DocHeader({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
+function DocHeader({ report, lang }: { report: RC3PropertyReport; lang: Lang; reportTypeLabel: string }) {
   return (
     <View style={s.header} fixed>
       <View>
         <Text style={s.companyName}>JJ Property 10</Text>
         <Text style={s.reportTitle}>
-          {t('reportTitle', lang)} — {report.reporting_name}
+          {reportTypeLabel} — {report.reporting_name}
         </Text>
       </View>
       <View style={s.headerRight}>
@@ -906,32 +907,36 @@ function Disclosure({ lang }: { lang: Lang }) {
 export interface OwnerSettlementPdfV3Props {
   report: RC3PropertyReport
   lang?:  Lang
+  reportType?: ReportType
 }
 
-export function OwnerSettlementPdfV3({ report, lang = 'en' }: OwnerSettlementPdfV3Props) {
+export function OwnerSettlementPdfV3({ report, lang = 'en', reportType = 'full' }: OwnerSettlementPdfV3Props) {
+  const filteredReport = { ...report, accounts: filterSectionsByReportType(report.accounts, reportType) }
+  const reportTypeLabel = reportType === 'periodic' ? t('reportTypePeriodic', lang) : t('reportTypeFull', lang)
+
   return (
     <Document
-      title={`Owner Settlement Report — ${report.reporting_name}`}
+      title={`JJ ${reportTypeLabel} — ${report.reporting_name}`}
       author="JJ Property 10"
       creator="JJ Property 10 Platform (RC3 V2)"
     >
       <Page size="A4" style={s.page}>
-        <DocHeader report={report} lang={lang} />
-        <MetaBlock  report={report} lang={lang} />
+        <DocHeader report={filteredReport} lang={lang} reportTypeLabel={reportTypeLabel} />
+        <MetaBlock  report={filteredReport} lang={lang} />
 
         {/* Owner Dashboard — aggregate KPIs (always shown, top of report body) */}
-        <OwnerDashboardPdf report={report} lang={lang} />
+        <OwnerDashboardPdf report={filteredReport} lang={lang} />
 
         {/* Cross-account summary (shown when >1 account) */}
-        <CrossAccountSummary report={report} lang={lang} />
+        <CrossAccountSummary report={filteredReport} lang={lang} />
 
         {/* One section per account */}
-        {report.accounts.map(acc => (
+        {filteredReport.accounts.map(acc => (
           <AccountBlock key={acc.account_type} section={acc} lang={lang} />
         ))}
 
-        <FinalSummaryPdf report={report} lang={lang} />
-        <DocFooter       report={report} lang={lang} />
+        <FinalSummaryPdf report={filteredReport} lang={lang} />
+        <DocFooter       report={filteredReport} lang={lang} />
       </Page>
     </Document>
   )
