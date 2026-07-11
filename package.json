@@ -27,7 +27,6 @@
     "tailwind-merge": "^2.4.0"
   },
   "devDependencies": {
-    "@typescript-eslint/eslint-plugin": "^5",
     "@types/jest": "^29",
     "@types/node": "^20",
     "@types/react": "^18",
