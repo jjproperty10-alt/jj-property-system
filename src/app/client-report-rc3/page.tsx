@@ -20,7 +20,7 @@
 import React, { useCallback, useEffect, useState, Suspense } from 'react'
 import nextDynamic from 'next/dynamic'
 import { fetchRC3Report, fetchRC3PropertyList } from '@/lib/report/fetchReport'
-import type { RC3PropertyReport, RC3AccountSection, RC3AccountRow } from '@/lib/report/types'
+import type { RC3PropertyReport, RC3AccountSection } from '@/lib/report/types'
 import { toClientRow } from '@/lib/report/clientRow'
 import type { ClientDisplayRow } from '@/lib/report/clientRow'
 import {
@@ -177,7 +177,7 @@ function ExpenseGroupBlock({ rows, lang }: { rows: ClientDisplayRow[]; lang: Lan
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set())
 
   // Group rows by expense category
-  const groups = new Map<LabelKey, RC3AccountRow[]>()
+  const groups = new Map<LabelKey, ClientDisplayRow[]>()
   for (const row of rows) {
     const key = getExpenseGroupKey(row.subcategory)
     if (!groups.has(key)) groups.set(key, [])
