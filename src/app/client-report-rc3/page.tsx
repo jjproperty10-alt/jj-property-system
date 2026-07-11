@@ -23,6 +23,7 @@ import { fetchRC3Report, fetchRC3PropertyList } from '@/lib/report/fetchReport'
 import type { RC3PropertyReport, RC3AccountSection } from '@/lib/report/types'
 import { toClientRow } from '@/lib/report/clientRow'
 import type { ClientDisplayRow } from '@/lib/report/clientRow'
+import { filterSectionsByReportType, type ReportType } from '@/lib/report/reportTypes'
 import {
   buildRowLabel,
   t, type Lang, type LabelKey,
@@ -569,6 +570,41 @@ function FinalSummary({ report, lang }: { report: RC3PropertyReport; lang: Lang 
 
 /* ─── Account section card ────────────────────────────────────────────────────── */
 
+/* ── Report Type Selector ───────────────────────────────────────────────── */
+
+function ReportTypeSelector({
+  reportType,
+  setReportType,
+  lang,
+}: {
+  reportType: ReportType
+  setReportType: (rt: ReportType) => void
+  lang: Lang
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">
+        {t('reportTypeLabel', lang)}
+      </label>
+      <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
+        {(['full', 'periodic'] as ReportType[]).map(rt => (
+          <button
+            key={rt}
+            onClick={() => setReportType(rt)}
+            className={`flex-1 px-3 py-2 rounded-md text-xs font-semibold transition-colors ${
+              reportType === rt
+                ? 'bg-[#1e3a5f] text-white shadow-sm'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
+            }`}
+          >
+            {rt === 'full' ? t('reportTypeFull', lang) : t('reportTypePeriodic', lang)}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function AccountCard({ section, lang }: { section: RC3AccountSection; lang: Lang }) {
   const [expanded, setExpanded] = useState(true)
   const [showInfo, setShowInfo] = useState(false)
@@ -861,7 +897,7 @@ function ClientReportRC3Content() {
   const [error,         setError]         = useState<string | null>(null)
   const [pdfReady,      setPdfReady]      = useState(false)
   const [PdfDoc, setPdfDoc] = useState<React.ComponentType<{
-    report: RC3PropertyReport; lang: Lang
+    report: RC3PropertyReport; lang: Lang; reportType: ReportType
   }> | null>(null)
 
   useEffect(() => {
@@ -907,9 +943,16 @@ function ClientReportRC3Content() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProp])
 
+  const [reportType, setReportType] = useState<ReportType>('full')
+
+  const reportTypeSlug = reportType === 'full' ? 'Full_Owner_Report' : 'Periodic_Owner_Report'
   const pdfFilename = report
-    ? `RC3_Report_${report.reporting_name.replace(/\s+/g, '_')}_${report.from_date || 'all'}_to_${report.to_date || 'all'}.pdf`
+    ? `JJ_${reportTypeSlug}_${report.reporting_name.replace(/\s+/g, '_')}_${report.from_date || 'all'}_to_${report.to_date || 'all'}.pdf`
     : 'report.pdf'
+
+  // Filter sections by report type — pure display layer, no accounting changes
+  const visibleAccounts = report ? filterSectionsByReportType(report.accounts, reportType) : []
+  const filteredReport = report ? { ...report, accounts: visibleAccounts } : null
 
   const isRTL = lang === 'he'
 
@@ -940,6 +983,9 @@ function ClientReportRC3Content() {
           </div>
 
           <div className="flex flex-wrap gap-4 items-end">
+            <div className="flex-none">
+              <ReportTypeSelector reportType={reportType} setReportType={setReportType} lang={lang} />
+            </div>
             <div className="flex-1 min-w-48">
               <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">
                 {t('property', lang)}
@@ -990,7 +1036,7 @@ function ClientReportRC3Content() {
             {report && pdfReady && PdfDoc && (
               <PDFErrorBoundary>
                 <PDFDownloadLink
-                  document={<PdfDoc report={report} lang={lang} />}
+                  document={<PdfDoc report={filteredReport!} lang={lang} reportType={reportType} />}
                   fileName={pdfFilename}
                   className="px-5 py-2.5 bg-green-700 text-white text-sm rounded-lg hover:bg-green-800 font-medium transition-colors"
                 >
@@ -1021,24 +1067,24 @@ function ClientReportRC3Content() {
         {report && !loading && (
           <>
             {/* Owner Dashboard — aggregate KPIs (top of report) */}
-            <OwnerDashboard report={report} lang={lang} />
+            <OwnerDashboard report={filteredReport!} lang={lang} />
 
             {/* Executive Summary — per-module breakdown */}
-            <ExecutiveSummary report={report} lang={lang} />
+            <ExecutiveSummary report={filteredReport!} lang={lang} />
 
             {/* Account cards */}
-            {report.accounts.length === 0 ? (
+            {visibleAccounts.length === 0 ? (
               <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm rounded-xl p-5">
                 {t('noTransactions', lang)}
               </div>
             ) : (
-              report.accounts.map(acc => (
+              visibleAccounts.map(acc => (
                 <AccountCard key={acc.account_type} section={acc} lang={lang} />
               ))
             )}
 
             {/* Final Summary — accounting summary + disclaimer */}
-            <FinalSummary report={report} lang={lang} />
+            <FinalSummary report={filteredReport!} lang={lang} />
           </>
         )}
       </div>
