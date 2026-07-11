@@ -472,7 +472,7 @@ function fmtGenerated(iso: string): string {
 
 /* ─── Sub-components ────────────────────────────────────────────────────────── */
 
-function DocHeader({ report, lang }: { report: RC3PropertyReport; lang: Lang; reportTypeLabel: string }) {
+function DocHeader({ report, lang, reportTypeLabel }: { report: RC3PropertyReport; lang: Lang; reportTypeLabel: string }) {
   return (
     <View style={s.header} fixed>
       <View>
