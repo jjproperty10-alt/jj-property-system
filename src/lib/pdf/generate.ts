@@ -37,6 +37,7 @@ export function downloadBlob(blob: Blob, filename: string): void {
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
+  // Revoke after a short delay to let the download start
   setTimeout(() => URL.revokeObjectURL(url), 2000)
 }
 
@@ -47,12 +48,16 @@ export function printBlob(blob: Blob): void {
   const url = URL.createObjectURL(blob)
   const win = window.open(url, '_blank')
   if (!win) {
+    // Popup blocked — fall back to download
     downloadBlob(blob, 'report.pdf')
     return
   }
   win.addEventListener('load', () => {
-    setTimeout(() => { win.print() }, 150)
+    setTimeout(() => {
+      win.print()
+    }, 150)
   })
+  // Revoke after print has had time to start
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
@@ -60,8 +65,13 @@ export function printBlob(blob: Blob): void {
  * Share the PDF using the Web Share API on supported browsers (mobile).
  * Falls back to download on desktop or unsupported browsers.
  */
-export async function shareBlob(blob: Blob, filename: string, title: string): Promise<void> {
+export async function shareBlob(
+  blob: Blob,
+  filename: string,
+  title: string,
+): Promise<void> {
   const file = new File([blob], filename, { type: 'application/pdf' })
+
   if (
     typeof navigator !== 'undefined' &&
     typeof navigator.canShare === 'function' &&
@@ -71,9 +81,12 @@ export async function shareBlob(blob: Blob, filename: string, title: string): Pr
       await navigator.share({ files: [file], title })
       return
     } catch (err) {
+      // User cancelled or API failed — fall through to download
       if ((err as DOMException)?.name === 'AbortError') return
     }
   }
+
+  // Fallback: download
   downloadBlob(blob, filename)
 }
 
@@ -81,15 +94,22 @@ export async function shareBlob(blob: Blob, filename: string, title: string): Pr
 
 /**
  * Build a clean, filesystem-safe filename for a PDF report.
+ * Example: "Tamir_Owner_Statement_01_Jan_2023_06_Jul_2026.pdf"
  */
-export function buildPdfFilename(contactName: string, fromDate: string, toDate: string): string {
+export function buildPdfFilename(
+  contactName: string,
+  fromDate: string,
+  toDate: string,
+): string {
   const fmt = (iso: string) => {
     try {
       return new Date(iso + 'T00:00:00')
         .toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
         .replace(/ /g, '_')
-    } catch { return iso }
+    } catch {
+      return iso
+    }
   }
   const name = (contactName || 'Owner').replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_')
-  return name + '_Owner_Statement_' + fmt(fromDate) + '_' + fmt(toDate) + '.pdf'
+  return `${name}_Owner_Statement_${fmt(fromDate)}_${fmt(toDate)}.pdf`
 }
