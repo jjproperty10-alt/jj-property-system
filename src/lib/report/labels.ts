@@ -216,6 +216,10 @@ const L = {
   rentalAllocationNote: { en: 'Monthly rental allocation — available in next release.',
                           he: 'הקצאה חודשית — תהיה זמינה בגרסה הבאה.' },
 
+  /* ── Report type selector (M1) — added M0 ──────────────────────────────── */
+  reportTypeFull:       { en: 'Full Report',     he: 'דוח מלא'      },
+  reportTypePeriodic:   { en: 'Periodic Report', he: 'דוח תקופתי'   },
+
   /* ── Opening balance warning ──────────────────────────────────────────────── */
   openingBalTitle:      { en: 'Opening Balance Not Included.',
                           he: 'יתרת פתיחה לא כלולה.' },
