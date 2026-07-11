@@ -903,7 +903,7 @@ function ClientReportRC3Content() {
   useEffect(() => {
     import('@/lib/pdf/OwnerSettlementPdfV3').then(m => {
       setPdfDoc(() => m.OwnerSettlementPdfV3 as React.ComponentType<{
-        report: RC3PropertyReport; lang: Lang
+        report: RC3PropertyReport; lang: Lang; reportType: ReportType
       }>)
     })
   }, [])
