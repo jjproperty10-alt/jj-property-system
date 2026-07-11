@@ -1,17 +1,16 @@
 /**
  * JJ Property 10 — Owner Settlement Report V3
- * Phase 3 — 2026-07-09
+ * Phase B — 2026-07-09
  *
- * Account-based PDF report. Renders one section per account type
- * in the canonical order: Property Purchase → Renovation → Rental → Airbnb.
+ * Phase B additions:
+ *  - lang prop: all labels flow through t(key, lang) from labels.ts
+ *  - Client-facing balance wording: Amount Payable to You / Amount Payable by You / Settled
+ *  - Per-module summary table (key metrics for each account type)
+ *  - Section labels in both EN / HE
  *
- * Balance conventions:
- *   Rental / Airbnb : positive closing balance = JJ owes owner (shown in green)
- *   Sale / Renovation : positive closing balance = client owes JJ (shown in red)
+ * UX / presentation layer only. No accounting logic changed.
  *
  * Font: Heebo (Hebrew + Latin, SIL OFL). Served from /fonts/Heebo-*.ttf.
- *
- * Place at: src/lib/pdf/OwnerSettlementPdfV3.tsx
  */
 
 'use client'
@@ -27,7 +26,10 @@ import {
 } from '@react-pdf/renderer'
 import { fmt } from './formatters'
 import type { RC3PropertyReport, RC3AccountSection, RC3AccountRow } from '../report/types'
-import { overrideDisplayLabel, SECTION_LABELS } from '../report/labels'
+import {
+  buildRowLabel,
+  t, type Lang,
+} from '../report/labels'
 
 /* ─── Font ──────────────────────────────────────────────────────────────────── */
 
@@ -64,8 +66,6 @@ const C = {
   purpleBg:    '#f5f3ff',
 }
 
-/* ─── Account colours ───────────────────────────────────────────────────────── */
-
 const ACCOUNT_COLOURS = {
   sale:       C.navy,
   renovation: C.purple,
@@ -86,7 +86,7 @@ const s = StyleSheet.create({
     fontSize: 9,
   },
 
-  // Header (fixed)
+  // Header
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -104,19 +104,73 @@ const s = StyleSheet.create({
 
   // Meta
   metaBlock: {
-    marginBottom: 16,
-    paddingBottom: 12,
+    marginBottom: 14,
+    paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: C.grayBorder,
   },
   metaRow:   { flexDirection: 'row', marginBottom: 3 },
   metaLabel: {
     fontSize: 7.5, fontWeight: 'bold', color: C.grayText,
-    width: 68, textTransform: 'uppercase', letterSpacing: 0.3,
+    width: 72, textTransform: 'uppercase', letterSpacing: 0.3,
   },
   metaValue: { fontSize: 8.5, color: C.grayDark, flex: 1, lineHeight: 1.4 },
 
-  // Summary card
+  // Owner Dashboard strip (aggregate KPIs — very top of report body)
+  dashSection: {
+    marginBottom: 14,
+  },
+  dashHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 0,
+    marginBottom: 5,
+  },
+  dashHeaderTitle: {
+    fontSize: 7.5, fontWeight: 'bold', color: C.navy,
+    textTransform: 'uppercase', letterSpacing: 0.5,
+  },
+  dashHeaderSub: {
+    fontSize: 7, color: C.grayText,
+  },
+  dashStrip: {
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: C.grayBorder,
+    borderRadius: 5,
+    overflow: 'hidden',
+    backgroundColor: C.white,
+  },
+  dashCell: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRightWidth: 1,
+    borderRightColor: C.grayBorder,
+    alignItems: 'center',
+  },
+  dashCellLast: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+  },
+  dashCellLabel: {
+    fontSize: 6.5, fontWeight: 'bold', color: C.grayText,
+    textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 4,
+    textAlign: 'center',
+  },
+  dashCellValue: {
+    fontSize: 13, fontWeight: 'bold', color: C.grayDark,
+  },
+  dashCellSub: {
+    fontSize: 6, color: C.grayText, marginTop: 2, textAlign: 'center',
+  },
+
+  // Cross-account summary card (at top of document)
   summaryCard: {
     flexDirection: 'row',
     borderWidth: 1,
@@ -144,21 +198,57 @@ const s = StyleSheet.create({
   summaryCellValue: { fontSize: 13, fontWeight: 'bold' },
   summaryCellSub:   { fontSize: 7, color: C.grayText, marginTop: 2 },
 
+  // Per-module metrics strip
+  moduleMetrics: {
+    flexDirection: 'row',
+    backgroundColor: C.grayBg,
+    borderWidth: 1,
+    borderColor: C.grayBorder,
+    borderRadius: 4,
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
+  moduleMetricCell: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRightWidth: 1,
+    borderRightColor: C.grayBorder,
+    alignItems: 'center',
+  },
+  moduleMetricCellLast: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+  },
+  moduleMetricLabel: {
+    fontSize: 6.5, fontWeight: 'bold', color: C.grayText,
+    textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 3,
+    textAlign: 'center',
+  },
+  moduleMetricValue: { fontSize: 9, fontWeight: 'bold', color: C.grayDark },
+  moduleMetricSub:   { fontSize: 6, color: C.grayText, marginTop: 1, textAlign: 'center' },
+
   // Account section
-  accountSection: { marginBottom: 20 },
+  accountSection: { marginBottom: 22 },
   accountHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    marginBottom: 8,
-    borderRadius: 3,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 6,
+    borderRadius: 4,
   },
-  accountTitle:   { fontSize: 10, fontWeight: 'bold', color: C.white, letterSpacing: 0.6 },
-  accountBalance: { fontSize: 10, fontWeight: 'bold', color: C.white },
+  accountHeaderLeft:  { flexDirection: 'column' },
+  accountHeaderRight: { alignItems: 'flex-end' },
+  accountTitle:    { fontSize: 10, fontWeight: 'bold', color: C.white, letterSpacing: 0.6 },
+  accountTitleHe:  { fontSize: 8, color: C.white, opacity: 0.8, marginTop: 1 },
+  accountBalance:  { fontSize: 11, fontWeight: 'bold', color: C.white },
+  accountBalLabel: { fontSize: 7, color: C.white, opacity: 0.85, marginTop: 1 },
 
-  // Sub-group header (income / expense / payment / info)
+  // Sub-group header
   groupLabel: {
     fontSize: 7.5,
     fontWeight: 'bold',
@@ -205,7 +295,7 @@ const s = StyleSheet.create({
   cDesc:   { flex: 1 },
   cAmt:    { width: 74, textAlign: 'right' },
 
-  // Reference section (Section A — contract values, balance_effect = 0)
+  // Reference section (Section A)
   refSection: {
     marginBottom: 6,
     borderWidth: 1,
@@ -227,9 +317,7 @@ const s = StyleSheet.create({
     fontSize: 7, fontWeight: 'bold', color: C.grayText,
     textTransform: 'uppercase', letterSpacing: 0.3,
   },
-  refHeaderNote: {
-    fontSize: 6.5, color: C.grayMid,
-  },
+  refHeaderNote: { fontSize: 6.5, color: C.grayMid },
   refRow: {
     flexDirection: 'row',
     paddingVertical: 3.5,
@@ -242,14 +330,71 @@ const s = StyleSheet.create({
   balStrip: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 5,
-    paddingHorizontal: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
     marginTop: 4,
     borderTopWidth: 1.5,
     borderTopColor: C.grayBorder,
+    backgroundColor: C.grayBg,
+    borderRadius: 3,
   },
   balLabel: { fontSize: 8.5, fontWeight: 'bold', color: C.grayDark },
   balValue: { fontSize: 8.5, fontWeight: 'bold' },
+  balSub:   { fontSize: 7, color: C.grayText, marginTop: 1 },
+
+  // Final Summary block
+  finalSection: {
+    marginTop: 16,
+    backgroundColor: '#1e3a5f',
+    borderRadius: 5,
+    padding: 14,
+  },
+  finalTitle: {
+    fontSize: 6.5, fontWeight: 'bold', color: '#93c5fd',
+    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8,
+  },
+  finalKpiRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  finalKpiCell: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 4,
+    padding: 8,
+    marginRight: 5,
+  },
+  finalKpiCellLast: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 4,
+    padding: 8,
+  },
+  finalKpiLabel: { fontSize: 5.5, color: '#93c5fd', marginBottom: 3 },
+  finalKpiValue: { fontSize: 9, fontWeight: 'bold', color: '#ffffff' },
+  finalBalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 4,
+    padding: 10,
+    marginBottom: 10,
+  },
+  finalBalLabel: { fontSize: 8, fontWeight: 'bold', color: '#bfdbfe' },
+  finalBalValue: { fontSize: 14, fontWeight: 'bold' },
+  finalBalSub:   { fontSize: 6.5, marginTop: 1 },
+  finalDiscBorder: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.2)',
+    paddingTop: 8,
+  },
+  finalDiscTitle: {
+    fontSize: 6, fontWeight: 'bold', color: '#60a5fa',
+    textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 3,
+  },
+  finalDiscText: { fontSize: 6.5, color: '#bfdbfe', lineHeight: 1.5 },
+  finalDiscGen:  { fontSize: 6, color: '#60a5fa', marginTop: 4 },
 
   // Footer
   footer: {
@@ -277,20 +422,37 @@ const s = StyleSheet.create({
   disclosureText: { fontSize: 7, color: C.amber, lineHeight: 1.5 },
 })
 
-/* ─── Helpers ───────────────────────────────────────────────────────────────── */
+/* ─── Balance helpers ───────────────────────────────────────────────────────── */
+
+function getBalLabel(section: RC3AccountSection, lang: Lang): string {
+  const b    = section.closing_balance
+  const conv = section.balance_convention
+  if (Math.abs(b) < 0.005) return t('balSettled', lang)
+  if (conv === 'owner_credit') {
+    return b > 0 ? t('balPayableToYou', lang) : t('balPayableByYou', lang)
+  } else {
+    return b > 0 ? t('balPayableByYou', lang) : t('balPayableToYou', lang)
+  }
+}
+
+function getBalColor(section: RC3AccountSection): string {
+  const b    = section.closing_balance
+  const conv = section.balance_convention
+  if (Math.abs(b) < 0.005) return C.grayText
+  if (conv === 'owner_credit') return b > 0 ? C.green : C.red
+  else                         return b > 0 ? C.red   : C.green
+}
 
 function fmtDate(iso: string): string {
   try {
     return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', {
       day: '2-digit', month: 'short', year: 'numeric',
     })
-  } catch {
-    return iso
-  }
+  } catch { return iso }
 }
 
-function fmtPeriod(report: RC3PropertyReport): string {
-  if (!report.from_date && !report.to_date) return 'All Dates'
+function fmtPeriod(report: RC3PropertyReport, lang: Lang): string {
+  if (!report.from_date && !report.to_date) return t('execAllDates', lang)
   if (!report.from_date) return `Up to ${fmtDate(report.to_date!)}`
   if (!report.to_date)   return `From ${fmtDate(report.from_date)}`
   return `${fmtDate(report.from_date)} – ${fmtDate(report.to_date)}`
@@ -302,57 +464,38 @@ function fmtGenerated(iso: string): string {
       day: '2-digit', month: 'short', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     })
-  } catch {
-    return iso
-  }
-}
-
-function balanceLabel(section: RC3AccountSection): string {
-  const b = section.closing_balance
-  const conv = section.balance_convention
-  if (Math.abs(b) < 0.005) return 'Settled'
-  if (conv === 'owner_credit') {
-    return b > 0 ? 'Due to You' : 'Due to JJ'
-  } else {
-    return b > 0 ? 'Due to JJ' : 'Credit Balance'
-  }
-}
-
-function balanceColor(section: RC3AccountSection): string {
-  const b = section.closing_balance
-  const conv = section.balance_convention
-  if (Math.abs(b) < 0.005) return C.grayText
-  if (conv === 'owner_credit') return b > 0 ? C.green : C.red
-  else                         return b > 0 ? C.red   : C.green
+  } catch { return iso }
 }
 
 /* ─── Sub-components ────────────────────────────────────────────────────────── */
 
-function DocHeader({ report }: { report: RC3PropertyReport }) {
+function DocHeader({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
   return (
     <View style={s.header} fixed>
       <View>
         <Text style={s.companyName}>JJ Property 10</Text>
-        <Text style={s.reportTitle}>Owner Settlement Report — {report.reporting_name}</Text>
+        <Text style={s.reportTitle}>
+          {t('reportTitle', lang)} — {report.reporting_name}
+        </Text>
       </View>
       <View style={s.headerRight}>
         <Text style={s.headerDate}>{fmtGenerated(report.generated_at)}</Text>
-        <Text style={s.headerLabel}>Confidential</Text>
+        <Text style={s.headerLabel}>{t('confidential', lang)}</Text>
       </View>
     </View>
   )
 }
 
-function MetaBlock({ report }: { report: RC3PropertyReport }) {
+function MetaBlock({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
   return (
     <View style={s.metaBlock}>
       <View style={s.metaRow}>
-        <Text style={s.metaLabel}>Property</Text>
+        <Text style={s.metaLabel}>{t('execProperty', lang)}</Text>
         <Text style={s.metaValue}>{report.reporting_name}</Text>
       </View>
       <View style={s.metaRow}>
-        <Text style={s.metaLabel}>Period</Text>
-        <Text style={s.metaValue}>{fmtPeriod(report)}</Text>
+        <Text style={s.metaLabel}>{t('execPeriod', lang)}</Text>
+        <Text style={s.metaValue}>{fmtPeriod(report, lang)}</Text>
       </View>
       <View style={s.metaRow}>
         <Text style={s.metaLabel}>Generated</Text>
@@ -362,13 +505,79 @@ function MetaBlock({ report }: { report: RC3PropertyReport }) {
   )
 }
 
-function SummaryCard({ report }: { report: RC3PropertyReport }) {
+/** Compute aggregate KPIs from account sections (presentation-only, no accounting logic). */
+function computeDashboard(accounts: RC3AccountSection[]) {
+  let totalIncome     = 0
+  let totalExpenses   = 0
+  let totalTransfers  = 0
+  let netOwnerBalance = 0
+  for (const acc of accounts) {
+    totalIncome    += acc.total_income
+    totalExpenses  += acc.total_expenses
+    totalTransfers += acc.total_bpo
+    if (acc.balance_convention === 'owner_credit') {
+      netOwnerBalance += acc.closing_balance
+    } else {
+      netOwnerBalance -= acc.closing_balance
+    }
+  }
+  return { totalIncome, totalExpenses, totalTransfers, netOwnerBalance }
+}
+
+/** Owner Dashboard — 4 aggregate KPI cells, appears at top of PDF body. */
+function OwnerDashboardPdf({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
+  const { totalIncome, totalExpenses, totalTransfers, netOwnerBalance } = computeDashboard(report.accounts)
+
+  let balLabel: string
+  let balColor: string
+  if (Math.abs(netOwnerBalance) < 0.005) {
+    balLabel = t('balSettled', lang); balColor = C.grayText
+  } else if (netOwnerBalance > 0) {
+    balLabel = t('balPayableToYou', lang); balColor = C.green
+  } else {
+    balLabel = t('balPayableByYou', lang); balColor = C.red
+  }
+
+  const cells = [
+    { label: t('dashIncome',    lang), value: totalIncome,               color: C.grayDark, sub: null        },
+    { label: t('dashExpenses',  lang), value: totalExpenses,             color: C.grayDark, sub: null        },
+    { label: t('dashTransfers', lang), value: totalTransfers,            color: C.grayDark, sub: null        },
+    { label: t('dashBalance',   lang), value: Math.abs(netOwnerBalance), color: balColor,   sub: balLabel    },
+  ]
+
+  return (
+    <View style={s.dashSection}>
+      <View style={s.dashHeader}>
+        <Text style={s.dashHeaderTitle}>{t('dashTitle', lang)}</Text>
+        <Text style={s.dashHeaderSub}>{report.reporting_name}</Text>
+      </View>
+      <View style={s.dashStrip}>
+        {cells.map((cell, i) => {
+          const isLast = i === cells.length - 1
+          return (
+            <View key={i} style={isLast ? s.dashCellLast : s.dashCell}>
+              <Text style={s.dashCellLabel}>{cell.label}</Text>
+              <Text style={[s.dashCellValue, { color: cell.color }]}>{fmt(cell.value)}</Text>
+              {cell.sub ? (
+                <Text style={[s.dashCellSub, { color: cell.color }]}>{cell.sub}</Text>
+              ) : null}
+            </View>
+          )
+        })}
+      </View>
+    </View>
+  )
+}
+
+/** Cross-account summary strip — one column per active account */
+function CrossAccountSummary({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
+  if (report.accounts.length <= 1) return null
   return (
     <View style={s.summaryCard}>
       {report.accounts.map((acc, i) => {
         const b     = acc.closing_balance
-        const color = balanceColor(acc)
-        const label = balanceLabel(acc)
+        const color = getBalColor(acc)
+        const label = getBalLabel(acc, lang)
         const isLast = i === report.accounts.length - 1
         return (
           <View key={acc.account_type} style={isLast ? s.summaryCellLast : s.summaryCell}>
@@ -382,14 +591,77 @@ function SummaryCard({ report }: { report: RC3PropertyReport }) {
   )
 }
 
+/** Per-module metrics strip — key figures for this account type */
+function ModuleMetrics({ section, lang }: { section: RC3AccountSection; lang: Lang }) {
+  type MetricItem = { label: string; value: number; highlight?: boolean }
+  let metrics: MetricItem[]
+
+  if (section.account_type === 'sale') {
+    metrics = [
+      { label: t('cardSaleContract', lang),  value: section.contract_baseline },
+      { label: t('cardSaleExpenses', lang),  value: section.total_income      },
+      { label: t('cardSalePayments', lang),  value: section.total_expenses     },
+      { label: t('cardSaleBalance', lang),   value: Math.abs(section.closing_balance), highlight: true },
+    ]
+  } else if (section.account_type === 'renovation') {
+    const totalContract = section.contract_baseline + section.total_income
+    metrics = [
+      { label: t('cardRenovContract', lang),  value: section.contract_baseline    },
+      { label: t('cardRenovExtras', lang),    value: section.total_income          },
+      { label: t('cardRenovTotal', lang),     value: totalContract                 },
+      { label: t('cardRenovPayments', lang),  value: section.total_expenses        },
+      { label: t('cardRenovBalance', lang),   value: Math.abs(section.closing_balance), highlight: true },
+    ]
+  } else if (section.account_type === 'rental') {
+    metrics = [
+      { label: t('cardRentalIncome', lang),    value: section.total_income                   },
+      { label: t('cardRentalExpenses', lang),  value: section.total_expenses                  },
+      { label: t('cardRentalBpo', lang),       value: section.total_bpo                       },
+      { label: t('cardRentalBalance', lang),   value: Math.abs(section.closing_balance), highlight: true },
+    ]
+  } else {
+    metrics = [
+      { label: t('cardAirbnbIncome', lang),    value: section.total_income                   },
+      { label: t('cardAirbnbExpenses', lang),  value: section.total_expenses                  },
+      { label: t('cardAirbnbBpo', lang),       value: section.total_bpo                       },
+      { label: t('cardAirbnbBalance', lang),   value: Math.abs(section.closing_balance), highlight: true },
+    ]
+  }
+
+  const balColor = getBalColor(section)
+
+  return (
+    <View style={s.moduleMetrics}>
+      {metrics.map((m, i) => {
+        const isLast = i === metrics.length - 1
+        return (
+          <View key={i} style={isLast ? s.moduleMetricCellLast : s.moduleMetricCell}>
+            <Text style={s.moduleMetricLabel}>{m.label}</Text>
+            <Text style={[s.moduleMetricValue, m.highlight ? { color: balColor } : {}]}>
+              {fmt(m.value)}
+            </Text>
+            {m.highlight && (
+              <Text style={[s.moduleMetricSub, { color: balColor }]}>
+                {getBalLabel(section, lang)}
+              </Text>
+            )}
+          </View>
+        )
+      })}
+    </View>
+  )
+}
+
 function TxGroupTable({
   rows,
   groupLabel: label,
   isIncome,
+  lang,
 }: {
   rows:       RC3AccountRow[]
   groupLabel: string
   isIncome:   boolean
+  lang:       Lang
 }) {
   if (rows.length === 0) return null
   const total = rows.reduce((s, r) => s + r.client_amount, 0)
@@ -397,13 +669,13 @@ function TxGroupTable({
     <View>
       <Text style={s.groupLabel}>{label}</Text>
       <View style={s.tableHead}>
-        <Text style={[s.th, s.cDate]}>Date</Text>
-        <Text style={[s.th, s.cDesc]}>Description</Text>
-        <Text style={[s.th, s.cAmt]}>Amount</Text>
+        <Text style={[s.th, s.cDate]}>{t('thDate', lang)}</Text>
+        <Text style={[s.th, s.cDesc]}>{t('thDescription', lang)}</Text>
+        <Text style={[s.th, s.cAmt]}>{t('thAmount', lang)}</Text>
       </View>
       {rows.map((row, i) => {
-        const overriddenLabel = overrideDisplayLabel(row.display_label ?? '')
-        const desc = (row.description ?? '').trim() || overriddenLabel || '—'
+        // Client report: use buildRowLabel — never expose raw internal notes
+        const desc = buildRowLabel(row, lang)
         return (
           <View
             key={row.id}
@@ -413,9 +685,6 @@ function TxGroupTable({
             <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date)}</Text>
             <View style={s.cDesc}>
               <Text style={s.td}>{desc}</Text>
-              {overriddenLabel && overriddenLabel !== desc ? (
-                <Text style={s.tdInfo}>{overriddenLabel}</Text>
-              ) : null}
             </View>
             <Text style={[s.cAmt, s.td, { color: isIncome ? C.green : C.grayDark }]}>
               {fmt(row.client_amount)}
@@ -425,7 +694,7 @@ function TxGroupTable({
       })}
       <View style={s.tableTot}>
         <Text style={[s.tdBold, s.cDate]} />
-        <Text style={[s.tdBold, s.cDesc]}>Total</Text>
+        <Text style={[s.tdBold, s.cDesc]}>{t('total', lang)}</Text>
         <Text style={[s.tdBold, s.cAmt, { color: isIncome ? C.green : C.grayDark }]}>
           {fmt(total)}
         </Text>
@@ -434,58 +703,22 @@ function TxGroupTable({
   )
 }
 
-function InfoRows({ rows }: { rows: RC3AccountRow[] }) {
-  if (rows.length === 0) return null
-  return (
-    <View>
-      <Text style={s.groupLabel}>For Reference (Informational)</Text>
-      <View style={s.tableHead}>
-        <Text style={[s.th, s.cDate]}>Date</Text>
-        <Text style={[s.th, s.cDesc]}>Description</Text>
-        <Text style={[s.th, s.cAmt]}>Amount</Text>
-      </View>
-      {rows.map((row, i) => (
-        <View
-          key={row.id}
-          style={[s.tableRow, i % 2 === 1 ? s.tableRowAlt : {}]}
-          wrap={false}
-        >
-          <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date)}</Text>
-          <View style={s.cDesc}>
-            <Text style={s.tdInfo}>{(row.description ?? '').trim() || row.display_label || '—'}</Text>
-            <Text style={s.tdInfo}>{row.display_label}</Text>
-          </View>
-          <Text style={[s.cAmt, s.tdInfo]}>{fmt(row.client_amount)}</Text>
-        </View>
-      ))}
-    </View>
-  )
-}
-
-/**
- * Section A — Reference rows (contracts, internal JJ entries).
- * balance_effect = 0 for all rows here. Shown at the top of each account block
- * so the client can see the contract value that anchors the settlement.
- */
-function RefSection({ rows }: { rows: RC3AccountRow[] }) {
+function RefSection({ rows, lang }: { rows: RC3AccountRow[]; lang: Lang }) {
   if (rows.length === 0) return null
   return (
     <View style={s.refSection}>
       <View style={s.refHeader}>
-        <Text style={s.refHeaderLabel}>{SECTION_LABELS.contractInfo}</Text>
-        <Text style={s.refHeaderNote}>{SECTION_LABELS.contractInfoNote}</Text>
+        <Text style={s.refHeaderLabel}>{t('contractInfo', lang)}</Text>
+        <Text style={s.refHeaderNote}>{t('contractInfoNote', lang)}</Text>
       </View>
       {rows.map((row) => {
-        const overriddenLabel = overrideDisplayLabel(row.display_label ?? '')
-        const desc = (row.description ?? '').trim() || overriddenLabel || '—'
+        // Client report: use buildRowLabel — never expose raw internal notes
+        const desc = buildRowLabel(row, lang)
         return (
           <View key={row.id} style={s.refRow} wrap={false}>
             <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date)}</Text>
             <View style={s.cDesc}>
               <Text style={s.tdInfo}>{desc}</Text>
-              {overriddenLabel && overriddenLabel !== desc ? (
-                <Text style={s.tdInfo}>{overriddenLabel}</Text>
-              ) : null}
             </View>
             <Text style={[s.cAmt, s.tdInfo]}>{fmt(row.client_amount)}</Text>
           </View>
@@ -495,68 +728,74 @@ function RefSection({ rows }: { rows: RC3AccountRow[] }) {
   )
 }
 
-function AccountBlock({ section }: { section: RC3AccountSection }) {
-  const acColor  = ACCOUNT_COLOURS[section.account_type]
-  const balColor = balanceColor(section)
-  const balText  = balanceLabel(section)
+function AccountBlock({ section, lang }: { section: RC3AccountSection; lang: Lang }) {
+  const acColor  = ACCOUNT_COLOURS[section.account_type] ?? C.navy
+  const balColor = getBalColor(section)
+  const balText  = getBalLabel(section, lang)
 
-  // Section A: contract reference rows (balance_effect = 0)
   const referenceRows = section.rows.filter(r => r.display_group === 'reference')
-  // Section B: balance-affecting rows
   const incomeRows    = section.rows.filter(r => r.display_group === 'income')
   const expenseRows   = section.rows.filter(r => r.display_group === 'expense')
   const payoutRows    = section.rows.filter(r => r.display_group === 'payment_out')
-  // Section C (info rows): suppressed from client PDF.
-  // Info rows contain internal cost-tracking, platform-tracking, and needs-review data
-  // that should not appear in the client-facing document.
+  // Section C (info rows): suppressed from client-facing PDF.
 
-  const incomeLabel  = section.balance_convention === 'owner_credit'
-    ? 'Money Received For You'
-    : 'Payments Received'
+  type AccountKey = 'sale' | 'renovation' | 'rental' | 'airbnb'
+  const incomeLabelMap: Record<AccountKey, string> = {
+    sale:       t('incomeSale',   lang),
+    renovation: t('incomeRenov',  lang),
+    rental:     t('incomeRental', lang),
+    airbnb:     t('incomeAirbnb', lang),
+  }
+  const expenseLabelMap: Record<AccountKey, string> = {
+    sale:       t('expensesSale',   lang),
+    renovation: t('expensesRenov',  lang),
+    rental:     t('expensesRental', lang),
+    airbnb:     t('expensesAirbnb', lang),
+  }
 
-  const expenseLabel = section.balance_convention === 'owner_credit'
-    ? 'Expenses Paid on Your Behalf'
-    : 'Amounts Billed to Client'
+  const at = section.account_type as AccountKey
+  const incomeLabel  = incomeLabelMap[at]  ?? 'Income'
+  const expenseLabel = expenseLabelMap[at] ?? 'Expenses'
 
   return (
     <View style={s.accountSection} break={false}>
       {/* Account header bar */}
       <View style={[s.accountHeader, { backgroundColor: acColor }]}>
-        <View>
+        <View style={s.accountHeaderLeft}>
           <Text style={s.accountTitle}>{section.account_label}</Text>
-          <Text style={[s.accountTitle, { fontSize: 8, fontWeight: 'normal', opacity: 0.8 }]}>
-            {section.account_label_he}
-          </Text>
+          {section.account_label_he ? (
+            <Text style={s.accountTitleHe}>{section.account_label_he}</Text>
+          ) : null}
         </View>
-        <View style={{ alignItems: 'flex-end' }}>
+        <View style={s.accountHeaderRight}>
           <Text style={[s.accountBalance, { color: C.white }]}>
             {fmt(Math.abs(section.closing_balance))}
           </Text>
-          <Text style={[s.accountBalance, { fontSize: 7.5, fontWeight: 'normal', color: C.white, opacity: 0.85 }]}>
-            {balText}
-          </Text>
+          <Text style={s.accountBalLabel}>{balText}</Text>
         </View>
       </View>
 
-      {/* Section A — Reference (contract values, balance_effect = 0) */}
-      <RefSection rows={referenceRows} />
+      {/* Per-module metrics strip */}
+      <ModuleMetrics section={section} lang={lang} />
+
+      {/* Section A — Reference rows */}
+      <RefSection rows={referenceRows} lang={lang} />
 
       {/* Section B — Balance-affecting transactions */}
-      <TxGroupTable rows={incomeRows}  groupLabel={incomeLabel}  isIncome={true}  />
-      <TxGroupTable rows={expenseRows} groupLabel={expenseLabel} isIncome={false} />
+      <TxGroupTable rows={incomeRows}  groupLabel={incomeLabel}  isIncome={true}  lang={lang} />
+      <TxGroupTable rows={expenseRows} groupLabel={expenseLabel} isIncome={false} lang={lang} />
       {payoutRows.length > 0 ? (
-        <TxGroupTable rows={payoutRows} groupLabel="Payments Sent to You" isIncome={false} />
+        <TxGroupTable rows={payoutRows} groupLabel={t('bpoLabel', lang)} isIncome={false} lang={lang} />
       ) : null}
 
-      {/* Section C — Informational rows are suppressed from the client-facing PDF.
-          Cost tracking, platform tracking, trust account, and needs-review rows
-          are internal JJ data and must not appear in documents sent to clients. */}
+      {/* Section C — suppressed from client PDF */}
 
       {/* Balance strip */}
       <View style={s.balStrip}>
-        <Text style={s.balLabel}>
-          {section.account_label} — {balText}
-        </Text>
+        <View>
+          <Text style={s.balLabel}>{section.account_label}</Text>
+          <Text style={s.balSub}>{balText}</Text>
+        </View>
         <Text style={[s.balValue, { color: balColor }]}>
           {fmt(Math.abs(section.closing_balance))}
         </Text>
@@ -565,12 +804,74 @@ function AccountBlock({ section }: { section: RC3AccountSection }) {
   )
 }
 
-function DocFooter({ report }: { report: RC3PropertyReport }) {
-  const period = fmtPeriod(report)
+/** Final settlement summary + disclaimer (dark navy block at end of PDF) */
+function FinalSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
+  const { totalIncome, totalExpenses, totalTransfers, netOwnerBalance } = computeDashboard(report.accounts)
+
+  let balLabel: string; let balColor: string
+  if (Math.abs(netOwnerBalance) < 0.005) {
+    balLabel = t('balSettled', lang); balColor = C.grayText
+  } else if (netOwnerBalance > 0) {
+    balLabel = t('balPayableToYou', lang); balColor = '#86efac'  // green-300
+  } else {
+    balLabel = t('balPayableByYou', lang); balColor = '#fca5a5'  // red-300
+  }
+
+  const genDate = (() => {
+    try {
+      return new Date(report.generated_at).toLocaleDateString('en-GB', {
+        day: '2-digit', month: 'short', year: 'numeric',
+      })
+    } catch { return '' }
+  })()
+
+  const kpis = [
+    { label: t('finalTotalIncome',    lang), value: totalIncome    },
+    { label: t('finalTotalExpenses',  lang), value: totalExpenses  },
+    { label: t('finalTotalTransfers', lang), value: totalTransfers },
+  ]
+
+  return (
+    <View style={s.finalSection}>
+      <Text style={s.finalTitle}>{t('finalTitle', lang)}</Text>
+
+      {/* 3 KPI cells */}
+      <View style={s.finalKpiRow}>
+        {kpis.map((k, i) => (
+          <View key={i} style={i < kpis.length - 1 ? s.finalKpiCell : s.finalKpiCellLast}>
+            <Text style={s.finalKpiLabel}>{k.label}</Text>
+            <Text style={s.finalKpiValue}>{fmt(k.value)}</Text>
+          </View>
+        ))}
+      </View>
+
+      {/* Net balance */}
+      <View style={s.finalBalRow}>
+        <Text style={s.finalBalLabel}>{t('finalCurrentBalance', lang)}</Text>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={[s.finalBalValue, { color: balColor }]}>
+            {fmt(Math.abs(netOwnerBalance))}
+          </Text>
+          <Text style={[s.finalBalSub, { color: balColor }]}>{balLabel}</Text>
+        </View>
+      </View>
+
+      {/* Disclaimer */}
+      <View style={s.finalDiscBorder}>
+        <Text style={s.finalDiscTitle}>{t('finalNoteTitle', lang)}</Text>
+        <Text style={s.finalDiscText}>{t('finalDisclaimer', lang)}</Text>
+        <Text style={s.finalDiscGen}>{t('finalGenerated', lang)}: {genDate}</Text>
+      </View>
+    </View>
+  )
+}
+
+function DocFooter({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
+  const period = fmtPeriod(report, lang)
   return (
     <View style={s.footer} fixed>
       <Text style={s.footerText}>
-        JJ Property 10 · {report.reporting_name} · {period} · Confidential
+        JJ Property 10 · {report.reporting_name} · {period} · {t('confidential', lang)}
       </Text>
       <Text
         style={s.footerText}
@@ -580,22 +881,19 @@ function DocFooter({ report }: { report: RC3PropertyReport }) {
   )
 }
 
-function Disclosure() {
+function Disclosure({ lang }: { lang: Lang }) {
   return (
     <View style={s.disclosure}>
       <Text style={[s.disclosureText, { fontWeight: 'bold' }]}>
-        ⚠ Opening Balance Not Included:
+        ⚠ {t('openingBalTitle', lang)}
       </Text>
       <Text style={s.disclosureText}>
-        Opening balances from prior periods are not yet carried forward. Date-filtered reports may
-        show incorrect closing balances. Use all-time (unfiltered) reports only for financial review
-        until opening balances are implemented.
+        {t('openingBalDetail', lang)}
       </Text>
       <Text style={[s.disclosureText, { marginTop: 4 }]}>
         This report is generated from accounting records and is pending final review.
-        Some transactions may be subject to reclassification. Rows marked "Needs Review" require
-        manual verification before financial use. This document is confidential and intended
-        solely for the named property owner.
+        Some transactions may be subject to reclassification. This document is confidential
+        and intended solely for the named property owner.
       </Text>
     </View>
   )
@@ -605,29 +903,33 @@ function Disclosure() {
 
 export interface OwnerSettlementPdfV3Props {
   report: RC3PropertyReport
+  lang?:  Lang
 }
 
-export function OwnerSettlementPdfV3({ report }: OwnerSettlementPdfV3Props) {
+export function OwnerSettlementPdfV3({ report, lang = 'en' }: OwnerSettlementPdfV3Props) {
   return (
     <Document
-      title={`RC3 Owner Settlement Report — ${report.reporting_name}`}
+      title={`Owner Settlement Report — ${report.reporting_name}`}
       author="JJ Property 10"
-      creator="JJ Property 10 Platform (RC3)"
+      creator="JJ Property 10 Platform (RC3 V2)"
     >
       <Page size="A4" style={s.page}>
-        <DocHeader report={report} />
-        <MetaBlock report={report} />
+        <DocHeader report={report} lang={lang} />
+        <MetaBlock  report={report} lang={lang} />
 
-        {/* Account-level summary strip */}
-        {report.accounts.length > 1 ? <SummaryCard report={report} /> : null}
+        {/* Owner Dashboard — aggregate KPIs (always shown, top of report body) */}
+        <OwnerDashboardPdf report={report} lang={lang} />
 
-        {/* One section per account — in canonical order */}
+        {/* Cross-account summary (shown when >1 account) */}
+        <CrossAccountSummary report={report} lang={lang} />
+
+        {/* One section per account */}
         {report.accounts.map(acc => (
-          <AccountBlock key={acc.account_type} section={acc} />
+          <AccountBlock key={acc.account_type} section={acc} lang={lang} />
         ))}
 
-        <Disclosure />
-        <DocFooter report={report} />
+        <FinalSummaryPdf report={report} lang={lang} />
+        <DocFooter       report={report} lang={lang} />
       </Page>
     </Document>
   )
