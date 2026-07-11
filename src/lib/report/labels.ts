@@ -217,6 +217,7 @@ const L = {
                           he: 'הקצאה חודשית — תהיה זמינה בגרסה הבאה.' },
 
   /* ── Report type selector (M1) — added M0 ──────────────────────────────── */
+  reportTypeLabel:      { en: 'Report Type',    he: 'סוג דוח'      },
   reportTypeFull:       { en: 'Full Report',     he: 'דוח מלא'      },
   reportTypePeriodic:   { en: 'Periodic Report', he: 'דוח תקופתי'   },
 

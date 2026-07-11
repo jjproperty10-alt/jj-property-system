@@ -9,6 +9,8 @@
  * Do NOT redefine these types elsewhere.
  */
 
+import type { RC3AccountSection } from './types'
+
 /**
  * The two report modes for RC3.
  *
@@ -49,3 +51,26 @@ export type ReportType = 'full' | 'periodic'
  *   Add it only when a dedicated override mechanism is implemented.
  */
 export type ModuleStatus = 'settled' | 'payable_to_you' | 'payable_by_you'
+
+
+/** Account types included when reportType === 'periodic' */
+const PERIODIC_ACCOUNT_TYPES = new Set<string>(['rental', 'airbnb'])
+
+/**
+ * Filter account sections based on the selected report type.
+ *
+ * Full     — all sections returned unchanged.
+ * Periodic — only 'rental' and 'airbnb' sections returned.
+ *            Sale and Renovation are excluded to avoid misleading
+ *            partial-period balances until Task 5 (opening balances) is complete.
+ *
+ * Pure display-layer filter — never modifies accounting totals,
+ * balance calculations, or any field on the remaining sections.
+ */
+export function filterSectionsByReportType(
+  sections: RC3AccountSection[],
+  reportType: ReportType,
+): RC3AccountSection[] {
+  if (reportType === 'full') return sections
+  return sections.filter(s => PERIODIC_ACCOUNT_TYPES.has(s.account_type))
+}
