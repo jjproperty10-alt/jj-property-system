@@ -220,6 +220,10 @@ const L = {
   reportTypeLabel:      { en: 'Report Type',    he: 'סוג דוח'      },
   reportTypeFull:       { en: 'Full Report',     he: 'דוח מלא'      },
   reportTypePeriodic:   { en: 'Periodic Report', he: 'דוח תקופתי'   },
+  /* ── Executive Summary M2 ────────────────────────────────────────────────── */
+  opSummaryTitle:       { en: 'Operational Summary',   he: 'סיכום תפעולי'    },
+  opIncomeLabel:        { en: 'Operational Income',    he: 'הכנסות תפעוליות' },
+  opExpensesLabel:      { en: 'Operational Expenses',  he: 'הוצאות תפעוליות' },
 
   /* ── Opening balance warning ──────────────────────────────────────────────── */
   openingBalTitle:      { en: 'Opening Balance Not Included.',
