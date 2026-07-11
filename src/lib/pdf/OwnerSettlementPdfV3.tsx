@@ -31,8 +31,9 @@ import { toClientRow } from '../report/clientRow'
 import type { ClientDisplayRow } from '../report/clientRow'
 import {
   buildRowLabel,
-  t, type Lang,
+  t, type Lang, type LabelKey,
 } from '../report/labels'
+import { computeOperationalKPIs, computeNetOwnerBalance } from '../report/executiveSummary'
 
 /* ─── Font ──────────────────────────────────────────────────────────────────── */
 
@@ -527,43 +528,107 @@ function computeDashboard(accounts: RC3AccountSection[]) {
   return { totalIncome, totalExpenses, totalTransfers, netOwnerBalance }
 }
 
-/** Owner Dashboard — 4 aggregate KPI cells, appears at top of PDF body. */
-function OwnerDashboardPdf({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
-  const { totalIncome, totalExpenses, totalTransfers, netOwnerBalance } = computeDashboard(report.accounts)
+const M2_PDF_COLORS: Record<string, string> = {
+  sale: '#1e293b', renovation: '#065f46', rental: '#1d4ed8', airbnb: '#c2410c',
+}
 
-  let balLabel: string
-  let balColor: string
-  if (Math.abs(netOwnerBalance) < 0.005) {
-    balLabel = t('balSettled', lang); balColor = C.grayText
-  } else if (netOwnerBalance > 0) {
-    balLabel = t('balPayableToYou', lang); balColor = C.green
-  } else {
-    balLabel = t('balPayableByYou', lang); balColor = C.red
+function PremiumSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
+  const net = computeNetOwnerBalance(report.accounts)
+  const { income: opIncome, expenses: opExpenses, transfers: opTransfers, hasOperational } =
+    computeOperationalKPIs(report.accounts)
+  const absNet = Math.abs(net)
+  const heroBg    = absNet < 0.005 ? '#334155' : net > 0 ? '#14532d' : '#7f1d1d'
+  const heroColor = absNet < 0.005 ? '#ffffff' : net > 0 ? '#86efac' : '#fca5a5'
+  const heroLabel = absNet < 0.005 ? t('balSettled', lang) : net > 0 ? t('balPayableToYou', lang) : t('balPayableByYou', lang)
+  const period = report.from_date || report.to_date
+    ? `${report.from_date ? fmtDate(report.from_date) : '—'} – ${report.to_date ? fmtDate(report.to_date) : '—'}`
+    : t('execAllDates', lang)
+  const accLabelKeys: Record<string, LabelKey> = {
+    sale: 'accountSale', renovation: 'accountRenovation', rental: 'accountRental', airbnb: 'accountAirbnb',
   }
-
-  const cells = [
-    { label: t('dashIncome',    lang), value: totalIncome,               color: C.grayDark, sub: null        },
-    { label: t('dashExpenses',  lang), value: totalExpenses,             color: C.grayDark, sub: null        },
-    { label: t('dashTransfers', lang), value: totalTransfers,            color: C.grayDark, sub: null        },
-    { label: t('dashBalance',   lang), value: Math.abs(netOwnerBalance), color: balColor,   sub: balLabel    },
-  ]
-
   return (
-    <View style={s.dashSection}>
-      <View style={s.dashHeader}>
-        <Text style={s.dashHeaderTitle}>{t('dashTitle', lang)}</Text>
-        <Text style={s.dashHeaderSub}>{report.reporting_name}</Text>
+    <View style={{ backgroundColor: '#0d1f36', borderRadius: 8, padding: 20, marginBottom: 16 }}>
+      {/* Header */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
+        <View>
+          <Text style={{ fontSize: 7, color: '#60a5fa', marginBottom: 3 }}>{t('execTitle', lang).toUpperCase()}</Text>
+          <Text style={{ fontSize: 14, color: '#ffffff', fontWeight: 'bold' }}>{report.reporting_name}</Text>
+          <Text style={{ fontSize: 9, color: '#93c5fd', marginTop: 3 }}>{period}</Text>
+        </View>
+        <Text style={{ fontSize: 7, color: '#60a5fa' }}>{t('confidential', lang).toUpperCase()}</Text>
       </View>
-      <View style={s.dashStrip}>
-        {cells.map((cell, i) => {
-          const isLast = i === cells.length - 1
+      {/* Hero balance */}
+      <View style={{ backgroundColor: heroBg, borderRadius: 6, padding: 14, marginBottom: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={{ fontSize: 7, color: 'rgba(255,255,255,0.5)' }}>{t('dashBalance', lang).toUpperCase()}</Text>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={{ fontSize: 22, color: heroColor, fontWeight: 'bold' }}>{eur(absNet)}</Text>
+          <Text style={{ fontSize: 8, color: heroColor, marginTop: 2 }}>{heroLabel}</Text>
+        </View>
+      </View>
+      {/* Operational KPIs */}
+      {hasOperational && (
+        <View style={{ marginBottom: 14 }}>
+          <Text style={{ fontSize: 7, color: '#60a5fa', marginBottom: 6 }}>{t('opSummaryTitle', lang).toUpperCase()}</Text>
+          <View style={{ flexDirection: 'row' }}>
+            {([
+              { label: t('opIncomeLabel', lang),  value: opIncome   },
+              { label: t('opExpensesLabel', lang), value: opExpenses },
+              { label: t('dashTransfers', lang),  value: opTransfers },
+            ] as { label: string; value: number }[]).map((kpi, i) => (
+              <View key={kpi.label} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 4, padding: 8, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.1)', marginLeft: i > 0 ? 6 : 0 }}>
+                <Text style={{ fontSize: 7, color: '#93c5fd', marginBottom: 4 }}>{kpi.label}</Text>
+                <Text style={{ fontSize: 10, color: '#ffffff', fontWeight: 'bold' }}>{eur(kpi.value)}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+      {/* Module cards */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+        {report.accounts.map((acc, i) => {
+          const accColor = M2_PDF_COLORS[acc.account_type] ?? '#334155'
+          const { label: balLabel } = getBalanceLabel(acc.closing_balance, acc.balance_convention, lang)
+          const absBalance = Math.abs(acc.closing_balance)
+          const lkKey = accLabelKeys[acc.account_type]
+          const metrics: { label: string; value: number }[] = (() => {
+            if (acc.account_type === 'sale') return [
+              { label: t('cardSaleContract', lang), value: acc.contract_baseline },
+              { label: t('cardSaleExpenses', lang), value: acc.total_income },
+              { label: t('cardSalePayments', lang), value: acc.total_expenses },
+            ]
+            if (acc.account_type === 'renovation') return [
+              { label: t('cardRenovContract', lang), value: acc.contract_baseline },
+              { label: t('cardRenovExtras', lang),   value: acc.total_income },
+              { label: t('cardRenovPayments', lang), value: acc.total_expenses },
+            ]
+            if (acc.account_type === 'rental') return [
+              { label: t('cardRentalIncome', lang),   value: acc.total_income },
+              { label: t('cardRentalExpenses', lang), value: acc.total_expenses },
+              { label: t('cardRentalBpo', lang),      value: acc.total_bpo },
+            ]
+            return [
+              { label: t('cardAirbnbIncome', lang),   value: acc.total_income },
+              { label: t('cardAirbnbExpenses', lang), value: acc.total_expenses },
+              { label: t('cardAirbnbBpo', lang),      value: acc.total_bpo },
+            ]
+          })()
           return (
-            <View key={i} style={isLast ? s.dashCellLast : s.dashCell}>
-              <Text style={s.dashCellLabel}>{cell.label}</Text>
-              <Text style={[s.dashCellValue, { color: cell.color }]}>{fmt(cell.value)}</Text>
-              {cell.sub ? (
-                <Text style={[s.dashCellSub, { color: cell.color }]}>{cell.sub}</Text>
-              ) : null}
+            <View key={acc.account_type} style={{ flex: 1, minWidth: 90, borderRadius: 6, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.1)', marginLeft: i > 0 ? 6 : 0, marginTop: 0 }}>
+              <View style={{ backgroundColor: accColor, padding: 10 }}>
+                <Text style={{ fontSize: 7, color: 'rgba(255,255,255,0.7)', marginBottom: 3 }}>
+                  {lkKey ? t(lkKey, lang) : acc.account_label}
+                </Text>
+                <Text style={{ fontSize: 14, color: '#ffffff', fontWeight: 'bold' }}>{eur(absBalance)}</Text>
+                <Text style={{ fontSize: 7, color: 'rgba(255,255,255,0.75)', marginTop: 2 }}>{balLabel}</Text>
+              </View>
+              <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', padding: 8 }}>
+                {metrics.map(m => (
+                  <View key={m.label} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 }}>
+                    <Text style={{ fontSize: 7, color: '#93c5fd' }}>{m.label}</Text>
+                    <Text style={{ fontSize: 7, color: 'rgba(255,255,255,0.85)' }}>{eur(m.value)}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
           )
         })}
@@ -572,29 +637,6 @@ function OwnerDashboardPdf({ report, lang }: { report: RC3PropertyReport; lang: 
   )
 }
 
-/** Cross-account summary strip — one column per active account */
-function CrossAccountSummary({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
-  if (report.accounts.length <= 1) return null
-  return (
-    <View style={s.summaryCard}>
-      {report.accounts.map((acc, i) => {
-        const b     = acc.closing_balance
-        const color = getBalColor(acc)
-        const label = getBalLabel(acc, lang)
-        const isLast = i === report.accounts.length - 1
-        return (
-          <View key={acc.account_type} style={isLast ? s.summaryCellLast : s.summaryCell}>
-            <Text style={s.summaryCellLabel}>{acc.account_label}</Text>
-            <Text style={[s.summaryCellValue, { color }]}>{fmt(Math.abs(b))}</Text>
-            <Text style={[s.summaryCellSub, { color }]}>{label}</Text>
-          </View>
-        )
-      })}
-    </View>
-  )
-}
-
-/** Per-module metrics strip — key figures for this account type */
 function ModuleMetrics({ section, lang }: { section: RC3AccountSection; lang: Lang }) {
   type MetricItem = { label: string; value: number; highlight?: boolean }
   let metrics: MetricItem[]
@@ -924,11 +966,8 @@ export function OwnerSettlementPdfV3({ report, lang = 'en', reportType = 'full' 
         <DocHeader report={filteredReport} lang={lang} reportTypeLabel={reportTypeLabel} />
         <MetaBlock  report={filteredReport} lang={lang} />
 
-        {/* Owner Dashboard — aggregate KPIs (always shown, top of report body) */}
-        <OwnerDashboardPdf report={filteredReport} lang={lang} />
-
-        {/* Cross-account summary (shown when >1 account) */}
-        <CrossAccountSummary report={filteredReport} lang={lang} />
+        {/* M2: Premium Executive Summary */}
+        <PremiumSummaryPdf report={filteredReport} lang={lang} />
 
         {/* One section per account */}
         {filteredReport.accounts.map(acc => (
