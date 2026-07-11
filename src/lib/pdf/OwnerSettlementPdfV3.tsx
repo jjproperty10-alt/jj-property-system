@@ -587,7 +587,7 @@ function PremiumSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
         {report.accounts.map((acc, i) => {
           const accColor = M2_PDF_COLORS[acc.account_type] ?? '#334155'
-          const { label: balLabel } = getBalLabel(acc.closing_balance, acc.balance_convention, lang)
+          const balLabel = getBalLabel(acc, lang)
           const absBalance = Math.abs(acc.closing_balance)
           const lkKey = accLabelKeys[acc.account_type]
           const metrics: { label: string; value: number }[] = (() => {
