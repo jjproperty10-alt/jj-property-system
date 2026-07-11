@@ -20,7 +20,9 @@
 import React, { useCallback, useEffect, useState, Suspense } from 'react'
 import nextDynamic from 'next/dynamic'
 import { fetchRC3Report, fetchRC3PropertyList } from '@/lib/report/fetchReport'
-import type { RC3PropertyReport, RC3AccountSection, RC3AccountRow } from '@/lib/report/types'
+import type { RC3PropertyReport, RC3AccountSection } from '@/lib/report/types'
+import { toClientRow } from '@/lib/report/clientRow'
+import type { ClientDisplayRow } from '@/lib/report/clientRow'
 import {
   buildRowLabel,
   t, type Lang, type LabelKey,
@@ -139,7 +141,7 @@ const DEFAULT_COLOURS = {
 
 /* ─── Transaction row ─────────────────────────────────────────────────────────── */
 
-function TxRow({ row, idx, lang }: { row: RC3AccountRow; idx: number; lang: Lang }) {
+function TxRow({ row, idx, lang }: { row: ClientDisplayRow; idx: number; lang: Lang }) {
   const isInfo   = row.display_group === 'info' || row.display_group === 'reference'
   const isIncome = row.display_group === 'income'
 
@@ -171,11 +173,11 @@ function TxRow({ row, idx, lang }: { row: RC3AccountRow; idx: number; lang: Lang
 
 /* ─── Expense group block (Rental + Airbnb) ──────────────────────────────────── */
 
-function ExpenseGroupBlock({ rows, lang }: { rows: RC3AccountRow[]; lang: Lang }) {
+function ExpenseGroupBlock({ rows, lang }: { rows: ClientDisplayRow[]; lang: Lang }) {
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set())
 
   // Group rows by expense category
-  const groups = new Map<LabelKey, RC3AccountRow[]>()
+  const groups = new Map<LabelKey, ClientDisplayRow[]>()
   for (const row of rows) {
     const key = getExpenseGroupKey(row.subcategory)
     if (!groups.has(key)) groups.set(key, [])
@@ -580,13 +582,13 @@ function AccountCard({ section, lang }: { section: RC3AccountSection; lang: Lang
   )
 
   // Section A: reference rows
-  const referenceRows = section.rows.filter(r => r.display_group === 'reference')
+  const referenceRows = section.rows.filter(r => r.display_group === 'reference').map(toClientRow)
   // Section B: balance-affecting rows
-  const incomeRows    = section.rows.filter(r => r.display_group === 'income')
-  const expenseRows   = section.rows.filter(r => r.display_group === 'expense')
-  const payoutRows    = section.rows.filter(r => r.display_group === 'payment_out')
+  const incomeRows    = section.rows.filter(r => r.display_group === 'income').map(toClientRow)
+  const expenseRows   = section.rows.filter(r => r.display_group === 'expense').map(toClientRow)
+  const payoutRows    = section.rows.filter(r => r.display_group === 'payment_out').map(toClientRow)
   // Section C: informational only
-  const infoRows      = section.rows.filter(r => r.display_group === 'info')
+  const infoRows      = section.rows.filter(r => r.display_group === 'info').map(toClientRow)
 
   const allBalanceRows = [...incomeRows, ...expenseRows, ...payoutRows]
 

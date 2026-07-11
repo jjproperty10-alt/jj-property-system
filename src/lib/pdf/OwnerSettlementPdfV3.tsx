@@ -25,7 +25,9 @@ import {
   Font,
 } from '@react-pdf/renderer'
 import { fmt } from './formatters'
-import type { RC3PropertyReport, RC3AccountSection, RC3AccountRow } from '../report/types'
+import type { RC3PropertyReport, RC3AccountSection } from '../report/types'
+import { toClientRow } from '../report/clientRow'
+import type { ClientDisplayRow } from '../report/clientRow'
 import {
   buildRowLabel,
   t, type Lang,
@@ -658,7 +660,7 @@ function TxGroupTable({
   isIncome,
   lang,
 }: {
-  rows:       RC3AccountRow[]
+  rows:       ClientDisplayRow[]
   groupLabel: string
   isIncome:   boolean
   lang:       Lang
@@ -703,7 +705,7 @@ function TxGroupTable({
   )
 }
 
-function RefSection({ rows, lang }: { rows: RC3AccountRow[]; lang: Lang }) {
+function RefSection({ rows, lang }: { rows: ClientDisplayRow[]; lang: Lang }) {
   if (rows.length === 0) return null
   return (
     <View style={s.refSection}>
@@ -733,10 +735,10 @@ function AccountBlock({ section, lang }: { section: RC3AccountSection; lang: Lan
   const balColor = getBalColor(section)
   const balText  = getBalLabel(section, lang)
 
-  const referenceRows = section.rows.filter(r => r.display_group === 'reference')
-  const incomeRows    = section.rows.filter(r => r.display_group === 'income')
-  const expenseRows   = section.rows.filter(r => r.display_group === 'expense')
-  const payoutRows    = section.rows.filter(r => r.display_group === 'payment_out')
+  const referenceRows = section.rows.filter(r => r.display_group === 'reference').map(toClientRow)
+  const incomeRows    = section.rows.filter(r => r.display_group === 'income').map(toClientRow)
+  const expenseRows   = section.rows.filter(r => r.display_group === 'expense').map(toClientRow)
+  const payoutRows    = section.rows.filter(r => r.display_group === 'payment_out').map(toClientRow)
   // Section C (info rows): suppressed from client-facing PDF.
 
   type AccountKey = 'sale' | 'renovation' | 'rental' | 'airbnb'
