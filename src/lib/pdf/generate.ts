@@ -19,7 +19,6 @@ import type { OwnerPdfData } from './types'
 export async function generateOwnerSettlementPdf(data: OwnerPdfData): Promise<Blob> {
   // Cast to any: @react-pdf/renderer's pdf() expects ReactElement<DocumentProps>
   // but our wrapper component uses { data: OwnerPdfData } props — functionally correct.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const element = React.createElement(OwnerSettlementPdf, { data }) as any
   const blob = await pdf(element).toBlob()
   return blob

@@ -1,14 +1,14 @@
 /**
- * JJ Property 10 â RC3 Report Fetch Layer
- * Phase 3 â 2026-07-09
+ * JJ Property 10 — RC3 Report Fetch Layer
+ * Phase 3 — 2026-07-09
  *
  * Queries the four RC3 account views for a given reporting_name and date range.
  *
  * View chain:
  *   transactions
- *   â v_transactions_reporting     (canonical property names)
- *   â v_rc3_classified             (account_type + flags)
- *   â v_rc3_sale | v_rc3_renovation | v_rc3_rental | v_rc3_airbnb
+ *   → v_transactions_reporting (canonical property names)
+ *   → v_rc3_classified (account_type + flags)
+ *   → v_rc3_sale | v_rc3_renovation | v_rc3_rental | v_rc3_airbnb
  *
  * All views apply base filters automatically:
  *   (review_status = 'active' OR review_status IS NULL) AND reporting_name IS NOT NULL
@@ -18,27 +18,26 @@ import { supabase } from '@/lib/supabase'
 import { buildAccountSection } from './computeBalance'
 import type { RC3AccountType, RC3PropertyReport, RC3Row } from './types'
 
-// âââ View map âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─── View map ───────────────────────────────────────────────────────────────
 
 const RC3_VIEWS: Record<RC3AccountType, string> = {
-  sale:       'v_rc3_sale',
+  sale: 'v_rc3_sale',
   renovation: 'v_rc3_renovation',
-  rental:     'v_rc3_rental',
-  airbnb:     'v_rc3_airbnb',
+  rental: 'v_rc3_rental',
+  airbnb: 'v_rc3_airbnb',
 }
 
 /** Client-facing account order (confirmed 2026-07-08, Yossi) */
 const ACCOUNT_ORDER: RC3AccountType[] = ['sale', 'renovation', 'rental', 'airbnb']
 
-// âââ Query helper âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─── Query helper ───────────────────────────────────────────────────────────
 
 async function fetchViewRows(
-  view:          string,
+  view: string,
   reportingName: string,
-  fromDate?:     string,
-  toDate?:       string,
+  fromDate?: string,
+  toDate?: string,
 ): Promise<RC3Row[]> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let q = (supabase as any)
     .from(view)
     .select('*')
@@ -46,7 +45,7 @@ async function fetchViewRows(
     .order('date', { ascending: true })
 
   if (fromDate) q = q.gte('date', fromDate)
-  if (toDate)   q = q.lte('date', toDate)
+  if (toDate) q = q.lte('date', toDate)
 
   const { data, error } = await q
   if (error) {
@@ -56,14 +55,14 @@ async function fetchViewRows(
   return (data ?? []) as RC3Row[]
 }
 
-// âââ Public API âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─── Public API ─────────────────────────────────────────────────────────────
 
 export interface FetchReportParams {
-  reportingName:   string
-  fromDate?:       string   // ISO date e.g. "2024-01-01"
-  toDate?:         string   // ISO date e.g. "2026-12-31"
+  reportingName: string
+  fromDate?: string  // ISO date e.g. "2024-01-01"
+  toDate?: string    // ISO date e.g. "2026-12-31"
   /** Opening balances per account type.
-   *  Currently always 0 â will be populated from contact_opening_balances (Task 5). */
+   *  Currently always 0 — will be populated from contact_opening_balances (Task 5). */
   openingBalances?: Partial<Record<RC3AccountType, number>>
 }
 
@@ -95,14 +94,14 @@ export async function fetchRC3Report(params: FetchReportParams): Promise<RC3Prop
 
   return {
     reporting_name: reportingName,
-    from_date:      fromDate ?? null,
-    to_date:        toDate   ?? null,
-    generated_at:   new Date().toISOString(),
+    from_date: fromDate ?? null,
+    to_date: toDate ?? null,
+    generated_at: new Date().toISOString(),
     accounts,
-    has_sale:        accounts.some(a => a.account_type === 'sale'),
-    has_renovation:  accounts.some(a => a.account_type === 'renovation'),
-    has_rental:      accounts.some(a => a.account_type === 'rental'),
-    has_airbnb:      accounts.some(a => a.account_type === 'airbnb'),
+    has_sale: accounts.some(a => a.account_type === 'sale'),
+    has_renovation: accounts.some(a => a.account_type === 'renovation'),
+    has_rental: accounts.some(a => a.account_type === 'rental'),
+    has_airbnb: accounts.some(a => a.account_type === 'airbnb'),
   }
 }
 
@@ -115,7 +114,6 @@ export async function fetchRC3PropertyList(): Promise<string[]> {
 
   await Promise.all(
     Object.values(RC3_VIEWS).map(async (view) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data } = await (supabase as any)
         .from(view)
         .select('reporting_name')

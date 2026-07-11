@@ -170,7 +170,7 @@ function TxTable({ section, multiProperty }: { section: PdfSection; multiPropert
         <Text style={[s.th, s.cAmt]}>Amount</Text>
       </View>
       {section.rows.map((row, i) => {
-        const desc = (row.description ?? '').trim() || row.type || '—'
+        const desc = row.type || '—'
         return (
           <View key={i} style={[s.tableRow, i % 2 === 1 ? s.tableRowAlt : {}]} wrap={false}>
             <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date)}</Text>
