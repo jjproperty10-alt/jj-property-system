@@ -114,13 +114,13 @@ describe('toClientRow -- forbidden fields are structurally absent', () => {
 
   for (const field of FORBIDDEN_FIELDS) {
     it(`result does not contain key "${field}"`, () => {
-      const result = toClientRow(makeFullRow()) as Record<string, unknown>
+      const result = toClientRow(makeFullRow()) as unknown as Record<string, unknown>
       expect(Object.prototype.hasOwnProperty.call(result, field)).toBe(false)
     })
   }
 
   it('sentinel values never appear in result', () => {
-    const result = toClientRow(makeFullRow()) as Record<string, unknown>
+    const result = toClientRow(makeFullRow()) as unknown as Record<string, unknown>
     const values = Object.values(result)
     expect(values).not.toContain('__SENTINEL_DESCRIPTION__')
     expect(values).not.toContain('__SENTINEL_NOTES__')
