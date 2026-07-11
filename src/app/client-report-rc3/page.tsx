@@ -29,6 +29,7 @@ import {
   t, type Lang, type LabelKey,
   getExpenseGroupKey,
 } from '@/lib/report/labels'
+import { computeOperationalKPIs, computeNetOwnerBalance } from '@/lib/report/executiveSummary'
 
 /* ─── Dynamic PDF import (client-only) ──────────────────────────────────────── */
 
@@ -370,65 +371,59 @@ function computeDashboard(accounts: RC3AccountSection[]) {
   return { totalIncome, totalExpenses, totalTransfers, netOwnerBalance }
 }
 
-function OwnerDashboard({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
-  const { totalIncome, totalExpenses, totalTransfers, netOwnerBalance } = computeDashboard(report.accounts)
+/* ─── M2 Executive Summary ────────────────────────────────────────── */
 
-  let balLabel: string
-  let balColorClass: string
-  let statusBg: string
-  let statusBorder: string
-  if (Math.abs(netOwnerBalance) < 0.005) {
-    balLabel      = t('balSettled', lang)
-    balColorClass = 'text-gray-600'
-    statusBg      = 'bg-gray-50'
-    statusBorder  = 'border-gray-200'
-  } else if (netOwnerBalance > 0) {
-    balLabel      = t('balPayableToYou', lang)
-    balColorClass = 'text-green-700'
-    statusBg      = 'bg-green-50'
-    statusBorder  = 'border-green-200'
-  } else {
-    balLabel      = t('balPayableByYou', lang)
-    balColorClass = 'text-red-700'
-    statusBg      = 'bg-red-50'
-    statusBorder  = 'border-red-200'
+const M2_MODULE_COLORS: Record<string, string> = {
+  sale:       'bg-slate-800',
+  renovation: 'bg-emerald-700',
+  rental:     'bg-blue-700',
+  airbnb:     'bg-orange-600',
+}
+
+function M2ModuleCard({ section, lang }: { section: RC3AccountSection; lang: Lang }) {
+  const colorClass = M2_MODULE_COLORS[section.account_type] ?? 'bg-slate-700'
+  const { label: balLabel } = getBalanceLabel(section.closing_balance, section.balance_convention, lang)
+  const absBalance = Math.abs(section.closing_balance)
+  const metrics: { label: string; value: number }[] = (() => {
+    if (section.account_type === 'sale') return [
+      { label: t('cardSaleContract', lang), value: section.contract_baseline },
+      { label: t('cardSaleExpenses', lang), value: section.total_income },
+      { label: t('cardSalePayments', lang), value: section.total_expenses },
+    ]
+    if (section.account_type === 'renovation') return [
+      { label: t('cardRenovContract', lang), value: section.contract_baseline },
+      { label: t('cardRenovExtras', lang),   value: section.total_income },
+      { label: t('cardRenovPayments', lang), value: section.total_expenses },
+    ]
+    if (section.account_type === 'rental') return [
+      { label: t('cardRentalIncome', lang),   value: section.total_income },
+      { label: t('cardRentalExpenses', lang), value: section.total_expenses },
+      { label: t('cardRentalBpo', lang),      value: section.total_bpo },
+    ]
+    return [
+      { label: t('cardAirbnbIncome', lang),   value: section.total_income },
+      { label: t('cardAirbnbExpenses', lang), value: section.total_expenses },
+      { label: t('cardAirbnbBpo', lang),      value: section.total_bpo },
+    ]
+  })()
+  const accountLabelKeys: Partial<Record<string, LabelKey>> = {
+    sale: 'accountSale', renovation: 'accountRenovation', rental: 'accountRental', airbnb: 'accountAirbnb',
   }
-
+  const lk = accountLabelKeys[section.account_type]
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm mb-5 overflow-hidden">
-      {/* Header */}
-      <div className="px-6 pt-5 pb-4 border-b border-gray-100">
-        <div className="text-[11px] font-bold text-[#1e3a5f] uppercase tracking-widest">
-          {t('dashTitle', lang)}
+    <div className="flex-1 min-w-[180px] rounded-xl overflow-hidden border border-white/10">
+      <div className={`${colorClass} px-4 py-3`}>
+        <div className="text-[9px] font-bold text-white/70 uppercase tracking-wider mb-1">
+          {lk ? t(lk, lang) : section.account_label}
         </div>
-        <div className="text-xs text-gray-400 mt-0.5">{t('dashSubtitle', lang)}</div>
+        <div className="text-2xl font-bold text-white font-mono">{eur(absBalance)}</div>
+        <div className="text-[10px] text-white/75 mt-1">{balLabel}</div>
       </div>
-
-      {/* Status card — large balance, colored */}
-      <div className={`mx-5 mt-5 mb-4 rounded-xl border ${statusBorder} ${statusBg} px-6 py-5 flex items-center justify-between`}>
-        <div className="text-xs font-bold text-gray-500 uppercase tracking-widest">
-          {t('dashBalance', lang)}
-        </div>
-        <div className="text-right">
-          <div className={`text-4xl font-bold font-mono ${balColorClass} leading-none`}>
-            {eur(Math.abs(netOwnerBalance))}
-          </div>
-          <div className={`text-xs font-semibold mt-1.5 ${balColorClass}`}>{balLabel}</div>
-        </div>
-      </div>
-
-      {/* 3 KPI cells */}
-      <div className="grid grid-cols-3 gap-3 px-5 pb-5">
-        {[
-          { label: t('dashIncome',    lang), value: totalIncome    },
-          { label: t('dashExpenses',  lang), value: totalExpenses  },
-          { label: t('dashTransfers', lang), value: totalTransfers },
-        ].map(kpi => (
-          <div key={kpi.label} className="bg-gray-50 rounded-xl px-4 py-3">
-            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">
-              {kpi.label}
-            </div>
-            <div className="text-base font-bold font-mono text-gray-900">{eur(kpi.value)}</div>
+      <div className="bg-white/5 px-4 py-2 space-y-1.5">
+        {metrics.map(m => (
+          <div key={m.label} className="flex justify-between items-center">
+            <span className="text-[10px] text-blue-200/70">{m.label}</span>
+            <span className="text-[10px] font-mono text-white/85">{eur(m.value)}</span>
           </div>
         ))}
       </div>
@@ -436,65 +431,64 @@ function OwnerDashboard({ report, lang }: { report: RC3PropertyReport; lang: Lan
   )
 }
 
-/* ─── Executive summary ───────────────────────────────────────────────────────── */
-
-const ACCOUNT_LABEL_KEYS: Record<string, LabelKey> = {
-  sale: 'accountSale', renovation: 'accountRenovation',
-  rental: 'accountRental', airbnb: 'accountAirbnb',
-}
-
-function ExecutiveSummary({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
+function PremiumSummary({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
+  const netOwnerBalance = computeNetOwnerBalance(report.accounts)
+  const { income: opIncome, expenses: opExpenses, transfers: opTransfers, hasOperational } =
+    computeOperationalKPIs(report.accounts)
+  const absNet = Math.abs(netOwnerBalance)
+  let heroLabel: string, heroBg: string, heroAmountClass: string
+  if (absNet < 0.005) {
+    heroLabel = t('balSettled', lang); heroBg = 'bg-slate-600'; heroAmountClass = 'text-white'
+  } else if (netOwnerBalance > 0) {
+    heroLabel = t('balPayableToYou', lang); heroBg = 'bg-green-800'; heroAmountClass = 'text-green-300'
+  } else {
+    heroLabel = t('balPayableByYou', lang); heroBg = 'bg-red-900'; heroAmountClass = 'text-red-300'
+  }
   const period = report.from_date || report.to_date
     ? `${report.from_date ? fmtDate(report.from_date) : '—'} – ${report.to_date ? fmtDate(report.to_date) : '—'}`
     : t('execAllDates', lang)
-
   return (
-    <div className="bg-[#1e3a5f] rounded-2xl p-6 mb-5 text-white shadow-lg">
-      {/* Header row */}
-      <div className="flex items-start justify-between mb-5">
+    <div className="bg-gradient-to-br from-[#1a3354] to-[#0d1f36] rounded-2xl p-6 mb-6 text-white shadow-2xl" dir="ltr">
+      <div className="flex items-start justify-between mb-6">
         <div>
-          <div className="text-xs font-bold uppercase tracking-widest text-blue-300 mb-1">
-            {t('execTitle', lang)}
-          </div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-400 mb-1">{t('execTitle', lang)}</div>
           <div className="text-2xl font-bold">{report.reporting_name}</div>
-          <div className="text-blue-200 text-sm mt-1">{period}</div>
+          <div className="text-blue-300 text-sm mt-1">{period}</div>
         </div>
+        <div className="text-[10px] text-blue-400 uppercase tracking-widest">{t('confidential', lang)}</div>
+      </div>
+      <div className={`${heroBg} rounded-xl px-6 py-5 mb-6 flex items-center justify-between`}>
+        <div className="text-[10px] font-bold text-white/50 uppercase tracking-widest">{t('dashBalance', lang)}</div>
         <div className="text-right">
-          <div className="text-xs text-blue-400">{t('confidential', lang)}</div>
-          <div className="text-xs text-blue-400 mt-1">
-            {report.accounts.length} {t('accounts', lang)}
-          </div>
+          <div className={`text-4xl font-bold font-mono ${heroAmountClass}`}>{eur(absNet)}</div>
+          <div className={`text-xs font-semibold mt-1 ${heroAmountClass}`}>{heroLabel}</div>
         </div>
       </div>
-
-      {/* Module balance cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {report.accounts.map(acc => {
-          const b = acc.closing_balance
-          const { label: balLabel, colorClass } = getBalanceLabel(b, acc.balance_convention, lang)
-          // Map colorClass (Tailwind dark-bg text) to light variant for the dark card
-          const lightColor = colorClass.includes('green') ? 'text-green-300' :
-                             colorClass.includes('red')   ? 'text-red-300'   : 'text-gray-300'
-          const labelKey = ACCOUNT_LABEL_KEYS[acc.account_type]
-          return (
-            <div key={acc.account_type} className="bg-white/10 rounded-xl p-4 backdrop-blur-sm">
-              <div className="text-xs text-blue-200 mb-2 font-medium">
-                {labelKey ? t(labelKey, lang) : acc.account_label}
+      {hasOperational && (
+        <div className="mb-6">
+          <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-blue-400 mb-3">{t('opSummaryTitle', lang)}</div>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: t('opIncomeLabel', lang),  value: opIncome   },
+              { label: t('opExpensesLabel', lang), value: opExpenses },
+              { label: t('dashTransfers', lang),  value: opTransfers },
+            ].map(kpi => (
+              <div key={kpi.label} className="bg-white/5 border border-white/10 rounded-lg px-4 py-3">
+                <div className="text-[9px] font-bold text-blue-300/80 uppercase tracking-wide mb-2">{kpi.label}</div>
+                <div className="text-base font-bold font-mono text-white/90">{eur(kpi.value)}</div>
               </div>
-              <div className={`text-xl font-bold font-mono ${lightColor}`}>
-                {eur(Math.abs(b))}
-              </div>
-              <div className={`text-[10px] mt-1 ${lightColor} leading-tight`}>
-                {balLabel}
-              </div>
-            </div>
-          )
-        })}
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="flex flex-wrap gap-3">
+        {report.accounts.map(acc => (
+          <M2ModuleCard key={acc.account_type} section={acc} lang={lang} />
+        ))}
       </div>
     </div>
   )
 }
-
 /* ─── Final Summary ───────────────────────────────────────────────────────────── */
 
 function FinalSummary({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
@@ -1066,11 +1060,8 @@ function ClientReportRC3Content() {
         {/* ── Report ───────────────────────────────────────────────────────── */}
         {report && !loading && (
           <>
-            {/* Owner Dashboard — aggregate KPIs (top of report) */}
-            <OwnerDashboard report={filteredReport!} lang={lang} />
-
-            {/* Executive Summary — per-module breakdown */}
-            <ExecutiveSummary report={filteredReport!} lang={lang} />
+            {/* M2: Premium Executive Summary */}
+            <PremiumSummary report={filteredReport!} lang={lang} />
 
             {/* Account cards */}
             {visibleAccounts.length === 0 ? (
