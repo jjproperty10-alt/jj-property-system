@@ -9,7 +9,7 @@
  *  - All client-visible strings must come from this file
  */
 
-import type { RC3AccountRow } from './types'
+import type { ClientDisplayRow } from './clientRow'
 
 /* ──────────────────────────────────────────────────────────────────────────────
  * PHASE A — Display label overrides (kept for backward compatibility)
@@ -371,7 +371,7 @@ const SUBCATEGORY_LABEL_KEYS: Partial<Record<string, LabelKey>> = {
  * Presentation-only. Do not change behavior in response to accounting questions.
  * ──────────────────────────────────────────────────────────────────────────── */
 
-export function buildRowLabel(row: RC3AccountRow, lang: Lang): string {
+export function buildRowLabel(row: ClientDisplayRow, lang: Lang): string {
   const dl   = row.display_label ?? ''
   const grp  = row.display_group
   const acct = row.account_type
