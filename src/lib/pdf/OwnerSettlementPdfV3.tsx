@@ -561,7 +561,7 @@ function PremiumSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: 
       <View style={{ backgroundColor: heroBg, borderRadius: 6, padding: 14, marginBottom: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ fontSize: 7, color: 'rgba(255,255,255,0.5)' }}>{t('dashBalance', lang).toUpperCase()}</Text>
         <View style={{ alignItems: 'flex-end' }}>
-          <Text style={{ fontSize: 22, color: heroColor, fontWeight: 'bold' }}>{eur(absNet)}</Text>
+          <Text style={{ fontSize: 22, color: heroColor, fontWeight: 'bold' }}>{fmt(absNet)}</Text>
           <Text style={{ fontSize: 8, color: heroColor, marginTop: 2 }}>{heroLabel}</Text>
         </View>
       </View>
@@ -577,7 +577,7 @@ function PremiumSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: 
             ] as { label: string; value: number }[]).map((kpi, i) => (
               <View key={kpi.label} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 4, padding: 8, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.1)', marginLeft: i > 0 ? 6 : 0 }}>
                 <Text style={{ fontSize: 7, color: '#93c5fd', marginBottom: 4 }}>{kpi.label}</Text>
-                <Text style={{ fontSize: 10, color: '#ffffff', fontWeight: 'bold' }}>{eur(kpi.value)}</Text>
+                <Text style={{ fontSize: 10, color: '#ffffff', fontWeight: 'bold' }}>{fmt(kpi.value)}</Text>
               </View>
             ))}
           </View>
@@ -587,7 +587,7 @@ function PremiumSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
         {report.accounts.map((acc, i) => {
           const accColor = M2_PDF_COLORS[acc.account_type] ?? '#334155'
-          const { label: balLabel } = getBalanceLabel(acc.closing_balance, acc.balance_convention, lang)
+          const { label: balLabel } = getBalLabel(acc.closing_balance, acc.balance_convention, lang)
           const absBalance = Math.abs(acc.closing_balance)
           const lkKey = accLabelKeys[acc.account_type]
           const metrics: { label: string; value: number }[] = (() => {
@@ -618,14 +618,14 @@ function PremiumSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: 
                 <Text style={{ fontSize: 7, color: 'rgba(255,255,255,0.7)', marginBottom: 3 }}>
                   {lkKey ? t(lkKey, lang) : acc.account_label}
                 </Text>
-                <Text style={{ fontSize: 14, color: '#ffffff', fontWeight: 'bold' }}>{eur(absBalance)}</Text>
+                <Text style={{ fontSize: 14, color: '#ffffff', fontWeight: 'bold' }}>{fmt(absBalance)}</Text>
                 <Text style={{ fontSize: 7, color: 'rgba(255,255,255,0.75)', marginTop: 2 }}>{balLabel}</Text>
               </View>
               <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', padding: 8 }}>
                 {metrics.map(m => (
                   <View key={m.label} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 }}>
                     <Text style={{ fontSize: 7, color: '#93c5fd' }}>{m.label}</Text>
-                    <Text style={{ fontSize: 7, color: 'rgba(255,255,255,0.85)' }}>{eur(m.value)}</Text>
+                    <Text style={{ fontSize: 7, color: 'rgba(255,255,255,0.85)' }}>{fmt(m.value)}</Text>
                   </View>
                 ))}
               </View>
