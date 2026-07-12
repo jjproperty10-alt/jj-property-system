@@ -779,7 +779,7 @@ function GroupedExpensesPdf({
   sectionLabel,
   lang,
 }: {
-  rows:         RC3AccountRow[]
+  rows:         ClientDisplayRow[]
   sectionLabel: string
   lang:         Lang
 }) {

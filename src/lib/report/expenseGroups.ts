@@ -4,13 +4,13 @@
  * Presentation-only -- does NOT affect accounting totals.
  */
 
-import type { RC3AccountRow } from './types'
+import type { ClientDisplayRow } from './clientDisplay'
 import { getExpenseGroupKey } from './labels'
 import type { LabelKey } from './labels'
 
 export interface ExpenseGroup {
   key:   LabelKey
-  rows:  RC3AccountRow[]
+  rows:  ClientDisplayRow[]
   total: number
 }
 
@@ -34,8 +34,8 @@ export const EXPENSE_GROUP_ORDER: LabelKey[] = [
  * Returns groups in EXPENSE_GROUP_ORDER, then any extra keys appended.
  * Each group's rows are sorted by date ascending.
  */
-export function groupExpenses(rows: RC3AccountRow[]): ExpenseGroup[] {
-  const map = new Map<LabelKey, RC3AccountRow[]>()
+export function groupExpenses(rows: ClientDisplayRow[]): ExpenseGroup[] {
+  const map = new Map<LabelKey, ClientDisplayRow[]>()
   for (const row of rows) {
     const key = getExpenseGroupKey(row.subcategory)
     const existing = map.get(key)
@@ -48,7 +48,7 @@ export function groupExpenses(rows: RC3AccountRow[]): ExpenseGroup[] {
 
   if (map.size === 0) return []
 
-  const sortByDate = (a: RC3AccountRow, b: RC3AccountRow) =>
+  const sortByDate = (a: ClientDisplayRow, b: ClientDisplayRow) =>
     a.date < b.date ? -1 : a.date > b.date ? 1 : 0
 
   const orderedSet = new Set<LabelKey>(EXPENSE_GROUP_ORDER)
