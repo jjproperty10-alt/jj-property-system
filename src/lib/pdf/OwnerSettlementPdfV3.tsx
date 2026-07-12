@@ -34,6 +34,7 @@ import {
   t, type Lang, type LabelKey,
 } from '../report/labels'
 import { groupExpenses } from '../report/expenseGroups'
+import type { GroupableRow } from '../report/expenseGroups'
 import { computeOperationalKPIs, computeNetOwnerBalance } from '../report/executiveSummary'
 
 /* ─── Font ──────────────────────────────────────────────────────────────────── */
@@ -779,7 +780,7 @@ function GroupedExpensesPdf({
   sectionLabel,
   lang,
 }: {
-  rows:         ClientDisplayRow[]
+  rows:         GroupableRow[]
   sectionLabel: string
   lang:         Lang
 }) {

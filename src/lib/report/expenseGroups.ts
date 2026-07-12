@@ -4,13 +4,27 @@
  * Presentation-only -- does NOT affect accounting totals.
  */
 
-import type { ClientDisplayRow } from './clientDisplay'
 import { getExpenseGroupKey } from './labels'
 import type { LabelKey } from './labels'
 
+/**
+ * Minimal row interface for grouping.
+ * Structurally compatible with ClientDisplayRow -- TypeScript structural typing
+ * means any object with these fields is accepted.
+ */
+export interface GroupableRow {
+  id:            string
+  date:          string
+  subcategory:   string | null
+  client_amount: number
+  display_group: string
+  display_label: string
+  account_type:  string
+}
+
 export interface ExpenseGroup {
   key:   LabelKey
-  rows:  ClientDisplayRow[]
+  rows:  GroupableRow[]
   total: number
 }
 
@@ -34,8 +48,8 @@ export const EXPENSE_GROUP_ORDER: LabelKey[] = [
  * Returns groups in EXPENSE_GROUP_ORDER, then any extra keys appended.
  * Each group's rows are sorted by date ascending.
  */
-export function groupExpenses(rows: ClientDisplayRow[]): ExpenseGroup[] {
-  const map = new Map<LabelKey, ClientDisplayRow[]>()
+export function groupExpenses(rows: GroupableRow[]): ExpenseGroup[] {
+  const map = new Map<LabelKey, GroupableRow[]>()
   for (const row of rows) {
     const key = getExpenseGroupKey(row.subcategory)
     const existing = map.get(key)
@@ -48,7 +62,7 @@ export function groupExpenses(rows: ClientDisplayRow[]): ExpenseGroup[] {
 
   if (map.size === 0) return []
 
-  const sortByDate = (a: ClientDisplayRow, b: ClientDisplayRow) =>
+  const sortByDate = (a: GroupableRow, b: GroupableRow) =>
     a.date < b.date ? -1 : a.date > b.date ? 1 : 0
 
   const orderedSet = new Set<LabelKey>(EXPENSE_GROUP_ORDER)

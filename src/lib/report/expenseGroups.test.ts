@@ -1,12 +1,12 @@
 import { groupExpenses, EXPENSE_GROUP_ORDER } from './expenseGroups'
-import type { ClientDisplayRow } from './clientDisplay'
+import type { GroupableRow } from './expenseGroups'
 
 function makeRow(overrides: {
   id?: string
   date?: string
   subcategory?: string | null
   client_amount?: number
-}): ClientDisplayRow {
+}): GroupableRow {
   return {
     id:            overrides.id            ?? 'id-1',
     date:          overrides.date          ?? '2025-01-01',
@@ -15,7 +15,7 @@ function makeRow(overrides: {
     display_group: 'expense',
     display_label: '',
     account_type:  'rental',
-  } as ClientDisplayRow
+  }
 }
 
 describe('groupExpenses', () => {

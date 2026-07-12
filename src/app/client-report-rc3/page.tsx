@@ -178,13 +178,9 @@ function TxRow({ row, idx, lang }: { row: ClientDisplayRow; idx: number; lang: L
 function ExpenseGroupBlock({ rows, lang }: { rows: ClientDisplayRow[]; lang: Lang }) {
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set())
 
-  // Group rows by expense category
-  const groups = new Map<LabelKey, ClientDisplayRow[]>()
-  for (const row of rows) {
-    const key = getExpenseGroupKey(row.subcategory)
-    if (!groups.has(key)) groups.set(key, [])
-    groups.get(key)!.push(row)
-  }
+  // groupExpenses() handles canonical ordering + totals
+  const groups = groupExpenses(rows)
+
 
   const toggleGroup = (key: LabelKey) => {
     setOpenGroups(prev => {
