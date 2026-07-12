@@ -20,16 +20,12 @@
 import React, { useCallback, useEffect, useState, Suspense } from 'react'
 import nextDynamic from 'next/dynamic'
 import { fetchRC3Report, fetchRC3PropertyList } from '@/lib/report/fetchReport'
-import type { RC3PropertyReport, RC3AccountSection } from '@/lib/report/types'
-import { toClientRow } from '@/lib/report/clientRow'
-import type { ClientDisplayRow } from '@/lib/report/clientRow'
-import { filterSectionsByReportType, type ReportType } from '@/lib/report/reportTypes'
+import type { RC3PropertyReport, RC3AccountSection, RC3AccountRow } from '@/lib/report/types'
 import {
   buildRowLabel,
   t, type Lang, type LabelKey,
+  getExpenseGroupKey,
 } from '@/lib/report/labels'
-import { groupExpenses } from '@/lib/report/expenseGroups'
-import { computeOperationalKPIs, computeNetOwnerBalance } from '@/lib/report/executiveSummary'
 
 /* ─── Dynamic PDF import (client-only) ──────────────────────────────────────── */
 
@@ -143,7 +139,7 @@ const DEFAULT_COLOURS = {
 
 /* ─── Transaction row ─────────────────────────────────────────────────────────── */
 
-function TxRow({ row, idx, lang }: { row: ClientDisplayRow; idx: number; lang: Lang }) {
+function TxRow({ row, idx, lang }: { row: RC3AccountRow; idx: number; lang: Lang }) {
   const isInfo   = row.display_group === 'info' || row.display_group === 'reference'
   const isIncome = row.display_group === 'income'
 
@@ -159,14 +155,15 @@ function TxRow({ row, idx, lang }: { row: ClientDisplayRow; idx: number; lang: L
   return (
     <tr className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
       <td className="px-4 py-2 text-xs text-gray-500 whitespace-nowrap w-28">
-        {fmtDate(row.date)}
+        {/* dir="ltr" prevents bidirectional algorithm from scrambling date strings in RTL mode */}
+        <span dir="ltr">{fmtDate(row.date)}</span>
       </td>
       <td className="px-4 py-2">
         <div className={`text-xs ${isInfo ? 'text-gray-400 italic' : 'text-gray-800'}`}>
           {primaryText}
         </div>
       </td>
-      <td className={`px-4 py-2 text-xs text-right font-mono ${amtClass}`}>
+      <td className={`px-4 py-2 text-xs text-end font-mono ${amtClass}`}>
         {eur(row.client_amount)}
       </td>
     </tr>
@@ -175,12 +172,16 @@ function TxRow({ row, idx, lang }: { row: ClientDisplayRow; idx: number; lang: L
 
 /* ─── Expense group block (Rental + Airbnb) ──────────────────────────────────── */
 
-function ExpenseGroupBlock({ rows, lang }: { rows: ClientDisplayRow[]; lang: Lang }) {
+function ExpenseGroupBlock({ rows, lang }: { rows: RC3AccountRow[]; lang: Lang }) {
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set())
 
-  // groupExpenses() handles canonical ordering + totals
-  const groups = groupExpenses(rows)
-
+  // Group rows by expense category
+  const groups = new Map<LabelKey, RC3AccountRow[]>()
+  for (const row of rows) {
+    const key = getExpenseGroupKey(row.subcategory)
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(row)
+  }
 
   const toggleGroup = (key: LabelKey) => {
     setOpenGroups(prev => {
@@ -191,11 +192,12 @@ function ExpenseGroupBlock({ rows, lang }: { rows: ClientDisplayRow[]; lang: Lan
     })
   }
 
-  if (groups.length === 0) return null
+  if (groups.size === 0) return null
 
   return (
     <div className="divide-y divide-gray-100">
-      {groups.map(({ key: groupKey, rows: groupRows, total: groupTotal }) => {
+      {Array.from(groups.entries()).map(([groupKey, groupRows]) => {
+        const groupTotal = groupRows.reduce((sum, r) => sum + r.client_amount, 0)
         const isOpen = openGroups.has(groupKey)
         return (
           <div key={groupKey}>
@@ -203,12 +205,7 @@ function ExpenseGroupBlock({ rows, lang }: { rows: ClientDisplayRow[]; lang: Lan
               className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors text-sm"
               onClick={() => toggleGroup(groupKey)}
             >
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-gray-700">{t(groupKey, lang)}</span>
-                <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
-                  {groupRows.length}
-                </span>
-              </div>
+              <span className="font-medium text-gray-700">{t(groupKey, lang)}</span>
               <div className="flex items-center gap-3">
                 <span className="font-mono text-gray-800 text-sm font-semibold">{eur(groupTotal)}</span>
                 <span className="text-gray-400 text-xs w-3">{isOpen ? '▲' : '▼'}</span>
@@ -371,59 +368,66 @@ function computeDashboard(accounts: RC3AccountSection[]) {
   return { totalIncome, totalExpenses, totalTransfers, netOwnerBalance }
 }
 
-/* ─── M2 Executive Summary ────────────────────────────────────────── */
+function OwnerDashboard({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
+  const { totalIncome, totalExpenses, totalTransfers, netOwnerBalance } = computeDashboard(report.accounts)
 
-const M2_MODULE_COLORS: Record<string, string> = {
-  sale:       'bg-slate-800',
-  renovation: 'bg-emerald-700',
-  rental:     'bg-blue-700',
-  airbnb:     'bg-orange-600',
-}
-
-function M2ModuleCard({ section, lang }: { section: RC3AccountSection; lang: Lang }) {
-  const colorClass = M2_MODULE_COLORS[section.account_type] ?? 'bg-slate-700'
-  const { label: balLabel } = getBalanceLabel(section.closing_balance, section.balance_convention, lang)
-  const absBalance = Math.abs(section.closing_balance)
-  const metrics: { label: string; value: number }[] = (() => {
-    if (section.account_type === 'sale') return [
-      { label: t('cardSaleContract', lang), value: section.contract_baseline },
-      { label: t('cardSaleExpenses', lang), value: section.total_income },
-      { label: t('cardSalePayments', lang), value: section.total_expenses },
-    ]
-    if (section.account_type === 'renovation') return [
-      { label: t('cardRenovContract', lang), value: section.contract_baseline },
-      { label: t('cardRenovExtras', lang),   value: section.total_income },
-      { label: t('cardRenovPayments', lang), value: section.total_expenses },
-    ]
-    if (section.account_type === 'rental') return [
-      { label: t('cardRentalIncome', lang),   value: section.total_income },
-      { label: t('cardRentalExpenses', lang), value: section.total_expenses },
-      { label: t('cardRentalBpo', lang),      value: section.total_bpo },
-    ]
-    return [
-      { label: t('cardAirbnbIncome', lang),   value: section.total_income },
-      { label: t('cardAirbnbExpenses', lang), value: section.total_expenses },
-      { label: t('cardAirbnbBpo', lang),      value: section.total_bpo },
-    ]
-  })()
-  const accountLabelKeys: Partial<Record<string, LabelKey>> = {
-    sale: 'accountSale', renovation: 'accountRenovation', rental: 'accountRental', airbnb: 'accountAirbnb',
+  let balLabel: string
+  let balColorClass: string
+  let statusBg: string
+  let statusBorder: string
+  if (Math.abs(netOwnerBalance) < 0.005) {
+    balLabel      = t('balSettled', lang)
+    balColorClass = 'text-gray-600'
+    statusBg      = 'bg-gray-50'
+    statusBorder  = 'border-gray-200'
+  } else if (netOwnerBalance > 0) {
+    balLabel      = t('balPayableToYou', lang)
+    balColorClass = 'text-green-700'
+    statusBg      = 'bg-green-50'
+    statusBorder  = 'border-green-200'
+  } else {
+    balLabel      = t('balPayableByYou', lang)
+    balColorClass = 'text-red-700'
+    statusBg      = 'bg-red-50'
+    statusBorder  = 'border-red-200'
   }
-  const lk = accountLabelKeys[section.account_type]
+
   return (
-    <div className="flex-1 min-w-[180px] rounded-xl overflow-hidden border border-white/10">
-      <div className={`${colorClass} px-4 py-3`}>
-        <div className="text-[9px] font-bold text-white/70 uppercase tracking-wider mb-1">
-          {lk ? t(lk, lang) : section.account_label}
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm mb-5 overflow-hidden">
+      {/* Header */}
+      <div className="px-6 pt-5 pb-4 border-b border-gray-100">
+        <div className="text-[11px] font-bold text-[#1e3a5f] uppercase tracking-widest">
+          {t('dashTitle', lang)}
         </div>
-        <div className="text-2xl font-bold text-white font-mono">{eur(absBalance)}</div>
-        <div className="text-[10px] text-white/75 mt-1">{balLabel}</div>
+        <div className="text-xs text-gray-400 mt-0.5">{t('dashSubtitle', lang)}</div>
       </div>
-      <div className="bg-white/5 px-4 py-2 space-y-1.5">
-        {metrics.map(m => (
-          <div key={m.label} className="flex justify-between items-center">
-            <span className="text-[10px] text-blue-200/70">{m.label}</span>
-            <span className="text-[10px] font-mono text-white/85">{eur(m.value)}</span>
+
+      {/* Status card — large balance, colored */}
+      <div className={`mx-5 mt-5 mb-4 rounded-xl border ${statusBorder} ${statusBg} px-6 py-5 flex items-center justify-between`}>
+        <div className="text-xs font-bold text-gray-500 uppercase tracking-widest">
+          {t('dashBalance', lang)}
+        </div>
+        {/* text-end: in LTR=right, in RTL=left — keeps amount at the outer edge in both directions */}
+        <div className="text-end">
+          <div className={`text-4xl font-bold font-mono ${balColorClass} leading-none`}>
+            {eur(Math.abs(netOwnerBalance))}
+          </div>
+          <div className={`text-xs font-semibold mt-1.5 ${balColorClass}`}>{balLabel}</div>
+        </div>
+      </div>
+
+      {/* 3 KPI cells */}
+      <div className="grid grid-cols-3 gap-3 px-5 pb-5">
+        {[
+          { label: t('dashIncome',    lang), value: totalIncome    },
+          { label: t('dashExpenses',  lang), value: totalExpenses  },
+          { label: t('dashTransfers', lang), value: totalTransfers },
+        ].map(kpi => (
+          <div key={kpi.label} className="bg-gray-50 rounded-xl px-4 py-3">
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">
+              {kpi.label}
+            </div>
+            <div className="text-base font-bold font-mono text-gray-900">{eur(kpi.value)}</div>
           </div>
         ))}
       </div>
@@ -431,64 +435,66 @@ function M2ModuleCard({ section, lang }: { section: RC3AccountSection; lang: Lan
   )
 }
 
-function PremiumSummary({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
-  const netOwnerBalance = computeNetOwnerBalance(report.accounts)
-  const { income: opIncome, expenses: opExpenses, transfers: opTransfers, hasOperational } =
-    computeOperationalKPIs(report.accounts)
-  const absNet = Math.abs(netOwnerBalance)
-  let heroLabel: string, heroBg: string, heroAmountClass: string
-  if (absNet < 0.005) {
-    heroLabel = t('balSettled', lang); heroBg = 'bg-slate-600'; heroAmountClass = 'text-white'
-  } else if (netOwnerBalance > 0) {
-    heroLabel = t('balPayableToYou', lang); heroBg = 'bg-green-800'; heroAmountClass = 'text-green-300'
-  } else {
-    heroLabel = t('balPayableByYou', lang); heroBg = 'bg-red-900'; heroAmountClass = 'text-red-300'
-  }
+/* ─── Executive summary ───────────────────────────────────────────────────────── */
+
+const ACCOUNT_LABEL_KEYS: Record<string, LabelKey> = {
+  sale: 'accountSale', renovation: 'accountRenovation',
+  rental: 'accountRental', airbnb: 'accountAirbnb',
+}
+
+function ExecutiveSummary({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
   const period = report.from_date || report.to_date
     ? `${report.from_date ? fmtDate(report.from_date) : '—'} – ${report.to_date ? fmtDate(report.to_date) : '—'}`
     : t('execAllDates', lang)
+
   return (
-    <div className="bg-gradient-to-br from-[#1a3354] to-[#0d1f36] rounded-2xl p-6 mb-6 text-white shadow-2xl" dir="ltr">
-      <div className="flex items-start justify-between mb-6">
+    <div className="bg-[#1e3a5f] rounded-2xl p-6 mb-5 text-white shadow-lg">
+      {/* Header row */}
+      <div className="flex items-start justify-between mb-5">
         <div>
-          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-400 mb-1">{t('execTitle', lang)}</div>
+          <div className="text-xs font-bold uppercase tracking-widest text-blue-300 mb-1">
+            {t('execTitle', lang)}
+          </div>
           <div className="text-2xl font-bold">{report.reporting_name}</div>
-          <div className="text-blue-300 text-sm mt-1">{period}</div>
+          <div className="text-blue-200 text-sm mt-1">{period}</div>
         </div>
-        <div className="text-[10px] text-blue-400 uppercase tracking-widest">{t('confidential', lang)}</div>
-      </div>
-      <div className={`${heroBg} rounded-xl px-6 py-5 mb-6 flex items-center justify-between`}>
-        <div className="text-[10px] font-bold text-white/50 uppercase tracking-widest">{t('dashBalance', lang)}</div>
-        <div className="text-right">
-          <div className={`text-4xl font-bold font-mono ${heroAmountClass}`}>{eur(absNet)}</div>
-          <div className={`text-xs font-semibold mt-1 ${heroAmountClass}`}>{heroLabel}</div>
-        </div>
-      </div>
-      {hasOperational && (
-        <div className="mb-6">
-          <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-blue-400 mb-3">{t('opSummaryTitle', lang)}</div>
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { label: t('opIncomeLabel', lang),  value: opIncome   },
-              { label: t('opExpensesLabel', lang), value: opExpenses },
-              { label: t('dashTransfers', lang),  value: opTransfers },
-            ].map(kpi => (
-              <div key={kpi.label} className="bg-white/5 border border-white/10 rounded-lg px-4 py-3">
-                <div className="text-[9px] font-bold text-blue-300/80 uppercase tracking-wide mb-2">{kpi.label}</div>
-                <div className="text-base font-bold font-mono text-white/90">{eur(kpi.value)}</div>
-              </div>
-            ))}
+        {/* text-end: keeps confidential label at outer edge in both LTR and RTL */}
+        <div className="text-end">
+          <div className="text-xs text-blue-400">{t('confidential', lang)}</div>
+          <div className="text-xs text-blue-400 mt-1">
+            {report.accounts.length} {t('accounts', lang)}
           </div>
         </div>
-      )}
-      <div className="flex flex-wrap gap-3">
-        {report.accounts.map(acc => (
-          <M2ModuleCard key={acc.account_type} section={acc} lang={lang} />
-        ))}
+      </div>
+
+      {/* Module balance cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {report.accounts.map(acc => {
+          const b = acc.closing_balance
+          const { label: balLabel, colorClass } = getBalanceLabel(b, acc.balance_convention, lang)
+          // Map colorClass (Tailwind dark-bg text) to light variant for the dark card
+          const lightColor = colorClass.includes('green') ? 'text-green-300' :
+                             colorClass.includes('red')   ? 'text-red-300'   : 'text-gray-300'
+          const labelKey = ACCOUNT_LABEL_KEYS[acc.account_type]
+          return (
+            <div key={acc.account_type} className="bg-white/10 rounded-xl p-4 backdrop-blur-sm">
+              <div className="text-xs text-blue-200 mb-2 font-medium">
+                {labelKey ? t(labelKey, lang) : acc.account_label}
+              </div>
+              <div className={`text-xl font-bold font-mono ${lightColor}`}>
+                {eur(Math.abs(b))}
+              </div>
+              <div className={`text-[10px] mt-1 ${lightColor} leading-tight`}>
+                {balLabel}
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
 }
+
 /* ─── Final Summary ───────────────────────────────────────────────────────────── */
 
 function FinalSummary({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
@@ -538,7 +544,8 @@ function FinalSummary({ report, lang }: { report: RC3PropertyReport; lang: Lang 
       {/* Net balance highlight */}
       <div className="bg-white/10 rounded-xl px-5 py-4 mb-5 flex items-center justify-between">
         <div className="text-sm font-bold text-blue-200">{t('finalCurrentBalance', lang)}</div>
-        <div className="text-right">
+        {/* text-end: keeps amount at outer edge in both LTR and RTL */}
+        <div className="text-end">
           <div className={`text-2xl font-bold font-mono ${balColor}`}>
             {eur(Math.abs(netOwnerBalance))}
           </div>
@@ -564,41 +571,6 @@ function FinalSummary({ report, lang }: { report: RC3PropertyReport; lang: Lang 
 
 /* ─── Account section card ────────────────────────────────────────────────────── */
 
-/* ── Report Type Selector ───────────────────────────────────────────────── */
-
-function ReportTypeSelector({
-  reportType,
-  setReportType,
-  lang,
-}: {
-  reportType: ReportType
-  setReportType: (rt: ReportType) => void
-  lang: Lang
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">
-        {t('reportTypeLabel', lang)}
-      </label>
-      <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
-        {(['full', 'periodic'] as ReportType[]).map(rt => (
-          <button
-            key={rt}
-            onClick={() => setReportType(rt)}
-            className={`flex-1 px-3 py-2 rounded-md text-xs font-semibold transition-colors ${
-              reportType === rt
-                ? 'bg-[#1e3a5f] text-white shadow-sm'
-                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
-            }`}
-          >
-            {rt === 'full' ? t('reportTypeFull', lang) : t('reportTypePeriodic', lang)}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 function AccountCard({ section, lang }: { section: RC3AccountSection; lang: Lang }) {
   const [expanded, setExpanded] = useState(true)
   const [showInfo, setShowInfo] = useState(false)
@@ -612,13 +584,13 @@ function AccountCard({ section, lang }: { section: RC3AccountSection; lang: Lang
   )
 
   // Section A: reference rows
-  const referenceRows = section.rows.filter(r => r.display_group === 'reference').map(toClientRow)
+  const referenceRows = section.rows.filter(r => r.display_group === 'reference')
   // Section B: balance-affecting rows
-  const incomeRows    = section.rows.filter(r => r.display_group === 'income').map(toClientRow)
-  const expenseRows   = section.rows.filter(r => r.display_group === 'expense').map(toClientRow)
-  const payoutRows    = section.rows.filter(r => r.display_group === 'payment_out').map(toClientRow)
+  const incomeRows    = section.rows.filter(r => r.display_group === 'income')
+  const expenseRows   = section.rows.filter(r => r.display_group === 'expense')
+  const payoutRows    = section.rows.filter(r => r.display_group === 'payment_out')
   // Section C: informational only
-  const infoRows      = section.rows.filter(r => r.display_group === 'info').map(toClientRow)
+  const infoRows      = section.rows.filter(r => r.display_group === 'info')
 
   const allBalanceRows = [...incomeRows, ...expenseRows, ...payoutRows]
 
@@ -635,7 +607,7 @@ function AccountCard({ section, lang }: { section: RC3AccountSection; lang: Lang
   const useExpenseGrouping = section.account_type === 'rental' || section.account_type === 'airbnb'
 
   return (
-    <div className={`rounded-2xl border ${colours.border} ${colours.bg} mb-5 overflow-hidden shadow-sm`}>
+    <div className={`rounded-2xl border ${colours.border} ${colours.bg} mb-5 overflow-hidden shadow-sm print-card`}>
 
       {/* ── Account header ─────────────────────────────────────────────────── */}
       <div
@@ -643,18 +615,19 @@ function AccountCard({ section, lang }: { section: RC3AccountSection; lang: Lang
         onClick={() => setExpanded(!expanded)}
       >
         <div className="flex items-center gap-3">
+          {/* Badge label: translated so Hebrew mode shows Hebrew directly in the badge */}
           <span className={`px-3 py-1 rounded-lg text-xs font-bold ${colours.badge}`}>
-            {section.account_label}
+            {ACCOUNT_LABEL_KEYS[section.account_type]
+              ? t(ACCOUNT_LABEL_KEYS[section.account_type], lang)
+              : section.account_label}
           </span>
-          {lang === 'he' && (
-            <span className="text-xs text-gray-500 font-medium">{section.account_label_he}</span>
-          )}
           <span className="text-xs text-gray-400">
             {section.rows.length} {t('rows', lang)}
           </span>
         </div>
         <div className="flex items-center gap-5">
-          <div className="text-right">
+          {/* text-end: outer edge in LTR (right) and RTL (left) */}
+          <div className="text-end">
             <div className={`text-xl font-bold font-mono ${balClass}`}>
               {eur(Math.abs(section.closing_balance))}
             </div>
@@ -725,13 +698,13 @@ function AccountCard({ section, lang }: { section: RC3AccountSection; lang: Lang
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-gray-50">
-                      <th className="px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wide w-28">
+                      <th className="px-4 py-2 text-start text-[10px] font-bold text-gray-500 uppercase tracking-wide w-28">
                         {t('thDate', lang)}
                       </th>
-                      <th className="px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wide">
+                      <th className="px-4 py-2 text-start text-[10px] font-bold text-gray-500 uppercase tracking-wide">
                         {t('thDescription', lang)}
                       </th>
-                      <th className="px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wide">
+                      <th className="px-4 py-2 text-end text-[10px] font-bold text-gray-500 uppercase tracking-wide">
                         {t('thAmount', lang)}
                       </th>
                     </tr>
@@ -761,13 +734,13 @@ function AccountCard({ section, lang }: { section: RC3AccountSection; lang: Lang
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="bg-gray-50">
-                        <th className="px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wide w-28">
+                        <th className="px-4 py-2 text-start text-[10px] font-bold text-gray-500 uppercase tracking-wide w-28">
                           {t('thDate', lang)}
                         </th>
-                        <th className="px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wide">
+                        <th className="px-4 py-2 text-start text-[10px] font-bold text-gray-500 uppercase tracking-wide">
                           {t('thDescription', lang)}
                         </th>
-                        <th className="px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wide">
+                        <th className="px-4 py-2 text-end text-[10px] font-bold text-gray-500 uppercase tracking-wide">
                           {t('thAmount', lang)}
                         </th>
                       </tr>
@@ -806,24 +779,18 @@ function AccountCard({ section, lang }: { section: RC3AccountSection; lang: Lang
           {/* Balance footer */}
           <div className="flex items-center justify-between px-5 py-3 bg-gray-100 border-t border-gray-300">
             <span className="text-sm font-bold text-gray-700">
-              {section.account_label}
+              {ACCOUNT_LABEL_KEYS[section.account_type]
+                ? t(ACCOUNT_LABEL_KEYS[section.account_type], lang)
+                : section.account_label}
             </span>
-            <div className="text-right">
+            {/* text-end: outer edge in LTR (right) and RTL (left) */}
+            <div className="text-end">
               <div className={`text-lg font-bold font-mono ${balClass}`}>
                 {eur(Math.abs(section.closing_balance))}
               </div>
               <div className={`text-[10px] font-medium ${balClass}`}>{balLabel}</div>
             </div>
           </div>
-
-          {/* Rental / Airbnb: month allocation placeholder */}
-          {(section.account_type === 'rental' || section.account_type === 'airbnb') && (
-            <div className="px-5 py-2 bg-blue-50 border-t border-blue-100">
-              <span className="text-[10px] text-blue-500 italic">
-                ℹ {t('rentalAllocationNote', lang)}
-              </span>
-            </div>
-          )}
 
           {/* Section C — Informational rows (hidden for renovation) */}
           {infoRows.length > 0 && section.account_type !== 'renovation' && (
@@ -854,6 +821,45 @@ function AccountCard({ section, lang }: { section: RC3AccountSection; lang: Lang
       )}
     </div>
   )
+}
+
+/* ─── Print styles injected at runtime ──────────────────────────────────────────
+ * Uses dangerouslySetInnerHTML so print CSS is available even when Tailwind's
+ * purge removes @media print variants.  Forces color-accurate output so module
+ * background colors (navy / green / blue / orange) survive the browser's
+ * "background graphics" stripping.
+ * ─────────────────────────────────────────────────────────────────────────────── */
+
+function PrintStyles({ isRTL }: { isRTL: boolean }) {
+  const css = `
+@media print {
+  /* Force background colours in Chrome/Safari print */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+  /* A4 portrait with compact margins */
+  @page { size: A4 portrait; margin: 12mm 10mm; }
+
+  /* Hide interactive chrome */
+  .print-hide { display: none !important; }
+
+  /* Prevent orphaned card headers */
+  .print-card { break-inside: avoid; page-break-inside: avoid; }
+
+  /* Keep table rows together when possible */
+  tr { break-inside: avoid; page-break-inside: avoid; }
+
+  /* Hide browser scrollbars / decorations */
+  body { background: white !important; }
+
+  /* RTL direction preserved explicitly for print engines */
+  ${isRTL ? '[dir="rtl"] { direction: rtl; unicode-bidi: embed; }' : ''}
+
+  /* Ensure date spans never break across lines in print */
+  span[dir="ltr"] { display: inline-block; white-space: nowrap; }
+}
+`
+  // eslint-disable-next-line react/no-danger
+  return <style dangerouslySetInnerHTML={{ __html: css }} />
 }
 
 /* ─── Language toggle ─────────────────────────────────────────────────────────── */
@@ -891,13 +897,13 @@ function ClientReportRC3Content() {
   const [error,         setError]         = useState<string | null>(null)
   const [pdfReady,      setPdfReady]      = useState(false)
   const [PdfDoc, setPdfDoc] = useState<React.ComponentType<{
-    report: RC3PropertyReport; lang: Lang; reportType: ReportType
+    report: RC3PropertyReport; lang: Lang
   }> | null>(null)
 
   useEffect(() => {
     import('@/lib/pdf/OwnerSettlementPdfV3').then(m => {
       setPdfDoc(() => m.OwnerSettlementPdfV3 as React.ComponentType<{
-        report: RC3PropertyReport; lang: Lang; reportType: ReportType
+        report: RC3PropertyReport; lang: Lang
       }>)
     })
   }, [])
@@ -937,21 +943,16 @@ function ClientReportRC3Content() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProp])
 
-  const [reportType, setReportType] = useState<ReportType>('full')
-
-  const reportTypeSlug = reportType === 'full' ? 'Full_Owner_Report' : 'Periodic_Owner_Report'
   const pdfFilename = report
-    ? `JJ_${reportTypeSlug}_${report.reporting_name.replace(/\s+/g, '_')}_${report.from_date || 'all'}_to_${report.to_date || 'all'}.pdf`
+    ? `RC3_Report_${report.reporting_name.replace(/\s+/g, '_')}_${report.from_date || 'all'}_to_${report.to_date || 'all'}.pdf`
     : 'report.pdf'
-
-  // Filter sections by report type — pure display layer, no accounting changes
-  const visibleAccounts = report ? filterSectionsByReportType(report.accounts, reportType) : []
-  const filteredReport = report ? { ...report, accounts: visibleAccounts } : null
 
   const isRTL = lang === 'he'
 
   return (
     <div className="min-h-screen bg-gray-100" dir={isRTL ? 'rtl' : 'ltr'}>
+      {/* Print-specific CSS — injected at runtime so @media print rules are always present */}
+      <PrintStyles isRTL={isRTL} />
 
       {/* ── Top bar ──────────────────────────────────────────────────────────── */}
       <div className="bg-[#1e3a5f] text-white px-6 py-4 flex items-center justify-between">
@@ -959,7 +960,8 @@ function ClientReportRC3Content() {
           <h1 className="text-lg font-bold tracking-wide">JJ Property 10</h1>
           <p className="text-blue-200 text-xs mt-0.5">{t('reportTitle', lang)}</p>
         </div>
-        <div className="flex items-center gap-3">
+        {/* print-hide: language toggle + version badge disappear in print output */}
+        <div className="flex items-center gap-3 print-hide">
           <LangToggle lang={lang} setLang={setLang} />
           <span className="text-xs bg-blue-800 text-blue-100 px-2 py-1 rounded">V2</span>
         </div>
@@ -967,19 +969,10 @@ function ClientReportRC3Content() {
 
       <div className="max-w-5xl mx-auto px-4 py-6">
 
-        {/* ── Controls ─────────────────────────────────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-5 shadow-sm">
+        {/* ── Controls — hidden in print mode ──────────────────────────────── */}
+        <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-5 shadow-sm print-hide">
           {/* Multi-property placeholder */}
-          <div className="mb-4 px-3 py-2 bg-blue-50 border border-blue-100 rounded-lg">
-            <span className="text-xs text-blue-500 italic">
-              👤 {t('multiPropertyComing', lang)}
-            </span>
-          </div>
-
           <div className="flex flex-wrap gap-4 items-end">
-            <div className="flex-none">
-              <ReportTypeSelector reportType={reportType} setReportType={setReportType} lang={lang} />
-            </div>
             <div className="flex-1 min-w-48">
               <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">
                 {t('property', lang)}
@@ -1027,10 +1020,14 @@ function ClientReportRC3Content() {
               {loading ? t('loading', lang) : t('loadReport', lang)}
             </button>
 
-            {report && pdfReady && PdfDoc && (
+            {/* English PDF: react-pdf renderer — layout is LTR-correct and shippable.
+                Hebrew PDF: hidden until react-pdf RTL sprint is complete (M4 decision).
+                window.print() was evaluated and rejected — confusing UX for clients.
+                See docs/adr/PLAYWRIGHT_PDF_SPIKE.md for the architectural decision. */}
+            {report && pdfReady && PdfDoc && lang === 'en' && (
               <PDFErrorBoundary>
                 <PDFDownloadLink
-                  document={<PdfDoc report={filteredReport!} lang={lang} reportType={reportType} />}
+                  document={<PdfDoc report={report} lang={lang} />}
                   fileName={pdfFilename}
                   className="px-5 py-2.5 bg-green-700 text-white text-sm rounded-lg hover:bg-green-800 font-medium transition-colors"
                 >
@@ -1060,22 +1057,25 @@ function ClientReportRC3Content() {
         {/* ── Report ───────────────────────────────────────────────────────── */}
         {report && !loading && (
           <>
-            {/* M2: Premium Executive Summary */}
-            <PremiumSummary report={filteredReport!} lang={lang} />
+            {/* Owner Dashboard — aggregate KPIs (top of report) */}
+            <OwnerDashboard report={report} lang={lang} />
+
+            {/* Executive Summary — per-module breakdown */}
+            <ExecutiveSummary report={report} lang={lang} />
 
             {/* Account cards */}
-            {visibleAccounts.length === 0 ? (
+            {report.accounts.length === 0 ? (
               <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm rounded-xl p-5">
                 {t('noTransactions', lang)}
               </div>
             ) : (
-              visibleAccounts.map(acc => (
+              report.accounts.map(acc => (
                 <AccountCard key={acc.account_type} section={acc} lang={lang} />
               ))
             )}
 
             {/* Final Summary — accounting summary + disclaimer */}
-            <FinalSummary report={filteredReport!} lang={lang} />
+            <FinalSummary report={report} lang={lang} />
           </>
         )}
       </div>
