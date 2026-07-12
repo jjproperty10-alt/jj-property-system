@@ -158,6 +158,11 @@ const L = {
   expSoftware:          { en: 'Software',                he: 'תוכנה'                        },
   expOther:             { en: 'Other Property Expenses', he: 'הוצאות נכס אחרות'            },
 
+  // Expense groups -- individual utility lines (M3)
+  grpElectricity:       { en: 'Electricity', he: 'חשמל' },
+  grpWater:             { en: 'Water',       he: 'מים'   },
+  grpInternet:          { en: 'Internet',    he: 'אינטרנט' },
+
   /* ── Section labels ──────────────────────────────────────────────────────── */
   contractInfo:         { en: 'Contract Information',
                           he: 'פרטי חוזה' },
@@ -249,11 +254,11 @@ export function t(key: LabelKey, lang: Lang = 'en'): string {
 /** Maps transaction subcategory strings → expense group label key */
 export const EXPENSE_GROUP_MAP: Partial<Record<string, LabelKey>> = {
   // Utilities (Electricity + Water + Internet)
-  'Electricity':           'expUtilities',
-  'Electricity bill':      'expUtilities',
-  'Electric':              'expUtilities',
-  'Water':                 'expUtilities',
-  'Internet':              'expUtilities',
+  'Electricity':           'grpElectricity',
+  'Electricity bill':      'grpElectricity',
+  'Electric':              'grpElectricity',
+  'Water':                 'grpWater',
+  'Internet':              'grpInternet',
   // Maintenance
   'Repairs':               'expMaintenance',
   'Repair':                'expMaintenance',

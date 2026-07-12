@@ -27,8 +27,8 @@ import { filterSectionsByReportType, type ReportType } from '@/lib/report/report
 import {
   buildRowLabel,
   t, type Lang, type LabelKey,
-  getExpenseGroupKey,
 } from '@/lib/report/labels'
+import { groupExpenses } from '@/lib/report/expenseGroups'
 import { computeOperationalKPIs, computeNetOwnerBalance } from '@/lib/report/executiveSummary'
 
 /* ─── Dynamic PDF import (client-only) ──────────────────────────────────────── */
@@ -195,12 +195,11 @@ function ExpenseGroupBlock({ rows, lang }: { rows: ClientDisplayRow[]; lang: Lan
     })
   }
 
-  if (groups.size === 0) return null
+  if (groups.length === 0) return null
 
   return (
     <div className="divide-y divide-gray-100">
-      {Array.from(groups.entries()).map(([groupKey, groupRows]) => {
-        const groupTotal = groupRows.reduce((sum, r) => sum + r.client_amount, 0)
+      {groups.map(({ key: groupKey, rows: groupRows, total: groupTotal }) => {
         const isOpen = openGroups.has(groupKey)
         return (
           <div key={groupKey}>
@@ -208,7 +207,12 @@ function ExpenseGroupBlock({ rows, lang }: { rows: ClientDisplayRow[]; lang: Lan
               className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors text-sm"
               onClick={() => toggleGroup(groupKey)}
             >
-              <span className="font-medium text-gray-700">{t(groupKey, lang)}</span>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-gray-700">{t(groupKey, lang)}</span>
+                <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
+                  {groupRows.length}
+                </span>
+              </div>
               <div className="flex items-center gap-3">
                 <span className="font-mono text-gray-800 text-sm font-semibold">{eur(groupTotal)}</span>
                 <span className="text-gray-400 text-xs w-3">{isOpen ? '▲' : '▼'}</span>
