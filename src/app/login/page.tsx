@@ -49,7 +49,7 @@ function LoginForm() {
     // before redirecting to /auth/reset. Direct redirect to /auth/reset would
     // land a ?code= that the reset page cannot exchange (browser client ≠ SSR client).
     const { error: e } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/callback?next=/auth/reset`,
+      redirectTo: `${window.location.origin}/auth/reset`,
     })
     setLoading(false)
     if (e) {
