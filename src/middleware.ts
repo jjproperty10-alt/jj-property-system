@@ -27,7 +27,7 @@ const { pathname } = request.nextUrl
 
 // LOCAL DEV ONLY: /client-report bypasses auth for RC1 visual parity testing.
 // restore_auth.bat removes this line before production deploy.
-const publicPaths = ['/login', '/auth/callback', '/auth/reset', '/_next', '/favicon', '/client-report']
+const publicPaths = ['/login', '/auth/callback', '/auth/reset', '/_next', '/favicon']
 if (publicPaths.some(p => pathname.startsWith(p))) return supabaseResponse
 
 if (!user) {
