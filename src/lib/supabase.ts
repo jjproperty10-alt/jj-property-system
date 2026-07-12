@@ -1,14 +1,18 @@
 import { createClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 
 export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
 )
 
-// Backward-compat: login/auth pages import this.
-// Uses createClient (not createBrowserClient) to avoid cookie-context crash.
+/**
+ * Cookie-based browser client for login and authenticated pages.
+ * Uses createBrowserClient from @supabase/ssr so that sessions are stored
+ * in cookies (matching what the middleware expects), NOT localStorage.
+ */
 export function createSupabaseBrowserClient() {
-  return createClient(
+  return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   )
