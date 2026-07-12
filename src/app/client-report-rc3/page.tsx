@@ -1024,7 +1024,7 @@ function ClientReportRC3Content() {
                 Hebrew PDF: hidden until react-pdf RTL sprint is complete (M4 decision).
                 window.print() was evaluated and rejected — confusing UX for clients.
                 See docs/adr/PLAYWRIGHT_PDF_SPIKE.md for the architectural decision. */}
-            {report && pdfReady && PdfDoc && lang === 'en' && (
+            {report && pdfReady && PdfDoc && (
               <PDFErrorBoundary>
                 <PDFDownloadLink
                   document={<PdfDoc report={report} lang={lang} />}
