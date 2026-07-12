@@ -9,7 +9,7 @@
  *  - All client-visible strings must come from this file
  */
 
-import type { ClientDisplayRow } from './clientRow'
+import type { RC3AccountRow } from './types'
 
 /* ──────────────────────────────────────────────────────────────────────────────
  * PHASE A — Display label overrides (kept for backward compatibility)
@@ -158,11 +158,6 @@ const L = {
   expSoftware:          { en: 'Software',                he: 'תוכנה'                        },
   expOther:             { en: 'Other Property Expenses', he: 'הוצאות נכס אחרות'            },
 
-  // Expense groups -- individual utility lines (M3)
-  grpElectricity:       { en: 'Electricity', he: 'חשמל' },
-  grpWater:             { en: 'Water',       he: 'מים'   },
-  grpInternet:          { en: 'Internet',    he: 'אינטרנט' },
-
   /* ── Section labels ──────────────────────────────────────────────────────── */
   contractInfo:         { en: 'Contract Information',
                           he: 'פרטי חוזה' },
@@ -215,20 +210,9 @@ const L = {
   platformTracking:     { en: 'platform tracking, trust account, needs review',
                           he: 'מעקב פלטפורמה, חשבון נאמנות, דורש בדיקה' },
 
-  /* ── Future / placeholder ────────────────────────────────────────────────── */
-  multiPropertyComing:  { en: 'Multi-property view — coming soon',
-                          he: 'תצוגה מרובת נכסים — בקרוב' },
-  rentalAllocationNote: { en: 'Monthly rental allocation — available in next release.',
-                          he: 'הקצאה חודשית — תהיה זמינה בגרסה הבאה.' },
-
   /* ── Report type selector (M1) — added M0 ──────────────────────────────── */
-  reportTypeLabel:      { en: 'Report Type',    he: 'סוג דוח'      },
   reportTypeFull:       { en: 'Full Report',     he: 'דוח מלא'      },
   reportTypePeriodic:   { en: 'Periodic Report', he: 'דוח תקופתי'   },
-  /* ── Executive Summary M2 ────────────────────────────────────────────────── */
-  opSummaryTitle:       { en: 'Operational Summary',   he: 'סיכום תפעולי'    },
-  opIncomeLabel:        { en: 'Operational Income',    he: 'הכנסות תפעוליות' },
-  opExpensesLabel:      { en: 'Operational Expenses',  he: 'הוצאות תפעוליות' },
 
   /* ── Opening balance warning ──────────────────────────────────────────────── */
   openingBalTitle:      { en: 'Opening Balance Not Included.',
@@ -254,11 +238,11 @@ export function t(key: LabelKey, lang: Lang = 'en'): string {
 /** Maps transaction subcategory strings → expense group label key */
 export const EXPENSE_GROUP_MAP: Partial<Record<string, LabelKey>> = {
   // Utilities (Electricity + Water + Internet)
-  'Electricity':           'grpElectricity',
-  'Electricity bill':      'grpElectricity',
-  'Electric':              'grpElectricity',
-  'Water':                 'grpWater',
-  'Internet':              'grpInternet',
+  'Electricity':           'expUtilities',
+  'Electricity bill':      'expUtilities',
+  'Electric':              'expUtilities',
+  'Water':                 'expUtilities',
+  'Internet':              'expUtilities',
   // Maintenance
   'Repairs':               'expMaintenance',
   'Repair':                'expMaintenance',
@@ -381,7 +365,7 @@ const SUBCATEGORY_LABEL_KEYS: Partial<Record<string, LabelKey>> = {
  * Presentation-only. Do not change behavior in response to accounting questions.
  * ──────────────────────────────────────────────────────────────────────────── */
 
-export function buildRowLabel(row: ClientDisplayRow, lang: Lang): string {
+export function buildRowLabel(row: RC3AccountRow, lang: Lang): string {
   const dl   = row.display_label ?? ''
   const grp  = row.display_group
   const acct = row.account_type
