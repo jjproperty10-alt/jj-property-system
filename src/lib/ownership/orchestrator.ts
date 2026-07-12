@@ -1,4 +1,3 @@
-// test
 /**
  * JJ Property 10 — Phase 2-B Orchestrator
  * 2026-07-13
@@ -68,13 +67,6 @@ interface RawOwnershipRow {
  *
  * No DB calls — all data provided by caller.
  * Exported so unit tests verify assembly logic without DB mocks.
- *
- * @param entityRows        Active entities from entity_registry
- * @param allOwnershipRows  All partnership_ownership rows for this owner (any entity)
- * @param reports           Map from canonical_name → RC3PropertyReport
- * @param ownerName         The owner whose share to resolve (case-insensitive)
- * @param referenceDate     ISO date for effective-date filtering
- * @param period            Reporting period (from / to)
  */
 export function assemblePortfolio(
   entityRows: RawEntityRow[],
@@ -95,7 +87,6 @@ export function assemblePortfolio(
     const report = reports.get(entity.canonical_name)
     if (!report) continue // no RC3 data — property has no transactions
 
-    // Filter ownership rows to this entity, strip the entity_id (ownershipService doesn't need it)
     const ownershipRowsForEntity = allOwnershipRows
       .filter(r => r.entity_id === entity.id)
       .map(r => ({
@@ -127,7 +118,6 @@ async function fetchOwnerEntityRows(
 ): Promise<{ entities: RawEntityRow[]; ownershipRows: RawOwnershipRow[] }> {
   const supabase = createServiceClient()
 
-  // Step 1: All partnership_ownership rows for this owner (case-insensitive match)
   const { data: ownershipData, error: ownershipError } = await supabase
     .from('partnership_ownership')
     .select(
@@ -141,13 +131,13 @@ async function fetchOwnerEntityRows(
   }
 
   const rows = (ownershipData ?? []) as RawOwnershipRow[]
-  const entityIds = [...new Set(rows.map(r => r.entity_id))]
+  // Array.from avoids the --downlevelIteration requirement of [...new Set()]
+  const entityIds = Array.from(new Set(rows.map(r => r.entity_id)))
 
   if (entityIds.length === 0) {
     return { entities: [], ownershipRows: [] }
   }
 
-  // Step 2: Batch entity_registry lookup (one round-trip, not N)
   const { data: entityData, error: entityError } = await supabase
     .from('entity_registry')
     .select('id, canonical_name, entity_type')
@@ -169,11 +159,6 @@ async function fetchOwnerEntityRows(
 
 /**
  * Fetch the complete portfolio for one owner.
- *
- * Returns a channel-neutral ReportingOutput consumed by:
- *   /owner/[owner]  (Portfolio Dashboard)
- *   future: PDF renderer, API endpoint, Email template
- *
  * Batch design: 2 DB round-trips + N parallel RC3 report fetches.
  */
 export async function getOwnerPortfolio(
@@ -190,13 +175,11 @@ export async function getOwnerPortfolio(
   const { entities, ownershipRows } = await fetchOwnerEntityRows(ownerName)
 
   if (entities.length === 0) {
-    // Owner has no partnership_ownership records — return empty portfolio
     const owner: OwnerIdentity = { name: ownerName, ownerType: 'external_investor' }
     const portfolio = buildPortfolio([], owner, period)
     return buildReportingOutput(portfolio)
   }
 
-  // Fetch RC3 reports for all entities in parallel
   const reportEntries = await Promise.all(
     entities.map(async entity => {
       try {
@@ -225,7 +208,6 @@ export async function getOwnerPortfolio(
 
 // ─── Single-property fetch ────────────────────────────────────────────────────
 
-/** Result type returned by getOwnerProperty */
 export interface PropertyFetchResult {
   settlement: PropertySettlementDTO
   owner: OwnerIdentity
@@ -234,9 +216,7 @@ export interface PropertyFetchResult {
 
 /**
  * Fetch ownership + RC3 data for a single property.
- *
  * Used by /owner/[owner]/[property] to avoid fetching all properties.
- * Returns null if the property is not found in entity_registry, or has no RC3 data.
  */
 export async function getOwnerProperty(
   ownerName: string,
@@ -252,7 +232,6 @@ export async function getOwnerProperty(
 
   const supabase = createServiceClient()
 
-  // Targeted entity lookup
   const { data: entityData, error: entityError } = await supabase
     .from('entity_registry')
     .select('id, canonical_name, entity_type')
@@ -263,7 +242,6 @@ export async function getOwnerProperty(
   if (entityError || !entityData) return null
   const entity = entityData as RawEntityRow
 
-  // Targeted ownership lookup for this entity
   const { data: ownershipData, error: ownershipError } = await supabase
     .from('partnership_ownership')
     .select(
@@ -274,7 +252,6 @@ export async function getOwnerProperty(
   if (ownershipError) return null
   const rows = (ownershipData ?? []) as RawOwnershipRow[]
 
-  // Fetch RC3 report
   let report: RC3PropertyReport
   try {
     report = await fetchRC3Report({
