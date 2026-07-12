@@ -51,12 +51,10 @@ export function groupExpenses(rows: ClientDisplayRow[]): ExpenseGroup[] {
   const sortByDate = (a: ClientDisplayRow, b: ClientDisplayRow) =>
     a.date < b.date ? -1 : a.date > b.date ? 1 : 0
 
-  const orderedSet = new Set<LabelKey>(EXPENSE_GROUP_ORDER)
-
   const ordered: ExpenseGroup[] = EXPENSE_GROUP_ORDER
     .filter(key => map.has(key))
     .map(key => {
-      const groupRows = [...(map.get(key) ?? [])].sort(sortByDate)
+      const groupRows = (map.get(key) ?? []).slice().sort(sortByDate)
       return {
         key,
         rows:  groupRows,
@@ -64,17 +62,18 @@ export function groupExpenses(rows: ClientDisplayRow[]): ExpenseGroup[] {
       }
     })
 
-  // Keys not in EXPENSE_GROUP_ORDER appended at end (future-proof)
-  for (const [key, groupRows] of map.entries()) {
-    if (!orderedSet.has(key)) {
-      const sorted = [...groupRows].sort(sortByDate)
+  // Keys not in EXPENSE_GROUP_ORDER appended at end (future-proof).
+  // Using map.forEach instead of for-of map.entries() for tsconfig compatibility.
+  map.forEach((groupRows, key) => {
+    if (!EXPENSE_GROUP_ORDER.includes(key)) {
+      const sorted = groupRows.slice().sort(sortByDate)
       ordered.push({
         key,
         rows:  sorted,
         total: sorted.reduce((s, r) => s + r.client_amount, 0),
       })
     }
-  }
+  })
 
   return ordered
 }
