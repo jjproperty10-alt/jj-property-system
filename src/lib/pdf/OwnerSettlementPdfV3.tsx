@@ -2,6 +2,7 @@
  * JJ Property 10 — Owner Settlement Report V3
  * Phase B — 2026-07-09
  * M4.1  — 2026-07-12 — Hebrew RTL layout (react-pdf)
+ * M6    — 2026-07-12 — Visual Polish / Design System
  *
  * RTL implementation:
  * - All row containers: rtlRowDirection(lang) → flexDirection:'row-reverse' in HE
@@ -71,14 +72,24 @@ const C = {
   white: '#ffffff',
   purple: '#6d28d9',
   purpleBg: '#f5f3ff',
+  blue: '#1d4ed8',
+  blueBg: '#eff6ff',
+  orange: '#c2410c',
+  orangeBg: '#fff7ed',
 }
 
 const ACCOUNT_COLOURS = {
   sale: C.navy,
   renovation: C.purple,
-  rental: C.green,
-  airbnb: C.navyLight,
+  rental: C.blue,
+  airbnb: C.orange,
 } as const
+
+/* M6: monolingual label keys per account type */
+const ACCOUNT_LABEL_KEYS_PDF: Record<string, LabelKey> = {
+  sale: 'accountSale', renovation: 'accountRenovation',
+  rental: 'accountRental', airbnb: 'accountAirbnb',
+}
 
 /* ─── Styles ────────────────────────────────────────────────────────────────── */
 
@@ -104,7 +115,8 @@ const s = StyleSheet.create({
     borderBottomColor: C.navy,
   },
   companyName: { fontSize: 17, fontWeight: 'bold', color: C.navy, letterSpacing: 0.4 },
-  reportTitle: { fontSize: 8.5, color: C.grayText, marginTop: 3 },
+  reportTitle: { fontSize: 8.5, color: C.grayText, marginTop: 2 },
+  reportSubTitle: { fontSize: 11, fontWeight: 'bold', color: C.navy, marginTop: 3 },
   headerRight: { alignItems: 'flex-end' },
   headerDate: { fontSize: 7.5, color: C.grayText, marginBottom: 2 },
   headerLabel: { fontSize: 7.5, fontWeight: 'bold', color: C.navy, letterSpacing: 0.5 },
@@ -482,9 +494,8 @@ function DocHeader({ report, lang, reportTypeLabel }: { report: RC3PropertyRepor
     <View style={[s.header, rtlRowDirection(lang)]} fixed>
       <View>
         <Text style={[s.companyName, rtlTextStyle(lang)]}>JJ Property 10</Text>
-        <Text style={[s.reportTitle, rtlTextStyle(lang)]}>
-          {reportTypeLabel} — {report.reporting_name}
-        </Text>
+        <Text style={[s.reportTitle, rtlTextStyle(lang)]}>{reportTypeLabel}</Text>
+        <Text style={[s.reportSubTitle, rtlTextStyle(lang)]}>{report.reporting_name}</Text>
       </View>
       <View style={[s.headerRight, rtlAlignEnd(lang)]}>
         <Text style={[s.headerDate, rtlTextStyle(lang)]}>{fmtGenerated(report.generated_at)}</Text>
@@ -533,7 +544,7 @@ function computeDashboard(accounts: RC3AccountSection[]) {
 }
 
 const M2_PDF_COLORS: Record<string, string> = {
-  sale: '#1e293b', renovation: '#065f46', rental: '#1d4ed8', airbnb: '#c2410c',
+  sale: C.navy, renovation: C.purple, rental: C.blue, airbnb: C.orange,
 }
 
 function PremiumSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
@@ -848,10 +859,12 @@ function AccountBlock({ section, lang }: { section: RC3AccountSection; lang: Lan
       {/* Account header bar */}
       <View style={[s.accountHeader, { backgroundColor: acColor }, rtlRowDirection(lang)]}>
         <View style={s.accountHeaderLeft}>
-          <Text style={[s.accountTitle, rtlTextStyle(lang)]}>{section.account_label}</Text>
-          {section.account_label_he ? (
-            <Text style={[s.accountTitleHe, rtlTextStyle(lang)]}>{section.account_label_he}</Text>
-          ) : null}
+          {/* M6: monolingual label — t(key, lang) never raw account_label */}
+          <Text style={[s.accountTitle, rtlTextStyle(lang)]}>
+            {ACCOUNT_LABEL_KEYS_PDF[section.account_type]
+              ? t(ACCOUNT_LABEL_KEYS_PDF[section.account_type], lang)
+              : section.account_label}
+          </Text>
         </View>
         <View style={[s.accountHeaderRight, rtlAlignEnd(lang)]}>
           <Text style={[s.accountBalance, { color: C.white }]}>
@@ -882,7 +895,12 @@ function AccountBlock({ section, lang }: { section: RC3AccountSection; lang: Lan
       {/* Balance strip */}
       <View style={[s.balStrip, rtlRowDirection(lang)]}>
         <View>
-          <Text style={[s.balLabel, rtlTextStyle(lang)]}>{section.account_label}</Text>
+          {/* M6: monolingual balance label */}
+          <Text style={[s.balLabel, rtlTextStyle(lang)]}>
+            {ACCOUNT_LABEL_KEYS_PDF[section.account_type]
+              ? t(ACCOUNT_LABEL_KEYS_PDF[section.account_type], lang)
+              : section.account_label}
+          </Text>
           <Text style={[s.balSub, rtlTextStyle(lang)]}>{balText}</Text>
         </View>
         <Text style={[s.balValue, { color: balColor }]}>
@@ -950,6 +968,10 @@ function FinalSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: La
         <Text style={[s.finalDiscTitle, rtlTextStyle(lang)]}>{t('finalNoteTitle', lang)}</Text>
         <Text style={[s.finalDiscText, rtlTextStyle(lang)]}>{t('finalDisclaimer', lang)}</Text>
         <Text style={[s.finalDiscGen, rtlTextStyle(lang)]}>{t('finalGenerated', lang)}: {genDate}</Text>
+        {/* M6: closing statement */}
+        <Text style={[{ fontSize: 6, color: 'rgba(255,255,255,0.25)', marginTop: 8, textAlign: isRTL(lang) ? 'left' : 'right' }]}>
+          {t('finalEndStatement', lang)}
+        </Text>
       </View>
     </View>
   )
@@ -960,7 +982,7 @@ function DocFooter({ report, lang }: { report: RC3PropertyReport; lang: Lang }) 
   return (
     <View style={[s.footer, rtlRowDirection(lang)]} fixed>
       <Text style={[s.footerText, rtlTextStyle(lang)]}>
-        JJ Property 10 · {report.reporting_name} · {period} · {t('confidential', lang)}
+        JJ Property 10 · {report.reporting_name} · {period} · {t('confidential', lang)} · {t('footerVersion', lang)}
       </Text>
       <Text
         style={s.footerText}

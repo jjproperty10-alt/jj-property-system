@@ -2,6 +2,7 @@
  * JJ Property 10 — Client-Facing Label Overrides & i18n
  * Phase A: display label overrides (Sale → Purchase perspective)
  * Phase B: full EN / HE label system, expense group mapping, buildRowLabel()
+ * M6: Premium branding — "Owner Financial Statement", module rename, footer labels
  *
  * Rules:
  *  - NEVER write these values to the database
@@ -42,7 +43,7 @@ export const SECTION_LABELS = {
 export const ACCOUNT_LABEL_EN: Record<string, string> = {
   sale:       'Property Purchase',
   renovation: 'Renovation',
-  rental:     'Rental',
+  rental:     'Property Management',
   airbnb:     'Short-Term Rental',
 }
 
@@ -50,7 +51,7 @@ export const ACCOUNT_LABEL_EN: Record<string, string> = {
 export const ACCOUNT_LABEL_HE: Record<string, string> = {
   sale:       'רכישת נכס',
   renovation: 'שיפוץ',
-  rental:     'השכרה',
+  rental:     'ניהול נכס',
   airbnb:     'השכרה לטווח קצר',
 }
 
@@ -69,14 +70,16 @@ const L = {
   balSettled:           { en: 'Settled',                       he: 'סגור / ללא יתרה'            },
 
   /* ── Top bar ─────────────────────────────────────────────────────────────── */
-  reportTitle:          { en: 'Client Financial Report',       he: 'דוח פיננסי ללקוח'           },
+  // M6: renamed from "Client Financial Report" to premium branding
+  reportTitle:          { en: 'Owner Financial Statement',     he: 'דוח פיננסי לבעל הנכס'       },
   confidential:         { en: 'Confidential',                  he: 'סודי'                        },
 
   /* ── Module names ────────────────────────────────────────────────────────── */
-  accountSale:          { en: 'Property Purchase',   he: 'רכישת נכס'          },
-  accountRenovation:    { en: 'Renovation',          he: 'שיפוץ'              },
-  accountRental:        { en: 'Rental',              he: 'השכרה'              },
-  accountAirbnb:        { en: 'Short-Term Rental',   he: 'השכרה לטווח קצר'   },
+  accountSale:          { en: 'Property Purchase',    he: 'רכישת נכס'          },
+  accountRenovation:    { en: 'Renovation',           he: 'שיפוץ'              },
+  // M6: renamed from "Rental" → "Property Management"
+  accountRental:        { en: 'Property Management',  he: 'ניהול נכס'          },
+  accountAirbnb:        { en: 'Short-Term Rental',    he: 'השכרה לטווח קצר'   },
 
   /* ── Owner Dashboard — aggregate KPIs ───────────────────────────────────── */
   dashTitle:            { en: 'Owner Dashboard',                  he: 'לוח בקרה לבעלים'        },
@@ -143,7 +146,7 @@ const L = {
   subInsurance:         { en: 'Insurance',               he: 'ביטוח'              },
   subManagementFee:     { en: 'Management Fee',          he: 'דמי ניהול'          },
   subFurniture:         { en: 'Furniture & Equipment',   he: 'ריהוט וציוד'        },
-  subGuestSupplies:     { en: 'Guest Supplies',          he: 'אביזרי אורחים'     },
+  subGuestSupplies:     { en: 'Guest Supplies',          he: 'אביזרי אורחים'      },
   subSoftware:          { en: 'Software',                he: 'תוכנה'              },
 
   /* ── Expense group headers (Rental / Airbnb grouping — 10 groups) ─────────── */
@@ -196,6 +199,8 @@ const L = {
   finalDisclaimer:      { en: 'This report is prepared for informational purposes. Figures are based on recorded transactions and are subject to final audit and reconciliation. Opening balances from prior periods are not yet included.',
                           he: 'דוח זה נערך למטרות מידע בלבד. הנתונים מבוססים על עסקאות שנרשמו וכפופים לביקורת ופיוס סופי. יתרות פתיחה מתקופות קודמות אינן כלולות עדיין.' },
   finalGenerated:       { en: 'Report generated',                he: 'הדוח נוצר'                },
+  // M6: closing statement
+  finalEndStatement:    { en: 'End of Owner Statement',          he: 'סוף דוח בעל הנכס'        },
 
   /* ── Controls ────────────────────────────────────────────────────────────── */
   property:             { en: 'Property',     he: 'נכס'         },
@@ -231,10 +236,11 @@ const L = {
   openingBalDetail:     { en: 'Date-filtered reports may show incorrect closing balances because prior-period balances are not yet carried forward. Use all-time (unfiltered) reports only for financial review.',
                           he: 'דוחות עם סינון תאריכים עלולים להציג יתרות סגירה שגויות. יש להשתמש בדוחות ללא סינון בלבד לצורכי בדיקה פיננסית.' },
 
-
-  /* ── Meta / footer ────────────────────────────────────────────────────── */
-  metaGenerated: { en: 'Generated',    he: 'נוצר ב'  },
-  pageLabel:     { en: 'Page',          he: 'עמוד'          },
+  /* ── Meta / footer ─────────────────────────────────────────────────────── */
+  metaGenerated:        { en: 'Generated',       he: 'נוצר ב'      },
+  pageLabel:            { en: 'Page',            he: 'עמוד'        },
+  // M6: footer version label
+  footerVersion:        { en: 'Version 3.0',     he: 'גרסה 3.0'   },
 
 } as const
 
