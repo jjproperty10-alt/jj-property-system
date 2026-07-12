@@ -33,6 +33,7 @@ import {
   buildRowLabel,
   t, type Lang, type LabelKey,
 } from '../report/labels'
+import { groupExpenses } from '../report/expenseGroups'
 import { computeOperationalKPIs, computeNetOwnerBalance } from '../report/executiveSummary'
 
 /* ─── Font ──────────────────────────────────────────────────────────────────── */
@@ -773,6 +774,46 @@ function RefSection({ rows, lang }: { rows: ClientDisplayRow[]; lang: Lang }) {
   )
 }
 
+function GroupedExpensesPdf({
+  rows,
+  sectionLabel,
+  lang,
+}: {
+  rows:         ClientDisplayRow[]
+  sectionLabel: string
+  lang:         Lang
+}) {
+  if (rows.length === 0) return null
+  const groups = groupExpenses(rows)
+  if (groups.length === 0) return null
+  return (
+    <View>
+      <Text style={s.groupLabel}>{sectionLabel}</Text>
+      {groups.map(({ key: groupKey, rows: groupRows, total: groupTotal }) => (
+        <View key={groupKey}>
+          <View style={[s.tableHead, { paddingLeft: 10 }]}>
+            <Text style={[s.th, s.cDesc, { color: '#1e3a5f' }]}>{t(groupKey, lang)}</Text>
+            <Text style={[s.th, { width: 22, textAlign: 'center', color: '#94a3b8' }]}>({groupRows.length})</Text>
+            <Text style={[s.th, s.cAmt, { color: '#1e3a5f' }]}>{fmt(groupTotal)}</Text>
+          </View>
+          {groupRows.map((row, i) => (
+            <View key={row.id} style={[s.tableRow, i % 2 === 1 ? s.tableRowAlt : {}, { paddingLeft: 18 }]} wrap={false}>
+              <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date)}</Text>
+              <View style={s.cDesc}><Text style={s.tdMuted}>{buildRowLabel(row, lang)}</Text></View>
+              <Text style={[s.cAmt, s.tdMuted]}>{fmt(row.client_amount)}</Text>
+            </View>
+          ))}
+        </View>
+      ))}
+      <View style={s.tableTot}>
+        <Text style={[s.tdBold, s.cDate]} />
+        <Text style={[s.tdBold, s.cDesc]}>{t('total', lang)}</Text>
+        <Text style={[s.tdBold, s.cAmt]}>{fmt(rows.reduce((sum, r) => sum + r.client_amount, 0))}</Text>
+      </View>
+    </View>
+  )
+}
+
 function AccountBlock({ section, lang }: { section: RC3AccountSection; lang: Lang }) {
   const acColor  = ACCOUNT_COLOURS[section.account_type] ?? C.navy
   const balColor = getBalColor(section)
@@ -828,7 +869,10 @@ function AccountBlock({ section, lang }: { section: RC3AccountSection; lang: Lan
 
       {/* Section B — Balance-affecting transactions */}
       <TxGroupTable rows={incomeRows}  groupLabel={incomeLabel}  isIncome={true}  lang={lang} />
-      <TxGroupTable rows={expenseRows} groupLabel={expenseLabel} isIncome={false} lang={lang} />
+      {(section.account_type === 'rental' || section.account_type === 'airbnb')
+        ? <GroupedExpensesPdf rows={expenseRows} sectionLabel={expenseLabel} lang={lang} />
+        : <TxGroupTable rows={expenseRows} groupLabel={expenseLabel} isIncome={false} lang={lang} />
+      }
       {payoutRows.length > 0 ? (
         <TxGroupTable rows={payoutRows} groupLabel={t('bpoLabel', lang)} isIncome={false} lang={lang} />
       ) : null}
