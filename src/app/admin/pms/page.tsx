@@ -4,12 +4,9 @@
 // No secrets/PII rendered. Fails closed: no session → redirect to /login.
 
 import { useEffect, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { createSupabaseBrowserClient } from '@/lib/supabase';
 
-const supa = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supa = createSupabaseBrowserClient();
 
 type Dict = Record<string, any>;
 
