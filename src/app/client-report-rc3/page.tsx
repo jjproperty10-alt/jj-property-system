@@ -143,7 +143,7 @@ const DEFAULT_COLOURS = {
 }
 
 /* Module icons — subtle 14px professional icons */
-type LucideIcon = React.FC<{ className?: string; size?: number; strokeWidth?: number }>
+type LucideIcon = React.ElementType
 
 const ACCOUNT_ICONS: Record<string, LucideIcon> = {
   sale:       Building2,
