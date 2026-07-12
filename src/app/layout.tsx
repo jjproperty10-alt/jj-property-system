@@ -25,7 +25,7 @@ const NAV = [
   { href: '/contracts',        label: 'Contracts',     icon: FileText },
   { href: '/ownership',        label: 'Ownership',     icon: PieChart },
   { href: '/settlement',       label: 'Settlement',    icon: ArrowRightLeft },
-  { href: '/client-report',  label: 'Owner Settlement',  icon: FileText },
+  { href: '/client-report-rc3', label: 'Owner Settlement',  icon: FileText },
   { href: '/open-balances',    label: 'Open Balances', icon: Wallet },
   { href: '/investor',         label: 'Investors',     icon: TrendingUp },
   { href: '/contacts',         label: 'Contacts',      icon: Users },
