@@ -231,6 +231,11 @@ const L = {
   openingBalDetail:     { en: 'Date-filtered reports may show incorrect closing balances because prior-period balances are not yet carried forward. Use all-time (unfiltered) reports only for financial review.',
                           he: 'דוחות עם סינון תאריכים עלולים להציג יתרות סגירה שגויות. יש להשתמש בדוחות ללא סינון בלבד לצורכי בדיקה פיננסית.' },
 
+
+  /* ── Meta / footer ────────────────────────────────────────────────────── */
+  metaGenerated: { en: 'Generated',    he: 'נוצר ב'  },
+  pageLabel:     { en: 'Page',          he: 'עמוד'          },
+
 } as const
 
 export type LabelKey = keyof typeof L
