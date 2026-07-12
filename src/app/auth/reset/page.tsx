@@ -2,16 +2,16 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { Lock, Eye, EyeOff, CheckCircle, AlertCircle, Loader } from 'lucide-react'
 
 /**
- * Uses createBrowserClient from @supabase/ssr (cookie-aware) so it reads the
- * session that /auth/callback set via its server-side exchangeCodeForSession()
- * call. The plain createClient() uses localStorage and would miss the cookie.
+ * Uses createClient from @supabase/supabase-js (localStorage-based) so it can
+ * detect hash-fragment tokens (#access_token=...&type=recovery) from the
+ * implicit grant flow used by password reset emails.
  */
 function createClient() {
-  return createBrowserClient(
+  return createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
@@ -39,7 +39,7 @@ function ResetForm() {
       setSessionState(hasSession ? 'ready' : 'invalid')
     }
 
-    // Primary: check if the session cookie was set by /auth/callback
+    // Primary: check if the hash fragment was auto-detected by supabase-js
     supabase.auth.getSession().then(({ data: { session } }) => {
       resolve(!!session)
     })
@@ -83,7 +83,7 @@ function ResetForm() {
     setTimeout(() => router.push('/'), 2500)
   }
 
-  /* ── Loading ────────────────────────────────────────────────────────────── */
+  /* ── Loading ────────────────────────────────────────────────────── */
   if (sessionState === 'loading') {
     return (
       <div className="bg-white rounded-2xl shadow-2xl p-8 text-center">
@@ -93,7 +93,7 @@ function ResetForm() {
     )
   }
 
-  /* ── Invalid / expired ──────────────────────────────────────────────────── */
+  /* ── Invalid / expired ──────────────────────────────────────────── */
   if (sessionState === 'invalid') {
     return (
       <div className="bg-white rounded-2xl shadow-2xl p-8 text-center">
@@ -112,7 +112,7 @@ function ResetForm() {
     )
   }
 
-  /* ── Success ────────────────────────────────────────────────────────────── */
+  /* ── Success ─────────────────────────────────────────────────────── */
   if (success) {
     return (
       <div className="bg-white rounded-2xl shadow-2xl p-8 text-center">
@@ -123,7 +123,7 @@ function ResetForm() {
     )
   }
 
-  /* ── Form ───────────────────────────────────────────────────────────────── */
+  /* ── Form ───────────────────────────────────────────────────────── */
   return (
     <div className="bg-white rounded-2xl shadow-2xl p-8">
       <form onSubmit={handleSubmit} className="space-y-5">
