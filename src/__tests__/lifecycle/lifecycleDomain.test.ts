@@ -569,9 +569,9 @@ describe('M8-A — Investment Lifecycle Domain', () => {
 
     // Acquisition economics are NOT in PartnerEntry at all —
     // the type itself enforces this (no purchasePrice field on PartnerEntry)
-    expect((view as Record<string, unknown>)['purchasePrice']).toBeUndefined()
-    expect((view as Record<string, unknown>)['totalJJCost']).toBeUndefined()
-    expect((view as Record<string, unknown>)['jjMarginFromEntry']).toBeUndefined()
+    expect((view as unknown as Record<string, unknown>)['purchasePrice']).toBeUndefined()
+    expect((view as unknown as Record<string, unknown>)['totalJJCost']).toBeUndefined()
+    expect((view as unknown as Record<string, unknown>)['jjMarginFromEntry']).toBeUndefined()
   })
 
   // ── SEP-19: Property Lifecycle ≠ Investment Lifecycle ───────────────────
@@ -624,7 +624,7 @@ describe('M8-A — Investment Lifecycle Domain', () => {
 
     // Partner report: no jjInternal field
     const partnerReport = buildPartnerFacingReport(summary)
-    expect((partnerReport as Record<string, unknown>)['jjInternal']).toBeUndefined()
+    expect((partnerReport as unknown as Record<string, unknown>)['jjInternal']).toBeUndefined()
     expect(partnerReport.capitalPaid).toBe(50000)      // financial facts preserved
     expect(partnerReport.entryOwnershipPct).toBe(50)
 
