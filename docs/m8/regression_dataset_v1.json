@@ -1,0 +1,864 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "frozen_at": "2026-07-13",
+    "description": "JJ Property 10 — Ownership Engine Regression Dataset v1. Frozen. Do not edit. All future engine changes must produce identical outputs for every case in this file.",
+    "property_owners_table": "NEVER REFERENCED — all ownership from partnership_ownership only",
+    "routing_flag": "hasOwnershipRecords (boolean) is the sole financial routing signal",
+    "rounding": "round2(n) = Math.round(n * 100) / 100, applied once per stage",
+    "settled_threshold": "Math.abs(n) < 0.005"
+  },
+
+  "ownership_records": {
+    "Villa Mazotos": [
+      {
+        "partner_name": "Avi",
+        "ownership_pct": 50,
+        "effective_from": "2020-01-01",
+        "effective_to": null,
+        "confirmation_status": "confirmed"
+      },
+      {
+        "partner_name": "JJ",
+        "ownership_pct": 50,
+        "effective_from": "2020-01-01",
+        "effective_to": null,
+        "confirmation_status": "confirmed"
+      }
+    ],
+    "Villa Mazotos 2": [
+      {
+        "partner_name": "Oren",
+        "ownership_pct": 35,
+        "effective_from": "2020-01-01",
+        "effective_to": null,
+        "confirmation_status": "confirmed"
+      },
+      {
+        "partner_name": "JJ",
+        "ownership_pct": 65,
+        "effective_from": "2020-01-01",
+        "effective_to": null,
+        "confirmation_status": "confirmed"
+      }
+    ],
+    "Tamir Dekelia": []
+  },
+
+  "accounting_outputs": {
+    "Villa Mazotos": {
+      "reporting_name": "Villa Mazotos",
+      "from_date": "2023-01-01",
+      "to_date": "2026-07-12",
+      "accounts": [
+        {
+          "account_type": "airbnb",
+          "account_label": "Airbnb",
+          "account_label_he": "איירבנב",
+          "balance_convention": "owner_credit",
+          "opening_balance": 0,
+          "contract_baseline": 0,
+          "total_income": 8000,
+          "total_expenses": 3000,
+          "total_bpo": 0,
+          "closing_balance": 5000,
+          "rows": []
+        }
+      ],
+      "_comment": "projectBalance100 = +5000 (owner_credit, positive → owed to owners)"
+    },
+    "Villa Mazotos 2": {
+      "reporting_name": "Villa Mazotos 2",
+      "from_date": "2023-01-01",
+      "to_date": "2026-07-12",
+      "accounts": [
+        {
+          "account_type": "renovation",
+          "account_label": "Renovation",
+          "account_label_he": "שיפוץ",
+          "balance_convention": "client_debt",
+          "opening_balance": 0,
+          "contract_baseline": 200000,
+          "total_income": 0,
+          "total_expenses": 100000,
+          "total_bpo": 0,
+          "closing_balance": 10000,
+          "rows": []
+        }
+      ],
+      "_comment": "projectBalance100 = -10000 (client_debt, closing_balance negated → client owes JJ)"
+    },
+    "Tamir Dekelia": {
+      "reporting_name": "Tamir Dekelia",
+      "from_date": "2023-01-01",
+      "to_date": "2026-07-12",
+      "accounts": [
+        {
+          "account_type": "rental",
+          "account_label": "Rental",
+          "account_label_he": "שכירות",
+          "balance_convention": "owner_credit",
+          "opening_balance": 0,
+          "contract_baseline": 0,
+          "total_income": 8000,
+          "total_expenses": 0,
+          "total_bpo": 0,
+          "closing_balance": 8000,
+          "rows": []
+        }
+      ],
+      "_comment": "projectBalance100 = +8000. No ownership records → 100% passthrough"
+    }
+  },
+
+  "expected_settlements": {
+    "G1_Avi_VillaMazotos": {
+      "_narrative": "G1 — Avi invested in Villa Mazotos. He owns 50%. Project surplus €5,000. JJ pays Avi €2,500.",
+      "selectedOwner": "Avi",
+      "property": "Villa Mazotos",
+      "hasOwnershipRecords": true,
+      "ownershipPct": 50,
+      "projectBalance100": 5000,
+      "ownerAdjustedBalance": 2500,
+      "direction": "payable_to_owner",
+      "per_account": [
+        {
+          "account_type": "airbnb",
+          "owner_income": 4000,
+          "owner_expenses": 1500,
+          "owner_closing_balance": 2500,
+          "balance_convention": "owner_credit"
+        }
+      ]
+    },
+    "G2_JJ_VillaMazotos": {
+      "_narrative": "G2 — JJ owns 50% of Villa Mazotos. JJ is undivided (no Yossi/Jacob sub-split). JJ internal credit €2,500.",
+      "selectedOwner": "JJ",
+      "property": "Villa Mazotos",
+      "hasOwnershipRecords": true,
+      "ownershipPct": 50,
+      "projectBalance100": 5000,
+      "ownerAdjustedBalance": 2500,
+      "direction": "payable_to_owner",
+      "jj_is_undivided": true,
+      "no_yossi_jacob_in_ownershipStructure": true,
+      "per_account": [
+        {
+          "account_type": "airbnb",
+          "owner_income": 4000,
+          "owner_expenses": 1500,
+          "owner_closing_balance": 2500,
+          "balance_convention": "owner_credit"
+        }
+      ]
+    },
+    "G3_Oren_VillaMazotos2": {
+      "_narrative": "G3 — Oren owns 35% of Villa Mazotos 2. Project is in debt (client_debt convention). Oren owes JJ €3,500.",
+      "selectedOwner": "Oren",
+      "property": "Villa Mazotos 2",
+      "hasOwnershipRecords": true,
+      "ownershipPct": 35,
+      "projectBalance100": -10000,
+      "ownerAdjustedBalance": -3500,
+      "direction": "payable_to_jj",
+      "per_account": [
+        {
+          "account_type": "renovation",
+          "owner_income": 0,
+          "owner_expenses": 35000,
+          "owner_closing_balance": 3500,
+          "balance_convention": "client_debt",
+          "_note": "owner_closing_balance = 3500 (35% of 10000) before convention flip. direction flag comes from ownerAdjustedBalance = -3500."
+        }
+      ]
+    },
+    "G4_JJ_VillaMazotos2": {
+      "_narrative": "G4 — JJ owns 65% of Villa Mazotos 2. JJ carries €6,500 of the project debt. Oren (G3) + JJ (G4) = €10,000 full debt.",
+      "selectedOwner": "JJ",
+      "property": "Villa Mazotos 2",
+      "hasOwnershipRecords": true,
+      "ownershipPct": 65,
+      "projectBalance100": -10000,
+      "ownerAdjustedBalance": -6500,
+      "direction": "payable_to_jj",
+      "ownership_sum_check": {
+        "Oren": 35,
+        "JJ": 65,
+        "total": 100
+      }
+    },
+    "G5_Liron_TamirDekelia": {
+      "_narrative": "G5 — Tamir Dekelia is a client property. No partnership_ownership rows. 100% passthrough. JJ pays Liron the full balance.",
+      "selectedOwner": "Liron",
+      "property": "Tamir Dekelia",
+      "hasOwnershipRecords": false,
+      "ownershipPct": 100,
+      "projectBalance100": 8000,
+      "ownerAdjustedBalance": 8000,
+      "passthrough_invariant": "ownerAdjustedBalance === projectBalance100",
+      "direction": "payable_to_owner"
+    }
+  },
+
+  "expected_portfolio": {
+    "G6_JJ_MultiProperty": {
+      "_narrative": "G6 — JJ portfolio: Villa Mazotos (+2500 credit) + Villa Mazotos 2 (-6500 debt). Net: JJ owes €4,000.",
+      "selectedOwner": "JJ",
+      "period": { "from": "2023-01-01", "to": "2026-07-12" },
+      "properties_included": [
+        { "name": "Villa Mazotos", "ownerAdjustedBalance": 2500 },
+        { "name": "Villa Mazotos 2", "ownerAdjustedBalance": -6500 }
+      ],
+      "totalOwnerCredits": 2500,
+      "totalOwnerDebts": 6500,
+      "finalNetBalance": -4000,
+      "finalDirection": "payable_to_jj",
+      "credit_debt_separation_invariant": "credits and debts are summed independently before netting — never mixed mid-calculation"
+    }
+  },
+
+  "edge_cases": {
+    "EC1_future_ownership_row_excluded": {
+      "_narrative": "An ownership row with effective_from in the future must be excluded. Property falls back to 100% passthrough.",
+      "effective_from": "2030-01-01",
+      "referenceDate": "2026-07-12",
+      "expected_hasOwnershipRecords": false,
+      "expected_ownershipPct": 100
+    },
+    "EC2_expired_ownership_row_excluded": {
+      "_narrative": "An ownership row with effective_to in the past must be excluded.",
+      "effective_to": "2022-12-31",
+      "referenceDate": "2026-07-12",
+      "expected_hasOwnershipRecords": false,
+      "expected_ownershipPct": 100
+    },
+    "EC3_boundary_effective_to_equals_referenceDate": {
+      "_narrative": "A row with effective_to exactly equal to referenceDate is still active (inclusive boundary).",
+      "effective_to": "2026-07-12",
+      "referenceDate": "2026-07-12",
+      "expected_hasOwnershipRecords": true
+    },
+    "EC4_unconfirmed_row_excluded": {
+      "_narrative": "Rows with confirmation_status != 'confirmed' are excluded from ownership calculation.",
+      "confirmation_status": "pending",
+      "expected_hasOwnershipRecords": false
+    },
+    "EC5_settled_threshold": {
+      "_narrative": "A balance of €0.004 rounds to 'settled', not payable_to_owner or payable_to_jj.",
+      "ownerAdjustedBalance": 0.004,
+      "expected_direction": "settled"
+    },
+    "EC6_rounding_no_double_application": {
+      "_narrative": "Ownership pct applied once in buildPropertySettlement. Portfolio layer sums pre-rounded values — no second application.",
+      "engine_path": "buildOwnerAdjustedAccount (round2 per field) → buildPropertySettlement (round2 for ownerAdjustedBalance) → buildPortfolio (round2 for totals)",
+      "invariant": "pct is never multiplied twice in any execution path"
+    }
+  },
+
+  "lifecycle_inputs": {
+    "Villa Mazotos 2": {
+      "_confirmed_date": "2026-07-13",
+      "_note": "B3 RESOLVED. Entry valuation, required capital, JJ margin, inception model all confirmed. Capital paid UNKNOWN — do not infer.",
+      "property_acquisition": {
+        "entityId": "villa-mazotos-2",
+        "purchasePrice": 400000,
+        "acquisitionStatus": "in_progress",
+        "currency": "EUR",
+        "_note": "Purchase price confirmed by Yossi 2026-07-13. Acquisition in progress. Closing costs TBD."
+      },
+      "partner_entries": [
+        {
+          "partnerName": "Oren",
+          "ownershipPct": 35,
+          "agreedEntryValuation": 520000,
+          "requiredEntryCapital": 182000,
+          "entryDate": null,
+          "profitParticipationStartDate": null,
+          "_entryDate_note": "Business rule CONFIRMED: from acquisition inception. Exact calendar date pending signed purchase contract. Status: confirmed_business_sequence_pending_exact_date.",
+          "_capitalPaid_note": "UNKNOWN — must not be inferred. Do not use deposit/brokerage rows (payer=Jacob) as Oren capital payments.",
+          "_status": "confirmed_2026-07-13"
+        }
+      ],
+      "capital_events_oren": [],
+      "_capital_events_oren_note": "No Oren capital events confirmed. Populate only after Yossi confirms Oren payment amounts and dates."
+    },
+    "Villa Mazotos": {
+      "_confirmed_date": "2026-07-13",
+      "property_acquisition": {
+        "entityId": "villa-mazotos",
+        "purchasePrice": 400000,
+        "closingCosts_approx": 14300,
+        "totalJJCost_approx": 414300,
+        "currency": "EUR",
+        "_note": "closingCosts approximate until Yossi confirms all cost rows. Use purchasePrice only for JJ margin approximation."
+      },
+      "partner_entries": [
+        {
+          "partnerName": "Avi",
+          "ownershipPct": 50,
+          "agreedEntryValuation": 500000,
+          "requiredEntryCapital": 250000,
+          "entryDate": null,
+          "profitParticipationStartDate": null,
+          "_entryDate_note": "UNKNOWN — awaiting Yossi confirmation",
+          "_status": "confirmed_2026-07-13"
+        }
+      ],
+      "capital_events_avi": [
+        {
+          "id": "ev-avi-001",
+          "eventType": "capital_payment",
+          "partnerName": "Avi",
+          "amountEur": 200000,
+          "direction": "in",
+          "counterparty": "Avi",
+          "voided": false,
+          "businessSource": "Transaction: Owner→Owner, 2024-10-10, desc='אבי העביר למוכר'",
+          "_note": "Avi paid seller directly — his 50% of the €400K purchase price"
+        },
+        {
+          "id": "ev-avi-002",
+          "eventType": "capital_payment",
+          "partnerName": "Avi",
+          "amountEur": 50000,
+          "direction": "in",
+          "counterparty": "Yossi",
+          "voided": false,
+          "businessSource": "Yossi-approved historical correction of legacy DB row (2024-06-16, Owner→Yossi). Legacy row recorded €30,000 — known historical data error. Approved authoritative amount: €50,000.",
+          "_note": "PARTNER-ENTRY CAPITAL — not JJ operating income. DB row currently mis-classified as category=JJ Income with wrong amount (€30K). Future correction: void/supersede legacy row; insert this event for €50,000. Do NOT create two events (€30K + €20K).",
+          "_legacy_correction": {
+            "legacy_db_amount": 30000,
+            "authoritative_amount": 50000,
+            "correction_type": "known_historical_data_error",
+            "correction_status": "approved_by_yossi_2026-07-13",
+            "correction_model": "void-and-replace: one event of €50,000 referencing legacy row as audit source"
+          }
+        }
+      ]
+    }
+  },
+
+  "expected_lifecycle": {
+    "G7_Avi_EntryCapital_VillaMazotos": {
+      "_narrative": "G7 — Avi's partner entry in Villa Mazotos. Entry valuation €500K, ownership 50%, required capital €250K. Two payments: €200K (seller) + €50K (Yossi). Fully paid. Confirmed 2026-07-13.",
+      "_confirmed_date": "2026-07-13",
+      "partnerName": "Avi",
+      "property": "Villa Mazotos",
+      "agreedEntryValuation": 500000,
+      "entryOwnershipPct": 50,
+      "requiredEntryCapital": 250000,
+      "capitalEvents_active": [
+        { "id": "ev-avi-001", "amountEur": 200000, "voided": false },
+        { "id": "ev-avi-002", "amountEur": 50000, "voided": false }
+      ],
+      "expected": {
+        "capitalPaid": 250000,
+        "capitalRemaining": 0,
+        "isEntryFullyPaid": true,
+        "additionalContributions": 0,
+        "totalDistributions": 0
+      },
+      "validation_rules_applied": [9, 10, 11, 12, 13]
+    },
+
+    "G8_JJ_InternalMargin_VillaMazotos": {
+      "_narrative": "G8 — JJ internal capital economics from Avi's entry. totalJJCost=€400K (purchase price, approx). Avi paid €250K for his 50%. JJ margin=€50K, netAtRisk=€150K. NEVER shown to Avi.",
+      "_confidentiality": "JJ INTERNAL ONLY — excluded from all partner-facing output",
+      "property": "Villa Mazotos",
+      "totalJJCost_used": 400000,
+      "_totalJJCost_note": "Approximate — excludes closing costs (~€14.3K). Exact margin slightly lower (~€42.9K) once costs confirmed.",
+      "partnerName": "Avi",
+      "requiredEntryCapital": 250000,
+      "entryOwnershipPct": 50,
+      "expected_jjInternal": {
+        "jjTotalAcquisitionCost": 400000,
+        "jjMarginFromEntry": 50000,
+        "jjNetCapitalAtRisk": 150000
+      },
+      "formula_verification": {
+        "jjMarginFromEntry": "requiredEntryCapital - (totalJJCost × ownershipPct / 100) = 250000 - (400000 × 50 / 100) = 250000 - 200000 = 50000",
+        "jjNetCapitalAtRisk": "totalJJCost - requiredEntryCapital = 400000 - 250000 = 150000"
+      },
+      "visibility_rule": "jjInternal fields MUST NOT appear in PartnerInvestmentReport or any partner-facing delivery",
+      "validation_rules_applied": [9, 14, 15]
+    },
+
+    "G9_BillableEvent_Renovation_Avi50pct": {
+      "_narrative": "G9 — Renovation billable event on Villa Mazotos. ActualCost=€10,000, ClientCharge=€13,000. Avi (50%) is billed €6,500. JJ margin from Avi=€1,500. JJ margin is NEVER shown to Avi.",
+      "property": "Villa Mazotos",
+      "partnerName": "Avi",
+      "ownershipPct": 50,
+      "billableEvent": {
+        "category": "Renovation",
+        "actualCost": 10000,
+        "clientCharge": 13000
+      },
+      "expected_perInvestor": {
+        "investorShare_clientCharge": 6500,
+        "investorShare_actualCost": 5000,
+        "jjMarginFromInvestor": 1500
+      },
+      "formula_verification": {
+        "investorShare_clientCharge": "13000 × 0.50 = 6500",
+        "investorShare_actualCost": "10000 × 0.50 = 5000",
+        "jjMarginFromInvestor": "(13000 - 10000) × 0.50 = 3000 × 0.50 = 1500"
+      },
+      "visibility_rule": "investorShare_clientCharge → partner-facing ✅. investorShare_actualCost + jjMarginFromInvestor → JJ internal only ❌",
+      "validation_rules_applied": [16, 17, 18]
+    },
+
+    "G9b_BillableEvent_Renovation_Oren35pct": {
+      "_narrative": "G9b — Same renovation event, Oren (35% in Villa Mazotos 2). Oren billed €4,550. JJ margin from Oren=€1,050.",
+      "property": "Villa Mazotos 2",
+      "partnerName": "Oren",
+      "ownershipPct": 35,
+      "billableEvent": {
+        "category": "Renovation",
+        "actualCost": 10000,
+        "clientCharge": 13000
+      },
+      "expected_perInvestor": {
+        "investorShare_clientCharge": 4550,
+        "investorShare_actualCost": 3500,
+        "jjMarginFromInvestor": 1050
+      },
+      "formula_verification": {
+        "investorShare_clientCharge": "13000 × 0.35 = 4550",
+        "investorShare_actualCost": "10000 × 0.35 = 3500",
+        "jjMarginFromInvestor": "(13000 - 10000) × 0.35 = 3000 × 0.35 = 1050"
+      },
+      "validation_rules_applied": [16, 17, 18]
+    },
+
+    "G10_FullLifecycleSummary_Avi": {
+      "_narrative": "G10 — Full Investment Lifecycle Summary for Avi on Villa Mazotos. Entry fully paid. Operations balance +€2,500 (from G1 settlement engine). Net position = +€2,500.",
+      "partnerName": "Avi",
+      "property": "Villa Mazotos",
+      "input_from_lifecycle": {
+        "requiredEntryCapital": 250000,
+        "capitalPaid": 250000,
+        "capitalRemaining": 0,
+        "isEntryFullyPaid": true,
+        "totalDistributions": 0,
+        "additionalContributions": 0
+      },
+      "input_from_settlement_engine": {
+        "ownerAdjustedBalance": 2500,
+        "_source": "G1 settlement output"
+      },
+      "expected_summary": {
+        "capitalPaid": 250000,
+        "capitalRemaining": 0,
+        "isEntryFullyPaid": true,
+        "ownerAdjustedBalance": 2500,
+        "totalDistributions": 0,
+        "netPosition": 2500
+      },
+      "formula_verification": {
+        "netPosition": "ownerAdjustedBalance + totalDistributions - capitalRemaining = 2500 + 0 - 0 = 2500"
+      },
+      "validation_rules_applied": [11, 12, 20]
+    },
+
+    "G11_VoidAndReplace_AviLegacyCorrection": {
+      "_narrative": "G11 — Known historical data correction: Avi's installment-2 (to Yossi) was recorded as €30,000 in legacy data. Approved authoritative amount: €50,000. This is not an unexplained gap — it is a known wrong historical value. Correction model: preserve legacy row, mark superseded, create one authoritative event for €50,000. Do NOT create two events (€30K + €20K).",
+      "property": "Villa Mazotos",
+      "partnerName": "Avi",
+      "correction_type": "known_historical_data_error",
+      "correction_status": "approved_by_yossi_2026-07-13",
+      "scenario": {
+        "legacy_db_row": {
+          "id": "ev-avi-002-legacy",
+          "amountEur": 30000,
+          "category": "JJ Income",
+          "description": "אבי נתן ליוסי רווח מהווילה מזוטוס",
+          "notes": "???",
+          "voided": false,
+          "status": "BEFORE_CORRECTION",
+          "_known_error": "Wrong amount (€30K instead of €50K) AND wrong category (JJ Income instead of partner-entry capital)"
+        },
+        "after_correction": {
+          "legacy_row": {
+            "id": "ev-avi-002-legacy",
+            "amountEur": 30000,
+            "voided": true,
+            "voidReason": "Historical data error. Approved authoritative amount is €50,000 (Yossi-approved 2026-07-13). Also mis-classified as JJ Income — correct classification: Villa Mazotos partner-entry capital.",
+            "voidedBy": "Yossi",
+            "voidedAt": "2026-07-13"
+          },
+          "replacement_event": {
+            "id": "ev-avi-002",
+            "amountEur": 50000,
+            "eventType": "capital_payment",
+            "partnerName": "Avi",
+            "counterparty": "Yossi",
+            "direction": "in",
+            "voided": false,
+            "supersedesEventId": "ev-avi-002-legacy",
+            "businessSource": "Yossi approval 2026-07-13: authoritative amount €50,000; partner-entry capital for Villa Mazotos",
+            "_note": "supersedesEventId auto-set by createReplacementCapitalEvent(). One event — not two."
+          }
+        }
+      },
+      "expected": {
+        "active_events_in_capitalPaid_computation": ["ev-avi-001", "ev-avi-002"],
+        "excluded_from_capitalPaid": ["ev-avi-002-legacy"],
+        "capitalPaid_after_correction": 250000,
+        "voided_event_still_in_db": true,
+        "events_created_for_installment_2": 1,
+        "_key_invariant": "One approved payment of €50,000. Not two payments (€30K + €20K). Legacy €30K is just the wrong historical value for the same event.",
+        "_audit_invariant": "DELETE is never used. The legacy €30K row remains permanently for audit trail, marked voided/superseded."
+      },
+      "validation_rules_applied": [13, 19]
+    },
+
+    "G13_AviInception_VillaMazotos": {
+      "_narrative": "G13 — Avi's inception participation in Villa Mazotos. Avi entered from acquisition start — not one week later, not one month later. His 50% covers all lifecycle economics from day one. Business rule confirmed 2026-07-13. Exact calendar date pending signed contract.",
+      "_confirmed_date": "2026-07-13",
+      "partnerName": "Avi",
+      "property": "Villa Mazotos",
+      "inceptionModel": {
+        "entered_from": "acquisition_inception",
+        "status": "confirmed_business_sequence_pending_exact_date",
+        "lifecycle_scope": ["purchase", "legal", "taxes", "renovation", "capex", "operations", "rental", "airbnb", "profits_and_losses", "future_disposition"],
+        "no_pre_avi_jj_period": true
+      },
+      "expected": {
+        "ownership_effective_from": "= acquisition_contract_date (once retrieved from signed contract)",
+        "profit_participation_start": "= ownership_effective_from (same date)",
+        "first_ownership_period_partner": "Avi",
+        "first_ownership_period_pct": 50,
+        "pre_avi_jj_only_period_exists": false,
+        "delayed_entry_calculation_required": false
+      },
+      "_key_invariant": "System must never fabricate a delayed entry date from payment timing or transaction evidence. Only a signed document can establish a date different from acquisition start.",
+      "_test_assertion": "Any report that shows a JJ-only period for Villa Mazotos before Avi's entry is architecturally incorrect and must fail this test case."
+    },
+
+    "G14_OrenEntry_VillaMazotos2": {
+      "_narrative": "G14 — Oren's partner entry in Villa Mazotos 2. Entry valuation €520K (≠ purchase price €400K). Ownership 35%. Required capital €182K. JJ entry margin €42K (internal only, never shown to Oren). Capital paid UNKNOWN — must not be inferred. Oren from inception. Confirmed 2026-07-13.",
+      "_confirmed_date": "2026-07-13",
+      "_confidentiality": "jjMarginFromOrenEntry, jjCostBasisForOren, jjNetAtRisk must NEVER appear in partner-facing output.",
+      "partnerName": "Oren",
+      "property": "Villa Mazotos 2",
+      "input_partner_visible": {
+        "agreedEntryValuation": 520000,
+        "ownershipPct": 35,
+        "requiredEntryCapital": 182000,
+        "entryDate": null,
+        "_entryDate_note": "confirmed_business_sequence_pending_exact_date — from acquisition inception",
+        "capitalPaid": "UNKNOWN — do not infer",
+        "capitalRemaining": "UNKNOWN — cannot compute without capitalPaid"
+      },
+      "input_jj_internal_only": {
+        "jjPurchasePrice": 400000,
+        "jjCostBasisForOren_35pct": 140000,
+        "jjMarginFromOrenEntry": 42000,
+        "jjNetCapitalAtRiskPostOren": 218000
+      },
+      "formula_verification": {
+        "requiredEntryCapital": "520000 × 35 / 100 = 182000",
+        "jjCostBasisForOren": "400000 × 35 / 100 = 140000",
+        "jjMarginFromOrenEntry": "182000 - 140000 = 42000",
+        "jjNetAtRisk": "400000 - 182000 = 218000"
+      },
+      "expected": {
+        "partner_facing_shows_entry_valuation": 520000,
+        "partner_facing_shows_required_capital": 182000,
+        "partner_facing_never_shows_jj_margin": true,
+        "capital_paid_must_not_be_inferred": true,
+        "capital_remaining_cannot_be_computed_until_paid_known": true,
+        "entry_from_inception": true
+      },
+      "inceptionModel": {
+        "entered_from": "acquisition_inception",
+        "status": "confirmed_business_sequence_pending_exact_date",
+        "lifecycle_scope": ["purchase", "legal", "taxes", "renovation", "capex", "operations", "rental", "airbnb", "profits_and_losses", "future_disposition"],
+        "no_pre_oren_jj_period": true
+      },
+      "_key_invariants": [
+        "agreedEntryValuation (€520K) and purchasePrice (€400K) are independent confirmed facts — no forced arithmetic relationship",
+        "jjMarginFromOrenEntry (€42K) is computed at reporting time, never stored in capital_event ledger, never shown to Oren",
+        "capital_paid is UNKNOWN — system must return UNKNOWN/null, not zero, not inferred amount",
+        "Do not use Jacob's deposit (€10K) or brokerage (€3K) rows as Oren capital events without explicit Yossi confirmation"
+      ],
+      "validation_rules_applied": [9, 14, 15, 17, 18]
+    },
+
+    "G12_AviPortfolio_SingleProperty": {
+      "_narrative": "G12 — Avi's investment portfolio view. One property (Villa Mazotos). Net position +€2,500. Portfolio aggregation applies same logic as multi-property, with one entry.",
+      "partnerName": "Avi",
+      "input_summaries": [
+        {
+          "property": "Villa Mazotos",
+          "requiredEntryCapital": 250000,
+          "capitalPaid": 250000,
+          "capitalRemaining": 0,
+          "totalDistributions": 0,
+          "additionalContributions": 0,
+          "ownerAdjustedBalance": 2500,
+          "netPosition": 2500
+        }
+      ],
+      "expected_portfolio_totals": {
+        "totalRequiredCapital": 250000,
+        "totalCapitalPaid": 250000,
+        "totalCapitalRemaining": 0,
+        "totalAdditionalContributions": 0,
+        "totalDistributions": 0,
+        "totalOwnerAdjustedBalance": 2500,
+        "totalNetPosition": 2500
+      },
+      "validation_rules_applied": [20]
+    },
+
+    "G15_VacancyCost_VillaMazotos": {
+      "_narrative": "G15 — Vacancy cost during empty period. JJ pays €800 actual costs; no ClientCharge (pass-through at actual). Avi 50%. JJ margin = €0 when CC = €0. OQ-1 resolution.",
+      "partnerName": "Avi",
+      "property": "Villa Mazotos",
+      "ownershipPct": 50,
+      "input": {
+        "actual_cost": 800,
+        "client_charge": 0,
+        "event_type": "vacancy_cost"
+      },
+      "expected": {
+        "owner_charge": 400,
+        "owner_cost_share": 400,
+        "jj_margin": 0,
+        "jj_does_not_absorb_owner_share": true
+      },
+      "formula_verification": {
+        "owner_charge": "0 × 50 / 100 = 0 (CC=0 → no billing; owner_charge = CC × pct only if CC > 0, else pass-through cost = actual_cost × pct = 400)",
+        "_note": "When CC=0, owner_charge = actual_cost × pct. JJ margin = (CC − actual_cost) × pct = (0 − 800) × 0.5 = −400 is not a margin — it means JJ absorbs nothing; owner pays 50%.",
+        "jj_margin_when_no_cc": 0
+      },
+      "_key_invariants": [
+        "JJ does not absorb any partner cost share",
+        "When CC = €0, jj_margin = €0 (not negative; cost is passed through directly)",
+        "owner_charge = actual_cost × pct when CC = €0"
+      ],
+      "validation_rules_applied": [16, 17, 18, 19]
+    },
+
+    "G16_LTRManagementFee_VillaMazotos": {
+      "_narrative": "G16 — LTR Management Fee. Same Billable Event model as Renovation/Airbnb. Cost=€0 (no sub-contractor). CC=€200 agreed monthly mgmt fee. Avi 50%. JJ margin=€100 (internal only). OQ-2 resolution.",
+      "partnerName": "Avi",
+      "property": "Villa Mazotos",
+      "ownershipPct": 50,
+      "input": {
+        "actual_cost": 0,
+        "client_charge": 200,
+        "event_type": "ltr_management_fee"
+      },
+      "expected": {
+        "owner_charge": 100,
+        "owner_cost_share": 0,
+        "jj_margin": 100,
+        "jj_margin_is_internal_only": true,
+        "jj_does_not_invoice_itself": true,
+        "fields_preserved": ["actual_cost", "client_charge", "owner_charge", "owner_cost_share", "jj_margin"]
+      },
+      "formula_verification": {
+        "owner_charge": "200 × 50 / 100 = 100",
+        "owner_cost_share": "0 × 50 / 100 = 0",
+        "jj_margin": "(200 − 0) × 50 / 100 = 100"
+      },
+      "_key_invariants": [
+        "Same Billable Event model as Renovation and Airbnb",
+        "actual_cost, client_charge, owner_charge, owner_cost_share, jj_margin are all separate fields",
+        "jj_margin (€100) is internal and must never appear in partner-facing output"
+      ],
+      "validation_rules_applied": [16, 17, 18, 20]
+    },
+
+    "G17_Refinance_NoOwnershipChange_VillaMazotos": {
+      "_narrative": "G17 — Refinance without ownership change. JJ refinances Villa Mazotos; bank provides €100K. Avi's 50% unchanged. No new partner. OQ-3 resolution: capital_event only; no new ownership_period.",
+      "property": "Villa Mazotos",
+      "input": {
+        "refinance_amount_eur": 100000,
+        "ownership_change": false,
+        "event_type": "refinance_capital_event"
+      },
+      "expected": {
+        "capital_event_created": true,
+        "capital_event_type": "refinance_capital_event",
+        "new_ownership_period_created": false,
+        "avi_ownership_pct_after": 50,
+        "jj_ownership_pct_after": 50
+      },
+      "_key_invariants": [
+        "Refinance creates a capital_event only",
+        "No new ownership_period unless ownership actually changes",
+        "Existing ownership records remain valid and unchanged"
+      ],
+      "validation_rules_applied": [21]
+    },
+
+    "G18_Distribution_PartialPayment_VillaMazotos": {
+      "_narrative": "G18 — Settlement Engine owes Avi €2,500 (ownerAdjustedBalance). JJ pays only €2,000. Outstanding €500 remains. OQ-5 resolution: Settlement ≠ Distribution/Payment.",
+      "partnerName": "Avi",
+      "property": "Villa Mazotos",
+      "input": {
+        "settlement_balance_owed": 2500,
+        "distribution_payment_made": 2000
+      },
+      "expected": {
+        "settlement_engine_output": 2500,
+        "distribution_payment_capital_event_amount": 2000,
+        "distribution_payment_event_type": "distribution_payment",
+        "outstanding_balance": 500,
+        "settlement_record_modified": false,
+        "settlement_and_distribution_records_merged": false,
+        "partial_payments_supported": true
+      },
+      "formula_verification": {
+        "outstanding_balance": "settlement_balance_owed − sum(distribution_payments) = 2500 − 2000 = 500"
+      },
+      "_key_invariants": [
+        "Settlement Engine output (what is owed) is never modified by payments",
+        "Distribution Payment is a separate capital_event record (event_type = distribution_payment)",
+        "Outstanding balance = Settlement − ΣDistribution Payments",
+        "Primitive 6 (Settlement) and Primitive 7 (Distribution/Payment) are never merged"
+      ],
+      "validation_rules_applied": [22]
+    },
+
+    "G19_P9_OneCanonicalEvent_VillaMazotos": {
+      "_narrative": "G19 — P9 canonical event test. Avi wires €50K to Yossi (installment 2). One bank transfer = one canonical capital_event. Must not be duplicated across primitives. Legacy €30K row is voided; replacement at €50K created.",
+      "partnerName": "Avi",
+      "property": "Villa Mazotos",
+      "input": {
+        "bank_transfer_amount_eur": 50000,
+        "event_type": "partner_entry_payment",
+        "accounting_row_id": "legacy_30k_row_uuid"
+      },
+      "expected": {
+        "canonical_events_created": 1,
+        "canonical_event_type": "capital_event",
+        "canonical_event_subtype": "partner_entry_payment",
+        "linked_accounting_transaction_id": "accounting_row_uuid",
+        "linked_lifecycle_event_id": "partner_entry_avi_id",
+        "event_nature": "accounting_event",
+        "also_an_expense": false,
+        "also_income": false,
+        "also_client_charge": false,
+        "total_capital_paid_after_void_and_replace": 250000,
+        "duplicate_canonical_events_allowed": false,
+        "legacy_voided_row_remains_in_db": true,
+        "replacement_event_supersedes_id": "legacy_30k_event_id"
+      },
+      "_key_invariants": [
+        "One economic movement = one canonical event",
+        "P9: one movement → one canonical event → many read-only projections",
+        "Voided events remain in DB permanently (void-and-replace immutability)",
+        "capitalPaid = €250K counted exactly once after correction"
+      ],
+      "validation_rules_applied": [19, 23]
+    },
+
+    "G20_ExternalBuyout_NoJJCapitalEvent_VillaMazotos": {
+      "_narrative": "G20 — Avi sells 50% directly to David (new investor). JJ is not a financial party. No JJ capital_event. Two ownership_period records change. OQ-6 resolution: external_transfer subtype.",
+      "property": "Villa Mazotos",
+      "input": {
+        "transfer_type": "external_transfer",
+        "avi_ownership_pct": 50,
+        "david_entry_ownership_pct": 50,
+        "transfer_date": "2026-07-01"
+      },
+      "expected": {
+        "avi_ownership_period_effective_to": "2026-07-01",
+        "david_partner_entry_created": true,
+        "david_ownership_period_effective_from": "2026-07-01",
+        "jj_capital_event_created": false,
+        "jj_ownership_pct_unchanged": 50,
+        "transfer_type": "external_transfer",
+        "ownership_events_created": 2
+      },
+      "_key_invariants": [
+        "External transfer: no JJ capital_event",
+        "Only two Ownership Events: Avi closes, David opens",
+        "JJ's 50% stake is unchanged",
+        "JJ capital_event is created ONLY if JJ was a financial party to the transfer"
+      ],
+      "validation_rules_applied": [24]
+    }
+  },
+
+  "validation_rules": {
+    "_description": "28 invariants that must hold across all golden cases. Rules 1-8: Settlement Engine (G1-G6). Rules 9-20: Investment Lifecycle (G7-G12). Rules 21-22: Inception + Oren facts (G13-G14). Rules 23-28: OQ resolutions (G15-G20).",
+    "rules": [
+      { "id": 1, "name": "ownership_pct_applied_once", "assertion": "ownerAdjustedBalance === round2(projectBalance100 × ownershipPct / 100)", "cases": ["G1", "G2", "G3", "G4"] },
+      { "id": 2, "name": "passthrough_when_no_ownership_records", "assertion": "!hasOwnershipRecords → ownershipPct === 100 && ownerAdjustedBalance === projectBalance100", "cases": ["G5"] },
+      { "id": 3, "name": "hasOwnershipRecords_is_sole_routing_flag", "assertion": "entity_type is never used to change calculation path — only hasOwnershipRecords", "cases": ["G1-G6"] },
+      { "id": 4, "name": "portfolio_credits_debts_separated", "assertion": "totalOwnerCredits and totalOwnerDebts computed independently before netting", "cases": ["G6"] },
+      { "id": 5, "name": "jj_undivided_in_settlement", "assertion": "No Yossi/Jacob sub-split appears in ownership engine; JJ treated as one entity", "cases": ["G2", "G4"] },
+      { "id": 6, "name": "effective_date_filtering", "assertion": "Rows with effective_from > referenceDate or effective_to < referenceDate are excluded from ownership lookup", "cases": ["EC1", "EC2", "EC3"] },
+      { "id": 7, "name": "only_confirmed_rows_used", "assertion": "confirmation_status must equal 'confirmed' for any row to affect calculation", "cases": ["EC4"] },
+      { "id": 8, "name": "balance_convention_flip_before_pct", "assertion": "client_debt convention negation is applied in computeProjectBalance100 BEFORE ownership pct multiplication", "cases": ["G3", "G4"] },
+      { "id": 9, "name": "entry_valuation_not_derived_from_purchase_price", "assertion": "agreedEntryValuation must be sourced independently from purchasePrice — they have no required arithmetic relationship. Confirmed: €500K ≠ €400K for Villa Mazotos / Avi.", "cases": ["G7", "G8"] },
+      { "id": 10, "name": "required_capital_derived_from_entry_valuation", "assertion": "requiredEntryCapital === round2(agreedEntryValuation × ownershipPct / 100)", "cases": ["G7"] },
+      { "id": 11, "name": "capital_remaining_floor_zero", "assertion": "capitalRemaining === Math.max(0, round2(requiredEntryCapital - capitalPaid))", "cases": ["G7", "G10"] },
+      { "id": 12, "name": "is_entry_fully_paid", "assertion": "isEntryFullyPaid === (capitalPaid >= requiredEntryCapital)", "cases": ["G7", "G10"] },
+      { "id": 13, "name": "capital_paid_excludes_voided_events", "assertion": "capitalPaid = sum(amountEur) for all capital_payment events where voided = false for this partner", "cases": ["G7", "G11"] },
+      { "id": 14, "name": "jj_margin_from_entry_formula", "assertion": "jjMarginFromEntry === round2(requiredEntryCapital - (totalJJCost × ownershipPct / 100))", "cases": ["G8"] },
+      { "id": 15, "name": "jj_net_capital_at_risk", "assertion": "jjNetCapitalAtRisk === round2(totalJJCost - requiredEntryCapital)", "cases": ["G8"] },
+      { "id": 16, "name": "investor_share_client_charge", "assertion": "investorShare_clientCharge === round2(clientCharge × ownershipPct / 100)", "cases": ["G9", "G9b"] },
+      { "id": 17, "name": "investor_share_actual_cost", "assertion": "investorShare_actualCost === round2(actualCost × ownershipPct / 100)", "cases": ["G9", "G9b"] },
+      { "id": 18, "name": "jj_margin_from_billable_event", "assertion": "jjMarginFromInvestor === round2((clientCharge - actualCost) × ownershipPct / 100)", "cases": ["G9", "G9b"] },
+      { "id": 19, "name": "void_and_replace_no_delete", "assertion": "voided events remain in DB permanently. supersedesEventId links replacement to voided. createReplacementCapitalEvent() auto-sets supersedesEventId. For known historical data errors (e.g. legacy €30K → authoritative €50K): ONE corrected event created; do NOT split into two events (€30K + €20K) to account for the difference.", "cases": ["G11"] },
+      { "id": 20, "name": "net_position_formula", "assertion": "netPosition === round2(ownerAdjustedBalance + totalDistributions - capitalRemaining) when ownerAdjustedBalance is not null", "cases": ["G10", "G12"] },
+      { "id": 21, "name": "inception_participation_no_fabricated_delay", "assertion": "When entry is confirmed_business_sequence_pending_exact_date from acquisition inception: ownership_effective_from = acquisition contract date. System must not infer a later date from payment timing. pre_partner_jj_only_period must not be generated.", "cases": ["G13", "G14"] },
+      { "id": 22, "name": "unknown_capital_paid_returns_null_not_zero", "assertion": "When capitalPaid is UNKNOWN (no confirmed capital_payment events exist), capitalPaid = null (not 0). capitalRemaining = null (not requiredEntryCapital). isEntryFullyPaid = null (not false). System must not infer from transaction rows without explicit Yossi confirmation.", "cases": ["G14"] },
+      { "id": 23, "name": "vacancy_cost_passthrough_no_jj_absorption", "assertion": "When CC=0, owner_charge = actual_cost × ownershipPct. JJ does not absorb any partner cost share. jj_margin = 0 when CC = 0.", "cases": ["G15"] },
+      { "id": 24, "name": "ltr_same_billable_event_model", "assertion": "LTR Management Fee uses identical Billable Event fields as Renovation/Airbnb: actual_cost, client_charge, owner_charge, owner_cost_share, jj_margin. JJ does not invoice itself. jj_margin is internal-only.", "cases": ["G16"] },
+      { "id": 25, "name": "refinance_capital_event_only_no_ownership_period", "assertion": "Refinance creates capital_event (type=refinance_capital_event) only. No new ownership_period record unless ownership actually changes as a result of the refinance.", "cases": ["G17"] },
+      { "id": 26, "name": "settlement_not_modified_by_distribution_payment", "assertion": "Settlement Engine output (what is owed) is immutable once computed. Distribution Payment is a separate capital_event. outstanding_balance = settlement_owed − sum(distribution_payment events). Partial payments supported. Primitive 6 ≠ Primitive 7.", "cases": ["G18"] },
+      { "id": 27, "name": "p9_one_movement_one_canonical_event", "assertion": "One economic movement creates exactly one canonical event. The same money may not appear in two different primitive records. Accounting evidence row is linked via linked_accounting_transaction_id; the lifecycle capital_event is the canonical record.", "cases": ["G19"] },
+      { "id": 28, "name": "external_transfer_no_jj_capital_event", "assertion": "When buyout_type = 'external_transfer': no JJ capital_event is created. Only ownership_period records change. JJ capital_event is created ONLY when JJ is a financial party (buyout_type = 'internal_buyout').", "cases": ["G20"] }
+    ],
+    "confidentiality_rules": {
+      "_description": "These fields must NEVER appear in partner-facing output",
+      "never_shown_to_partner": [
+        "purchasePrice",
+        "closingCosts",
+        "totalJJCost",
+        "jjMarginFromEntry",
+        "jjNetCapitalAtRisk",
+        "jjTotalAcquisitionCost",
+        "investorShare_actualCost",
+        "jjMarginFromInvestor",
+        "jjInternal (the entire object)"
+      ]
+    }
+  },
+
+  "regression_policy": {
+    "freeze_date": "2026-07-13",
+    "dataset_version": "1.3",
+    "changelog": "v1.0 (2026-07-13): G1-G6 + EC1-EC6. v1.1 (2026-07-13): Added G7-G12 (Investment Lifecycle layer) + 20 validation rules + confidentiality rules. Confirmed Avi facts: €500K entry valuation, €250K required capital, €250K paid, €0 remaining. v1.2 (2026-07-13): Added G13 (Avi inception participation — from acquisition start, no pre-Avi JJ period) + G14 (Oren VM2 entry: €520K val, €182K required, €42K JJ premium internal, capitalPaid UNKNOWN). lifecycle_inputs for Villa Mazotos 2 added. Validation rules 21-22 added (inception + unknown capitalPaid). B2+B3 confirmed. v1.3 (2026-07-13): Added G15-G20 (OQ-1 vacancy, OQ-2 LTR mgmt fee, OQ-3 refinance, OQ-5 distribution vs payment, P9 canonical event, OQ-6 external buyout). Validation rules 23-28 added. 28 total invariants. All OQ resolutions locked.",
+    "required_for": [
+      "Any change to resolveOwnership()",
+      "Any change to buildPropertySettlement()",
+      "Any change to buildPortfolio()",
+      "Any change to buildReportingOutput()",
+      "Any change to round2() or the settled threshold",
+      "Any change to the balance_convention logic",
+      "Any DB schema change to entity_registry or partnership_ownership",
+      "Any new account_type added to RC3",
+      "Any change to computeInvestmentSummary()",
+      "Any change to buildPartnerFacingReport() or buildJJInternalReport()",
+      "Any change to createCapitalEvent() or createReplacementCapitalEvent()",
+      "Any change to the billable event / ClientCharge computation",
+      "Any change to computePartnerPortfolio()",
+      "Any change to computeVacancyCost() or cost pass-through logic",
+      "Any change to computeLTRManagementFee() or LTR Billable Event model",
+      "Any change to createRefinanceCapitalEvent()",
+      "Any change to Settlement Engine output or distribution_payment recording",
+      "Any change to P9 canonical event creation or linking logic",
+      "Any change to external_transfer or internal_buyout ownership routing"
+    ],
+    "how_to_run": "Execute src/__tests__/lifecycle/lifecycleDomain.test.ts (G7-G20) and src/__tests__/ownership/goldenCases.test.ts (G1-G6). All 28 validation rules must hold. If any expected value in this file changes, the change must be approved by Yossi and committed with a new dataset version before merging.",
+    "versioning": "When cases are added or expected values change, increment dataset version (v1.x → v1.x+1) and document the reason in changelog."
+  }
+}
