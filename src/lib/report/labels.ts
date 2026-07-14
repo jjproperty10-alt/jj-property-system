@@ -207,6 +207,7 @@ const L = {
   fromDate:             { en: 'From Date',    he: 'מתאריך'      },
   toDate:               { en: 'To Date',      he: 'עד תאריך'    },
   loadReport:           { en: 'Load Report',  he: 'טען דוח'     },
+  viewReport:           { en: 'View Report',  he: 'צפה בדוח'    },
   loading:              { en: 'Loading…',     he: 'טוען…'        },
   downloadPdf:          { en: 'Download PDF', he: 'הורד PDF'    },
   buildingPdf:          { en: 'Building PDF…',he: 'מכין PDF…'   },
@@ -242,26 +243,6 @@ const L = {
   // M6: footer version label
   footerVersion:        { en: 'Version 3.0',     he: 'גרסה 3.0'   },
 
-
-  /* ── Investment Timeline (M9-A) ─────────────────────────────────────────── */
-  timelineTitle:          { en: 'Investment Timeline',                            he: 'ציר זמן השקעה'                              },
-  timelineSubtitle:       { en: 'Your investment journey in this property',       he: 'מסע ההשקעה שלך בנכס זה'                    },
-  investmentJourney:      { en: 'Investment Journey',                             he: 'מסע השקעה'                                  },
-  capitalPaid:            { en: 'Capital Paid',                                   he: 'הון ששולם'                                  },
-  capitalRemaining:       { en: 'Capital Remaining',                              he: 'הון שנותר'                                  },
-  capitalUnknown:         { en: 'Unknown',                                        he: 'לא ידוע'                                    },
-  agreedValuation:        { en: 'Agreed Entry Valuation',                         he: 'שווי כניסה מוסכם'                           },
-  requiredCapital:        { en: 'Required Capital',                               he: 'הון נדרש'                                   },
-  ownershipPctLabel:      { en: 'Your Ownership',                                 he: 'אחזקתך'                                     },
-  entryStatus:            { en: 'Entry Status',                                   he: 'סטטוס כניסה'                                },
-  fullyPaid:              { en: 'Fully Paid',                                     he: 'שולם במלואו'                                },
-  partiallyPaid:          { en: 'Partially Paid',                                 he: 'שולם חלקית'                                 },
-  capitalStatusUnknown:   { en: 'Capital Status Unknown',                         he: 'מצב הון לא ידוע'                            },
-  datePendingVerification:{ en: 'Date pending verification',                      he: 'תאריך ממתין לאימות'                         },
-  dateEstimated:          { en: 'Date estimated',                                 he: 'תאריך מוערך'                                },
-  openVerificationTasks:  { en: 'Source documents pending',                       he: 'מסמכי מקור ממתינים'                         },
-  viewInvestmentTimeline: { en: 'Investment Timeline →',                          he: 'ציר זמן השקעה →'                            },
-  noLifecycleData:        { en: 'No investment lifecycle data found.',             he: 'לא נמצאו נתוני מחזור חיי השקעה.'            },
 } as const
 
 export type LabelKey = keyof typeof L
