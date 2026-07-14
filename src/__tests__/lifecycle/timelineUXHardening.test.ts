@@ -101,7 +101,7 @@ describe('TEST 1: timeline line direction per RTL', () => {
 // ---------------------------------------------------------------------------
 
 describe('TEST 2+3: icon only in dot, no emoji inside card', () => {
-  const EMOJI_PATTERN = /[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}]/u
+  const EMOJI_PATTERN = /[\uD800-\uDBFF][\uDC00-\uDFFF]|[☀-➿]/
 
   it('event title strings contain no emoji', () => {
     const titles = [
