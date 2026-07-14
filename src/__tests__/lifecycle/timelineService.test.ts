@@ -3,7 +3,7 @@
  * @description Unit tests for lifecycle/timelineService.loadInvestmentTimeline()
  *
  * Hotfix coverage — entity_type filter bug (timeline 404 root cause):
- *   BEFORE: .eq('entity_type', 'person') → never matches 'investor' → always null → 404
+ *   BEFORE: .eq('entity_type', 'person') never matches 'investor' → always null → 404
  *   AFTER:  filter removed; canonical_name is unique; authorization via partner_entry
  *
  * Test matrix:
@@ -13,9 +13,9 @@
  *   T4  known entity + wrong property returns null (authorization gate)
  *   T5  entity_type filter removal does not bypass partner_entry check
  *   T6  Avi / Villa Mazotos returns non-null DTO
- *   T7  Oren / Villa Mazotos 2 returns non-null DTO
- *   T8  cross-owner URL manipulation blocked (entity exists, partner_entry does not)
- *   T9  JJ fields never appear in returned DTO
+ *   T7  Oren / Villa Mazotos 2 returns non-null DTO (null capital stays null — P-ARCH-1)
+ *   T8  cross-owner URL manipulation blocked
+ *   T9  JJ fields never appear in returned DTO (P-ARCH-6)
  *   T10 financial values unchanged by filter fix
  */
 
@@ -28,21 +28,29 @@ jest.mock('@/lib/supabase', () => ({
 
 const mockCreateServiceClient = createServiceClient as jest.Mock
 
+// ── Entity identity rows (entity_type matches live DB) ────────────────────────
+
 const AVI_ENTITY   = { id: 'avi-uuid',   entity_type: 'investor' }
 const OREN_ENTITY  = { id: 'oren-uuid',  entity_type: 'investor' }
 const YOSSI_ENTITY = { id: 'yossi-uuid', entity_type: 'partner'  }
 
+// ── partner_entry authorization check row ────────────────────────────────────
+
 const ENTRY_CHECK_ROW = [{ id: 'entry-uuid' }]
 
+// ── v_partner_investment_statement view columns (exact DB column names) ───────
+
 const SUMMARY_ROW = {
-  ownership_percentage: 50,
-  agreed_valuation_eur: 500000,
-  required_capital_eur: 250000,
-  capital_paid_eur: 250000,
-  capital_remaining_eur: 0,
-  total_distributions_eur: null,
-  lifecycle_status: 'active',
+  ownership_pct:              50,
+  agreed_entry_valuation_eur: 500000,
+  required_entry_capital_eur: 250000,
+  capital_paid_eur:           250000,
+  capital_remaining_eur:      0,
+  total_distributions_eur:    null,
+  entry_status:               'active',
 }
+
+// ── capital events ────────────────────────────────────────────────────────────
 
 const CAPITAL_EVENTS: unknown[] = [
   {
@@ -63,6 +71,8 @@ const CAPITAL_EVENTS: unknown[] = [
 
 const OWNERSHIP_PERIODS: unknown[] = []
 
+// ── Mock DB builder ───────────────────────────────────────────────────────────
+
 function buildMockDb(overrides: {
   entityData?: unknown
   entityError?: unknown
@@ -75,16 +85,17 @@ function buildMockDb(overrides: {
 } = {}) {
   let callIndex = 0
   const responses = [
-    { data: overrides.entityData ?? AVI_ENTITY,          error: overrides.entityError     ?? null },
+    { data: overrides.entityData    ?? AVI_ENTITY,       error: overrides.entityError     ?? null },
     { data: overrides.entryCheckData ?? ENTRY_CHECK_ROW, error: overrides.entryCheckError ?? null },
-    { data: overrides.summaryData ?? SUMMARY_ROW,        error: null },
+    { data: overrides.summaryData   ?? SUMMARY_ROW,      error: null },
     { data: overrides.capitalEventsData ?? CAPITAL_EVENTS, error: null },
     { data: overrides.ownershipPeriodsData ?? OWNERSHIP_PERIODS, error: null },
     { data: overrides.verificationTasksData ?? [],        error: null },
   ]
   const chain: Record<string, unknown> = {}
-  const methods = ['schema', 'from', 'select', 'eq', 'neq', 'in', 'single', 'limit', 'order', 'maybeSingle']
-  methods.forEach(m => { chain[m] = jest.fn().mockReturnThis() })
+  ;['schema','from','select','eq','neq','in','single','limit','order','maybeSingle'].forEach(m => {
+    chain[m] = jest.fn().mockReturnThis()
+  })
   const terminal = jest.fn().mockImplementation(() => {
     const resp = responses[callIndex] ?? { data: null, error: null }
     callIndex++
@@ -96,6 +107,8 @@ function buildMockDb(overrides: {
   return chain
 }
 
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
 describe('loadInvestmentTimeline — entity_type filter hotfix', () => {
   beforeEach(() => { jest.clearAllMocks() })
 
@@ -103,14 +116,14 @@ describe('loadInvestmentTimeline — entity_type filter hotfix', () => {
     mockCreateServiceClient.mockReturnValue(buildMockDb({ entityData: AVI_ENTITY }))
     const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
     expect(dto).not.toBeNull()
-    expect(dto?.owner.ownerName).toBe('Avi')
+    expect(dto?.investor.name).toBe('Avi')
   })
 
   it('T2: resolves partner entity (entity_type=partner)', async () => {
     mockCreateServiceClient.mockReturnValue(buildMockDb({ entityData: YOSSI_ENTITY }))
     const dto = await loadInvestmentTimeline('Yossi', 'Some Property')
     expect(dto).not.toBeNull()
-    expect(dto?.owner.ownerName).toBe('Yossi')
+    expect(dto?.investor.name).toBe('Yossi')
   })
 
   it('T3: unknown canonical_name → null', async () => {
@@ -138,10 +151,17 @@ describe('loadInvestmentTimeline — entity_type filter hotfix', () => {
     expect(dto?.property.propertyName).toBe('Villa Mazotos')
   })
 
-  it('T7: Oren / Villa Mazotos 2 → returns DTO (null capital stays null — P-ARCH-1)', async () => {
+  it('T7: Oren / Villa Mazotos 2 → null capital stays null (P-ARCH-1)', async () => {
     mockCreateServiceClient.mockReturnValue(buildMockDb({
       entityData: OREN_ENTITY,
-      summaryData: { ...SUMMARY_ROW, ownership_percentage: 35, agreed_valuation_eur: 520000, required_capital_eur: null, capital_paid_eur: null, capital_remaining_eur: null },
+      summaryData: {
+        ...SUMMARY_ROW,
+        ownership_pct: 35,
+        agreed_entry_valuation_eur: 520000,
+        required_entry_capital_eur: null,
+        capital_paid_eur:           null,
+        capital_remaining_eur:      null,
+      },
     }))
     const dto = await loadInvestmentTimeline('Oren', 'Villa Mazotos 2')
     expect(dto).not.toBeNull()
@@ -167,8 +187,8 @@ describe('loadInvestmentTimeline — entity_type filter hotfix', () => {
   it('T10: financial values match source data exactly', async () => {
     mockCreateServiceClient.mockReturnValue(buildMockDb({ entityData: AVI_ENTITY }))
     const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
-    expect(dto?.summary.ownershipPercentage).toBe(50)
-    expect(dto?.summary.agreedValuation).toBe(500000)
+    expect(dto?.summary.currentOwnershipPct).toBe(50)
+    expect(dto?.summary.agreedEntryValuation).toBe(500000)
     expect(dto?.summary.requiredCapital).toBe(250000)
     expect(dto?.summary.capitalPaid).toBe(250000)
     expect(dto?.summary.capitalRemaining).toBe(0)
