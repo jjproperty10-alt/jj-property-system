@@ -1,13 +1,19 @@
 /**
- * InvestmentTimeline — the full Investment Timeline view.
+ * InvestmentTimeline -- the full Investment Timeline view.
  *
- * Composes: InvestmentSummary → EvidenceStatus → timeline event list.
+ * Composes: InvestmentSummary -> EvidenceStatus -> timeline event list.
  *
  * This is a Client Component to support lang toggle and RTL switching.
- * All data arrives via props — no DB calls from the client.
+ * All data arrives via props - no DB calls from the client.
  *
- * P-ARCH-1: passes null values through unchanged — InvestmentSummary renders them as "Unknown".
+ * P-ARCH-1: passes null values through unchanged - InvestmentSummary renders them as "Unknown".
  * P-ARCH-6: dto.events contains only partner-visible events (filtered in timelineService).
+ *
+ * Visibility model:
+ * - dto.viewMode is resolved server-side by timelineService.
+ * - This component uses dto.viewMode to determine which description field to pass
+ *   to TimelineEventCard ('partner' -> partnerDescription, 'admin' -> adminDescription).
+ * - The UI does NOT make visibility decisions - it only renders pre-sanitized fields.
  */
 
 'use client'
@@ -20,7 +26,7 @@ import { TimelineEventCard } from './TimelineEventCard'
 
 interface Props {
   dto: InvestmentTimelineDTO
-  /** JJ admin mode: shows all events including internal ones */
+  /** JJ admin mode: shows all events including internal ones (future use) */
   adminMode?: boolean
 }
 
@@ -29,6 +35,8 @@ export function InvestmentTimeline({ dto, adminMode }: Props) {
   const isRTL = lang === 'he'
 
   const noEvents = dto.events.length === 0
+  // Effective admin mode: explicit prop OR dto.viewMode === 'admin'
+  const isAdminMode = adminMode || dto.viewMode === 'admin'
 
   return (
     <div className="min-h-screen bg-gray-950 text-white" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -41,7 +49,7 @@ export function InvestmentTimeline({ dto, adminMode }: Props) {
               {lang === 'he' ? 'ציר זמן השקעה' : 'Investment Timeline'}
             </h1>
             <p className="text-gray-400 text-sm mt-0.5">
-              {dto.investor.name} · {dto.property.propertyName}
+              {dto.investor.name} &middot; {dto.property.propertyName}
             </p>
           </div>
 
@@ -61,7 +69,7 @@ export function InvestmentTimeline({ dto, adminMode }: Props) {
                 lang === 'he' ? 'bg-blue-700 text-white' : 'text-gray-400 hover:text-white'
               }`}
             >
-              עב
+              {'עב'}
             </button>
           </div>
         </div>
@@ -73,7 +81,7 @@ export function InvestmentTimeline({ dto, adminMode }: Props) {
         <InvestmentSummary summary={dto.summary} lang={lang} />
 
         {/* Evidence panel (admin only) */}
-        {adminMode && (
+        {isAdminMode && (
           <EvidenceStatus evidence={dto.evidence} lang={lang} />
         )}
 
@@ -92,7 +100,8 @@ export function InvestmentTimeline({ dto, adminMode }: Props) {
                 key={event.canonicalEventId}
                 event={event}
                 lang={lang}
-                adminMode={adminMode}
+                viewMode={dto.viewMode}
+                adminMode={isAdminMode}
               />
             ))}
           </div>

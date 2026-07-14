@@ -1,6 +1,6 @@
 /**
  * @module lifecycle/timelineProjection
- * @description Pure projection: raw lifecycle DB rows → InvestmentTimelineEventDTO[]
+ * @description Pure projection: raw lifecycle DB rows -> InvestmentTimelineEventDTO[]
  *
  * No side effects. No DB calls. No inferred business facts.
  * Ordering, visibility, and running sums are computed here.
@@ -27,12 +27,14 @@ import {
   toPartnerSourceLabel,
   toPartnerSourceReference,
   computeEventTitle,
+  computePartnerSafeDescription,
+  computeDateDisplay,
 } from './timelineVisibility'
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 // Raw DB row types (server-side only)
 // These mirror the lifecycle table columns queried by timelineService.
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 
 export interface RawPartnerEntryRow {
   id: string
@@ -84,9 +86,9 @@ export interface RawOwnershipPeriodRow {
   business_source_type?: string | null
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 // Internal helpers
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 
 function resolveConfidence(raw: string | null | undefined): TimelineDateConfidence {
   if (raw === 'confirmed') return 'confirmed'
@@ -100,9 +102,9 @@ function resolveNature(raw: string | null | undefined): TimelineEventNature {
   return 'accounting_event'
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 // Ordering comparator
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 
 /**
  * Compare two timeline events per TIMELINE_ORDERING_RULES:
@@ -132,9 +134,9 @@ function compareTimelineEvents(
   return a.canonicalEventId < b.canonicalEventId ? -1 : 1
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 // Capital inflow running sum
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 
 type CapitalInflowSubtype = 'partner_entry_payment' | 'partner_acquisition_payment'
 
@@ -144,7 +146,7 @@ const CAPITAL_INFLOW_SUBTYPES = new Set<string>([
 ])
 
 /**
- * Build a map from capital_event.id → running capital sum AFTER that event.
+ * Build a map from capital_event.id -> running capital sum AFTER that event.
  *
  * Only inflow events (direction='inflow') with a capital-payment subtype are counted.
  * Events are sorted by (effective_date ASC, created_at ASC, id ASC) before accumulation,
@@ -175,39 +177,58 @@ function buildCapitalRunningMap(rows: RawCapitalEventRow[]): Map<string, number>
   return map
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 // Per-event projection functions
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 
 function projectPartnerEntryRow(
   row: RawPartnerEntryRow,
   entityId: string,
   investorName: string,
 ): InvestmentTimelineEventDTO {
+  const rawNote = row.entry_date_note ?? null
+  // partner_entry: entry_date confidence is always pending_verification in current data
+  const confidence: TimelineDateConfidence = 'pending_verification'
+  const { dateDisplay, dateStatus } = computeDateDisplay(row.entry_date, confidence)
+  const partnerDesc = computePartnerSafeDescription(
+    rawNote,
+    'partner_entry',
+    null,
+    null,
+    null,
+    row.event_nature,
+  )
+  const title = computeEventTitle('partner_entry', null, null)
+
   return {
-    eventId:               row.id,
-    canonicalEventId:      row.id,
+    eventId:                  row.id,
+    canonicalEventId:         row.id,
     entityId,
-    propertyName:          row.property_name,
+    propertyName:             row.property_name,
     investorName,
-    eventType:             'partner_entry',
-    eventSubtype:          null,
-    eventNature:           resolveNature(row.event_nature),
-    effectiveDate:         row.entry_date,
-    effectiveDateConfidence: row.entry_date ? 'pending_verification' : 'pending_verification',
-    recordedAt:            row.created_at,
-    title:                 computeEventTitle('partner_entry', null, null),
-    description:           row.entry_date_note ?? null,
-    amount:                row.required_entry_capital_eur ?? null,
-    currency:              'EUR',
-    ownershipPctBefore:    null,
-    ownershipPctAfter:     row.ownership_pct,
-    capitalPositionAfter:  null,
-    settlementPositionAfter: null,
-    status:                row.status,
-    sourceLabel:           toPartnerSourceLabel(row.business_source_type ?? null),
-    sourceReference:       toPartnerSourceReference(),
-    partnerVisible:        isPartnerEntryVisible(),
+    eventType:                'partner_entry',
+    eventSubtype:             null,
+    eventNature:              resolveNature(row.event_nature),
+    effectiveDate:            row.entry_date,
+    effectiveDateConfidence:  confidence,
+    recordedAt:               row.created_at,
+    title,
+    description:              rawNote,
+    partnerTitle:             title,
+    partnerDescription:       partnerDesc,
+    adminDescription:         rawNote,
+    dateDisplay,
+    dateStatus,
+    amount:                   row.required_entry_capital_eur ?? null,
+    currency:                 'EUR',
+    ownershipPctBefore:       null,
+    ownershipPctAfter:        row.ownership_pct,
+    capitalPositionAfter:     null,
+    settlementPositionAfter:  null,
+    status:                   row.status,
+    sourceLabel:              toPartnerSourceLabel(row.business_source_type ?? null),
+    sourceReference:          toPartnerSourceReference(),
+    partnerVisible:           isPartnerEntryVisible(),
   }
 }
 
@@ -217,30 +238,48 @@ function projectCapitalEventRow(
   investorName: string,
   capitalPositionAfter: number | null,
 ): InvestmentTimelineEventDTO {
+  const rawDescription = row.description ?? null
+  const confidence = resolveConfidence(row.effective_date_confidence)
+  const { dateDisplay, dateStatus } = computeDateDisplay(row.effective_date, confidence)
+  const partnerDesc = computePartnerSafeDescription(
+    rawDescription,
+    'capital_event',
+    row.event_subtype,
+    row.payer_name,
+    row.payee_name,
+    row.event_nature,
+  )
+  const title = computeEventTitle('capital_event', row.event_subtype, row.direction)
+
   return {
-    eventId:               row.id,
-    canonicalEventId:      row.id,
+    eventId:                  row.id,
+    canonicalEventId:         row.id,
     entityId,
-    propertyName:          row.property_name,
+    propertyName:             row.property_name,
     investorName,
-    eventType:             'capital_event',
-    eventSubtype:          row.event_subtype,
-    eventNature:           resolveNature(row.event_nature),
-    effectiveDate:         row.effective_date,
-    effectiveDateConfidence: resolveConfidence(row.effective_date_confidence),
-    recordedAt:            row.created_at,
-    title:                 computeEventTitle('capital_event', row.event_subtype, row.direction),
-    description:           row.description ?? null,
-    amount:                row.amount_eur,
-    currency:              'EUR',
-    ownershipPctBefore:    null,
-    ownershipPctAfter:     null,
+    eventType:                'capital_event',
+    eventSubtype:             row.event_subtype,
+    eventNature:              resolveNature(row.event_nature),
+    effectiveDate:            row.effective_date,
+    effectiveDateConfidence:  confidence,
+    recordedAt:               row.created_at,
+    title,
+    description:              rawDescription,
+    partnerTitle:             title,
+    partnerDescription:       partnerDesc,
+    adminDescription:         rawDescription,
+    dateDisplay,
+    dateStatus,
+    amount:                   row.amount_eur,
+    currency:                 'EUR',
+    ownershipPctBefore:       null,
+    ownershipPctAfter:        null,
     capitalPositionAfter,
-    settlementPositionAfter: null,
-    status:                row.status,
-    sourceLabel:           toPartnerSourceLabel(row.business_source_type ?? null),
-    sourceReference:       toPartnerSourceReference(),
-    partnerVisible:        isCapitalEventVisible(row.event_subtype),
+    settlementPositionAfter:  null,
+    status:                   row.status,
+    sourceLabel:              toPartnerSourceLabel(row.business_source_type ?? null),
+    sourceReference:          toPartnerSourceReference(),
+    partnerVisible:           isCapitalEventVisible(row.event_subtype),
   }
 }
 
@@ -250,36 +289,45 @@ function projectOwnershipPeriodRow(
   investorName: string,
   ownershipPctBefore: number | null,
 ): InvestmentTimelineEventDTO {
+  const confidence = resolveConfidence(row.effective_from_confidence)
+  const { dateDisplay, dateStatus } = computeDateDisplay(row.effective_from, confidence)
+  const title = computeEventTitle('ownership_period', null, null)
+
   return {
-    eventId:               row.id,
-    canonicalEventId:      row.id,
+    eventId:                  row.id,
+    canonicalEventId:         row.id,
     entityId,
-    propertyName:          row.property_name,
+    propertyName:             row.property_name,
     investorName,
-    eventType:             'ownership_period',
-    eventSubtype:          null,
-    eventNature:           resolveNature(row.event_nature),
-    effectiveDate:         row.effective_from,
-    effectiveDateConfidence: resolveConfidence(row.effective_from_confidence),
-    recordedAt:            row.created_at,
-    title:                 computeEventTitle('ownership_period', null, null),
-    description:           null,
-    amount:                null,
-    currency:              null,
+    eventType:                'ownership_period',
+    eventSubtype:             null,
+    eventNature:              resolveNature(row.event_nature),
+    effectiveDate:            row.effective_from,
+    effectiveDateConfidence:  confidence,
+    recordedAt:               row.created_at,
+    title,
+    description:              null,
+    partnerTitle:             title,
+    partnerDescription:       null,
+    adminDescription:         null,
+    dateDisplay,
+    dateStatus,
+    amount:                   null,
+    currency:                 null,
     ownershipPctBefore,
-    ownershipPctAfter:     row.ownership_pct,
-    capitalPositionAfter:  null,
-    settlementPositionAfter: null,
-    status:                row.status,
-    sourceLabel:           toPartnerSourceLabel(row.business_source_type ?? null),
-    sourceReference:       toPartnerSourceReference(),
-    partnerVisible:        isOwnershipPeriodVisible(),
+    ownershipPctAfter:        row.ownership_pct,
+    capitalPositionAfter:     null,
+    settlementPositionAfter:  null,
+    status:                   row.status,
+    sourceLabel:              toPartnerSourceLabel(row.business_source_type ?? null),
+    sourceReference:          toPartnerSourceReference(),
+    partnerVisible:           isOwnershipPeriodVisible(),
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 // Main projection function
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 
 export interface ProjectTimelineInput {
   entityId: string
@@ -307,6 +355,8 @@ export interface ProjectTimelineInput {
  * - Running capital sum computed over inflow payments only
  * - ownershipPctBefore derived from chronological ordering of ownership_period rows
  * - null dates are preserved as-is (P-ARCH-1)
+ * - partnerDescription sanitized: forbidden keywords -> buildSafeDescription()
+ * - dateDisplay null when effectiveDateConfidence = 'pending_verification'
  */
 export function projectTimeline(input: ProjectTimelineInput): InvestmentTimelineEventDTO[] {
   const { entityId, investorName, partnerEntries, capitalEvents, ownershipPeriods } = input
@@ -314,14 +364,14 @@ export function projectTimeline(input: ProjectTimelineInput): InvestmentTimeline
 
   const events: InvestmentTimelineEventDTO[] = []
 
-  // ── partner_entry ──────────────────────────────────────────────────────────
+  // -- partner_entry ----------------------------------------------------------
   for (const row of partnerEntries) {
     const event = projectPartnerEntryRow(row, entityId, investorName)
     if (partnerOnly && !event.partnerVisible) continue
     events.push(event)
   }
 
-  // ── capital_event ──────────────────────────────────────────────────────────
+  // -- capital_event ----------------------------------------------------------
   const capitalRunningMap = buildCapitalRunningMap(capitalEvents)
 
   for (const row of capitalEvents) {
@@ -333,7 +383,7 @@ export function projectTimeline(input: ProjectTimelineInput): InvestmentTimeline
     events.push(event)
   }
 
-  // ── ownership_period ───────────────────────────────────────────────────────
+  // -- ownership_period -------------------------------------------------------
   // Sort periods chronologically to compute ownershipPctBefore correctly.
   const sortedOwnership = [...ownershipPeriods].sort((a, b) => {
     const aDate = a.effective_from ?? ''
@@ -351,13 +401,13 @@ export function projectTimeline(input: ProjectTimelineInput): InvestmentTimeline
     prevPct = row.ownership_pct
   }
 
-  // ── Sort and return ────────────────────────────────────────────────────────
+  // -- Sort and return --------------------------------------------------------
   return events.sort(compareTimelineEvents)
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 // Evidence summary
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 
 /**
  * Compute the evidence panel summary from projected events.
