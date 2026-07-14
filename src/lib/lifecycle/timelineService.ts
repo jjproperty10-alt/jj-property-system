@@ -64,15 +64,14 @@ export async function loadInvestmentTimeline(
   const { data: entityRow, error: entityErr } = await db
     .schema('lifecycle')
     .from('entity_identity')
-    .select('id, owner_type')
+    .select('id, entity_type')
     .eq('canonical_name', ownerName)
-    .eq('entity_type', 'person')
     .single()
 
   if (entityErr || !entityRow) return null
 
   const entityId = entityRow.id as string
-  const ownerType = (entityRow as any).owner_type as string ?? 'partner'
+  const ownerType = entityRow.entity_type as string
 
   // ── Step 2: confirm partner_entry exists (authorization gate) ─────────────
   const { data: entryCheck, error: entryCheckErr } = await db
