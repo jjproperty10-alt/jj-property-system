@@ -6,22 +6,22 @@
  * They are NEVER used to write business facts or infer values.
  *
  * Flow:
- *   lifecycle tables â timelineService â InvestmentTimelineDTO â UI / API
+ *   lifecycle tables -> timelineService -> InvestmentTimelineDTO -> UI / API
  *
  * @see M9-A Investment Timeline Read Model
  * @see P-ARCH-1: Unknown = NULL. Never 0 or placeholder.
  * @see P-ARCH-6: Partner route never exposes jj_* fields.
  */
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ---------------------------------------------------------------------------
 // Primitives
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ---------------------------------------------------------------------------
 
 /** Nature of a lifecycle event (mirrors the DB event_nature column) */
 export type TimelineEventNature =
-  | 'business_event'    // legal/commercial reality â agreement, acquisition
-  | 'accounting_event'  // financial movement â payment, distribution
-  | 'reporting_event'   // derived output â statement, settlement
+  | 'business_event'    // legal/commercial reality - agreement, acquisition
+  | 'accounting_event'  // financial movement - payment, distribution
+  | 'reporting_event'   // derived output - statement, settlement
 
 /**
  * Confidence level for a date field.
@@ -36,14 +36,36 @@ export type TimelineDateConfidence =
   | 'estimated'
   | 'pending_verification'
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+/**
+ * View mode for the Investment Timeline.
+ *
+ * 'partner' -- default for all /owner/[owner]/[property]/timeline URLs.
+ *              Visibility is resolved server-side before the DTO reaches the UI.
+ *              partnerDescription and dateDisplay are sanitized.
+ *
+ * 'admin'   -- JJ internal use only. adminDescription (raw notes) is available.
+ *              Reserved for future authorized JJ admin routes.
+ */
+export type TimelineViewMode = 'partner' | 'admin'
+
+/**
+ * Display status of a date field.
+ *
+ * 'confirmed'            -- date is available and verified/usable.
+ * 'pending_verification' -- date exists in the DB but is unverified (placeholder risk).
+ *                           UI must show "Date pending verification" -- NOT the raw date.
+ * 'unknown'              -- date is null; no value to display.
+ */
+export type TimelineDateStatus = 'confirmed' | 'pending_verification' | 'unknown'
+
+// ---------------------------------------------------------------------------
 // Single Timeline Event DTO
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ---------------------------------------------------------------------------
 
 export interface InvestmentTimelineEventDTO {
   /** Row UUID from the source lifecycle table */
   eventId: string
-  /** Same as eventId â canonical identifier for dedup and ordering stability */
+  /** Same as eventId - canonical identifier for dedup and ordering stability */
   canonicalEventId: string
   /** UUID of the investor entity in lifecycle.entity_identity */
   entityId: string
@@ -67,16 +89,64 @@ export interface InvestmentTimelineEventDTO {
   /** Confidence in effectiveDate */
   effectiveDateConfidence: TimelineDateConfidence
 
-  /** When this record was entered into the systent (ISO datetime) */
+  /** When this record was entered into the system (ISO datetime) */
   recordedAt: string
   /** Computed human-readable English title */
   title: string
-  /** Optional description or context from the source record */
+  /**
+   * Optional description or context from the source record.
+   * @deprecated Use partnerDescription (partner mode) or adminDescription (admin mode).
+   *             This field is kept for backward compatibility and equals adminDescription.
+   */
   description: string | null
+
+  // ---- Partner-safe display fields (computed by timelineVisibility) ---------
+
+  /**
+   * Clean title for partner view.
+   * Identical to title in current implementation.
+   */
+  partnerTitle: string
+
+  /**
+   * Partner-safe description. Guaranteed to contain no internal notes,
+   * placeholder language, or forbidden keywords.
+   *
+   * null when:
+   *   - source description is null AND no structured safe description exists
+   *   - event is internal-only (no partner-facing description)
+   *
+   * Generated from structured fields (eventType, eventSubtype, payeeName)
+   * when the raw description contains forbidden content.
+   */
+  partnerDescription: string | null
+
+  /**
+   * Full internal note from the DB (capital_event.notes / partner_entry.entry_date_note).
+   * NEVER rendered in partner-facing UI. Available in admin mode only.
+   */
+  adminDescription: string | null
+
+  /**
+   * Human-readable date string (ISO: YYYY-MM-DD) for display.
+   * null when dateStatus is 'pending_verification' or 'unknown'.
+   *
+   * The UI MUST use this field, NOT effectiveDate, to prevent placeholder
+   * dates (e.g. 2024-01-01) from leaking into partner-facing views.
+   */
+  dateDisplay: string | null
+
+  /**
+   * Display status of the date field.
+   * 'confirmed'            -- display dateDisplay as-is
+   * 'pending_verification' -- show "Date pending verification" label
+   * 'unknown'              -- show nothing or a dash
+   */
+  dateStatus: TimelineDateStatus
 
   /** EUR amount where applicable (always positive; direction in title/eventSubtype) */
   amount: number | null
-  /** Currency code â always 'EUR' in current implementation */
+  /** Currency code - always 'EUR' in current implementation */
   currency: string | null
 
   /** Ownership % BEFORE this event (null if not an ownership-change event) */
@@ -93,7 +163,7 @@ export interface InvestmentTimelineEventDTO {
 
   /**
    * Operations settlement balance after this event.
-   * Always null in M9-A â requires Settlement Engine integration (M9-C scope).
+   * Always null in M9-A - requires Settlement Engine integration (M9-C scope).
    */
   settlementPositionAfter: number | null
 
@@ -116,9 +186,9 @@ export interface InvestmentTimelineEventDTO {
   partnerVisible: boolean
 }
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ---------------------------------------------------------------------------
 // Full Investment Timeline DTO
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ---------------------------------------------------------------------------
 
 export interface InvestmentTimelineDTO {
   investor: {
@@ -132,6 +202,13 @@ export interface InvestmentTimelineDTO {
     /** Derived from entry_status in v_partner_investment_statement */
     lifecycleStatus: string
   }
+
+  /**
+   * View mode resolved server-side before the DTO reaches the UI.
+   * 'partner' = default for all /owner/[owner]/[property]/timeline routes.
+   * 'admin'   = reserved for authorized JJ admin routes (not yet implemented).
+   */
+  viewMode: TimelineViewMode
 
   summary: {
     /** Current ownership percentage from the active ownership_period */
@@ -152,7 +229,7 @@ export interface InvestmentTimelineDTO {
     capitalRemaining: number | null
     /** Total distributions received by investor */
     totalDistributionsPaid: number
-    /** Operations settlement balance â Null in M9-A (requires Settlement Engine) */
+    /** Operations settlement balance - Null in M9-A (requires Settlement Engine) */
     currentSettlementBalance: number | null
     /** Always 'EUR' */
     currency: string
@@ -180,7 +257,7 @@ export interface InvestmentTimelineDTO {
 }
 
 /**
- * Timeline ordering rules â documented here so UI and tests reference
+ * Timeline ordering rules - documented here so UI and tests reference
  * the same source of truth.
  */
 export const TIMELINE_ORDERING_RULES = [

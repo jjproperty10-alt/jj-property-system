@@ -3,29 +3,29 @@
  * @description Server-side service: loads InvestmentTimelineDTO from Supabase.
  *
  * SECURITY:
- * - Uses createServiceClient() (service_role) — lifecycle schema has RLS deny-all.
+ * - Uses createServiceClient() (service_role) - lifecycle schema has RLS deny-all.
  * - NEVER imports this on the client side. Server Component / Route Handler only.
  * - Does NOT trust URL params for authorization. Validates entity+property
  *   relationship exists in lifecycle.partner_entry before returning data.
  * - Returns null if no lifecycle record exists (not found, not an error).
  *
  * ERROR HANDLING:
- * - Steps 1–2: entity not found / unauthorized → return null → notFound() in page.
- * - Steps 3–4: schema/connectivity errors → logged server-side → thrown (becomes 500).
+ * - Steps 1-2: entity not found / unauthorized -> return null -> notFound() in page.
+ * - Steps 3-4: schema/connectivity errors -> logged server-side -> thrown (becomes 500).
  *   A schema error must never silently appear as Unknown/empty data to the user.
- * - PGRST116 (no rows for .single()) → valid empty result, not an error.
+ * - PGRST116 (no rows for .single()) -> valid empty result, not an error.
  *
  * DATA MAPPING:
  * - D1: v_partner_investment_statement is filtered by partner_name + property_name.
- *       (The view does not expose entity_id — authorization already confirmed in Step 2.)
- * - D2: capital_event.notes (DB column) is selected and mapped → RawCapitalEventRow.description.
+ *       (The view does not expose entity_id - authorization already confirmed in Step 2.)
+ * - D2: capital_event.notes (DB column) is selected and mapped -> RawCapitalEventRow.description.
  *       (The DB column is `notes`; the projection interface field is `description`.)
  * - D3: verification_tasks is filtered by source_id (not record_id).
  *       Count is only run when there are event IDs to look up.
  *
  * IMMUTABILITY:
  * - This service is READ-ONLY. It never writes to any lifecycle table.
- * - All business facts are loaded as-is — no inference, no default-filling.
+ * - All business facts are loaded as-is - no inference, no default-filling.
  *
  * @see P-ARCH-1: Unknown = NULL. Never 0 or placeholder.
  * @see P-ARCH-6: Partner route never exposes jj_* fields.
@@ -39,11 +39,11 @@ import {
   type RawCapitalEventRow,
   type RawOwnershipPeriodRow,
 } from './timelineProjection'
-import type { InvestmentTimelineDTO } from './timelineTypes'
+import type { InvestmentTimelineDTO, TimelineViewMode } from './timelineTypes'
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 // Public interface
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 
 export interface TimelineServiceOptions {
   /**
@@ -51,25 +51,32 @@ export interface TimelineServiceOptions {
    * Only for JJ admin routes. Default: false (partner-facing).
    */
   includeInternal?: boolean
+
+  /**
+   * View mode for the assembled DTO.
+   * Default: 'partner' (safe for all /owner/[owner]/[property]/timeline routes).
+   * Set to 'admin' only for authorized JJ admin routes (not yet implemented).
+   */
+  viewMode?: TimelineViewMode
 }
 
-/** PostgREST code for "0 rows returned by .single()" — a valid empty result, not a bug. */
+/** PostgREST code for "0 rows returned by .single()" - a valid empty result, not a bug. */
 const PGRST116 = 'PGRST116'
 
 /**
  * Load the Investment Timeline DTO for one investor+property combination.
  *
  * Authorization flow:
- *   1. Resolve ownerName → entity_id via lifecycle.entity_identity
+ *   1. Resolve ownerName -> entity_id via lifecycle.entity_identity
  *   2. Confirm lifecycle.partner_entry exists for entity_id + propertyName
  *   3. Load summary from v_partner_investment_statement (by partner_name + property_name)
  *   4. Load raw event rows for projection
  *
  * Error contract:
- *   • Steps 1–2: any failure → return null (caller calls notFound())
- *   • Steps 3–4: schema/connectivity error → log server-side, throw (caller gets 500)
- *     PGRST116 in Step 3 is valid → summaryRow = null, assembly continues
- *   • Verification task count errors → log, use 0 (non-critical)
+ *   - Steps 1-2: any failure -> return null (caller calls notFound())
+ *   - Steps 3-4: schema/connectivity error -> log server-side, throw (caller gets 500)
+ *     PGRST116 in Step 3 is valid -> summaryRow = null, assembly continues
+ *   - Verification task count errors -> log, use 0 (non-critical)
  *
  * @param ownerName     Canonical investor name (decoded from URL param)
  * @param propertyName  Canonical property name (decoded from URL param)
@@ -83,7 +90,7 @@ export async function loadInvestmentTimeline(
 ): Promise<InvestmentTimelineDTO | null> {
   const db = createServiceClient()
 
-  // ── Step 1: resolve entity_id from canonical_name ─────────────────────────
+  // -- Step 1: resolve entity_id from canonical_name -------------------------
   const { data: entityRow, error: entityErr } = await db
     .schema('lifecycle')
     .from('entity_identity')
@@ -99,7 +106,7 @@ export async function loadInvestmentTimeline(
         message: entityErr.message,
       })
     }
-    // Entity not found or lookup failed → not found (null → notFound() in page)
+    // Entity not found or lookup failed -> not found (null -> notFound() in page)
     return null
   }
   if (!entityRow) return null
@@ -107,7 +114,7 @@ export async function loadInvestmentTimeline(
   const entityId  = entityRow.id           as string
   const ownerType = entityRow.entity_type  as string
 
-  // ── Step 2: confirm partner_entry exists (authorization gate) ─────────────
+  // -- Step 2: confirm partner_entry exists (authorization gate) -------------
   const { data: entryCheck, error: entryCheckErr } = await db
     .schema('lifecycle')
     .from('partner_entry')
@@ -124,20 +131,20 @@ export async function loadInvestmentTimeline(
       code: entryCheckErr.code,
       message: entryCheckErr.message,
     })
-    // Treat authorization check failure as unauthorized (null → notFound() in page)
+    // Treat authorization check failure as unauthorized (null -> notFound() in page)
     return null
   }
   if (!entryCheck || entryCheck.length === 0) return null
 
-  // ── Step 3: load summary from partner-facing view ─────────────────────────
+  // -- Step 3: load summary from partner-facing view -------------------------
   // D1 fix: v_partner_investment_statement exposes partner_name (text), not entity_id.
-  // Authorization has already been confirmed in Step 2 — using canonical names here
+  // Authorization has already been confirmed in Step 2 - using canonical names here
   // is correct. Do NOT add entity_id to this partner-facing view for this purpose.
   const { data: summaryRow, error: summaryErr } = await db
     .schema('lifecycle')
     .from('v_partner_investment_statement')
     .select('*')
-    .eq('partner_name',   ownerName)      // D1: partner_name — not entity_id
+    .eq('partner_name',   ownerName)      // D1: partner_name - not entity_id
     .eq('property_name',  propertyName)
     .single()
 
@@ -155,9 +162,9 @@ export async function loadInvestmentTimeline(
       `[timelineService] summary view query failed (${summaryErr.code})`
     )
   }
-  // PGRST116 or no error → summaryRow may be null (valid for new/incomplete entries)
+  // PGRST116 or no error -> summaryRow may be null (valid for new/incomplete entries)
 
-  // ── Step 4: load raw rows for event projection ────────────────────────────
+  // -- Step 4: load raw rows for event projection ----------------------------
 
   // partner_entry rows (with business_source join)
   const { data: rawEntries, error: entriesErr } = await db
@@ -189,7 +196,7 @@ export async function loadInvestmentTimeline(
 
   // capital_event rows
   // D2 fix: select `notes` (the actual DB column). The projection interface uses
-  // `description` — the mapping notes→description is done in Step 5 below.
+  // `description` - the mapping notes->description is done in Step 5 below.
   const { data: rawCapital, error: capitalErr } = await db
     .schema('lifecycle')
     .from('capital_event')
@@ -244,7 +251,7 @@ export async function loadInvestmentTimeline(
     )
   }
 
-  // ── Verification task count ────────────────────────────────────────────────
+  // -- Verification task count -----------------------------------------------
   // D3 fix: verification_tasks.source_id (not record_id).
   // Only count tasks linked to events in this owner+property timeline.
   // Guard: skip query when allEventIds is empty (avoids PostgREST .in([]) edge cases).
@@ -261,7 +268,7 @@ export async function loadInvestmentTimeline(
       .from('verification_tasks')
       .select('id', { count: 'exact', head: true })
       .in('status',    ['pending', 'evidence_found'])
-      .in('source_id', allEventIds)               // D3: source_id — not record_id
+      .in('source_id', allEventIds)               // D3: source_id - not record_id
 
     if (taskErr) {
       // Non-critical: evidence panel degrades gracefully to 0. Do not throw.
@@ -274,14 +281,14 @@ export async function loadInvestmentTimeline(
     }
   }
 
-  // ── Step 5: normalise raw rows ────────────────────────────────────────────
+  // -- Step 5: normalise raw rows --------------------------------------------
 
   const partnerEntries: RawPartnerEntryRow[] = (rawEntries ?? []).map(r => ({
     ...r,
     business_source_type: (r.business_source as any)?.source_type ?? null,
   }))
 
-  // D2: map capital_event.notes (DB) → RawCapitalEventRow.description (projection interface)
+  // D2: map capital_event.notes (DB) -> RawCapitalEventRow.description (projection interface)
   const capitalEvents: RawCapitalEventRow[] = (rawCapital ?? []).map(r => ({
     ...r,
     description:          (r as any).notes ?? null,
@@ -293,7 +300,7 @@ export async function loadInvestmentTimeline(
     business_source_type: (r.business_source as any)?.source_type ?? null,
   }))
 
-  // ── Step 6: project events ────────────────────────────────────────────────
+  // -- Step 6: project events ------------------------------------------------
   const events = projectTimeline({
     entityId,
     investorName:    ownerName,
@@ -305,8 +312,10 @@ export async function loadInvestmentTimeline(
 
   const evidence = computeEvidence(events, taskCount)
 
-  // ── Step 7: assemble DTO ──────────────────────────────────────────────────
+  // -- Step 7: assemble DTO --------------------------------------------------
   const s = summaryRow as any
+
+  const viewMode: TimelineViewMode = options.viewMode ?? 'partner'
 
   const dto: InvestmentTimelineDTO = {
     investor: {
@@ -318,11 +327,12 @@ export async function loadInvestmentTimeline(
       propertyName,
       lifecycleStatus: s?.entry_status ?? 'unknown',
     },
+    viewMode,
     summary: {
       currentOwnershipPct:      s?.ownership_pct               ?? null,
       agreedEntryValuation:     s?.agreed_entry_valuation_eur  ?? null,
       requiredCapital:          s?.required_entry_capital_eur  ?? null,
-      // P-ARCH-1: keep null if DB returns null — never coerce to 0
+      // P-ARCH-1: keep null if DB returns null - never coerce to 0
       capitalPaid:              s?.capital_paid_eur             ?? null,
       capitalRemaining:         s?.capital_remaining_eur        ?? null,
       totalDistributionsPaid:   s?.total_distributions_eur      ?? 0,

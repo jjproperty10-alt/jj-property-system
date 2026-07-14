@@ -1,5 +1,5 @@
 /**
- * TimelineEventCard — renders a single investment timeline event.
+ * TimelineEventCard -- renders a single investment timeline event.
  *
  * Visual design:
  *   - Left border coloured by event type
@@ -9,11 +9,17 @@
  *   - Running capital position badge
  *   - Date confidence indicator
  *
- * P-ARCH-1: null dates shown as "Date pending verification" — never as 01/01.
+ * Visibility model:
+ *   - Uses event.partnerDescription (not event.description) in partner mode.
+ *   - Uses event.dateDisplay (not event.effectiveDate) - null when pending_verification.
+ *   - The UI does NOT decide what to hide: visibility is pre-resolved server-side
+ *     (timelineProjection.ts -> computePartnerSafeDescription, computeDateDisplay).
+ *
+ * P-ARCH-1: null dates shown as "Date pending verification" - never as 01/01.
  * P-ARCH-6: no JJ internal fields rendered here.
  */
 
-import type { InvestmentTimelineEventDTO } from '@/lib/lifecycle/timelineTypes'
+import type { InvestmentTimelineEventDTO, TimelineViewMode } from '@/lib/lifecycle/timelineTypes'
 
 const EUR = (n: number) =>
   new Intl.NumberFormat('en-IE', {
@@ -22,15 +28,20 @@ const EUR = (n: number) =>
     maximumFractionDigits: 0,
   }).format(n)
 
-function formatDate(iso: string | null, lang: 'en' | 'he'): string {
-  if (!iso) return lang === 'he' ? 'תאריך ממתין לאימות' : 'Date pending verification'
+/**
+ * Format a date for display.
+ * Receives event.dateDisplay (null when pending_verification or unknown).
+ * Returns the "pending verification" label when null - never the raw effectiveDate.
+ */
+function formatDate(dateDisplay: string | null, lang: 'en' | 'he'): string {
+  if (!dateDisplay) return lang === 'he' ? 'תאריך ממתין לאימות' : 'Date pending verification'
   try {
-    return new Date(iso + 'T00:00:00Z').toLocaleDateString(
+    return new Date(dateDisplay + 'T00:00:00Z').toLocaleDateString(
       lang === 'he' ? 'he-IL' : 'en-GB',
       { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' },
     )
   } catch {
-    return iso
+    return dateDisplay
   }
 }
 
@@ -73,17 +84,26 @@ interface Props {
   lang?: 'en' | 'he'
   /** Show this card in admin mode (shows all events, not just partner-visible) */
   adminMode?: boolean
+  /** View mode from the DTO - controls which description field is rendered */
+  viewMode?: TimelineViewMode
 }
 
-export function TimelineEventCard({ event, lang = 'en', adminMode }: Props) {
+export function TimelineEventCard({ event, lang = 'en', adminMode, viewMode = 'partner' }: Props) {
   const isRTL = lang === 'he'
   const border = BORDER_COLOUR[event.eventType] ?? BORDER_COLOUR.default
   const icon = eventIcon(event.eventType, event.eventSubtype)
-  const isPendingDate = event.effectiveDate === null
-  const isEstimated = event.effectiveDateConfidence === 'estimated'
+  // Use dateStatus to determine pending state - not effectiveDate directly
+  const isPendingDate = event.dateStatus === 'pending_verification' || event.dateStatus === 'unknown'
   const subtypeLabel = event.eventType === 'capital_event'
     ? capitalSubtypeLabel(event.eventSubtype, lang)
     : null
+
+  // Select description based on view mode:
+  // - partner mode: use pre-sanitized partnerDescription (no internal notes)
+  // - admin mode: use adminDescription (raw notes, for JJ internal use)
+  const displayDescription = viewMode === 'admin'
+    ? (event.adminDescription ?? event.partnerDescription)
+    : event.partnerDescription
 
   return (
     <div
@@ -98,7 +118,7 @@ export function TimelineEventCard({ event, lang = 'en', adminMode }: Props) {
         {/* Title row */}
         <div className="flex items-start justify-between gap-2 flex-wrap">
           <span className="text-white text-sm font-semibold leading-snug">
-            {event.title}
+            {event.partnerTitle}
           </span>
           {adminMode && !event.partnerVisible && (
             <span className="text-[9px] font-bold uppercase tracking-wide bg-red-900/60 text-red-300 px-1.5 py-0.5 rounded">
@@ -114,9 +134,9 @@ export function TimelineEventCard({ event, lang = 'en', adminMode }: Props) {
           </span>
         )}
 
-        {/* Description */}
-        {event.description && (
-          <p className="text-gray-400 text-xs mt-1 leading-relaxed">{event.description}</p>
+        {/* Description - always use the pre-sanitized display description */}
+        {displayDescription && (
+          <p className="text-gray-400 text-xs mt-1 leading-relaxed">{displayDescription}</p>
         )}
 
         {/* Amount */}
@@ -143,7 +163,7 @@ export function TimelineEventCard({ event, lang = 'en', adminMode }: Props) {
               <span className="text-gray-500">{event.ownershipPctBefore}%</span>
             )}
             {event.ownershipPctBefore !== null && (
-              <span className="text-gray-600">→</span>
+              <span className="text-gray-600">&rarr;</span>
             )}
             <span className="text-purple-300 font-semibold">{event.ownershipPctAfter}%</span>
           </div>
@@ -157,16 +177,17 @@ export function TimelineEventCard({ event, lang = 'en', adminMode }: Props) {
         )}
       </div>
 
-      {/* Date — right column */}
+      {/* Date -- right column
+          Uses event.dateDisplay (null when pending) - NEVER event.effectiveDate directly */}
       <div className={`text-right flex-shrink-0 ${isRTL ? 'text-left' : 'text-right'}`}>
         <span className={`text-xs font-medium block ${
           isPendingDate ? 'text-amber-400 italic' : 'text-gray-300'
         }`}>
-          {formatDate(event.effectiveDate, lang)}
+          {formatDate(event.dateDisplay, lang)}
         </span>
-        {isEstimated && !isPendingDate && (
-          <span className="text-[9px] text-yellow-600 block mt-0.5">
-            {lang === 'he' ? 'מוערך' : 'Estimated'}
+        {event.dateStatus === 'confirmed' && !isPendingDate && (
+          <span className="text-[9px] text-gray-600 block mt-0.5 sr-only">
+            {lang === 'he' ? 'מאושר' : 'Confirmed'}
           </span>
         )}
       </div>
