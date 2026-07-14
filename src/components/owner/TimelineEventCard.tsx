@@ -1,25 +1,31 @@
 /**
- * TimelineEventCard -- renders a single investment timeline event.
+ * TimelineEventCard — M9-B redesign.
  *
- * Visual design:
- *   - Left border coloured by event type
- *   - Date (or "pending verification") prominently displayed
- *   - Title + optional description
- *   - Amount / ownership change where relevant
- *   - Running capital position badge
- *   - Date confidence indicator
+ * Design rules:
+ *   - NO icon inside this card (icon lives only in the dot, rendered by InvestmentTimeline)
+ *   - "EVENT N" label always visible (collapsed + expanded)
+ *   - Status badge always visible (collapsed + expanded)
+ *   - Amount is the primary visual element (largest text on the card)
+ *   - partnerDescription shown as payee/subtitle line when present
+ *   - Smooth 200ms expand/collapse via max-height transition
+ *   - Status colour is the ONLY accent: rest of card uses neutral surfaces
  *
- * Visibility model:
- *   - Uses event.partnerDescription (not event.description) in partner mode.
- *   - Uses event.dateDisplay (not event.effectiveDate) - null when pending_verification.
- *   - The UI does NOT decide what to hide: visibility is pre-resolved server-side
- *     (timelineProjection.ts -> computePartnerSafeDescription, computeDateDisplay).
- *
- * P-ARCH-1: null dates shown as "Date pending verification" - never as 01/01.
- * P-ARCH-6: no JJ internal fields rendered here.
+ * Visibility rules (unchanged from M9-A / PR #44):
+ *   - Uses event.partnerDescription in partner mode (never adminDescription)
+ *   - Uses event.dateDisplay (null when pending) — never event.effectiveDate
+ *   - P-ARCH-1: null values show "Unknown" / "Date pending verification"
+ *   - P-ARCH-6: no JJ internal fields rendered here
  */
 
+'use client'
+
+import { useState } from 'react'
+import { ChevronDown } from 'lucide-react'
 import type { InvestmentTimelineEventDTO, TimelineViewMode } from '@/lib/lifecycle/timelineTypes'
+
+// ---------------------------------------------------------------------------
+// Formatters
+// ---------------------------------------------------------------------------
 
 const EUR = (n: number) =>
   new Intl.NumberFormat('en-IE', {
@@ -28,13 +34,11 @@ const EUR = (n: number) =>
     maximumFractionDigits: 0,
   }).format(n)
 
-/**
- * Format a date for display.
- * Receives event.dateDisplay (null when pending_verification or unknown).
- * Returns the "pending verification" label when null - never the raw effectiveDate.
- */
+/** Returns safe date label — uses dateDisplay (null when pending), never effectiveDate */
 function formatDate(dateDisplay: string | null, lang: 'en' | 'he'): string {
-  if (!dateDisplay) return lang === 'he' ? 'תאריך ממתין לאימות' : 'Date pending verification'
+  if (!dateDisplay) {
+    return lang === 'he' ? 'תאריך ממתין לאימות' : 'Date pending verification'
+  }
   try {
     return new Date(dateDisplay + 'T00:00:00Z').toLocaleDateString(
       lang === 'he' ? 'he-IL' : 'en-GB',
@@ -45,151 +49,266 @@ function formatDate(dateDisplay: string | null, lang: 'en' | 'he'): string {
   }
 }
 
-const BORDER_COLOUR: Record<string, string> = {
-  partner_entry:    'border-blue-500',
-  capital_event:    'border-emerald-500',
-  ownership_period: 'border-purple-500',
-  default:          'border-gray-600',
+// ---------------------------------------------------------------------------
+// Status badge — 4 states, colour is the ONLY accent on the card
+// ---------------------------------------------------------------------------
+
+type BadgeStatus = 'verified' | 'pending_verification' | 'planned' | 'unknown'
+
+/**
+ * Resolves badge status from event DTO.
+ * Uses dateStatus as the primary signal.
+ * 'verified' = confirmed date and verified source.
+ */
+function resolveBadgeStatus(event: InvestmentTimelineEventDTO): BadgeStatus {
+  if (event.dateStatus === 'confirmed')            return 'verified'
+  if (event.dateStatus === 'pending_verification') return 'pending_verification'
+  // 'unknown' dateStatus or any other value maps to unknown
+  return 'unknown'
 }
 
-const EVENT_ICON: Record<string, string> = {
-  partner_entry:    '🤝',
-  ownership_period: '📋',
-  capital_event:    '💶',
-  default:          '•',
+const BADGE_CLASSES: Record<BadgeStatus, string> = {
+  verified:             'bg-emerald-900/60 text-emerald-300 border border-emerald-800/60',
+  pending_verification: 'bg-amber-900/60   text-amber-300   border border-amber-800/60',
+  planned:              'bg-blue-900/60    text-blue-300    border border-blue-800/60',
+  unknown:              'bg-gray-800       text-gray-500    border border-gray-700',
 }
 
-function eventIcon(eventType: string, eventSubtype: string | null): string {
-  if (eventType === 'capital_event' && eventSubtype === 'distribution_payment') return '🏦'
-  return EVENT_ICON[eventType] ?? EVENT_ICON.default
+const BADGE_TEXT: Record<BadgeStatus, { en: string; he: string }> = {
+  verified:             { en: 'Verified',             he: 'מאומת'          },
+  pending_verification: { en: 'Pending verification', he: 'ממתין לאימות'   },
+  planned:              { en: 'Planned',              he: 'מתוכנן'         },
+  unknown:              { en: 'Unknown',              he: 'לא ידוע'        },
 }
 
-function capitalSubtypeLabel(subtype: string | null, lang: 'en' | 'he'): string | null {
-  if (!subtype) return null
-  const map: Record<string, { en: string; he: string }> = {
-    partner_entry_payment:           { en: 'Capital Payment',          he: 'תשלום הון'            },
-    partner_acquisition_payment:     { en: 'Payment to Seller',        he: 'תשלום למוכר'          },
-    distribution_payment:            { en: 'Distribution',             he: 'חלוקה'                },
-    additional_capital_contribution: { en: 'Additional Contribution',  he: 'הון נוסף'             },
-    capital_refund:                  { en: 'Capital Refund',           he: 'החזר הון'             },
-    capital_withdrawal:              { en: 'Withdrawal',               he: 'משיכת הון'            },
-    ownership_increase:              { en: 'Ownership Increase',       he: 'עלייה באחזקה'         },
-    ownership_decrease:              { en: 'Ownership Decrease',       he: 'ירידה באחזקה'         },
+interface BadgeProps { status: BadgeStatus; lang: 'en' | 'he' }
+
+function StatusBadge({ status, lang }: BadgeProps) {
+  return (
+    <span
+      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${BADGE_CLASSES[status]}`}
+      data-testid="status-badge"
+      data-status={status}
+    >
+      {BADGE_TEXT[status][lang]}
+    </span>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Event title map — human-readable, NO icons (icons are in the dot only)
+// ---------------------------------------------------------------------------
+
+const BASE_TITLE: Record<string, { en: string; he: string }> = {
+  partner_entry:    { en: 'Partnership Agreement',  he: 'הסכם שותפות'      },
+  capital_event:    { en: 'Capital Payment',        he: 'תשלום הון'        },
+  ownership_period: { en: 'Ownership Established',  he: 'בעלות הוקמה'      },
+}
+
+const SUBTYPE_TITLE: Record<string, { en: string; he: string }> = {
+  partner_entry_payment:           { en: 'Capital Payment',          he: 'תשלום הון'         },
+  partner_acquisition_payment:     { en: 'Capital Payment',          he: 'תשלום הון'         },
+  distribution_payment:            { en: 'Distribution',             he: 'חלוקה'             },
+  additional_capital_contribution: { en: 'Additional Contribution',  he: 'הון נוסף'          },
+  capital_refund:                  { en: 'Capital Refund',           he: 'החזר הון'          },
+  capital_withdrawal:              { en: 'Withdrawal',               he: 'משיכת הון'         },
+}
+
+function resolveTitle(event: InvestmentTimelineEventDTO, lang: 'en' | 'he'): string {
+  if (event.eventType === 'capital_event' && event.eventSubtype) {
+    return SUBTYPE_TITLE[event.eventSubtype]?.[lang]
+      ?? BASE_TITLE.capital_event[lang]
   }
-  return map[subtype]?.[lang] ?? null
+  return BASE_TITLE[event.eventType]?.[lang]
+    ?? (lang === 'he' ? 'אירוע השקעה' : 'Investment Event')
 }
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 interface Props {
   event: InvestmentTimelineEventDTO
   lang?: 'en' | 'he'
-  /** Show this card in admin mode (shows all events, not just partner-visible) */
-  adminMode?: boolean
-  /** View mode from the DTO - controls which description field is rendered */
   viewMode?: TimelineViewMode
+  adminMode?: boolean
+  /** 1-based position in the timeline; used for the "EVENT N" label */
+  eventIndex: number
 }
 
-export function TimelineEventCard({ event, lang = 'en', adminMode, viewMode = 'partner' }: Props) {
-  const isRTL = lang === 'he'
-  const border = BORDER_COLOUR[event.eventType] ?? BORDER_COLOUR.default
-  const icon = eventIcon(event.eventType, event.eventSubtype)
-  // Use dateStatus to determine pending state - not effectiveDate directly
-  const isPendingDate = event.dateStatus === 'pending_verification' || event.dateStatus === 'unknown'
-  const subtypeLabel = event.eventType === 'capital_event'
-    ? capitalSubtypeLabel(event.eventSubtype, lang)
-    : null
+export function TimelineEventCard({
+  event,
+  lang = 'en',
+  viewMode = 'partner',
+  adminMode,
+  eventIndex,
+}: Props) {
+  const [isOpen, setIsOpen] = useState(false)
 
-  // Select description based on view mode:
-  // - partner mode: use pre-sanitized partnerDescription (no internal notes)
-  // - admin mode: use adminDescription (raw notes, for JJ internal use)
+  const badgeStatus  = resolveBadgeStatus(event)
+  const title        = resolveTitle(event, lang)
+  const isPendingDate = badgeStatus === 'pending_verification' || badgeStatus === 'unknown'
+
+  /*
+   * Description field selection (unchanged from PR #44 — P-ARCH-6):
+   *   partner mode → partnerDescription (pre-sanitized, no forbidden keywords)
+   *   admin mode   → adminDescription (raw notes) with partnerDescription as fallback
+   *
+   * We show the description ONLY in the expanded section, never in collapsed.
+   */
   const displayDescription = viewMode === 'admin'
     ? (event.adminDescription ?? event.partnerDescription)
     : event.partnerDescription
 
   return (
     <div
-      className={`relative rounded-xl border border-l-4 ${border} border-gray-800 bg-gray-950 p-4 flex gap-3`}
-      dir={isRTL ? 'rtl' : 'ltr'}
+      className="rounded-xl border border-gray-800 bg-gray-900 overflow-hidden"
+      data-testid="timeline-event-card"
+      data-event-type={event.eventType}
+      data-event-index={eventIndex}
     >
-      {/* Icon */}
-      <span className="text-xl leading-none mt-0.5 flex-shrink-0">{icon}</span>
 
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        {/* Title row */}
-        <div className="flex items-start justify-between gap-2 flex-wrap">
-          <span className="text-white text-sm font-semibold leading-snug">
-            {event.partnerTitle}
+      {/* Collapsed section (always visible) */}
+      <div className="p-4">
+
+        {/* Row 1: EVENT N label + status badge */}
+        <div className="flex items-center justify-between gap-2 mb-2.5">
+          <span
+            className="text-[10px] font-bold text-gray-600 tracking-[0.1em] uppercase"
+            data-testid="event-label"
+          >
+            {lang === 'he' ? `נירוע ${eventIndex}` : `EVENT ${eventIndex}`}
           </span>
-          {adminMode && !event.partnerVisible && (
-            <span className="text-[9px] font-bold uppercase tracking-wide bg-red-900/60 text-red-300 px-1.5 py-0.5 rounded">
-              {lang === 'he' ? 'פנימי' : 'Internal'}
-            </span>
-          )}
+          {/* Badge always visible */}
+          <StatusBadge status={badgeStatus} lang={lang} />
         </div>
 
-        {/* Subtype badge */}
-        {subtypeLabel && (
-          <span className="text-[10px] text-emerald-400 font-medium mt-0.5 block">
-            {subtypeLabel}
-          </span>
-        )}
+        { /* Row 2: event title */}
+        <p
+          className="text-gray-400 text-xs font-medium mb-1.5 leading-none"
+          data-testid="event-title"
+        >
+          {title}
+        </p>
 
-        {/* Description - always use the pre-sanitized display description */}
-        {displayDescription && (
-          <p className="text-gray-400 text-xs mt-1 leading-relaxed">{displayDescription}</p>
-        )}
-
-        {/* Amount */}
+        {/* Row 3: amount — primary visual */}
         {event.amount !== null && (
-          <div className="mt-2 flex items-center gap-2 flex-wrap">
-            <span className="text-white font-semibold text-base">
-              {EUR(event.amount)}
-            </span>
-            {event.capitalPositionAfter !== null && (
-              <span className="text-[11px] text-blue-300 bg-blue-900/40 px-2 py-0.5 rounded-full">
-                {lang === 'he'
-                  ? `הון מצטבר: ${EUR(event.capitalPositionAfter)}`
-                  : `Running total: ${EUR(event.capitalPositionAfter)}`
-                }
-              </span>
-            )}
-          </div>
+          <p
+            className="text-white text-[1.6rem] font-semibold leading-tight mb-1"
+            data-testid="event-amount"
+          >
+            {EUR(event.amount)}
+          </p>
         )}
 
-        {/* Ownership change */}
-        {event.ownershipPctAfter !== null && (
-          <div className="mt-2 flex items-center gap-2 text-sm">
-            {event.ownershipPctBefore !== null && (
-              <span className="text-gray-500">{event.ownershipPctBefore}%</span>
-            )}
-            {event.ownershipPctBefore !== null && (
-              <span className="text-gray-600">&rarr;</span>
-            )}
-            <span className="text-purple-300 font-semibold">{event.ownershipPctAfter}%</span>
-          </div>
+        {event.amount === null && event.ownershipPctAfter !== null && (
+          <p
+            className="text-white text-[1.6rem] font-semibold leading-tight mb-1"
+            data-testid="event-ownership-pct"
+          >
+            {event.ownershipPctAfter}%
+          </p>
         )}
 
-        {/* Source label */}
-        {event.sourceLabel && (
-          <p className="text-[10px] text-gray-600 mt-2">
-            {lang === 'he' ? 'מקור: ' : 'Source: '}{event.sourceLabel}
+        {displayDescription && (
+          <p
+            className="text-gray-400 text-sm leading-snug"
+            data-testid="event-subtitle"
+          >
+            {displayDescription}
+          </p>
+        )}
+
+        {event.capitalPositionAfter !== null && (
+          <p className="text-gray-600 text-[11px] mt-1.5">
+            {lang === 'he'
+              ? `הון מצצטבר: ${EUR(event.capitalPositionAfter)}`
+              : `Running total: ${EUR(event.capitalPositionAfter)}`
+            }
           </p>
         )}
       </div>
 
-      {/* Date -- right column
-          Uses event.dateDisplay (null when pending) - NEVER event.effectiveDate directly */}
-      <div className={`text-right flex-shrink-0 ${isRTL ? 'text-left' : 'text-right'}`}>
-        <span className={`text-xs font-medium block ${
-          isPendingDate ? 'text-amber-400 italic' : 'text-gray-300'
-        }`}>
-          {formatDate(event.dateDisplay, lang)}
+      <button
+        className="w-full flex items-center justify-between px-4 py-2.5 border-t border-gray-800 text-gray-500 hover:text-gray-300 hover:bg-gray-800/40 transition-colors"
+        onClick={() => setIsOpen(o => !o)}
+        aria-expanded={isOpen}
+        data-testid="expand-toggle"
+      >
+        <span className="text-xs">
+          {lang === 'he'
+            ? (isOpen ? 'הסתר פרטים' : 'פרטים')
+            : (isOpen ? 'Hide details' : 'Details')
+          }
         </span>
-        {event.dateStatus === 'confirmed' && !isPendingDate && (
-          <span className="text-[9px] text-gray-600 block mt-0.5 sr-only">
-            {lang === 'he' ? 'מאושר' : 'Confirmed'}
-          </span>
-        )}
+        <ChevronDown
+          className={`w-4 h-4 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`}
+          aria-hidden="true"
+        />
+      </button>
+
+      <div
+        className="overflow-hidden"
+        style={{
+          maxHeight:  isOpen ? '800px' : '0',
+          transition: 'max-height 200ms ease-in-out',
+        }}
+        data-testid="expanded-details"
+        aria-hidden={!isOpen}
+      >
+        <div className="px-4 pb-5 pt-3 border-t border-gray-800">
+          <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+
+            <div>
+              <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-1">
+                {lang === 'he' ? 'תאריך' : 'Date'}
+              </p>
+              <p className={`text-sm font-medium ${
+                isPendingDate ? 'text-amber-400' : 'text-gray-200'
+              }`}>
+                {formatDate(event.dateDisplay, lang)}
+              </p>
+            </div>
+
+            {event.sourceLabel && (
+              <div>
+                <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-1">
+                  {lang === 'he' ? 'מקור' : 'Source'}
+                </p>
+                <p className="text-gray-200 text-sm font-medium">{event.sourceLabel}</p>
+              </div>
+            )}
+
+            {event.ownershipPctAfter !== null && (
+              <div>
+                <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-1">
+                  {lang === 'he' ? 'בעלות' : 'Ownership'}
+                </p>
+                <p className="text-gray-200 text-sm font-medium">{event.ownershipPctAfter}%</p>
+              </div>
+            )}
+
+            {event.capitalPositionAfter !== null && (
+              <div>
+                <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-1">
+                  {lang === 'he' ? 'הון מצטבר' : 'Capital position'}
+                </p>
+                <p className="text-gray-200 text-sm font-medium">
+                  {EUR(event.capitalPositionAfter)}
+                </p>
+              </div>
+            )}
+
+          </div>
+
+          {adminMode && !event.partnerVisible && (
+            <div className="mt-3 pt-3 border-t border-gray-800">
+              <span className="text-[9px] font-bold uppercase tracking-wide bg-red-900/50 text-red-300 px-2 py-0.5 rounded">
+                {lang === 'he' ? 'פנימי' : 'Internal'}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
