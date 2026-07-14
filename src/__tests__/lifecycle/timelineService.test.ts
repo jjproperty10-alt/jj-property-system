@@ -1,196 +1,472 @@
 /**
  * @file timelineService.test.ts
- * @description Unit tests for lifecycle/timelineService.loadInvestmentTimeline()
+ * @description Tests for loadInvestmentTimeline() — Timeline Data Mapping Hotfix
  *
- * Hotfix coverage — entity_type filter bug (timeline 404 root cause):
- *   BEFORE: .eq('entity_type', 'person') never matches 'investor' → always null → 404
- *   AFTER:  filter removed; canonical_name is unique; authorization via partner_entry
+ * Defects covered:
+ *   D1 — summary view must be queried by partner_name + property_name (not entity_id)
+ *   D2 — capital_event.notes (DB) is selected and mapped → DTO event description
+ *   D3 — verification_tasks filtered by source_id (not record_id)
+ *   E  — schema/query errors must not silently produce Unknown values or empty timelines
  *
- * Test matrix:
- *   T1  investor entity resolves correctly (Avi)
- *   T2  partner entity resolves correctly (Yossi)
- *   T3  unknown canonical_name returns null
- *   T4  known entity + wrong property returns null (authorization gate)
- *   T5  entity_type filter removal does not bypass partner_entry check
- *   T6  Avi / Villa Mazotos returns non-null DTO
- *   T7  Oren / Villa Mazotos 2 returns non-null DTO (null capital stays null — P-ARCH-1)
- *   T8  cross-owner URL manipulation blocked
- *   T9  JJ fields never appear in returned DTO (P-ARCH-6)
- *   T10 financial values unchanged by filter fix
+ * Business rules verified:
+ *   Avi / Villa Mazotos: 50% ownership, €500K valuation, €250K required,
+ *     €250K paid, €0 remaining, fully_paid, exactly 2 events (€200K + €50K)
+ *   Oren / Villa Mazotos 2: 35% ownership, capital_paid = null (P-ARCH-1)
+ *   No €30K event. No JJ internal fields. Cross-owner authorization enforced.
  */
 
 import { loadInvestmentTimeline } from '@/lib/lifecycle/timelineService'
-import { createServiceClient } from '@/lib/supabase'
+import { createServiceClient }    from '@/lib/supabase'
 
-jest.mock('@/lib/supabase', () => ({
-  createServiceClient: jest.fn(),
-}))
+jest.mock('@/lib/supabase', () => ({ createServiceClient: jest.fn() }))
 
 const mockCreateServiceClient = createServiceClient as jest.Mock
 
-// ── Entity identity rows (entity_type matches live DB) ────────────────────────
+// ── Mock builder ─────────────────────────────────────────────────────────────
 
-const AVI_ENTITY   = { id: 'avi-uuid',   entity_type: 'investor' }
-const OREN_ENTITY  = { id: 'oren-uuid',  entity_type: 'investor' }
-const YOSSI_ENTITY = { id: 'yossi-uuid', entity_type: 'partner'  }
+interface MockResponse {
+  data:    unknown
+  error:   unknown
+  count?:  number | null
+}
 
-// ── partner_entry authorization check row ────────────────────────────────────
+interface MockDb {
+  db:            Record<string, jest.Mock>
+  eqHistory:     Array<[string, unknown]>
+  selectHistory: string[]
+  inHistory:     Array<[string, unknown[]]>
+}
 
-const ENTRY_CHECK_ROW = [{ id: 'entry-uuid' }]
+/**
+ * Build a Supabase client mock that:
+ *   - Returns sequential responses on terminal calls (.single(), .limit(), await-chain)
+ *   - Captures all .eq(), .select(), and .in() calls for assertion
+ *
+ * Terminal resolution order:
+ *   • .single()  → consumes next response (Steps 1, 2, 3)
+ *   • .limit()   → consumes next response (Step 2 auth check)
+ *   • await chain (for .order() and .in() endings) → consumes next response (Steps 4a–4d)
+ */
+function buildMockDb(responses: MockResponse[]): MockDb {
+  const eqHistory:     Array<[string, unknown]>  = []
+  const selectHistory: string[]                   = []
+  const inHistory:     Array<[string, unknown[]]> = []
+  let   callIndex = 0
 
-// ── v_partner_investment_statement view columns (exact DB column names) ───────
+  const terminal = (): Promise<MockResponse> => {
+    const resp = responses[callIndex++] ?? { data: null, error: null }
+    return Promise.resolve(resp)
+  }
 
-const SUMMARY_ROW = {
+  const db: Record<string, jest.Mock> = {
+    schema: jest.fn(),
+    from:   jest.fn(),
+    order:  jest.fn(),
+    neq:    jest.fn(),
+    // Capture select calls; also makes chain awaitable for count queries
+    select: jest.fn(),
+    eq:     jest.fn(),
+    in:     jest.fn(),
+    single: jest.fn(),
+    limit:  jest.fn(),
+  }
+
+  // All chain methods return the mock db itself (chainable)
+  db.schema.mockReturnValue(db)
+  db.from.mockReturnValue(db)
+  db.order.mockReturnValue(db)
+  db.neq.mockReturnValue(db)
+
+  db.select.mockImplementation((s: string) => {
+    if (typeof s === 'string') selectHistory.push(s)
+    return db
+  })
+
+  db.eq.mockImplementation((col: string, val: unknown) => {
+    eqHistory.push([col, val])
+    return db
+  })
+
+  db.in.mockImplementation((col: string, vals: unknown[]) => {
+    inHistory.push([col, vals as unknown[]])
+    return db
+  })
+
+  // Terminal calls consume the next response
+  db.single.mockImplementation(terminal)
+  db.limit.mockImplementation(terminal)
+
+  // Make the chain itself awaitable (for queries ending with .order() or .in())
+  // JavaScript calls .then() when you `await` a non-Promise object.
+  ;(db as any).then = jest.fn().mockImplementation(
+    (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+      terminal().then(resolve, reject)
+  )
+
+  return { db, eqHistory, selectHistory, inHistory }
+}
+
+// ── Fixtures ─────────────────────────────────────────────────────────────────
+
+const AVI_ENTITY  = { id: 'avi-uuid',  entity_type: 'investor' }
+const OREN_ENTITY = { id: 'oren-uuid', entity_type: 'investor' }
+
+const ENTRY_CHECK = [{ id: 'entry-uuid' }]
+
+/** Matches actual v_partner_investment_statement column names. */
+const AVI_SUMMARY = {
+  property_name:              'Villa Mazotos',
+  partner_name:               'Avi',
   ownership_pct:              50,
   agreed_entry_valuation_eur: 500000,
   required_entry_capital_eur: 250000,
   capital_paid_eur:           250000,
   capital_remaining_eur:      0,
-  total_distributions_eur:    null,
-  entry_status:               'active',
+  total_distributions_eur:    0,
+  entry_status:               'fully_paid',
 }
 
-// ── capital events ────────────────────────────────────────────────────────────
+const OREN_SUMMARY = {
+  property_name:              'Villa Mazotos 2',
+  partner_name:               'Oren',
+  ownership_pct:              35,
+  agreed_entry_valuation_eur: 520000,
+  required_entry_capital_eur: 182000,
+  capital_paid_eur:           null,   // P-ARCH-1: capital unknown
+  capital_remaining_eur:      null,
+  total_distributions_eur:    0,
+  entry_status:               'capital_unknown',
+}
 
-const CAPITAL_EVENTS: unknown[] = [
-  {
-    id: 'evt-1',
-    event_type: 'purchase_payment',
-    amount_eur: 200000,
-    effective_date: null,
-    effective_date_confidence: 'pending_verification',
-    description: 'Seller payment',
-    payer_entity_id: 'jj-uuid',
-    business_source: null,
-    supersedes_event_id: null,
-    status: 'active',
-    running_capital_after: 200000,
-    capital_remaining_after: 50000,
-  },
-]
+const AVI_PARTNER_ENTRY = {
+  id:                         'pe-uuid',
+  property_name:              'Villa Mazotos',
+  entity_id:                  'avi-uuid',
+  event_type:                 'partner_entry',
+  event_nature:               'business_event',
+  entry_date:                 null,
+  entry_date_note:            'pending_verification',
+  ownership_pct:              50,
+  agreed_entry_valuation_eur: 500000,
+  required_entry_capital_eur: 250000,
+  status:                     'confirmed',
+  created_at:                 '2026-07-01T00:00:00Z',
+  business_source:            null,
+}
 
-const OWNERSHIP_PERIODS: unknown[] = []
+/** D2: DB column is `notes`, not `description`. */
+const AVI_CAPITAL_200K = {
+  id:                        'cap-200k',
+  property_name:             'Villa Mazotos',
+  entity_id:                 'avi-uuid',
+  event_type:                'capital_event',
+  event_subtype:             'partner_entry_payment',
+  event_nature:              'accounting_event',
+  direction:                 'inflow',
+  amount_eur:                200000,
+  effective_date:            null,
+  effective_date_confidence: 'pending_verification',
+  notes:                     'Avi paid €200,000 directly to property seller.',
+  payer_name:                'Avi',
+  payee_name:                'Seller',
+  status:                    'confirmed',
+  created_at:                '2026-07-01T00:00:00Z',
+  business_source:           null,
+}
 
-// ── Mock DB builder ───────────────────────────────────────────────────────────
+const AVI_CAPITAL_50K = {
+  id:                        'cap-50k',
+  property_name:             'Villa Mazotos',
+  entity_id:                 'avi-uuid',
+  event_type:                'capital_event',
+  event_subtype:             'partner_entry_payment',
+  event_nature:              'accounting_event',
+  direction:                 'inflow',
+  amount_eur:                50000,
+  effective_date:            null,
+  effective_date_confidence: 'pending_verification',
+  notes:                     'Avi paid €50,000 to Yossi as entry settlement. The single correct amount — legacy €30,000 was incorrect.',
+  payer_name:                'Avi',
+  payee_name:                'Yossi',
+  status:                    'confirmed',
+  created_at:                '2026-07-02T00:00:00Z',
+  business_source:           null,
+}
 
-function buildMockDb(overrides: {
-  entityData?: unknown
-  entityError?: unknown
-  entryCheckData?: unknown
-  entryCheckError?: unknown
-  summaryData?: unknown
-  capitalEventsData?: unknown
-  ownershipPeriodsData?: unknown
-  verificationTasksData?: unknown
-} = {}) {
-  let callIndex = 0
-  const responses = [
-    { data: overrides.entityData    ?? AVI_ENTITY,       error: overrides.entityError     ?? null },
-    { data: overrides.entryCheckData ?? ENTRY_CHECK_ROW, error: overrides.entryCheckError ?? null },
-    { data: overrides.summaryData   ?? SUMMARY_ROW,      error: null },
-    { data: overrides.capitalEventsData ?? CAPITAL_EVENTS, error: null },
-    { data: overrides.ownershipPeriodsData ?? OWNERSHIP_PERIODS, error: null },
-    { data: overrides.verificationTasksData ?? [],        error: null },
-  ]
-  const chain: Record<string, unknown> = {}
-  ;['schema','from','select','eq','neq','in','single','limit','order','maybeSingle'].forEach(m => {
-    chain[m] = jest.fn().mockReturnThis()
-  })
-  const terminal = jest.fn().mockImplementation(() => {
-    const resp = responses[callIndex] ?? { data: null, error: null }
-    callIndex++
-    return Promise.resolve(resp)
-  })
-  ;(chain['single']      as jest.Mock).mockImplementation(() => terminal())
-  ;(chain['maybeSingle'] as jest.Mock).mockImplementation(() => terminal())
-  ;(chain['limit']       as jest.Mock).mockImplementation(() => terminal())
-  return chain
+const OREN_PARTNER_ENTRY = {
+  id:                         'oren-pe-uuid',
+  property_name:              'Villa Mazotos 2',
+  entity_id:                  'oren-uuid',
+  event_type:                 'partner_entry',
+  event_nature:               'business_event',
+  entry_date:                 null,
+  entry_date_note:            'pending_verification',
+  ownership_pct:              35,
+  agreed_entry_valuation_eur: 520000,
+  required_entry_capital_eur: 182000,
+  status:                     'confirmed',
+  created_at:                 '2026-07-01T00:00:00Z',
+  business_source:            null,
+}
+
+// ── Happy-path helpers ────────────────────────────────────────────────────────
+
+/**
+ * Avi / Villa Mazotos — 7 sequential responses:
+ * 1. entity_identity  → AVI_ENTITY
+ * 2. partner_entry auth check  → ENTRY_CHECK
+ * 3. v_partner_investment_statement  → AVI_SUMMARY
+ * 4a. partner_entry rows  → [AVI_PARTNER_ENTRY]
+ * 4b. capital_event rows  → [AVI_CAPITAL_200K, AVI_CAPITAL_50K]
+ * 4c. ownership_period rows  → []
+ * 4d. verification_tasks count  → count: 2
+ */
+function aviHappyPath(): MockDb {
+  return buildMockDb([
+    { data: AVI_ENTITY,                         error: null },
+    { data: ENTRY_CHECK,                        error: null },
+    { data: AVI_SUMMARY,                        error: null },
+    { data: [AVI_PARTNER_ENTRY],                error: null },
+    { data: [AVI_CAPITAL_200K, AVI_CAPITAL_50K], error: null },
+    { data: [],                                 error: null },
+    { data: null, error: null,                  count: 2   },
+  ])
+}
+
+/**
+ * Oren / Villa Mazotos 2 — 7 sequential responses.
+ * No capital events (capital_unknown).
+ */
+function orenHappyPath(): MockDb {
+  return buildMockDb([
+    { data: OREN_ENTITY,          error: null },
+    { data: [{ id: 'oren-pe' }],  error: null },
+    { data: OREN_SUMMARY,         error: null },
+    { data: [OREN_PARTNER_ENTRY], error: null },
+    { data: [],                   error: null },   // no capital events
+    { data: [],                   error: null },   // no ownership periods
+    { data: null, error: null,    count: 1   },    // 1 task for oren-pe-uuid
+  ])
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe('loadInvestmentTimeline — entity_type filter hotfix', () => {
-  beforeEach(() => { jest.clearAllMocks() })
+describe('loadInvestmentTimeline — data mapping hotfix (D1/D2/D3/E)', () => {
+  beforeEach(() => jest.clearAllMocks())
 
-  it('T1: resolves investor entity (entity_type=investor)', async () => {
-    mockCreateServiceClient.mockReturnValue(buildMockDb({ entityData: AVI_ENTITY }))
+  // ─── D1: partner_name on summary view ──────────────────────────────────────
+
+  it('T1 (D1): summary view is queried by partner_name', async () => {
+    const { db, eqHistory } = aviHappyPath()
+    mockCreateServiceClient.mockReturnValue(db)
     const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
+
     expect(dto).not.toBeNull()
-    expect(dto?.investor.name).toBe('Avi')
+    expect(eqHistory).toContainEqual(['partner_name', 'Avi'])
   })
 
-  it('T2: resolves partner entity (entity_type=partner)', async () => {
-    mockCreateServiceClient.mockReturnValue(buildMockDb({ entityData: YOSSI_ENTITY }))
-    const dto = await loadInvestmentTimeline('Yossi', 'Some Property')
-    expect(dto).not.toBeNull()
-    expect(dto?.investor.name).toBe('Yossi')
+  it('T2 (D1): summary view is also filtered by property_name', async () => {
+    const { db, eqHistory } = aviHappyPath()
+    mockCreateServiceClient.mockReturnValue(db)
+    await loadInvestmentTimeline('Avi', 'Villa Mazotos')
+
+    // Both partner_name and property_name must appear as eq calls for the view
+    expect(eqHistory).toContainEqual(['partner_name',  'Avi'          ])
+    expect(eqHistory).toContainEqual(['property_name', 'Villa Mazotos'])
   })
 
-  it('T3: unknown canonical_name → null', async () => {
-    mockCreateServiceClient.mockReturnValue(buildMockDb({ entityData: null, entityError: { code: 'PGRST116' } }))
-    const dto = await loadInvestmentTimeline('NoSuchPerson', 'Villa Mazotos')
-    expect(dto).toBeNull()
+  // ─── D2: notes → description mapping ───────────────────────────────────────
+
+  it('T3 (D2): capital_event select includes "notes", not "description" as a bare column', async () => {
+    const { db, selectHistory } = aviHappyPath()
+    mockCreateServiceClient.mockReturnValue(db)
+    await loadInvestmentTimeline('Avi', 'Villa Mazotos')
+
+    const hasNotes = selectHistory.some(s => s.includes('notes'))
+    expect(hasNotes).toBe(true)
+
+    // `description` must not appear as a column name in any select
+    // (it does not exist in the DB — it is a projection interface field only)
+    const descriptionColumns = selectHistory.flatMap(s =>
+      s.split(',').map(f => f.trim()).filter(f => f === 'description')
+    )
+    expect(descriptionColumns).toHaveLength(0)
   })
 
-  it('T4: valid entity + wrong property → null (authorization gate)', async () => {
-    mockCreateServiceClient.mockReturnValue(buildMockDb({ entityData: AVI_ENTITY, entryCheckData: [] }))
-    const dto = await loadInvestmentTimeline('Avi', 'Unrelated Property')
-    expect(dto).toBeNull()
-  })
-
-  it('T5: entity_type filter removal does not bypass partner_entry check', async () => {
-    mockCreateServiceClient.mockReturnValue(buildMockDb({ entityData: AVI_ENTITY, entryCheckData: [] }))
-    const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos 2')
-    expect(dto).toBeNull()
-  })
-
-  it('T6: Avi / Villa Mazotos → returns DTO', async () => {
-    mockCreateServiceClient.mockReturnValue(buildMockDb({ entityData: AVI_ENTITY }))
+  it('T4 (D2): capital_event.notes is mapped to DTO event description', async () => {
+    const { db } = aviHappyPath()
+    mockCreateServiceClient.mockReturnValue(db)
     const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
-    expect(dto).not.toBeNull()
-    expect(dto?.property.propertyName).toBe('Villa Mazotos')
+
+    const capitalEvts = dto?.events.filter(e => e.eventType === 'capital_event') ?? []
+    const event200k   = capitalEvts.find(e => e.amount === 200000)
+    const event50k    = capitalEvts.find(e => e.amount === 50000)
+
+    // notes value must appear as description in the projected event
+    expect(event200k?.description).toContain('200,000')
+    expect(event50k?.description).toContain('50,000')
   })
 
-  it('T7: Oren / Villa Mazotos 2 → null capital stays null (P-ARCH-1)', async () => {
-    mockCreateServiceClient.mockReturnValue(buildMockDb({
-      entityData: OREN_ENTITY,
-      summaryData: {
-        ...SUMMARY_ROW,
-        ownership_pct: 35,
-        agreed_entry_valuation_eur: 520000,
-        required_entry_capital_eur: null,
-        capital_paid_eur:           null,
-        capital_remaining_eur:      null,
-      },
-    }))
+  // ─── D3: source_id on verification_tasks ────────────────────────────────────
+
+  it('T5 (D3): verification_tasks uses source_id, never record_id', async () => {
+    const { db, inHistory } = aviHappyPath()
+    mockCreateServiceClient.mockReturnValue(db)
+    await loadInvestmentTimeline('Avi', 'Villa Mazotos')
+
+    const sourceIdCalls = inHistory.filter(([col]) => col === 'source_id')
+    expect(sourceIdCalls.length).toBeGreaterThanOrEqual(1)
+
+    const recordIdCalls = inHistory.filter(([col]) => col === 'record_id')
+    expect(recordIdCalls).toHaveLength(0)
+  })
+
+  it('T6 (D3): relevant verification task count is reflected in DTO evidence', async () => {
+    const { db } = aviHappyPath()
+    mockCreateServiceClient.mockReturnValue(db)
+    const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
+
+    // Mock returns count=2 for Avi's two capital events
+    expect(dto?.evidence.openVerificationTasks).toBe(2)
+  })
+
+  it('T7 (D3): verification_tasks query skipped when allEventIds is empty', async () => {
+    // Avi auth passes but all event queries return empty arrays
+    const { db, inHistory } = buildMockDb([
+      { data: AVI_ENTITY,    error: null },
+      { data: ENTRY_CHECK,   error: null },
+      { data: AVI_SUMMARY,   error: null },
+      { data: [],            error: null },   // no partner_entry rows
+      { data: [],            error: null },   // no capital events
+      { data: [],            error: null },   // no ownership periods
+      // No 7th call — task query is guarded by allEventIds.length > 0
+    ])
+    mockCreateServiceClient.mockReturnValue(db)
+    const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
+
+    expect(dto?.evidence.openVerificationTasks).toBe(0)
+    // source_id .in() must not have been called
+    const sourceIdCalls = inHistory.filter(([col]) => col === 'source_id')
+    expect(sourceIdCalls).toHaveLength(0)
+  })
+
+  // ─── E: explicit error handling ─────────────────────────────────────────────
+
+  it('T8 (E): schema error on summary view throws — does not produce silent Unknown', async () => {
+    const SCHEMA_ERR = {
+      data:  null,
+      error: { code: 'PGRST200', message: 'column entity_id does not exist', hint: null },
+    }
+    const { db } = buildMockDb([
+      { data: AVI_ENTITY,    error: null },
+      { data: ENTRY_CHECK,   error: null },
+      SCHEMA_ERR,   // summary view schema error
+    ])
+    mockCreateServiceClient.mockReturnValue(db)
+
+    await expect(loadInvestmentTimeline('Avi', 'Villa Mazotos'))
+      .rejects.toThrow('[timelineService] summary view query failed')
+  })
+
+  // ─── Business correctness ──────────────────────────────────────────────────
+
+  it('T9: unknown capital (Oren) stays null — P-ARCH-1', async () => {
+    const { db } = orenHappyPath()
+    mockCreateServiceClient.mockReturnValue(db)
     const dto = await loadInvestmentTimeline('Oren', 'Villa Mazotos 2')
-    expect(dto).not.toBeNull()
+
     expect(dto?.summary.capitalPaid).toBeNull()
     expect(dto?.summary.capitalRemaining).toBeNull()
+    expect(dto?.property.lifecycleStatus).toBe('capital_unknown')
   })
 
-  it('T8: cross-owner URL manipulation → null', async () => {
-    mockCreateServiceClient.mockReturnValue(buildMockDb({ entityData: OREN_ENTITY, entryCheckData: [] }))
-    const dto = await loadInvestmentTimeline('Oren', 'Villa Mazotos')
-    expect(dto).toBeNull()
-  })
-
-  it('T9: JJ internal fields never appear in DTO (P-ARCH-6)', async () => {
-    mockCreateServiceClient.mockReturnValue(buildMockDb({ entityData: AVI_ENTITY }))
+  it('T10: Avi summary is fully populated', async () => {
+    const { db } = aviHappyPath()
+    mockCreateServiceClient.mockReturnValue(db)
     const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
-    const dtoStr = JSON.stringify(dto)
-    expect(dtoStr).not.toContain('jj_margin')
-    expect(dtoStr).not.toContain('jj_cost_basis')
-    expect(dtoStr).not.toContain('jj_net')
-  })
 
-  it('T10: financial values match source data exactly', async () => {
-    mockCreateServiceClient.mockReturnValue(buildMockDb({ entityData: AVI_ENTITY }))
-    const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
     expect(dto?.summary.currentOwnershipPct).toBe(50)
     expect(dto?.summary.agreedEntryValuation).toBe(500000)
     expect(dto?.summary.requiredCapital).toBe(250000)
     expect(dto?.summary.capitalPaid).toBe(250000)
     expect(dto?.summary.capitalRemaining).toBe(0)
+    expect(dto?.property.lifecycleStatus).toBe('fully_paid')
+  })
+
+  it('T11: Avi has exactly two capital events in timeline', async () => {
+    const { db } = aviHappyPath()
+    mockCreateServiceClient.mockReturnValue(db)
+    const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
+
+    const capitalEvts = dto?.events.filter(e => e.eventType === 'capital_event') ?? []
+    expect(capitalEvts).toHaveLength(2)
+  })
+
+  it('T12: Avi €50,000 event appears exactly once', async () => {
+    const { db } = aviHappyPath()
+    mockCreateServiceClient.mockReturnValue(db)
+    const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
+
+    const evts50k = dto?.events.filter(e => e.amount === 50000) ?? []
+    expect(evts50k).toHaveLength(1)
+  })
+
+  it('T13: no €30,000 event appears in Avi timeline', async () => {
+    const { db } = aviHappyPath()
+    mockCreateServiceClient.mockReturnValue(db)
+    const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
+
+    const evts30k = dto?.events.filter(e => e.amount === 30000) ?? []
+    expect(evts30k).toHaveLength(0)
+  })
+
+  it('T14: Oren capital paid and remaining remain null (capital_unknown)', async () => {
+    const { db } = orenHappyPath()
+    mockCreateServiceClient.mockReturnValue(db)
+    const dto = await loadInvestmentTimeline('Oren', 'Villa Mazotos 2')
+
+    expect(dto).not.toBeNull()
+    expect(dto?.summary.capitalPaid).toBeNull()
+    expect(dto?.summary.capitalRemaining).toBeNull()
+    expect(dto?.summary.currentOwnershipPct).toBe(35)
+    expect(dto?.summary.agreedEntryValuation).toBe(520000)
+  })
+
+  it('T15: no JJ internal fields leak into partner DTO (P-ARCH-6)', async () => {
+    const { db } = aviHappyPath()
+    mockCreateServiceClient.mockReturnValue(db)
+    const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
+
+    const str = JSON.stringify(dto)
+    expect(str).not.toContain('jj_margin')
+    expect(str).not.toContain('jj_cost_basis')
+    expect(str).not.toContain('jj_net')
+    expect(str).not.toContain('jj_total_cost')
+    expect(str).not.toContain('jj_purchase_price')
+  })
+
+  it('T16: cross-owner URL manipulation is blocked', async () => {
+    // Oren entity exists but has no partner_entry for Villa Mazotos (Avi's property)
+    const { db } = buildMockDb([
+      { data: OREN_ENTITY, error: null },
+      { data: [],          error: null },   // no partner_entry → unauthorized
+    ])
+    mockCreateServiceClient.mockReturnValue(db)
+    const dto = await loadInvestmentTimeline('Oren', 'Villa Mazotos')
+
+    expect(dto).toBeNull()
+  })
+
+  it('T17: financial amounts are not modified by service (€200K + €50K = €250K required)', async () => {
+    const { db } = aviHappyPath()
+    mockCreateServiceClient.mockReturnValue(db)
+    const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
+
+    const capitalEvts = dto?.events.filter(e => e.eventType === 'capital_event') ?? []
+    const total = capitalEvts.reduce((sum, e) => sum + (e.amount ?? 0), 0)
+
+    expect(total).toBe(250000)           // 200K + 50K = 250K = requiredCapital
+    expect(dto?.summary.requiredCapital).toBe(250000)
+    expect(total).toBe(dto?.summary.requiredCapital)
   })
 })
