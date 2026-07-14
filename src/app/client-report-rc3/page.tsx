@@ -32,6 +32,9 @@ import {
 } from '@/lib/report/labels'
 import { groupExpenses } from '@/lib/report/expenseGroups'
 import { computeOperationalKPIs, computeNetOwnerBalance } from '@/lib/report/executiveSummary'
+import { ReportScopeSelector } from '@/components/report/ReportScopeSelector'
+import type { ReportScope } from '@/lib/report/reportScope'
+import { isScopeValid, resolveAuthorizedScope, defaultScope } from '@/lib/report/reportScope'
 
 /* ─── Dynamic PDF import (client-only) ──────────────────────────────────────── */
 
@@ -936,7 +939,8 @@ function LangToggle({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void 
 function ClientReportRC3Content() {
   const [lang,          setLang]          = useState<Lang>('en')
   const [properties,    setProperties]    = useState<string[]>([])
-  const [selectedProp,  setSelectedProp]  = useState<string>('')
+  const [scope,         setScope]         = useState<ReportScope>({ type: 'single_property', propertyName: '' })
+  const [multiReports,  setMultiReports]  = useState<RC3PropertyReport[]>([])
   const [fromDate,      setFromDate]      = useState<string>('')
   const [toDate,        setToDate]        = useState<string>('')
   const [report,        setReport]        = useState<RC3PropertyReport | null>(null)
@@ -959,36 +963,63 @@ function ClientReportRC3Content() {
     fetchRC3PropertyList()
       .then(list => {
         setProperties(list)
-        if (list.length > 0) setSelectedProp(list[0])
+        if (list.length > 0) setScope(defaultScope(list[0]))
       })
       .catch(err => setError(err.message))
   }, [])
 
   const loadReport = useCallback(async () => {
-    if (!selectedProp) return
+    if (!isScopeValid(scope)) return
     setLoading(true)
     setError(null)
     setPdfReady(false)
     setReport(null)
+    setMultiReports([])
     try {
-      const r = await fetchRC3Report({
-        reportingName: selectedProp,
-        fromDate: fromDate || undefined,
-        toDate:   toDate   || undefined,
-      })
-      setReport(r)
-      setTimeout(() => setPdfReady(true), 600)
+      if (scope.type === 'single_property') {
+        // ── existing single-property path (unchanged) ──────────────────────
+        const r = await fetchRC3Report({
+          reportingName: scope.propertyName,
+          fromDate: fromDate || undefined,
+          toDate:   toDate   || undefined,
+        })
+        setReport(r)
+        setTimeout(() => setPdfReady(true), 600)
+      } else {
+        // ── multi-property path (portfolio / selected_properties) ──────────
+        // Resolve authorized property list, then fetch each report in parallel.
+        // No cross-property arithmetic here — each report is shown independently.
+        const resolved = resolveAuthorizedScope(scope, properties)
+        if (resolved.length === 0) {
+          setError('No properties selected or available.')
+          return
+        }
+        const reports = await Promise.all(
+          resolved.map(name =>
+            fetchRC3Report({
+              reportingName: name,
+              fromDate: fromDate || undefined,
+              toDate:   toDate   || undefined,
+            }),
+          ),
+        )
+        setMultiReports(reports)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load report')
     } finally {
       setLoading(false)
     }
-  }, [selectedProp, fromDate, toDate])
+  }, [scope, properties, fromDate, toDate])
 
+  // Auto-load when the user selects a different property in single-property mode.
+  // Portfolio / selected_properties require an explicit "View Report" click.
+  const _singlePropTrigger =
+    scope.type === 'single_property' ? scope.propertyName : ''
   useEffect(() => {
-    if (selectedProp) loadReport()
+    if (_singlePropTrigger) loadReport()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProp])
+  }, [_singlePropTrigger])
 
   const [reportType, setReportType] = useState<ReportType>('full')
 
@@ -1035,19 +1066,13 @@ function ClientReportRC3Content() {
             <div className="flex-none">
               <ReportTypeSelector reportType={reportType} setReportType={setReportType} lang={lang} />
             </div>
-            <div className="flex-1 min-w-48">
-              <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">
-                {t('property', lang)}
-              </label>
-              <select
-                value={selectedProp}
-                onChange={e => setSelectedProp(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                {properties.map(p => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
+            <div className="flex-1 min-w-56">
+              <ReportScopeSelector
+                scope={scope}
+                onChange={setScope}
+                properties={properties}
+                lang={lang}
+              />
             </div>
 
             <div>
@@ -1076,10 +1101,10 @@ function ClientReportRC3Content() {
 
             <button
               onClick={loadReport}
-              disabled={loading || !selectedProp}
+              disabled={loading || !isScopeValid(scope)}
               className="px-5 py-2.5 bg-[#1e3a5f] text-white text-sm rounded-lg hover:bg-[#2d5a9e] disabled:opacity-50 font-medium transition-colors"
             >
-              {loading ? t('loading', lang) : t('loadReport', lang)}
+              {loading ? t('loading', lang) : t('viewReport', lang)}
             </button>
 
             {report && pdfReady && PdfDoc && (
@@ -1108,7 +1133,7 @@ function ClientReportRC3Content() {
         {/* ── Loading ───────────────────────────────────────────────────────── */}
         {loading && (
           <div className="text-center py-16 text-gray-500 text-sm">
-            {t('loading', lang)} <strong>{selectedProp}</strong>
+            {t('loading', lang)}
           </div>
         )}
 
@@ -1132,6 +1157,31 @@ function ClientReportRC3Content() {
             {/* Final Summary — accounting summary + disclaimer */}
             <FinalSummary report={filteredReport!} lang={lang} />
           </>
+        )}
+
+        {/* ── Multi-property report (portfolio / selected_properties) ─────── */}
+        {multiReports.length > 0 && !loading && (
+          <div className="space-y-6">
+            {multiReports.map(mr => {
+              const mrAccounts = filterSectionsByReportType(mr.accounts, reportType)
+              const mrFiltered = { ...mr, accounts: mrAccounts }
+              return (
+                <div key={mr.reporting_name}>
+                  <PremiumSummary report={mrFiltered} lang={lang} />
+                  {mrAccounts.length === 0 ? (
+                    <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm rounded-xl p-5 mb-4">
+                      {t('noTransactions', lang)}
+                    </div>
+                  ) : (
+                    mrAccounts.map(acc => (
+                      <AccountCard key={acc.account_type} section={acc} lang={lang} />
+                    ))
+                  )}
+                  <FinalSummary report={mrFiltered} lang={lang} />
+                </div>
+              )
+            })}
+          </div>
         )}
       </div>
     </div>
