@@ -93,6 +93,12 @@ export default async function OwnerPropertyPage({ params }: Props) {
         {/* Action links */}
         <div className="flex items-center gap-3 mt-6 flex-wrap">
           <Link
+            href={`/owner/${ownerSlug}/${encodeURIComponent(propertyName)}/timeline`}
+            className="px-5 py-2.5 bg-purple-800 text-white text-sm rounded-lg hover:bg-purple-700 font-medium transition-colors"
+          >
+            Investment Timeline →
+          </Link>
+          <Link
             href="/client-report-rc3"
             className="px-5 py-2.5 bg-[#1e3a5f] text-white text-sm rounded-lg hover:bg-[#2d5a9e] font-medium transition-colors"
           >
