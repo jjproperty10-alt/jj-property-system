@@ -1,5 +1,5 @@
 /**
- * partnerAuth.test.ts — Partner Authorization Boundary Tests (PR #47)
+ * partnerAuth.test.ts — Partner Authorization Boundary Tests
  *
  * Coverage:
  *   SLUG-01..03    verifySlugMatch (partnerAuthHelpers) — 3 tests
@@ -8,22 +8,38 @@
  *   AUTH-01..11    11 mandatory authorization cases for
  *                  loadStatementForAuthenticatedPartner — 11 tests
  *   GUARD-01       empty authenticatedUserId guard — 1 test
- *   ORDER-01..05   DB call ordering proofs — 5 tests
+ *   ORDER-01..05   DB call ordering proofs (via loadStatementForAuthenticatedPartner) — 5 tests
+ *   SESSION-01..11 Session binding tests for loadStatementForCurrentPartner — 11 tests
  *
- * Total: 29 tests. DB is fully mocked — no network, no Supabase connection.
+ * Total: 40 tests. DB and auth are fully mocked — no network, no Supabase connection.
  *
  * Module separation:
  * - Pure helper tests (SLUG-*, SCOPE-*) import ONLY from partnerAuthHelpers.ts.
  *   They require ZERO mocks — the helpers have no imports beyond types.
  * - Resolver tests (RES-*) mock createServiceClient.
- * - End-to-end tests (AUTH-*, ORDER-*) mock createServiceClient AND
+ * - Authorization chain tests (AUTH-*, ORDER-*) mock createServiceClient AND
  *   loadPartnerStatement from partnerStatementService.
+ * - Session binding tests (SESSION-*) additionally mock createSupabaseServerClient
+ *   from supabaseServer and next/headers, to test the two-client pattern.
  */
 
 // ─── Mocks (declared before any imports that trigger module-level side effects) ──
 
 jest.mock('@/lib/supabase', () => ({
   createServiceClient: jest.fn(),
+}))
+
+// Cookie-aware server client mock — used only by loadStatementForCurrentPartner
+jest.mock('@/lib/supabaseServer', () => ({
+  createSupabaseServerClient: jest.fn(),
+}))
+
+// next/headers is not available in Jest (Node) — mock it as a no-op
+jest.mock('next/headers', () => ({
+  cookies: jest.fn(() => ({
+    getAll: () => [],
+    set: jest.fn(),
+  })),
 }))
 
 // Partial mock: keep buildSlug (and other pure exports) real from requireActual.
@@ -46,19 +62,24 @@ import {
   validatePropertyScope,
 } from '@/lib/lifecycle/partnerAuthHelpers'
 
-// Server service — resolver + authorized entry point.
+// Server service — resolver + entry points.
 import {
   resolveAuthorizedInvestorEntity,
   loadStatementForAuthenticatedPartner,
+  loadStatementForCurrentPartner,
 } from '@/lib/lifecycle/partnerAuthService'
 
 import { createServiceClient } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabaseServer'
 import { loadPartnerStatement } from '@/lib/lifecycle/partnerStatementService'
 
 // ─── Typed mock references ────────────────────────────────────────────────────
 
 const mockCreateServiceClient = createServiceClient as jest.MockedFunction<
   typeof createServiceClient
+>
+const mockCreateSupabaseServerClient = createSupabaseServerClient as jest.MockedFunction<
+  typeof createSupabaseServerClient
 >
 const mockLoadPartnerStatement = loadPartnerStatement as jest.MockedFunction<
   typeof loadPartnerStatement
@@ -88,7 +109,6 @@ const AVI_DTO: any = {
   properties: [{
     propertyName: 'Villa Mazotos',
     capital: {
-      // Avi: fully paid — real amounts, not 0 or null
       agreedEntryValuationEur: 500_000,
       capitalPaidEur: 250_000,
       capitalRemainingEur: 0,
@@ -132,7 +152,6 @@ const OREN_DTO: any = {
   }],
   portfolio: {
     totalPropertiesCount: 1,
-    // P-ARCH-1: any property with unknown capital → portfolio totals = null (not 0)
     totalAgreedValuationEur: null,
     totalCapitalPaidEur: null,
     totalCapitalRemainingEur: null,
@@ -146,7 +165,6 @@ const OREN_DTO: any = {
 
 /**
  * Builds a chainable Supabase-like query builder that resolves to the given result.
- * Each method returns the same builder object (fluent API pattern).
  */
 function makeQueryBuilder(result: { data: any; error: any }) {
   const builder: Record<string, any> = {}
@@ -160,7 +178,6 @@ function makeQueryBuilder(result: { data: any; error: any }) {
 
 /**
  * Creates a mock service client where each table name resolves to a pre-configured result.
- * Tables not listed resolve to { data: null, error: null }.
  */
 function mockServiceClient(
   tables: Record<string, { data: any; error?: any }>,
@@ -172,6 +189,21 @@ function mockServiceClient(
   return { schema: (_: string) => ({ from: fromImpl }) } as unknown as ReturnType<
     typeof createServiceClient
   >
+}
+
+/**
+ * Creates a mock session client (cookie-aware) for testing loadStatementForCurrentPartner.
+ * Simulates the result of createSupabaseServerClient().auth.getUser().
+ */
+function mockSessionClient(
+  user: { id: string } | null,
+  error: any = null,
+): ReturnType<typeof createSupabaseServerClient> {
+  return {
+    auth: {
+      getUser: jest.fn().mockResolvedValue({ data: { user }, error }),
+    },
+  } as unknown as ReturnType<typeof createSupabaseServerClient>
 }
 
 /** Avi: full resolver mock (investor_auth + entity_identity + optional partner_entry) */
@@ -208,7 +240,6 @@ beforeEach(() => {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: Pure helper tests — imports from partnerAuthHelpers.ts
-//            These require zero mocks. Prove module independence.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('verifySlugMatch (pure helper — partnerAuthHelpers.ts)', () => {
@@ -276,7 +307,6 @@ describe('validatePropertyScope (pure helper — partnerAuthHelpers.ts)', () => 
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 2: Resolver unit tests (resolveAuthorizedInvestorEntity)
-//            Mock createServiceClient to control DB responses.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('resolveAuthorizedInvestorEntity', () => {
@@ -329,7 +359,7 @@ describe('resolveAuthorizedInvestorEntity', () => {
     mockCreateServiceClient.mockReturnValue(
       mockServiceClient({
         investor_auth:   { data: DB_AVI_AUTH_ACTIVE },
-        entity_identity: { data: null },  // entity missing
+        entity_identity: { data: null },
       }),
     )
 
@@ -349,21 +379,19 @@ describe('resolveAuthorizedInvestorEntity', () => {
 
     const result = await resolveAuthorizedInvestorEntity(AVI_AUTH_USER_ID)
 
-    // DB errors must NEVER grant access
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error).toBe('NO_MAPPING')
   })
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 3: 11 mandatory authorization test cases
-//            loadStatementForAuthenticatedPartner
+// SECTION 3: 11 mandatory authorization cases
+//            loadStatementForAuthenticatedPartner (backward-compat alias)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('loadStatementForAuthenticatedPartner — 11 mandatory authorization cases', () => {
 
-  // ── AUTH-01 ────────────────────────────────────────────────────────────────
-  // Mandatory test 1: authenticated Avi + slug 'avi' = ALLOW
+  // AUTH-01
   test('AUTH-01: authenticated Avi, requestedSlug=avi → returns PartnerFacingStatementDTO', async () => {
     setupAviMapping()
     mockLoadPartnerStatement.mockResolvedValueOnce(AVI_DTO)
@@ -373,20 +401,17 @@ describe('loadStatementForAuthenticatedPartner — 11 mandatory authorization ca
       requestedSlug: 'avi',
     })
 
-    // A PartnerFacingStatementDTO has no 'ok' property
     expect('ok' in result).toBe(false)
     const dto = result as typeof AVI_DTO
     expect(dto.meta.viewMode).toBe('partner')
     expect(dto.investor.slug).toBe('avi')
-    // Data layer called with server-derived slug (not raw URL param)
     expect(mockLoadPartnerStatement).toHaveBeenCalledWith(
       'avi',
       expect.objectContaining({ viewMode: 'partner' }),
     )
   })
 
-  // ── AUTH-02 ────────────────────────────────────────────────────────────────
-  // Mandatory test 2: authenticated Oren + slug 'oren' = ALLOW
+  // AUTH-02
   test('AUTH-02: authenticated Oren, requestedSlug=oren → returns PartnerFacingStatementDTO', async () => {
     setupOrenMapping()
     mockLoadPartnerStatement.mockResolvedValueOnce(OREN_DTO)
@@ -403,36 +428,33 @@ describe('loadStatementForAuthenticatedPartner — 11 mandatory authorization ca
     expect(mockLoadPartnerStatement).toHaveBeenCalledTimes(1)
   })
 
-  // ── AUTH-03 ────────────────────────────────────────────────────────────────
-  // Mandatory test 3: authenticated Avi, requests Oren's slug = SLUG_MISMATCH
+  // AUTH-03
   test('AUTH-03: authenticated Avi, requestedSlug=oren → SLUG_MISMATCH', async () => {
-    setupAviMapping()  // Avi's auth → entity 'Avi' → slug 'avi'
+    setupAviMapping()
 
     const result = await loadStatementForAuthenticatedPartner({
       authenticatedUserId: AVI_AUTH_USER_ID,
-      requestedSlug: 'oren',  // cross-investor attempt
+      requestedSlug: 'oren',
     })
 
     expect(result).toEqual({ ok: false, error: 'SLUG_MISMATCH' })
     expect(mockLoadPartnerStatement).not.toHaveBeenCalled()
   })
 
-  // ── AUTH-04 ────────────────────────────────────────────────────────────────
-  // Mandatory test 4: authenticated Oren, requests Avi's slug = SLUG_MISMATCH
+  // AUTH-04
   test('AUTH-04: authenticated Oren, requestedSlug=avi → SLUG_MISMATCH', async () => {
-    setupOrenMapping()  // Oren's auth → entity 'Oren' → slug 'oren'
+    setupOrenMapping()
 
     const result = await loadStatementForAuthenticatedPartner({
       authenticatedUserId: OREN_AUTH_USER_ID,
-      requestedSlug: 'avi',  // cross-investor attempt
+      requestedSlug: 'avi',
     })
 
     expect(result).toEqual({ ok: false, error: 'SLUG_MISMATCH' })
     expect(mockLoadPartnerStatement).not.toHaveBeenCalled()
   })
 
-  // ── AUTH-05 ────────────────────────────────────────────────────────────────
-  // Mandatory test 5: user has no investor_auth mapping → NO_MAPPING
+  // AUTH-05
   test('AUTH-05: auth user with no investor_auth record → NO_MAPPING', async () => {
     mockCreateServiceClient.mockReturnValue(
       mockServiceClient({ investor_auth: { data: null } }),
@@ -447,9 +469,7 @@ describe('loadStatementForAuthenticatedPartner — 11 mandatory authorization ca
     expect(mockLoadPartnerStatement).not.toHaveBeenCalled()
   })
 
-  // ── AUTH-06 ────────────────────────────────────────────────────────────────
-  // Mandatory test 6: disabled mapping → NO_MAPPING (not MAPPING_DISABLED)
-  // MAPPING_DISABLED must not be exposed to the route handler (info-leak prevention)
+  // AUTH-06
   test('AUTH-06: disabled mapping → NO_MAPPING to route handler (MAPPING_DISABLED not leaked)', async () => {
     mockCreateServiceClient.mockReturnValue(
       mockServiceClient({ investor_auth: { data: DB_AVI_AUTH_DISABLED } }),
@@ -460,15 +480,13 @@ describe('loadStatementForAuthenticatedPartner — 11 mandatory authorization ca
       requestedSlug: 'avi',
     })
 
-    // Caller receives NO_MAPPING, not MAPPING_DISABLED
     expect(result).toEqual({ ok: false, error: 'NO_MAPPING' })
     expect(mockLoadPartnerStatement).not.toHaveBeenCalled()
   })
 
-  // ── AUTH-07 ────────────────────────────────────────────────────────────────
-  // Mandatory test 7: completely unknown slug in URL = SLUG_MISMATCH
+  // AUTH-07
   test('AUTH-07: valid user, requestedSlug is completely unknown → SLUG_MISMATCH', async () => {
-    setupAviMapping()  // Avi authorized for slug='avi'
+    setupAviMapping()
 
     const result = await loadStatementForAuthenticatedPartner({
       authenticatedUserId: AVI_AUTH_USER_ID,
@@ -479,10 +497,8 @@ describe('loadStatementForAuthenticatedPartner — 11 mandatory authorization ca
     expect(mockLoadPartnerStatement).not.toHaveBeenCalled()
   })
 
-  // ── AUTH-08 ────────────────────────────────────────────────────────────────
-  // Mandatory test 8: partner requests Admin DTO via partner auth path → ADMIN_MODE_DENIED
+  // AUTH-08
   test('AUTH-08: viewMode=admin via partner auth path → ADMIN_MODE_DENIED, zero DB calls', async () => {
-    // Admin check is step 1 — must fire BEFORE any DB call
     const result = await loadStatementForAuthenticatedPartner({
       authenticatedUserId: AVI_AUTH_USER_ID,
       requestedSlug: 'avi',
@@ -490,44 +506,40 @@ describe('loadStatementForAuthenticatedPartner — 11 mandatory authorization ca
     })
 
     expect(result).toEqual({ ok: false, error: 'ADMIN_MODE_DENIED' })
-    // Prove ordering: admin rejection must not touch the DB
     expect(mockCreateServiceClient).not.toHaveBeenCalled()
     expect(mockLoadPartnerStatement).not.toHaveBeenCalled()
   })
 
-  // ── AUTH-09 ────────────────────────────────────────────────────────────────
-  // Mandatory test 9: unauthorized property in requestedProperties → PROPERTY_UNAUTHORIZED
+  // AUTH-09
   test('AUTH-09: requestedProperties includes unauthorized property → PROPERTY_UNAUTHORIZED', async () => {
-    setupAviMapping(true)  // Avi authorized for ['Villa Mazotos'] only
+    setupAviMapping(true)
 
     const result = await loadStatementForAuthenticatedPartner({
       authenticatedUserId: AVI_AUTH_USER_ID,
       requestedSlug: 'avi',
-      requestedProperties: ['Villa Mazotos', 'Tamir Dekelia'],  // Tamir not in Avi's scope
+      requestedProperties: ['Villa Mazotos', 'Tamir Dekelia'],
     })
 
     expect(result).toEqual({ ok: false, error: 'PROPERTY_UNAUTHORIZED' })
     expect(mockLoadPartnerStatement).not.toHaveBeenCalled()
   })
 
-  // ── AUTH-10 ────────────────────────────────────────────────────────────────
-  // Mandatory test 10: authorized property subset → ALLOW, data layer called once
+  // AUTH-10
   test('AUTH-10: requestedProperties is authorized subset → allow, loadPartnerStatement called once', async () => {
-    setupAviMapping(true)  // Avi authorized for ['Villa Mazotos']
+    setupAviMapping(true)
     mockLoadPartnerStatement.mockResolvedValueOnce(AVI_DTO)
 
     const result = await loadStatementForAuthenticatedPartner({
       authenticatedUserId: AVI_AUTH_USER_ID,
       requestedSlug: 'avi',
-      requestedProperties: ['Villa Mazotos'],  // authorized subset
+      requestedProperties: ['Villa Mazotos'],
     })
 
-    expect('ok' in result).toBe(false)  // it's a DTO
+    expect('ok' in result).toBe(false)
     expect(mockLoadPartnerStatement).toHaveBeenCalledTimes(1)
   })
 
-  // ── AUTH-11 ────────────────────────────────────────────────────────────────
-  // Mandatory test 11: P-ARCH-1 — Oren's null capital preserved through boundary
+  // AUTH-11
   test('AUTH-11: P-ARCH-1 — Oren null capital preserved unchanged through authorization boundary', async () => {
     setupOrenMapping()
     mockLoadPartnerStatement.mockResolvedValueOnce(OREN_DTO)
@@ -538,21 +550,17 @@ describe('loadStatementForAuthenticatedPartner — 11 mandatory authorization ca
     })
 
     const dto = result as typeof OREN_DTO
-
-    // Auth boundary must return the DTO unmodified — null stays null, not 0
     const capital = dto.properties[0].capital
     expect(capital.agreedEntryValuationEur).toBeNull()
     expect(capital.capitalPaidEur).toBeNull()
     expect(capital.capitalRemainingEur).toBeNull()
     expect(capital.capitalStatus).toBe('capital_unknown')
-
-    // Portfolio null propagation (P-ARCH-1)
     expect(dto.portfolio.totalAgreedValuationEur).toBeNull()
     expect(dto.portfolio.totalCapitalPaidEur).toBeNull()
     expect(dto.portfolio.totalCapitalRemainingEur).toBeNull()
   })
 
-  // ── GUARD-01 ──────────────────────────────────────────────────────────────
+  // GUARD-01
   test('GUARD-01: empty authenticatedUserId → NO_MAPPING, zero DB calls', async () => {
     const result = await loadStatementForAuthenticatedPartner({
       authenticatedUserId: '',
@@ -566,7 +574,6 @@ describe('loadStatementForAuthenticatedPartner — 11 mandatory authorization ca
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 4: DB call ordering proofs
-//            Verifies that no data is queried before authorization passes.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('DB call ordering — no data query before authorization passes', () => {
@@ -585,7 +592,6 @@ describe('DB call ordering — no data query before authorization passes', () =>
 
   // ORDER-02
   test('ORDER-02: Missing mapping — entity_identity NOT queried, loadPartnerStatement NOT called', async () => {
-    // investor_auth returns null → should stop before entity_identity query
     const fromSpy = jest.fn().mockImplementation((tableName: string) => {
       if (tableName === 'entity_identity') {
         throw new Error('entity_identity must not be queried when investor_auth is missing')
@@ -606,27 +612,26 @@ describe('DB call ordering — no data query before authorization passes', () =>
   })
 
   // ORDER-03
-  test('ORDER-03: Slug mismatch — loadPartnerStatement NOT called (data load blocked)', async () => {
-    setupAviMapping()  // slug='avi'
+  test('ORDER-03: Slug mismatch — loadPartnerStatement NOT called', async () => {
+    setupAviMapping()
 
     const result = await loadStatementForAuthenticatedPartner({
       authenticatedUserId: AVI_AUTH_USER_ID,
-      requestedSlug: 'oren',  // mismatch
+      requestedSlug: 'oren',
     })
 
     expect(result).toEqual({ ok: false, error: 'SLUG_MISMATCH' })
-    // Statement composition must not be triggered
     expect(mockLoadPartnerStatement).not.toHaveBeenCalled()
   })
 
   // ORDER-04
-  test('ORDER-04: Unauthorized property — loadPartnerStatement NOT called (scope check blocks first)', async () => {
+  test('ORDER-04: Unauthorized property — loadPartnerStatement NOT called', async () => {
     setupAviMapping(true)
 
     const result = await loadStatementForAuthenticatedPartner({
       authenticatedUserId: AVI_AUTH_USER_ID,
       requestedSlug: 'avi',
-      requestedProperties: ['Tamir Dekelia'],  // not in Avi's scope
+      requestedProperties: ['Tamir Dekelia'],
     })
 
     expect(result).toEqual({ ok: false, error: 'PROPERTY_UNAUTHORIZED' })
@@ -643,11 +648,206 @@ describe('DB call ordering — no data query before authorization passes', () =>
       requestedSlug: 'avi',
     })
 
-    // Exactly one composition call using the validated server-derived slug
     expect(mockLoadPartnerStatement).toHaveBeenCalledTimes(1)
     expect(mockLoadPartnerStatement).toHaveBeenCalledWith(
-      'avi',                                        // server-derived, not raw URL param
+      'avi',
       expect.objectContaining({ viewMode: 'partner' }),
     )
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 5: Session binding tests (SESSION-01..11)
+//            loadStatementForCurrentPartner — the new public entry point.
+//            Proves the two-client pattern: session client (cookie-aware) for
+//            auth.getUser(), service client for data queries.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('loadStatementForCurrentPartner — session binding (SESSION-01..11)', () => {
+
+  // SESSION-01
+  // The most critical binding test: no authenticated session → NO_SESSION.
+  // auth.getUser() returns null user (unauthenticated request).
+  test('SESSION-01: no active session (getUser returns null user) → NO_SESSION', async () => {
+    mockCreateSupabaseServerClient.mockReturnValue(
+      mockSessionClient(null),
+    )
+
+    const result = await loadStatementForCurrentPartner({ requestedSlug: 'avi' })
+
+    expect(result).toEqual({ ok: false, error: 'NO_SESSION' })
+    // No service client or data queries on unauthenticated requests
+    expect(mockCreateServiceClient).not.toHaveBeenCalled()
+    expect(mockLoadPartnerStatement).not.toHaveBeenCalled()
+  })
+
+  // SESSION-02
+  // auth error (network failure, token validation error) → treated as NO_SESSION.
+  // Must never grant access when session resolution fails.
+  test('SESSION-02: auth.getUser() returns error → NO_SESSION, fail-closed', async () => {
+    mockCreateSupabaseServerClient.mockReturnValue(
+      mockSessionClient(null, { message: 'JWT expired', status: 401 }),
+    )
+
+    const result = await loadStatementForCurrentPartner({ requestedSlug: 'avi' })
+
+    expect(result).toEqual({ ok: false, error: 'NO_SESSION' })
+    expect(mockCreateServiceClient).not.toHaveBeenCalled()
+  })
+
+  // SESSION-03
+  // Admin mode check (step 1) fires BEFORE auth.getUser() (step 2).
+  // The session client must not be called for an admin-mode rejection.
+  test('SESSION-03: admin mode rejected at step 1, BEFORE auth.getUser() (zero session client calls)', async () => {
+    // sessionClient mock is set up but must never be called
+    mockCreateSupabaseServerClient.mockReturnValue(
+      mockSessionClient({ id: AVI_AUTH_USER_ID }),
+    )
+
+    const result = await loadStatementForCurrentPartner({
+      requestedSlug: 'avi',
+      viewMode: 'admin',
+    })
+
+    expect(result).toEqual({ ok: false, error: 'ADMIN_MODE_DENIED' })
+    // Admin mode must be rejected before any I/O
+    expect(mockCreateSupabaseServerClient).not.toHaveBeenCalled()
+    expect(mockCreateServiceClient).not.toHaveBeenCalled()
+  })
+
+  // SESSION-04
+  // Valid session but no DB mapping → NO_MAPPING.
+  // Proves the session resolves successfully before the DB lookup fails.
+  test('SESSION-04: valid session, no investor_auth record → NO_MAPPING', async () => {
+    mockCreateSupabaseServerClient.mockReturnValue(
+      mockSessionClient({ id: UNKNOWN_AUTH_USER_ID }),
+    )
+    mockCreateServiceClient.mockReturnValue(
+      mockServiceClient({ investor_auth: { data: null } }),
+    )
+
+    const result = await loadStatementForCurrentPartner({ requestedSlug: 'avi' })
+
+    expect(result).toEqual({ ok: false, error: 'NO_MAPPING' })
+    // Session resolved successfully before DB lookup
+    expect(mockCreateSupabaseServerClient).toHaveBeenCalledTimes(1)
+    expect(mockLoadPartnerStatement).not.toHaveBeenCalled()
+  })
+
+  // SESSION-05
+  // Valid session + disabled mapping → NO_MAPPING (MAPPING_DISABLED not leaked).
+  test('SESSION-05: valid session, disabled mapping → NO_MAPPING (info-leak prevention)', async () => {
+    mockCreateSupabaseServerClient.mockReturnValue(
+      mockSessionClient({ id: AVI_AUTH_USER_ID }),
+    )
+    mockCreateServiceClient.mockReturnValue(
+      mockServiceClient({ investor_auth: { data: DB_AVI_AUTH_DISABLED } }),
+    )
+
+    const result = await loadStatementForCurrentPartner({ requestedSlug: 'avi' })
+
+    expect(result).toEqual({ ok: false, error: 'NO_MAPPING' })
+  })
+
+  // SESSION-06
+  // Valid session, valid mapping, but slug in URL doesn't match entity → SLUG_MISMATCH.
+  // Cross-investor access attempt via URL manipulation.
+  test('SESSION-06: valid session (Avi), requestedSlug=oren → SLUG_MISMATCH', async () => {
+    mockCreateSupabaseServerClient.mockReturnValue(
+      mockSessionClient({ id: AVI_AUTH_USER_ID }),
+    )
+    setupAviMapping()  // Avi authorized for slug='avi'
+
+    const result = await loadStatementForCurrentPartner({ requestedSlug: 'oren' })
+
+    expect(result).toEqual({ ok: false, error: 'SLUG_MISMATCH' })
+    expect(mockLoadPartnerStatement).not.toHaveBeenCalled()
+  })
+
+  // SESSION-07
+  // Full success path: session resolves, mapping found, slug matches, data returned.
+  test('SESSION-07: valid session + matching slug → returns PartnerFacingStatementDTO', async () => {
+    mockCreateSupabaseServerClient.mockReturnValue(
+      mockSessionClient({ id: AVI_AUTH_USER_ID }),
+    )
+    setupAviMapping()
+    mockLoadPartnerStatement.mockResolvedValueOnce(AVI_DTO)
+
+    const result = await loadStatementForCurrentPartner({ requestedSlug: 'avi' })
+
+    expect('ok' in result).toBe(false)
+    const dto = result as typeof AVI_DTO
+    expect(dto.meta.viewMode).toBe('partner')
+    expect(dto.investor.slug).toBe('avi')
+    expect(mockLoadPartnerStatement).toHaveBeenCalledTimes(1)
+  })
+
+  // SESSION-08
+  // createSupabaseServerClient must be called exactly ONCE per request.
+  // Multiple calls would create redundant cookie reads and token validations.
+  test('SESSION-08: createSupabaseServerClient called exactly once per request', async () => {
+    mockCreateSupabaseServerClient.mockReturnValue(
+      mockSessionClient({ id: AVI_AUTH_USER_ID }),
+    )
+    setupAviMapping()
+    mockLoadPartnerStatement.mockResolvedValueOnce(AVI_DTO)
+
+    await loadStatementForCurrentPartner({ requestedSlug: 'avi' })
+
+    expect(mockCreateSupabaseServerClient).toHaveBeenCalledTimes(1)
+  })
+
+  // SESSION-09
+  // TWO-CLIENT SEPARATION: createServiceClient must NOT be called before getUser() succeeds.
+  // Proves the service-role client is only used for data queries, never for session.
+  test('SESSION-09: createServiceClient NOT called before getUser() succeeds (two-client pattern)', async () => {
+    // Simulate session failure
+    mockCreateSupabaseServerClient.mockReturnValue(
+      mockSessionClient(null, { message: 'unauthorized' }),
+    )
+
+    await loadStatementForCurrentPartner({ requestedSlug: 'avi' })
+
+    // Session failed → service client must never have been created
+    expect(mockCreateServiceClient).not.toHaveBeenCalled()
+  })
+
+  // SESSION-10
+  // The user.id from auth.getUser() is the identity passed to the DB lookup.
+  // No opts field can override it — opts has no authenticatedUserId field.
+  test('SESSION-10: user.id from session is used for DB lookup, not any opts field', async () => {
+    // Oren's session — but requestedSlug is 'avi' (mismatch)
+    mockCreateSupabaseServerClient.mockReturnValue(
+      mockSessionClient({ id: OREN_AUTH_USER_ID }),
+    )
+    // Set up Oren's mapping (not Avi's) — Oren's slug will be 'oren'
+    setupOrenMapping()
+
+    // Request for 'avi' slug using Oren's session → SLUG_MISMATCH
+    // (not NO_SESSION, proving the session ID was actually used)
+    const result = await loadStatementForCurrentPartner({ requestedSlug: 'avi' })
+
+    expect(result).toEqual({ ok: false, error: 'SLUG_MISMATCH' })
+    // Prove the DB was queried (session resolved) — just with the right user ID
+    expect(mockCreateServiceClient).toHaveBeenCalled()
+    expect(mockLoadPartnerStatement).not.toHaveBeenCalled()
+  })
+
+  // SESSION-11
+  // Valid session, valid mapping, unauthorized property → PROPERTY_UNAUTHORIZED.
+  // Full session chain must execute before property scope is validated.
+  test('SESSION-11: valid session + unauthorized property → PROPERTY_UNAUTHORIZED', async () => {
+    mockCreateSupabaseServerClient.mockReturnValue(
+      mockSessionClient({ id: AVI_AUTH_USER_ID }),
+    )
+    setupAviMapping(true)  // Avi authorized for ['Villa Mazotos'] only
+
+    const result = await loadStatementForCurrentPartner({
+      requestedSlug: 'avi',
+      requestedProperties: ['Villa Mazotos', 'Tamir Dekelia'],  // Tamir not in scope
+    })
+
+    expect(result).toEqual({ ok: false, error: 'PROPERTY_UNAUTHORIZED' })
+    expect(mockLoadPartnerStatement).not.toHaveBeenCalled()
   })
 })
