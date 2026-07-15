@@ -12,6 +12,12 @@ import type { Config } from 'jest'
 const config: Config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
+  /**
+   * setupFiles runs BEFORE any module is loaded — required so that
+   * src/lib/supabase.ts module-level createClient() receives valid env vars.
+   * See jest.setup.ts for explanation.
+   */
+  setupFiles: ['<rootDir>/jest.setup.ts'],
   testMatch: [
     '**/__tests__/**/*.test.ts',
     '**/__tests__/**/*.test.tsx',
