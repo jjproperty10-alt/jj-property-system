@@ -1,3 +1,4 @@
+// @session-binding-tests v2
 /**
  * partnerAuth.test.ts — Partner Authorization Boundary Tests
  *
