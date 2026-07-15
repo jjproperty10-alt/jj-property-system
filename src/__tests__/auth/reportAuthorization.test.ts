@@ -59,7 +59,7 @@ jest.mock('@/lib/supabase', () => ({
     const createChain = (tableName: string) => {
       queriedViews.push(tableName)
 
-      const chain: Record<string, Function> = {}
+      const chain: Record<string, any> = {} // eslint-disable-line @typescript-eslint/no-explicit-any
 
       chain.select = jest.fn().mockReturnValue(chain)
       chain.eq = jest.fn().mockImplementation((_col: string, val: string) => {
