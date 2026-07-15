@@ -173,6 +173,11 @@ function makeQueryBuilder(result: { data: any; error: any }) {
   builder.neq      = () => builder
   builder.maybeSingle = () => Promise.resolve(result)
   builder.single      = () => Promise.resolve(result)
+  // Make the builder itself awaitable — Supabase QueryBuilder extends Promise,
+  // so chains like `await db.from('t').select(...).neq(...)` resolve correctly
+  // without needing an explicit .maybeSingle() at the end.
+  builder.then = (resolve: any, reject: any) =>
+    Promise.resolve(result).then(resolve, reject)
   return builder
 }
 
@@ -235,7 +240,7 @@ function setupOrenMapping(withPartnerEntry = false) {
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
-  jest.clearAllMocks()
+  jest.resetAllMocks()  // also clears queued mockResolvedValueOnce values
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
