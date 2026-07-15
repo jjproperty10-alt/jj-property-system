@@ -51,7 +51,7 @@ jest.mock('@/lib/lifecycle/partnerStatementService', () => ({
 
 // server-only is a Next.js compile-time guard that throws in non-Next environments.
 // In Jest (Node), mock it as a no-op so the import doesn't fail.
-jest.mock('server-only', () => ({}))
+jest.mock('server-only', () => ({}), { virtual: true })
 
 // ─── Imports ─────────────────────────────────────────────────────────────────
 
