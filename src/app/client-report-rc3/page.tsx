@@ -1004,6 +1004,9 @@ function ClientReportRC3Content() {
           ),
         )
         setMultiReports(reports)
+        // Trigger PDF buttons after a short render settle — mirrors single-property behaviour.
+        // Note: unified scope PDF (all properties in one document) is future work, post-PR 43.
+        setTimeout(() => setPdfReady(true), 600)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load report')
@@ -1178,6 +1181,27 @@ function ClientReportRC3Content() {
                     ))
                   )}
                   <FinalSummary report={mrFiltered} lang={lang} />
+
+                  {/* Per-property PDF download button.
+                      One button per property — each generates its own file.
+                      Unified scope PDF (single document, all properties) is future work. */}
+                  {pdfReady && PdfDoc && (
+                    <div className="flex justify-end mt-2 mb-4">
+                      <PDFErrorBoundary>
+                        <PDFDownloadLink
+                          document={<PdfDoc report={mrFiltered} lang={lang} reportType={reportType} />}
+                          fileName={`JJ_${reportTypeSlug}_${mr.reporting_name.replace(/\s+/g, '_')}_${mr.from_date || 'all'}_to_${mr.to_date || 'all'}.pdf`}
+                          className="px-4 py-2 bg-green-700 text-white text-sm rounded-lg hover:bg-green-800 font-medium transition-colors"
+                        >
+                          {({ loading: pdfLoading }: { loading: boolean }) =>
+                            pdfLoading
+                              ? t('buildingPdf', lang)
+                              : `⬇ ${t('downloadPdf', lang)} — ${mr.reporting_name}`
+                          }
+                        </PDFDownloadLink>
+                      </PDFErrorBoundary>
+                    </div>
+                  )}
                 </div>
               )
             })}
