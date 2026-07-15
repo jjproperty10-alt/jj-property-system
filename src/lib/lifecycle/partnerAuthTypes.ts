@@ -1,21 +1,24 @@
 /**
  * @module lifecycle/partnerAuthTypes
- * @description Types for the Partner Authorization Boundary (PR #47).
+ * @description Types for the Partner Authorization Boundary.
  *
- * The authorization chain:
- *   auth.users.id
- *     → lifecycle.investor_auth (explicit DB mapping)
- *       → lifecycle.entity_identity.id
- *         → authorized property scope
+ * The authorization chain (corrective PR — session binding closed):
+ *   Browser session cookie
+ *     → auth.getUser() [cookie-aware server client, createSupabaseServerClient()]
+ *       → lifecycle.investor_auth (explicit DB mapping, service client)
+ *         → lifecycle.entity_identity.id
+ *           → authorized property scope
  *
  * INVARIANTS:
- * - auth_user_id is ALWAYS resolved from a verified server session, never from
- *   a client-provided value.
+ * - The authenticated user identity is ALWAYS resolved from auth.getUser() inside
+ *   loadStatementForCurrentPartner(). It is NEVER accepted as a caller-provided
+ *   parameter in the public entry point.
  * - A partner mapping never grants Admin mode.
  * - Slug mismatch between the URL route and the authorized entity → reject.
  * - Unauthorized properties → reject (not silently drop).
  *
- * @see loadStatementForAuthenticatedPartner (partnerAuthService.ts)
+ * @see loadStatementForCurrentPartner (partnerAuthService.ts) — public entry point
+ * @see resolveAndLoadForVerifiedUser  (partnerAuthService.ts) — @internal, testing only
  * @see lifecycle.investor_auth migration (m9_e_investor_auth.sql)
  */
 
@@ -24,6 +27,8 @@
 /**
  * Exhaustive set of authorization failure reasons.
  *
+ * NO_SESSION         — No authenticated session found. auth.getUser() returned
+ *                      null user or an error. The browser must re-authenticate.
  * NO_MAPPING         — No active investor_auth record for this auth user.
  *                      (Either never provisioned, or status='disabled'.)
  * MAPPING_DISABLED   — Record exists but status='disabled'.
@@ -37,6 +42,7 @@
  *                      Admin mode requires separate Admin authorization flow.
  */
 export type AuthorizationError =
+  | 'NO_SESSION'
   | 'NO_MAPPING'
   | 'MAPPING_DISABLED'
   | 'ENTITY_NOT_FOUND'
@@ -74,29 +80,28 @@ export type ResolverOutcome =
   | ({ ok: true } & ResolvedInvestorEntity)
   | ResolvedEntityFailure
 
-// ─── Main entry point options ─────────────────────────────────────────────────
+// ─── Public entry point options ───────────────────────────────────────────────
 
 /**
- * Options for loadStatementForAuthenticatedPartner().
+ * Options for loadStatementForCurrentPartner() — the ONLY public entry point.
  *
- * authenticatedUserId MUST come from the server session (auth.getUser() or
- * getServerSession()). Never accept this from a request body or query param.
+ * The identity of the current user is resolved INTERNALLY from the server session
+ * (via auth.getUser()). It is NOT a parameter here. This is the primary defense
+ * against session spoofing: no Server Component can supply an arbitrary user ID.
+ *
+ * Server Components serving /partner/[slug] MUST use this type.
+ * Never call resolveAndLoadForVerifiedUser() directly from a route handler.
  */
-export interface AuthenticatedPartnerStatementOptions {
-  /**
-   * The authenticated user's ID, resolved from the server session.
-   * NEVER from a client-provided value.
-   */
-  readonly authenticatedUserId: string
-
+export interface CurrentPartnerStatementOptions {
   /**
    * The partner slug from the URL route parameter (e.g. 'avi' from /partner/avi).
-   * Authorization rejects if this does not match the entity bound to authenticatedUserId.
+   * This is untrusted input. Authorization rejects if it does not match the entity
+   * bound to the current authenticated user's session.
    */
   readonly requestedSlug: string
 
   /**
-   * 'admin' is rejected — the partner auth path never grants Admin mode.
+   * 'admin' is always rejected — the partner auth path never grants Admin mode.
    * 'partner' is the only accepted value. Default: 'partner'.
    */
   readonly viewMode?: 'partner' | 'admin'
@@ -114,13 +119,36 @@ export interface AuthenticatedPartnerStatementOptions {
   readonly toDate?: string
 }
 
+// ─── Internal options (backward-compat, @internal) ───────────────────────────
+
+/**
+ * @internal — Used by resolveAndLoadForVerifiedUser() and its direct unit tests ONLY.
+ *
+ * Extends CurrentPartnerStatementOptions with authenticatedUserId, which must
+ * have already been verified via auth.getUser() before this interface is used.
+ *
+ * This type is NOT part of the public API. Server Components using the partner
+ * auth path must use CurrentPartnerStatementOptions with loadStatementForCurrentPartner().
+ *
+ * Exported only to support direct unit testing of the internal authorization chain.
+ */
+export interface AuthenticatedPartnerStatementOptions extends CurrentPartnerStatementOptions {
+  /**
+   * The authenticated user's ID, already verified via auth.getUser().
+   * This must NEVER come from a request body, query parameter, or any
+   * client-provided source. In production, it is populated only by
+   * loadStatementForCurrentPartner() after a successful auth.getUser() call.
+   */
+  readonly authenticatedUserId: string
+}
+
 // ─── Authorization failure response ──────────────────────────────────────────
 
 /**
- * Returned by loadStatementForAuthenticatedPartner() when authorization fails.
+ * Returned by loadStatementForCurrentPartner() when authorization fails at any step.
  *
- * The error code is for server-side logging only.
- * The Server Component must NOT forward the error code to the browser.
+ * The error code is for server-side logging and debugging only.
+ * The Server Component MUST NOT forward the error code to the browser response.
  */
 export interface AuthorizationFailure {
   readonly ok: false
