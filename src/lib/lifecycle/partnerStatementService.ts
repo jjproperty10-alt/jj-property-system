@@ -210,9 +210,9 @@ export async function loadPartnerStatement(
 
   if (entriesErr || !partnerEntries || partnerEntries.length === 0) return null
 
-  const propertyNames = [
-    ...new Set((partnerEntries as Array<{ property_name: string }>).map(e => e.property_name)),
-  ]
+  const propertyNames = Array.from(
+    new Set((partnerEntries as Array<{ property_name: string }>).map(e => e.property_name)),
+  )
 
   // ── Step 3: load summary rows from view (all properties in one query) ─────
   const { data: summaryRows } = await db
