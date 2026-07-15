@@ -1,16 +1,23 @@
 /**
  * JJ Property 10 — Client Report RC3
  * Phase B — 2026-07-09
- * M6    — 2026-07-12 — Visual Polish / Design System
+ * M6 — 2026-07-12 — Visual Polish / Design System
+ * PR B — 2026-07-16 — Report Scope Selector (server-validated authorization)
  *
  * M6 changes (presentation only — no accounting logic touched):
- *  - Module colour system: Purchase=slate, Renovation=purple, Management=blue, Airbnb=orange
- *  - Lucide icons per module + expense group
- *  - Monolingual labels (no mixed EN/HE in badge/footer)
- *  - KPI card values text-lg (+12%), row padding py-2.5
- *  - Expense group count badge
- *  - V3 badge
- *  - Removed stale placeholder banners (multiPropertyComing, rentalAllocationNote)
+ * - Module colour system: Purchase=slate, Renovation=purple, Management=blue, Airbnb=orange
+ * - Lucide icons per module + expense group
+ * - Monolingual labels (no mixed EN/HE in badge/footer)
+ * - KPI card values text-lg (+12%), row padding py-2.5
+ * - Expense group count badge
+ * - V3 badge
+ * - Removed stale placeholder banners (multiPropertyComing, rentalAllocationNote)
+ *
+ * PR B changes (authorization wiring — no accounting logic touched):
+ * - Properties loaded via getAuthorizedReportProperties() (PR A Server Action)
+ * - Scope validated via validateAuthorizedReportScope() (PR A Server Action)
+ * - Removed browser-only authorization paths (resolveAuthorizedScope, fetchRC3PropertyList)
+ * - Authorization errors surfaced in UI
  */
 
 'use client'
@@ -21,7 +28,7 @@ import {
   Building2, Hammer, Key, Plane,
   Zap, Droplets, Wifi, Brush, Wrench, Sofa, Monitor, Package, Shield,
 } from 'lucide-react'
-import { fetchRC3Report, fetchRC3PropertyList } from '@/lib/report/fetchReport'
+import { fetchRC3Report } from '@/lib/report/fetchReport'
 import type { RC3PropertyReport, RC3AccountSection } from '@/lib/report/types'
 import { toClientRow } from '@/lib/report/clientRow'
 import type { ClientDisplayRow } from '@/lib/report/clientRow'
@@ -34,7 +41,11 @@ import { groupExpenses } from '@/lib/report/expenseGroups'
 import { computeOperationalKPIs, computeNetOwnerBalance } from '@/lib/report/executiveSummary'
 import { ReportScopeSelector } from '@/components/report/ReportScopeSelector'
 import type { ReportScope } from '@/lib/report/reportScope'
-import { isScopeValid, resolveAuthorizedScope, defaultScope } from '@/lib/report/reportScope'
+import { isScopeValid, defaultScope } from '@/lib/report/reportScope'
+import {
+  getAuthorizedReportProperties,
+  validateAuthorizedReportScope,
+} from '@/lib/auth/reportAuthorization'
 
 /* ─── Dynamic PDF import (client-only) ──────────────────────────────────────── */
 
@@ -119,22 +130,22 @@ const ACCOUNT_COLOURS: Record<string, {
   cardBg: string; headerBg: string;
 }> = {
   sale: {
-    bg: 'bg-slate-50',   border: 'border-slate-200',   text: 'text-slate-900',
+    bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-900',
     badge: 'bg-slate-800 text-white',
     cardBg: 'bg-slate-50', headerBg: 'bg-slate-800',
   },
   renovation: {
-    bg: 'bg-purple-50',  border: 'border-purple-200',  text: 'text-purple-900',
+    bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-900',
     badge: 'bg-purple-700 text-white',
     cardBg: 'bg-purple-50', headerBg: 'bg-purple-700',
   },
   rental: {
-    bg: 'bg-blue-50',    border: 'border-blue-200',    text: 'text-blue-900',
+    bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-900',
     badge: 'bg-blue-700 text-white',
     cardBg: 'bg-blue-50', headerBg: 'bg-blue-700',
   },
   airbnb: {
-    bg: 'bg-orange-50',  border: 'border-orange-200',  text: 'text-orange-900',
+    bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-900',
     badge: 'bg-orange-600 text-white',
     cardBg: 'bg-orange-50', headerBg: 'bg-orange-600',
   },
@@ -149,25 +160,25 @@ const DEFAULT_COLOURS = {
 type LucideIcon = React.ElementType
 
 const ACCOUNT_ICONS: Record<string, LucideIcon> = {
-  sale:       Building2,
+  sale: Building2,
   renovation: Hammer,
-  rental:     Key,
-  airbnb:     Plane,
+  rental: Key,
+  airbnb: Plane,
 }
 
 /* Expense group icons */
 const EXPENSE_GROUP_ICONS: Partial<Record<LabelKey, LucideIcon>> = {
   grpElectricity: Zap,
-  grpWater:       Droplets,
-  grpInternet:    Wifi,
-  expCleaning:    Brush,
+  grpWater: Droplets,
+  grpInternet: Wifi,
+  expCleaning: Brush,
   expMaintenance: Wrench,
-  expFurniture:   Sofa,
-  expSoftware:    Monitor,
+  expFurniture: Sofa,
+  expSoftware: Monitor,
   expGuestSupplies: Package,
   expBuildingHoa: Shield,
-  expManagement:  Key,
-  expOther:       Package,
+  expManagement: Key,
+  expOther: Package,
 }
 
 /* Account label keys — monolingual via t() */
@@ -179,7 +190,7 @@ const ACCOUNT_LABEL_KEYS: Record<string, LabelKey> = {
 /* ─── Transaction row ─────────────────────────────────────────────────────────── */
 
 function TxRow({ row, idx, lang }: { row: ClientDisplayRow; idx: number; lang: Lang }) {
-  const isInfo   = row.display_group === 'info' || row.display_group === 'reference'
+  const isInfo = row.display_group === 'info' || row.display_group === 'reference'
   const isIncome = row.display_group === 'income'
 
   const amtClass = isInfo
@@ -302,9 +313,9 @@ function ModuleSummaryCards({ section, lang }: { section: RC3AccountSection; lan
   if (section.account_type === 'sale') {
     return (
       <div className="flex gap-3 px-4 py-3 flex-wrap">
-        <MetricCard label={t('cardSaleContract', lang)}  value={section.contract_baseline} />
-        <MetricCard label={t('cardSaleExpenses', lang)}  value={section.total_income} />
-        <MetricCard label={t('cardSalePayments', lang)}  value={section.total_expenses} />
+        <MetricCard label={t('cardSaleContract', lang)} value={section.contract_baseline} />
+        <MetricCard label={t('cardSaleExpenses', lang)} value={section.total_income} />
+        <MetricCard label={t('cardSalePayments', lang)} value={section.total_expenses} />
         <div className="flex-1 min-w-0 bg-white rounded-xl border-2 border-gray-300 px-4 py-3 shadow-sm">
           <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">
             {t('cardSaleBalance', lang)}
@@ -323,8 +334,8 @@ function ModuleSummaryCards({ section, lang }: { section: RC3AccountSection; lan
     return (
       <div className="flex gap-3 px-4 py-3 flex-wrap">
         <MetricCard label={t('cardRenovContract', lang)} value={section.contract_baseline} small />
-        <MetricCard label={t('cardRenovExtras', lang)}   value={section.total_income} small />
-        <MetricCard label={t('cardRenovTotal', lang)}    value={totalContract} small />
+        <MetricCard label={t('cardRenovExtras', lang)} value={section.total_income} small />
+        <MetricCard label={t('cardRenovTotal', lang)} value={totalContract} small />
         <MetricCard label={t('cardRenovPayments', lang)} value={section.total_expenses} small />
         <div className="flex-1 min-w-0 bg-white rounded-xl border-2 border-gray-300 px-4 py-3 shadow-sm">
           <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">
@@ -342,9 +353,9 @@ function ModuleSummaryCards({ section, lang }: { section: RC3AccountSection; lan
   if (section.account_type === 'rental') {
     return (
       <div className="flex gap-3 px-4 py-3 flex-wrap">
-        <MetricCard label={t('cardRentalIncome', lang)}    value={section.total_income} />
-        <MetricCard label={t('cardRentalExpenses', lang)}  value={section.total_expenses} />
-        <MetricCard label={t('cardRentalBpo', lang)}       value={section.total_bpo} />
+        <MetricCard label={t('cardRentalIncome', lang)} value={section.total_income} />
+        <MetricCard label={t('cardRentalExpenses', lang)} value={section.total_expenses} />
+        <MetricCard label={t('cardRentalBpo', lang)} value={section.total_bpo} />
         <div className="flex-1 min-w-0 bg-white rounded-xl border-2 border-gray-300 px-4 py-3 shadow-sm">
           <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">
             {t('cardRentalBalance', lang)}
@@ -361,9 +372,9 @@ function ModuleSummaryCards({ section, lang }: { section: RC3AccountSection; lan
   // airbnb
   return (
     <div className="flex gap-3 px-4 py-3 flex-wrap">
-      <MetricCard label={t('cardAirbnbIncome', lang)}    value={section.total_income} />
-      <MetricCard label={t('cardAirbnbExpenses', lang)}  value={section.total_expenses} />
-      <MetricCard label={t('cardAirbnbBpo', lang)}       value={section.total_bpo} />
+      <MetricCard label={t('cardAirbnbIncome', lang)} value={section.total_income} />
+      <MetricCard label={t('cardAirbnbExpenses', lang)} value={section.total_expenses} />
+      <MetricCard label={t('cardAirbnbBpo', lang)} value={section.total_bpo} />
       <div className="flex-1 min-w-0 bg-white rounded-xl border-2 border-gray-300 px-4 py-3 shadow-sm">
         <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">
           {t('cardAirbnbBalance', lang)}
@@ -384,14 +395,14 @@ function ModuleSummaryCards({ section, lang }: { section: RC3AccountSection; lan
  * Does NOT touch accounting logic — reads computed aggregates only.
  */
 function computeDashboard(accounts: RC3AccountSection[]) {
-  let totalIncome    = 0
-  let totalExpenses  = 0
+  let totalIncome = 0
+  let totalExpenses = 0
   let totalTransfers = 0
   let netOwnerBalance = 0
 
   for (const acc of accounts) {
-    totalIncome    += acc.total_income
-    totalExpenses  += acc.total_expenses
+    totalIncome += acc.total_income
+    totalExpenses += acc.total_expenses
     totalTransfers += acc.total_bpo
     if (acc.balance_convention === 'owner_credit') {
       netOwnerBalance += acc.closing_balance
@@ -405,10 +416,10 @@ function computeDashboard(accounts: RC3AccountSection[]) {
 
 /* M6: module colours aligned with ACCOUNT_COLOURS */
 const M2_MODULE_COLORS: Record<string, string> = {
-  sale:       'bg-slate-800',
+  sale: 'bg-slate-800',
   renovation: 'bg-purple-700',
-  rental:     'bg-blue-700',
-  airbnb:     'bg-orange-600',
+  rental: 'bg-blue-700',
+  airbnb: 'bg-orange-600',
 }
 
 function M2ModuleCard({ section, lang }: { section: RC3AccountSection; lang: Lang }) {
@@ -424,18 +435,18 @@ function M2ModuleCard({ section, lang }: { section: RC3AccountSection; lang: Lan
     ]
     if (section.account_type === 'renovation') return [
       { label: t('cardRenovContract', lang), value: section.contract_baseline },
-      { label: t('cardRenovExtras', lang),   value: section.total_income },
+      { label: t('cardRenovExtras', lang), value: section.total_income },
       { label: t('cardRenovPayments', lang), value: section.total_expenses },
     ]
     if (section.account_type === 'rental') return [
-      { label: t('cardRentalIncome', lang),   value: section.total_income },
+      { label: t('cardRentalIncome', lang), value: section.total_income },
       { label: t('cardRentalExpenses', lang), value: section.total_expenses },
-      { label: t('cardRentalBpo', lang),      value: section.total_bpo },
+      { label: t('cardRentalBpo', lang), value: section.total_bpo },
     ]
     return [
-      { label: t('cardAirbnbIncome', lang),   value: section.total_income },
+      { label: t('cardAirbnbIncome', lang), value: section.total_income },
       { label: t('cardAirbnbExpenses', lang), value: section.total_expenses },
-      { label: t('cardAirbnbBpo', lang),      value: section.total_bpo },
+      { label: t('cardAirbnbBpo', lang), value: section.total_bpo },
     ]
   })()
   const lk = ACCOUNT_LABEL_KEYS[section.account_type]
@@ -501,9 +512,9 @@ function PremiumSummary({ report, lang }: { report: RC3PropertyReport; lang: Lan
           <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-blue-400 mb-3">{t('opSummaryTitle', lang)}</div>
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: t('opIncomeLabel', lang),   value: opIncome    },
-              { label: t('opExpensesLabel', lang),  value: opExpenses  },
-              { label: t('dashTransfers', lang),    value: opTransfers },
+              { label: t('opIncomeLabel', lang), value: opIncome },
+              { label: t('opExpensesLabel', lang), value: opExpenses },
+              { label: t('dashTransfers', lang), value: opTransfers },
             ].map(kpi => (
               <div key={kpi.label} className="bg-white/5 border border-white/10 rounded-lg px-4 py-3">
                 <div className="text-[9px] font-bold text-blue-300/80 uppercase tracking-wide mb-2">{kpi.label}</div>
@@ -539,8 +550,8 @@ function FinalSummary({ report, lang }: { report: RC3PropertyReport; lang: Lang 
   }
 
   const kpis = [
-    { label: t('finalTotalIncome',    lang), value: totalIncome    },
-    { label: t('finalTotalExpenses',  lang), value: totalExpenses  },
+    { label: t('finalTotalIncome', lang), value: totalIncome },
+    { label: t('finalTotalExpenses', lang), value: totalExpenses },
     { label: t('finalTotalTransfers', lang), value: totalTransfers },
   ]
 
@@ -643,9 +654,9 @@ function AccountCard({ section, lang }: { section: RC3AccountSection; lang: Lang
   const [expanded, setExpanded] = useState(true)
   const [showInfo, setShowInfo] = useState(false)
 
-  const colours  = ACCOUNT_COLOURS[section.account_type] ?? DEFAULT_COLOURS
-  const ModIcon  = ACCOUNT_ICONS[section.account_type]
-  const lk       = ACCOUNT_LABEL_KEYS[section.account_type]
+  const colours = ACCOUNT_COLOURS[section.account_type] ?? DEFAULT_COLOURS
+  const ModIcon = ACCOUNT_ICONS[section.account_type]
+  const lk = ACCOUNT_LABEL_KEYS[section.account_type]
   // M6: monolingual label — always t(key, lang), never raw account_label
   const modLabel = lk ? t(lk, lang) : section.account_label
 
@@ -658,21 +669,21 @@ function AccountCard({ section, lang }: { section: RC3AccountSection; lang: Lang
   // Section A: reference rows
   const referenceRows = section.rows.filter(r => r.display_group === 'reference').map(toClientRow)
   // Section B: balance-affecting rows
-  const incomeRows    = section.rows.filter(r => r.display_group === 'income').map(toClientRow)
-  const expenseRows   = section.rows.filter(r => r.display_group === 'expense').map(toClientRow)
-  const payoutRows    = section.rows.filter(r => r.display_group === 'payment_out').map(toClientRow)
+  const incomeRows = section.rows.filter(r => r.display_group === 'income').map(toClientRow)
+  const expenseRows = section.rows.filter(r => r.display_group === 'expense').map(toClientRow)
+  const payoutRows = section.rows.filter(r => r.display_group === 'payment_out').map(toClientRow)
   // Section C: informational only
-  const infoRows      = section.rows.filter(r => r.display_group === 'info').map(toClientRow)
+  const infoRows = section.rows.filter(r => r.display_group === 'info').map(toClientRow)
 
   // Determine income/expense group labels by account type
-  const incomeLabelKey: LabelKey  = section.account_type === 'sale'      ? 'incomeSale'
-                                   : section.account_type === 'renovation' ? 'incomeRenov'
-                                   : section.account_type === 'rental'     ? 'incomeRental'
-                                   : 'incomeAirbnb'
-  const expenseLabelKey: LabelKey = section.account_type === 'sale'      ? 'expensesSale'
-                                   : section.account_type === 'renovation' ? 'expensesRenov'
-                                   : section.account_type === 'rental'     ? 'expensesRental'
-                                   : 'expensesAirbnb'
+  const incomeLabelKey: LabelKey = section.account_type === 'sale' ? 'incomeSale'
+    : section.account_type === 'renovation' ? 'incomeRenov'
+    : section.account_type === 'rental' ? 'incomeRental'
+    : 'incomeAirbnb'
+  const expenseLabelKey: LabelKey = section.account_type === 'sale' ? 'expensesSale'
+    : section.account_type === 'renovation' ? 'expensesRenov'
+    : section.account_type === 'rental' ? 'expensesRental'
+    : 'expensesAirbnb'
 
   const useExpenseGrouping = section.account_type === 'rental' || section.account_type === 'airbnb'
 
@@ -898,17 +909,17 @@ function AccountCard({ section, lang }: { section: RC3AccountSection; lang: Lang
 
 function PrintStyles({ isRTL }: { isRTL: boolean }) {
   const css = `
-@media print {
-  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-  @page { size: A4 portrait; margin: 12mm 10mm; }
-  .print-hide { display: none !important; }
-  .print-card { break-inside: avoid; page-break-inside: avoid; }
-  tr { break-inside: avoid; page-break-inside: avoid; }
-  body { background: white !important; }
-  ${isRTL ? '[dir="rtl"] { direction: rtl; unicode-bidi: embed; }' : ''}
-  span[dir="ltr"] { display: inline-block; white-space: nowrap; }
-}
-`
+    @media print {
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      @page { size: A4 portrait; margin: 12mm 10mm; }
+      .print-hide { display: none !important; }
+      .print-card { break-inside: avoid; page-break-inside: avoid; }
+      tr { break-inside: avoid; page-break-inside: avoid; }
+      body { background: white !important; }
+      ${isRTL ? '[dir="rtl"] { direction: rtl; unicode-bidi: embed; }' : ''}
+      span[dir="ltr"] { display: inline-block; white-space: nowrap; }
+    }
+  `
   return <style dangerouslySetInnerHTML={{ __html: css }} />
 }
 
@@ -934,19 +945,35 @@ function LangToggle({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void 
   )
 }
 
+/* ─── Authorization error messages ────────────────────────────────────────────── */
+
+function authErrorMessage(error: string, lang: Lang): string {
+  const messages: Record<string, { en: string; he: string }> = {
+    unauthenticated: { en: 'Please log in to view reports.', he: 'יש להתחבר כדי לצפות בדוחות.' },
+    no_role: { en: 'No report access configured for your account.', he: 'לא הוגדרה גישה לדוחות עבור חשבונך.' },
+    role_inactive: { en: 'Your account is inactive.', he: 'החשבון שלך אינו פעיל.' },
+    unknown_role: { en: 'Your role does not have report access.', he: 'התפקיד שלך אינו כולל גישה לדוחות.' },
+    empty_property_set: { en: 'No properties available.', he: 'אין נכסים זמינים.' },
+    empty_selection: { en: 'Please select at least one property.', he: 'אנא בחר לפחות נכס אחד.' },
+    missing_property: { en: 'Please select a property.', he: 'אנא בחר נכס.' },
+    no_authorized_properties: { en: 'The selected property is not available.', he: 'הנכס הנבחר אינו זמין.' },
+  }
+  return messages[error]?.[lang] ?? messages[error]?.en ?? 'Authorization failed.'
+}
+
 /* ─── Main page content ──────────────────────────────────────────────────────── */
 
 function ClientReportRC3Content() {
-  const [lang,          setLang]          = useState<Lang>('en')
-  const [properties,    setProperties]    = useState<string[]>([])
-  const [scope,         setScope]         = useState<ReportScope>({ type: 'single_property', propertyName: '' })
-  const [multiReports,  setMultiReports]  = useState<RC3PropertyReport[]>([])
-  const [fromDate,      setFromDate]      = useState<string>('')
-  const [toDate,        setToDate]        = useState<string>('')
-  const [report,        setReport]        = useState<RC3PropertyReport | null>(null)
-  const [loading,       setLoading]       = useState(false)
-  const [error,         setError]         = useState<string | null>(null)
-  const [pdfReady,      setPdfReady]      = useState(false)
+  const [lang, setLang] = useState<Lang>('en')
+  const [properties, setProperties] = useState<string[]>([])
+  const [scope, setScope] = useState<ReportScope>({ type: 'single_property', propertyName: '' })
+  const [multiReports, setMultiReports] = useState<RC3PropertyReport[]>([])
+  const [fromDate, setFromDate] = useState<string>('')
+  const [toDate, setToDate] = useState<string>('')
+  const [report, setReport] = useState<RC3PropertyReport | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [pdfReady, setPdfReady] = useState(false)
   const [PdfDoc, setPdfDoc] = useState<React.ComponentType<{
     report: RC3PropertyReport; lang: Lang; reportType: ReportType
   }> | null>(null)
@@ -959,15 +986,39 @@ function ClientReportRC3Content() {
     })
   }, [])
 
+  /**
+   * PR B: Load authorized properties via PR A Server Action.
+   *
+   * Authorization chain:
+   *   session cookie → auth.getUser() → auth.uid → user_roles
+   *   → explicit server-side role policy → canonical reportable property set
+   *
+   * Replaces the previous browser-side fetchRC3PropertyList() call.
+   */
   useEffect(() => {
-    fetchRC3PropertyList()
-      .then(list => {
-        setProperties(list)
-        if (list.length > 0) setScope(defaultScope(list[0]))
+    getAuthorizedReportProperties()
+      .then(result => {
+        if (!result.ok) {
+          setError(authErrorMessage(result.error, lang))
+          return
+        }
+        setProperties(result.properties)
+        if (result.properties.length > 0) setScope(defaultScope(result.properties[0]))
       })
       .catch(err => setError(err.message))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  /**
+   * PR B: Load report with server-validated scope.
+   *
+   * Full authorization chain:
+   *   session → auth.uid → user_roles → policy → authorized set
+   *   → validate scope → resolved properties → fetch reports
+   *
+   * Replaces the previous browser-side resolveAuthorizedScope() call.
+   * Browser-submitted property names are NEVER authoritative.
+   */
   const loadReport = useCallback(async () => {
     if (!isScopeValid(scope)) return
     setLoading(true)
@@ -976,36 +1027,39 @@ function ClientReportRC3Content() {
     setReport(null)
     setMultiReports([])
     try {
+      // Server-side scope validation through PR A authorization chain.
+      // This re-validates the user's session and role on every report load,
+      // ensuring no stale authorization state.
+      const validation = await validateAuthorizedReportScope(scope)
+      if (!validation.ok) {
+        setError(authErrorMessage(validation.error, lang))
+        return
+      }
+
+      const resolvedProperties = validation.resolvedProperties
+
       if (scope.type === 'single_property') {
-        // ── existing single-property path (unchanged) ──────────────────────
+        // ── Single-property path (backward-compatible UX) ─────────────────
         const r = await fetchRC3Report({
-          reportingName: scope.propertyName,
+          reportingName: resolvedProperties[0],
           fromDate: fromDate || undefined,
-          toDate:   toDate   || undefined,
+          toDate: toDate || undefined,
         })
         setReport(r)
         setTimeout(() => setPdfReady(true), 600)
       } else {
-        // ── multi-property path (portfolio / selected_properties) ──────────
-        // Resolve authorized property list, then fetch each report in parallel.
-        // No cross-property arithmetic here — each report is shown independently.
-        const resolved = resolveAuthorizedScope(scope, properties)
-        if (resolved.length === 0) {
-          setError('No properties selected or available.')
-          return
-        }
+        // ── Multi-property path (portfolio / selected_properties) ──────────
+        // Each report is fetched independently — no cross-property arithmetic.
         const reports = await Promise.all(
-          resolved.map(name =>
+          resolvedProperties.map(name =>
             fetchRC3Report({
               reportingName: name,
               fromDate: fromDate || undefined,
-              toDate:   toDate   || undefined,
+              toDate: toDate || undefined,
             }),
           ),
         )
         setMultiReports(reports)
-        // Trigger PDF buttons after a short render settle — mirrors single-property behaviour.
-        // Note: unified scope PDF (all properties in one document) is future work, post-PR 43.
         setTimeout(() => setPdfReady(true), 600)
       }
     } catch (err) {
@@ -1013,7 +1067,7 @@ function ClientReportRC3Content() {
     } finally {
       setLoading(false)
     }
-  }, [scope, properties, fromDate, toDate])
+  }, [scope, fromDate, toDate, lang])
 
   // Auto-load when the user selects a different property in single-property mode.
   // Portfolio / selected_properties require an explicit "View Report" click.
@@ -1021,7 +1075,7 @@ function ClientReportRC3Content() {
     scope.type === 'single_property' ? scope.propertyName : ''
   useEffect(() => {
     if (_singlePropTrigger) loadReport()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [_singlePropTrigger])
 
   const [reportType, setReportType] = useState<ReportType>('full')
