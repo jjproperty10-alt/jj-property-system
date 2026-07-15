@@ -5,7 +5,7 @@
  * SECURITY:
  * - Server Action ('use server') — executes ONLY on the server, never in client bundles.
  * - Resolves authenticated user from session cookie via @supabase/ssr.
- * - Queries user_roles with createServiceClient() (service_role) — bypasses RLS.
+ * - Queries user_roles with createServiceClient() (elevated privileges) — bypasses RLS.
  * - Never trusts browser-submitted property names or owner identifiers.
  * - Fails closed: missing role, unknown role, unauthenticated → rejected.
  * - Error messages never reveal which properties belong to other owners.
