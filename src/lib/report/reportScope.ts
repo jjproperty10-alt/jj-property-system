@@ -7,12 +7,18 @@
  *
  * Architecture rule: the UI sets scope; the server validates and resolves
  * authorized properties; engines do all arithmetic. This file touches neither.
+ *
+ * PR B (Report Scope Selector): browser-only authorization functions removed.
+ * All authorization now flows through PR A's server-side exports:
+ *   - getAuthorizedReportProperties()
+ *   - validateAuthorizedReportScope()
+ * See: src/lib/auth/reportAuthorization.ts
  */
 
 export type ReportScope =
   | { type: 'portfolio' }
   | { type: 'selected_properties'; propertyNames: string[] }
-  | { type: 'single_property';     propertyName: string }
+  | { type: 'single_property'; propertyName: string }
 
 // ── Defaults ──────────────────────────────────────────────────────────────────
 
@@ -71,45 +77,6 @@ export function isScopeValid(scope: ReportScope): boolean {
       return normalizePropertyNames(scope.propertyNames).length > 0
     case 'single_property':
       return scope.propertyName.trim().length > 0
-  }
-}
-
-// ── Authorization filter ───────────────────────────────────────────────────────
-
-/**
- * Filter submitted property names to only those in the authorized set.
- * Case-sensitive exact match — canonical names from fetchRC3PropertyList are authoritative.
- * Server must re-validate; this is a client-side pre-flight only.
- */
-export function filterAuthorizedProperties(
-  submitted: string[],
-  authorizedSet: string[],
-): string[] {
-  const authorized = new Set(authorizedSet)
-  return normalizePropertyNames(submitted).filter(name => authorized.has(name))
-}
-
-/**
- * Resolve the final authorized property list for a given scope.
- * Returns the intersection of the scope selection and the authorized set.
- *
- * - portfolio  → all authorized properties
- * - selected   → submitted names ∩ authorized set
- * - single     → [name] if authorized, [] if not
- */
-export function resolveAuthorizedScope(
-  scope: ReportScope,
-  authorizedProperties: string[],
-): string[] {
-  switch (scope.type) {
-    case 'portfolio':
-      return [...authorizedProperties]
-    case 'selected_properties':
-      return filterAuthorizedProperties(scope.propertyNames, authorizedProperties)
-    case 'single_property': {
-      const name = scope.propertyName.trim()
-      return authorizedProperties.includes(name) ? [name] : []
-    }
   }
 }
 
