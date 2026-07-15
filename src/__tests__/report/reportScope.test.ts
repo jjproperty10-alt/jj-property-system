@@ -5,6 +5,10 @@
  *
  * No DOM, no network, no balance arithmetic.
  * All functions under test are imported from @/lib/report/reportScope.
+ *
+ * PR B: Browser-only authorization functions (filterAuthorizedProperties,
+ * resolveAuthorizedScope) removed. All authorization now flows through
+ * PR A's server-side exports in @/lib/auth/reportAuthorization.
  */
 
 import {
@@ -12,8 +16,6 @@ import {
   normalizePropertyNames,
   resolvePropertyNames,
   isScopeValid,
-  filterAuthorizedProperties,
-  resolveAuthorizedScope,
   describeScopeEN,
   describeScopeHE,
 } from '@/lib/report/reportScope'
@@ -47,7 +49,7 @@ describe('normalizePropertyNames', () => {
   })
 
   it('trims whitespace', () => {
-    expect(normalizePropertyNames(['  A  ', ' B'])).toEqual(['A', 'B'])
+    expect(normalizePropertyNames([' A ', ' B'])).toEqual(['A', 'B'])
   })
 
   it('deduplicates and preserves first occurrence order', () => {
@@ -59,7 +61,7 @@ describe('normalizePropertyNames', () => {
   })
 
   it('returns empty array when all entries are empty strings', () => {
-    expect(normalizePropertyNames(['', '  ', '\t'])).toEqual([])
+    expect(normalizePropertyNames(['', ' ', '\t'])).toEqual([])
   })
 
   it('does not mutate the input array', () => {
@@ -91,7 +93,7 @@ describe('resolvePropertyNames', () => {
   })
 
   it('returns [] for single_property with empty name', () => {
-    expect(resolvePropertyNames({ type: 'single_property', propertyName: '  ' })).toEqual([])
+    expect(resolvePropertyNames({ type: 'single_property', propertyName: '   ' })).toEqual([])
   })
 })
 
@@ -107,7 +109,7 @@ describe('isScopeValid', () => {
   })
 
   it('selected_properties with only whitespace is invalid', () => {
-    expect(isScopeValid({ type: 'selected_properties', propertyNames: ['  '] })).toBe(false)
+    expect(isScopeValid({ type: 'selected_properties', propertyNames: [' '] })).toBe(false)
   })
 
   it('selected_properties empty array is invalid', () => {
@@ -124,75 +126,6 @@ describe('isScopeValid', () => {
 
   it('single_property with whitespace-only name is invalid', () => {
     expect(isScopeValid({ type: 'single_property', propertyName: '   ' })).toBe(false)
-  })
-})
-
-// ── filterAuthorizedProperties ────────────────────────────────────────────────
-
-describe('filterAuthorizedProperties', () => {
-  const authorized = ['Villa Mazotos', 'Tamir Dekelia', 'Oshrit Deklia']
-
-  it('returns only names in the authorized set', () => {
-    expect(filterAuthorizedProperties(['Villa Mazotos', 'Unknown Property'], authorized))
-      .toEqual(['Villa Mazotos'])
-  })
-
-  it('is case-sensitive — unauthorized name with different casing is rejected', () => {
-    expect(filterAuthorizedProperties(['villa mazotos'], authorized)).toEqual([])
-  })
-
-  it('returns empty array when no overlap', () => {
-    expect(filterAuthorizedProperties(['X', 'Y'], authorized)).toEqual([])
-  })
-
-  it('deduplicates before filtering', () => {
-    expect(filterAuthorizedProperties(['Villa Mazotos', 'Villa Mazotos'], authorized))
-      .toEqual(['Villa Mazotos'])
-  })
-
-  it('returns all matching names', () => {
-    expect(filterAuthorizedProperties(['Villa Mazotos', 'Tamir Dekelia'], authorized))
-      .toEqual(['Villa Mazotos', 'Tamir Dekelia'])
-  })
-})
-
-// ── resolveAuthorizedScope ────────────────────────────────────────────────────
-
-describe('resolveAuthorizedScope', () => {
-  const authorized = ['Villa Mazotos', 'Tamir Dekelia', 'Oshrit Deklia']
-
-  it('portfolio returns all authorized properties', () => {
-    expect(resolveAuthorizedScope({ type: 'portfolio' }, authorized))
-      .toEqual(['Villa Mazotos', 'Tamir Dekelia', 'Oshrit Deklia'])
-  })
-
-  it('portfolio does not mutate authorized array', () => {
-    const copy = [...authorized]
-    resolveAuthorizedScope({ type: 'portfolio' }, authorized)
-    expect(authorized).toEqual(copy)
-  })
-
-  it('selected_properties returns authorized intersection', () => {
-    const scope: ReportScope = {
-      type: 'selected_properties',
-      propertyNames: ['Villa Mazotos', 'Injected Property'],
-    }
-    expect(resolveAuthorizedScope(scope, authorized)).toEqual(['Villa Mazotos'])
-  })
-
-  it('selected_properties with no overlap returns empty array', () => {
-    const scope: ReportScope = { type: 'selected_properties', propertyNames: ['X', 'Y'] }
-    expect(resolveAuthorizedScope(scope, authorized)).toEqual([])
-  })
-
-  it('single_property returns [name] when authorized', () => {
-    expect(resolveAuthorizedScope({ type: 'single_property', propertyName: 'Villa Mazotos' }, authorized))
-      .toEqual(['Villa Mazotos'])
-  })
-
-  it('single_property returns [] when not authorized', () => {
-    expect(resolveAuthorizedScope({ type: 'single_property', propertyName: 'Injected' }, authorized))
-      .toEqual([])
   })
 })
 
@@ -230,33 +163,29 @@ describe('describeScopeEN', () => {
 
 describe('describeScopeHE', () => {
   it('portfolio with count', () => {
-    expect(describeScopeHE({ type: 'portfolio' }, 5)).toBe('כל התיק (5 נכסים)')
+    expect(describeScopeHE({ type: 'portfolio' }, 5)).toBe('\u05db\u05dc \u05d4\u05ea\u05d9\u05e7 (5 \u05e0\u05db\u05e1\u05d9\u05dd)')
   })
 
   it('portfolio without count', () => {
-    expect(describeScopeHE({ type: 'portfolio' })).toBe('כל התיק')
+    expect(describeScopeHE({ type: 'portfolio' })).toBe('\u05db\u05dc \u05d4\u05ea\u05d9\u05e7')
   })
 
   it('selected_properties plural', () => {
     expect(describeScopeHE({ type: 'selected_properties', propertyNames: ['A', 'B'] }))
-      .toBe('2 נכסים נבחרו')
+      .toBe('2 \u05e0\u05db\u05e1\u05d9\u05dd \u05e0\u05d1\u05d7\u05e8\u05d5')
   })
 })
 
-// ── Architecture: UI must never calculate portfolio totals ────────────────────
+// ── Architecture: no authorization functions in this module ───────────────────
 
-describe('Architecture constraints', () => {
-  it('resolveAuthorizedScope returns names only — no amounts', () => {
-    const result = resolveAuthorizedScope(
-      { type: 'portfolio' },
-      ['Villa Mazotos', 'Tamir Dekelia'],
-    )
-    // Result must be string[] only — no numeric fields
-    result.forEach(item => expect(typeof item).toBe('string'))
+describe('Architecture constraints \u2014 PR B', () => {
+  it('reportScope.ts does not export filterAuthorizedProperties', () => {
+    const mod = require('@/lib/report/reportScope')
+    expect(mod.filterAuthorizedProperties).toBeUndefined()
   })
 
-  it('filterAuthorizedProperties returns names only — no amounts', () => {
-    const result = filterAuthorizedProperties(['Villa Mazotos'], ['Villa Mazotos'])
-    result.forEach(item => expect(typeof item).toBe('string'))
+  it('reportScope.ts does not export resolveAuthorizedScope', () => {
+    const mod = require('@/lib/report/reportScope')
+    expect(mod.resolveAuthorizedScope).toBeUndefined()
   })
 })
