@@ -7,15 +7,15 @@ export const metadata: Metadata = {
 }
 
 /**
- * Home page — the owner’s 60-second morning briefing.
+ * Home page — the owner's 60-second morning briefing.
  *
  * Eliminates one anxiety per section, in order of urgency:
- *   Position 1: Am I okay?                  (DailyGreeting)
- *   Position 2: Is something broken?         (HealthSignal)
- *   Position 3: What needs me?               (AllClearCard | NeedsAttentionSection [E3-A2])
- *   Position 4: What did my team handle?     (AI Workspace [E3-A3])
- *   Position 5: What should I do first?      (Quick Action [E3-A4])
- *   Position 6: What happened in detail?     (Recent Activity [E3-A4])
+ *   Position 1: Am I okay? (DailyGreeting)
+ *   Position 2: Is something broken? (HealthSignal)
+ *   Position 3: What needs me? (AllClearCard | NeedsAttentionSection [E3-A2])
+ *   Position 4: What did my team handle? (AI Workspace [E3-A3])
+ *   Position 5: What should I do first? (Quick Action [E3-A4])
+ *   Position 6: What happened in detail? (Recent Activity [E3-A4])
  *
  * 5-Second Test: Clear, Calm, In Control, Informed, Assisted.
  *
@@ -25,7 +25,7 @@ export default async function HomePage() {
   const state = await getHomeScreenState()
 
   return (
-    <PageShell title="Home">
+    <PageShell>
       <div className="mx-auto max-w-2xl space-y-6 px-4 py-6">
 
         {/* Position 1 — Am I okay? */}
@@ -43,7 +43,7 @@ export default async function HomePage() {
 
         {/* Position 3 — What needs me? (Emotional Resolution) */}
         {state.needsAttentionCount === 0 ? (
-          /* 🟢 You’re done — the best possible state */
+          /* 🟢 You're done — the best possible state */
           <AllClearCard
             headline="Nothing needs you right now."
             lines={state.allClearLines}
@@ -51,7 +51,7 @@ export default async function HomePage() {
           />
         ) : (
           /*
-           * 🟡 / 🔴 Items need the owner’s decision.
+           * 🟡 / 🔴 Items need the owner's decision.
            * E3-A2: Replace this placeholder with <NeedsAttentionSection />.
            */
           <div
