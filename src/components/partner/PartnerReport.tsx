@@ -139,7 +139,7 @@ export function PartnerReport({ dto }: Props) {
           </div>
         )}
 
-        <footer className="pb-4 pt-6 border-t border-gray-100 text-xs text-center text-gray-400">
+        <footer className="pb-4 pt-6 border-t border-gray-100 text-xs text-center text-gray-500">
           {localization.currency} · {formattedDate} · JJ Property 10
         </footer>
       </main>
