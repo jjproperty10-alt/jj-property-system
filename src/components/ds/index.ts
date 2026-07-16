@@ -28,3 +28,8 @@ export type { DataTableColumn } from './DataTable'
 // HealthSignal was pushed to main via PR-R1 (squash merge lost barrel export — restored here)
 export { HealthSignal } from './HealthSignal'
 export type { BusinessHealthStatus } from './HealthSignal'
+
+// E3-A1 — DailyGreeting + AllClearCard (new in this PR)
+export { DailyGreeting } from './DailyGreeting'
+export type { TimeOfDay } from './DailyGreeting'
+export { AllClearCard } from './AllClearCard'
