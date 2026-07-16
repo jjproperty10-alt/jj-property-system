@@ -1,32 +1,37 @@
 /**
- * JJ Design System 2035 — Component Tests
+ * JJ Design System 2035 -- Component Tests
  *
  * Test environment: node (jest.config.ts testEnvironment: 'node')
  * Rendering strategy: react-dom/server renderToStaticMarkup
- *   - Works without jsdom
- *   - Produces HTML string for assertion
- *   - Sufficient for verifying output, text content, and attribute presence
+ * - Works without jsdom
+ * - Produces HTML string for assertion
+ * - Sufficient for verifying output, text content, and attribute presence
  *
  * These tests verify:
- *   1. Null-safety rules (P-ARCH-1: Unknown = em dash, never 0 or placeholder)
- *   2. Status badge always has text (accessibility: never color-only)
- *   3. AiActivityCard: pending_approval is never shown as completed/green
- *   4. LTR isolation on financial values
- *   5. Token shape integrity
+ * 1. Null-safety rules (P-ARCH-1: Unknown = em dash, never 0 or placeholder)
+ * 2. Status badge always has text (accessibility: never color-only)
+ * 3. AiActivityCard: pending_approval is never shown as completed/green
+ * 4. LTR isolation on financial values
+ * 5. Token shape integrity
+ *
+ * Assertion style note:
+ * Use tag-anchored patterns (/>value</) when checking that a string does NOT
+ * appear as TEXT content, so Tailwind class names like "text-gray-400" (which
+ * contains "0") do not cause false negatives on content assertions.
  */
 
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 // Components under test
-import { MoneyValue } from '@/components/ds/MoneyValue'
-import { UnknownValue } from '@/components/ds/UnknownValue'
-import { StatusBadge } from '@/components/ds/StatusBadge'
-import { KpiCard } from '@/components/ds/KpiCard'
-import { EmptyState } from '@/components/ds/EmptyState'
+import { MoneyValue }      from '@/components/ds/MoneyValue'
+import { UnknownValue }    from '@/components/ds/UnknownValue'
+import { StatusBadge }     from '@/components/ds/StatusBadge'
+import { KpiCard }         from '@/components/ds/KpiCard'
+import { EmptyState }      from '@/components/ds/EmptyState'
 import { AttentionBanner } from '@/components/ds/AttentionBanner'
-import { AiActivityCard } from '@/components/ds/AiActivityCard'
-import { DataTable } from '@/components/ds/DataTable'
+import { AiActivityCard }  from '@/components/ds/AiActivityCard'
+import { DataTable }       from '@/components/ds/DataTable'
 
 // Token exports
 import {
@@ -49,12 +54,14 @@ function render(element: React.ReactElement): string {
 // ── MoneyValue ────────────────────────────────────────────────────────────────
 
 describe('MoneyValue', () => {
-  it('renders null as em dash, not as "0" or "null"', () => {
+  it('renders null as em dash, not "0" or "null" in text content', () => {
     const html = render(<MoneyValue amount={null} />)
     // em dash character (U+2014) or its HTML entity &#8212;
     expect(html).toMatch(/&#8212;|—/)
-    expect(html).not.toContain('0')
-    expect(html).not.toContain('null')
+    // Tag-anchored: class names like "text-gray-400" contain "0" but the
+    // text node between tags must never be "0" or "null"
+    expect(html).not.toMatch(/>0</)
+    expect(html).not.toMatch(/>null</)
   })
 
   it('renders a positive EUR amount as a formatted string', () => {
@@ -68,7 +75,7 @@ describe('MoneyValue', () => {
 
   it('renders zero as a formatted value (zero is a valid amount)', () => {
     const html = render(<MoneyValue amount={0} />)
-    // 0 is a real value — render it, do not substitute em dash
+    // 0 is a real value -- render it, do not substitute em dash
     expect(html).toContain('0')
     expect(html).not.toMatch(/&#8212;|—/)
   })
@@ -309,14 +316,14 @@ describe('AiActivityCard', () => {
 
 describe('DataTable', () => {
   const columns = [
-    { key: 'date',   label: 'Date',   dir: 'ltr' as const },
+    { key: 'date',   label: 'Date',        dir: 'ltr' as const },
     { key: 'desc',   label: 'Description' },
     { key: 'amount', label: 'Amount', align: 'right' as const, dir: 'ltr' as const },
   ]
 
   const rows = [
     { date: '2026-01-15', desc: 'Management Fee', amount: 'EUR 1,000' },
-    { date: '2026-02-01', desc: 'Cleaning',        amount: 'EUR 150'   },
+    { date: '2026-02-01', desc: 'Cleaning',        amount: 'EUR 150'  },
   ]
 
   it('renders all column headers', () => {
