@@ -6,21 +6,13 @@ const eur = (n: number) =>
 interface Props { capital: CapitalStatement }
 
 /**
- * PartnerCapitalSection — PR D: Modern Visual Polish
+ * PartnerCapitalSection — PR D v2: RTL-safe + a11y pass
  *
- * Renders inside PartnerReport article card — no outer card wrapper needed.
- * Root element is <section className="px-6 py-6">.
- *
- * Visual changes from PR C:
- * - KPI metric tiles in a responsive grid (Agreed Valuation / Required / Paid / Remaining)
- * - Progress bar (capitalPaidEur / requiredCapitalEur) when both are known
- * - Tabular-nums for all amounts and dates
- * - No nested card wrapper (section lives inside the article divide-y stack)
- *
- * Business logic unchanged:
- * - P-ARCH-1: null = '—' / 'Unknown', never coerced to 0
- * - capital_unknown + no payments → italic pending note
- * - Payment history with date confidence label
+ * Changes from PR D v1:
+ * - dir="ltr" on all financial values (amounts, dates, percentages) — RTL-safe
+ * - text-[10px] text-gray-400 labels upgraded to text-xs text-gray-600 (WCAG contrast)
+ * - motion-reduce:transition-none on progress bar
+ * - No change to business logic or null handling
  */
 export function PartnerCapitalSection({ capital }: Props) {
   const {
@@ -41,7 +33,7 @@ export function PartnerCapitalSection({ capital }: Props) {
 
   return (
     <section className="px-6 py-6">
-      <h3 className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Capital</h3>
+      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-600">Capital</h3>
 
       {/* KPI tiles */}
       <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -76,13 +68,13 @@ export function PartnerCapitalSection({ capital }: Props) {
       {/* Progress bar — only when both required and paid are known */}
       {paidPct !== null && (
         <div className="mt-4">
-          <div className="flex justify-between text-[10px] text-gray-400 mb-1.5">
+          <div className="flex justify-between text-xs text-gray-600 mb-1.5">
             <span>Capital paid</span>
-            <span className="font-semibold tabular-nums">{paidPct}%</span>
+            <span className="font-semibold tabular-nums" dir="ltr">{paidPct}%</span>
           </div>
           <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
             <div
-              className={`h-full rounded-full transition-all ${
+              className={`h-full rounded-full transition-all motion-reduce:transition-none ${
                 paidPct === 100 ? 'bg-emerald-500' : 'bg-blue-600'
               }`}
               style={{ width: `${paidPct}%` }}
@@ -93,20 +85,20 @@ export function PartnerCapitalSection({ capital }: Props) {
 
       {/* Pending confirmation note — capital_unknown with no payments */}
       {capitalStatus === 'capital_unknown' && payments.length === 0 && (
-        <p className="mt-3 text-xs text-gray-400 italic">Capital details pending confirmation.</p>
+        <p className="mt-3 text-xs text-gray-500 italic">Capital details pending confirmation.</p>
       )}
 
       {/* Payment history */}
       {payments.length > 0 && (
         <div className="mt-5">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">
+          <p className="text-xs font-bold uppercase tracking-widest text-gray-600 mb-2">
             Payment history
           </p>
           <div className="divide-y divide-gray-50">
             {payments.map((payment) => (
               <div key={payment.eventId} className="flex items-center justify-between py-2.5">
                 <div className="flex items-center gap-3 min-w-0">
-                  <span className="text-xs tabular-nums text-gray-400 shrink-0">
+                  <span className="text-xs tabular-nums text-gray-500 shrink-0" dir="ltr">
                     {payment.effectiveDate
                       ? new Date(payment.effectiveDate).toLocaleDateString('en-IE', {
                           day: 'numeric', month: 'short', year: 'numeric',
@@ -114,15 +106,15 @@ export function PartnerCapitalSection({ capital }: Props) {
                       : '—'}
                   </span>
                   {payment.payerName && (
-                    <span className="text-xs text-gray-400 truncate">via {payment.payerName}</span>
+                    <span className="text-xs text-gray-500 truncate">via {payment.payerName}</span>
                   )}
                   {payment.effectiveDateConfidence === 'pending_verification' && (
-                    <span className="shrink-0 text-[10px] font-medium text-amber-500">
+                    <span className="shrink-0 text-xs font-medium text-amber-600">
                       date unconfirmed
                     </span>
                   )}
                 </div>
-                <span className="shrink-0 ml-4 text-sm font-semibold text-gray-800 tabular-nums">
+                <span className="shrink-0 ml-4 text-sm font-semibold text-gray-800 tabular-nums" dir="ltr">
                   {eur(payment.amountEur)}
                 </span>
               </div>
@@ -145,8 +137,8 @@ function KpiTile({
 }) {
   return (
     <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3">
-      <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1">{label}</div>
-      <div className={`tabular-nums ${valueClass}`}>{value}</div>
+      <div className="text-xs font-semibold uppercase tracking-widest text-gray-600 mb-1">{label}</div>
+      <div className={`tabular-nums ${valueClass}`} dir="ltr">{value}</div>
     </div>
   )
 }
