@@ -338,3 +338,56 @@ test('ARCH2-21: CapitalPayment preserves payerName — Yossi ≠ Jacob ≠ JJ', 
   expect(yossiPayment.payerName).not.toBe('JJ')
   expect(jacobPayment.payerName).not.toBe('JJ')
 })
+
+// ── CAP-22..32: no_capital_event + contradictory inputs (added by M9-C) ──────
+
+test('CAP-22: no_capital_event when hasCapitalEvents = false', () => {
+  expect(resolveCapitalStatus(null, null, null, false)).toBe('no_capital_event')
+})
+
+test('CAP-23: no_capital_event even when requiredCapital is known', () => {
+  expect(resolveCapitalStatus(null, null, 250_000, false)).toBe('no_capital_event')
+})
+
+test('CAP-24: fully_paid uses paid >= required — exact boundary', () => {
+  expect(resolveCapitalStatus(250_000, 0, 250_000, true)).toBe('fully_paid')
+})
+
+test('CAP-25: fully_paid when paid exceeds required', () => {
+  expect(resolveCapitalStatus(300_000, -50_000, 250_000, true)).toBe('fully_paid')
+})
+
+test('CAP-26: partially_paid when paid < required', () => {
+  expect(resolveCapitalStatus(100_000, 150_000, 250_000, true)).toBe('partially_paid')
+})
+
+test('CAP-27: capital_unknown when capitalPaid is null', () => {
+  expect(resolveCapitalStatus(null, null, null, true)).toBe('capital_unknown')
+})
+
+test('CAP-28: capital_unknown when requiredCapital is null even if paid is known', () => {
+  expect(resolveCapitalStatus(100_000, null, null, true)).toBe('capital_unknown')
+})
+
+// Contradictory input combinations — paid+required is authoritative; remaining is NOT
+
+test('CAP-29: paid=100000, required=200000, remaining=0 → partially_paid (remaining=0 does not win)', () => {
+  // remaining=0 would suggest fully_paid, but paid < required is authoritative
+  expect(resolveCapitalStatus(100_000, 0, 200_000, true)).toBe('partially_paid')
+})
+
+test('CAP-30: paid=250000, required=200000, remaining=-50000 → fully_paid (paid+required wins)', () => {
+  // remaining=-50000 is consistent but not the deciding factor
+  expect(resolveCapitalStatus(250_000, -50_000, 200_000, true)).toBe('fully_paid')
+})
+
+test('CAP-31: paid=null, remaining=0, required=250000 → capital_unknown (remaining cannot substitute for unknown paid)', () => {
+  // remaining=0 looks like fully_paid, but we cannot confirm without paid
+  expect(resolveCapitalStatus(null, 0, 250_000, true)).toBe('capital_unknown')
+})
+
+test('CAP-32: paid=100000, remaining=null, required=null → capital_unknown (required unknown)', () => {
+  // paid is known, but we cannot determine fully/partially without required
+  expect(resolveCapitalStatus(100_000, null, null, true)).toBe('capital_unknown')
+})
+
