@@ -3,6 +3,9 @@ import { PartnerCapitalSection } from './PartnerCapitalSection'
 import { PartnerFinancialSection } from './PartnerFinancialSection'
 import { PartnerTimelineSection } from './PartnerTimelineSection'
 import { PartnerPortfolioSection } from './PartnerPortfolioSection'
+import { WelcomeHeader } from '@/components/partner/WelcomeHeader'
+import { ExecutiveSummary, computeExecutiveKpis } from '@/components/partner/ExecutiveSummary'
+
 
 interface Props { dto: PartnerFacingStatementDTO }
 
@@ -46,6 +49,21 @@ export function PartnerReport({ dto }: Props) {
   })
 
   return (
+      {/* R1: Partner Report Story — Welcome + Executive Summary */}
+      <WelcomeHeader
+        ownerName={statement.ownerName ?? ''}
+        propertyName={null}
+        period=""
+        className="mb-6"
+      />
+      <ExecutiveSummary
+        income={null}
+        expenses={null}
+        netResult={null}
+        balance={null}
+        className="mb-6"
+      />
+      {/* End R1 story sections */}
     <div className="min-h-screen bg-gray-50">
 
       {/* ── Master header ── */}
