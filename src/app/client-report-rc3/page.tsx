@@ -16,7 +16,7 @@
  * PR B changes (authorization wiring — no accounting logic touched):
  * - Properties loaded via getAuthorizedReportProperties() (PR A Server Action)
  * - Scope validated via validateAuthorizedReportScope() (PR A Server Action)
- * - Removed browser-only authorization paths (resolveAuthorizedScope, fetchRC3PropertyList)
+ * - Removed browser-only authorization paths (legacy client-side scope + property resolution)
  * - Authorization errors surfaced in UI
  */
 
@@ -993,7 +993,7 @@ function ClientReportRC3Content() {
    *   session cookie → auth.getUser() → auth.uid → user_roles
    *   → explicit server-side role policy → canonical reportable property set
    *
-   * Replaces the previous browser-side fetchRC3PropertyList() call.
+   * Replaces the previous browser-side property list loading call.
    */
   useEffect(() => {
     getAuthorizedReportProperties()
@@ -1016,7 +1016,7 @@ function ClientReportRC3Content() {
    *   session → auth.uid → user_roles → policy → authorized set
    *   → validate scope → resolved properties → fetch reports
    *
-   * Replaces the previous browser-side resolveAuthorizedScope() call.
+   * Replaces the previous browser-side scope resolution call.
    * Browser-submitted property names are NEVER authoritative.
    */
   const loadReport = useCallback(async () => {

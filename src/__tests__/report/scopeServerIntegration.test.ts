@@ -82,7 +82,7 @@ describe('Scope type preservation', () => {
     // Evidence: the page must not contain logic like:
     //   if (resolvedProperties.length === 1) \u2192 single_property conversion
     // Instead, it should use scope.type to decide the rendering path.
-    expect(pageContent).not.toMatch(/scope\.type\s*===?\s*['"]selected_properties['"].*single_property/s)
+    expect(pageContent).not.toMatch(/scope\.type\s*===?\s*['"]selected_properties['"][\s\S]*single_property/)
 
     // Positive check: the page should handle single_property separately from
     // selected_properties/portfolio based on the original scope.type
