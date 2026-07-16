@@ -19,20 +19,52 @@
  *   Both caused loadPartnerStatement() to always return null → 404 for all slugs.
  *
  * SCOPE:
- *   Pure / exported function tests that do NOT require DB connection.
- *   Integration tests (with real DB) require a live Supabase branch — see QA runbook.
+ *   Pure / exported function tests — no DB connection required for suites 1–4.
+ *   Suite 5 (loadPartnerStatement regression) mocks createServiceClient via vi.mock
+ *   to intercept and assert the exact query columns and filter that reach the DB.
  *
- * Tests: 15 total
- *   buildSlug                   — 5
- *   resolveCapitalStatus        — 4
- *   Schema contract (documented) — 6
+ * Tests: 25 total
+ *   buildSlug                           — 5
+ *   resolveCapitalStatus                — 4
+ *   Schema contract (documented)        — 6
+ *   buildPortfolioSummary               — 3
+ *   loadPartnerStatement regression     — 7
  */
+
+// ─── Module mocks (hoisted by Vitest before any imports) ─────────────────────
+// Must declare before importing the modules under test.
+
+import { vi, beforeEach } from 'vitest'
+
+vi.mock('@/lib/supabase', () => ({
+  createServiceClient: vi.fn(),
+}))
+
+vi.mock('@/lib/lifecycle/timelineService', () => ({
+  loadInvestmentTimeline: vi.fn().mockResolvedValue(null),
+}))
+
+vi.mock('@/lib/report/fetchReport', () => ({
+  fetchRC3Report: vi.fn().mockResolvedValue({
+    accounts: [],
+    from_date: null,
+    to_date: null,
+    has_sale: false,
+    has_renovation: false,
+    has_rental: false,
+    has_airbnb: false,
+  }),
+}))
+
+// ─── Imports ──────────────────────────────────────────────────────────────────
 
 import {
   buildSlug,
   resolveCapitalStatus,
   buildPortfolioSummary,
+  loadPartnerStatement,
 } from '@/lib/lifecycle/partnerStatementService'
+import { createServiceClient } from '@/lib/supabase'
 import type { PartnerPropertyStatement } from '@/lib/lifecycle/partnerStatementTypes'
 
 // ─── buildSlug ────────────────────────────────────────────────────────────────
@@ -252,5 +284,171 @@ describe('buildPortfolioSummary', () => {
     ])
     expect(summary.totalCapitalPaidEur).toBe(125000)
     expect(summary.totalAgreedValuationEur).toBe(500000)
+  })
+})
+
+// ─── loadPartnerStatement — entity_type regression (PR #60) ──────────────────
+//
+// These tests call loadPartnerStatement() through a mocked createServiceClient.
+// The mock intercepts DB calls and records EXACTLY which columns and filters
+// the service sends on the entity_identity table.
+//
+// This directly proves the PR #60 bug cannot recur:
+//   BEFORE: .select('id, canonical_name, owner_type').eq('entity_type', 'person')
+//           → PostgREST error (owner_type absent) + 0 rows (person invalid) → 404
+//   AFTER:  .select('id, canonical_name, entity_type').in('entity_type', ['partner','investor'])
+//           → Yossi and Jacob found → 200
+//
+// These tests are unit tests (no live DB). Integration tests require a Supabase branch.
+
+type EntityRow = { id: string; canonical_name: string; entity_type: string }
+
+interface QueryCapture {
+  selectFields: string        // raw string passed to .select()
+  filterMethod: string        // 'in' | 'eq' | '' (empty = never reached)
+  filterField: string         // first argument to .in() or .eq()
+  filterValues: string[]      // second argument
+}
+
+/**
+ * Build a mock Supabase client that:
+ * 1. Returns `entities` for entity_identity queries.
+ * 2. Returns `partnerEntries` for partner_entry queries (default: []).
+ * 3. Returns [] for every other table.
+ * 4. Captures the first entity_identity select + filter call in `capture`.
+ *
+ * The capture happens before the filter resolves, so tests can assert query
+ * structure regardless of whether the downstream function returns null or data.
+ */
+function buildMockDb(
+  entities: EntityRow[],
+  partnerEntries: Array<{ property_name: string }> = [],
+): { capture: QueryCapture } {
+  const capture: QueryCapture = {
+    selectFields: '',
+    filterMethod: '',
+    filterField: '',
+    filterValues: [],
+  }
+  let capturedFirstEntityQuery = false
+
+  function makeChain(table: string, resolveData: unknown[]) {
+    const chain = {
+      select(fields: string): typeof chain {
+        if (table === 'entity_identity' && !capturedFirstEntityQuery) {
+          capture.selectFields = fields
+        }
+        return chain
+      },
+      in(field: string, values: string[]): Promise<{ data: unknown[]; error: null }> {
+        if (table === 'entity_identity' && !capturedFirstEntityQuery) {
+          capture.filterMethod = 'in'
+          capture.filterField = field
+          capture.filterValues = values
+          capturedFirstEntityQuery = true
+        }
+        return Promise.resolve({ data: resolveData, error: null })
+      },
+      eq(field: string, value: string): Promise<{ data: unknown[]; error: null }> {
+        if (table === 'entity_identity' && !capturedFirstEntityQuery) {
+          capture.filterMethod = 'eq'
+          capture.filterField = field
+          capture.filterValues = [value]
+          capturedFirstEntityQuery = true
+        }
+        return Promise.resolve({ data: [], error: null })
+      },
+      neq(): typeof chain { return chain },
+      is(): typeof chain { return chain },
+      order(): Promise<{ data: unknown[]; error: null }> {
+        return Promise.resolve({ data: [], error: null })
+      },
+    }
+    return chain
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mockDb: any = {
+    schema() { return mockDb },
+    from(table: string) {
+      if (table === 'entity_identity') return makeChain('entity_identity', entities)
+      if (table === 'partner_entry')   return makeChain('partner_entry', partnerEntries)
+      return makeChain(table, [])
+    },
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  vi.mocked(createServiceClient).mockReturnValue(mockDb as any)
+
+  return { capture }
+}
+
+describe('loadPartnerStatement — entity_type regression (PR #60)', () => {
+  const YOSSI: EntityRow = { id: 'uuid-yossi', canonical_name: 'Yossi', entity_type: 'partner' }
+  const AVI:   EntityRow = { id: 'uuid-avi',   canonical_name: 'Avi',   entity_type: 'investor'   }
+  const JJ:    EntityRow = { id: 'uuid-jj',    canonical_name: 'JJ',    entity_type: 'jj_company' }
+
+  let capture: QueryCapture
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ;({ capture } = buildMockDb([YOSSI, AVI]))
+  })
+
+  // ── Query structure: what columns reach the DB ──────────────────────────────
+
+  it('entity_identity select includes entity_type', async () => {
+    await loadPartnerStatement('yossi')
+    expect(capture.selectFields).toContain('entity_type')
+  })
+
+  it('entity_identity select does NOT include owner_type (column does not exist in Production)', async () => {
+    await loadPartnerStatement('yossi')
+    expect(capture.selectFields).not.toContain('owner_type')
+  })
+
+  it('entity filter uses .in() — never .eq() with a single value', async () => {
+    await loadPartnerStatement('yossi')
+    // The bug was: .eq('entity_type', 'person') → 0 rows → always 404
+    // The fix is: .in('entity_type', ['partner','investor']) → Yossi/Jacob found
+    expect(capture.filterMethod).toBe('in')
+  })
+
+  it("entity filter field is 'entity_type'", async () => {
+    await loadPartnerStatement('yossi')
+    expect(capture.filterField).toBe('entity_type')
+  })
+
+  it("entity filter values include 'partner' and 'investor'", async () => {
+    await loadPartnerStatement('yossi')
+    expect(capture.filterValues).toContain('partner')
+    expect(capture.filterValues).toContain('investor')
+  })
+
+  it("entity filter values exclude 'jj_company', 'external', and 'person'", async () => {
+    await loadPartnerStatement('yossi')
+    // jj_company / external must never be loadable via /partner/ routes
+    // 'person' is the original invalid filter value — must stay excluded
+    expect(capture.filterValues).not.toContain('jj_company')
+    expect(capture.filterValues).not.toContain('external')
+    expect(capture.filterValues).not.toContain('person')
+  })
+
+  // ── Authorization: correct 404 behavior preserved ───────────────────────────
+
+  it('unknown slug returns null (404 preserved)', async () => {
+    // Mock has Yossi — but slug 'nobody' matches no canonical_name → null
+    const { capture: cap } = buildMockDb([YOSSI, AVI])
+    void cap  // capture not needed for this assertion
+    const result = await loadPartnerStatement('nobody')
+    expect(result).toBeNull()
+  })
+
+  it('jj_company entity has no partner_entry → returns null (404 preserved)', async () => {
+    // JJ has entity_type='jj_company' — excluded by .in() in production.
+    // Even if slug 'jj' resolved (via mock), no partner_entry exists → null.
+    buildMockDb([JJ], []) // partner_entry = [] → service returns null at step 2
+    const result = await loadPartnerStatement('jj')
+    expect(result).toBeNull()
   })
 })
