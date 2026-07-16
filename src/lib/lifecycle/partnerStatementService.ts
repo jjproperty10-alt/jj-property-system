@@ -22,6 +22,15 @@
  * - This service is READ-ONLY. It never writes to any table.
  * - All business facts are loaded as-is — no inference, no default-filling.
  *
+ * SCHEMA CONTRACT (verified 2026-07-16 against Production):
+ * - lifecycle.entity_identity columns: id, canonical_name, aliases,
+ *   entity_type, status, created_at, updated_at
+ * - NO owner_type column (was never created — original design artifact).
+ * - entity_type values: 'partner', 'investor', 'jj_company', 'external'
+ * - NO 'person' entity_type value.
+ * - Investor entities (loadable as /partner/{slug}): 'partner', 'investor'
+ * - JJ group entities (shown as "JJ Group" in co-owner display): 'partner', 'jj_company'
+ *
  * @see PartnerStatementDTO Contract v1.0 (partnerStatementTypes.ts)
  * @see P-ARCH-1: Unknown = NULL. Never 0 or placeholder.
  * @see P-ARCH-2: Payer identity must not be normalised — Yossi ≠ Jacob ≠ JJ.
@@ -57,11 +66,20 @@ import type {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /**
- * Entity owner_types that belong to the JJ group.
+ * Entity types that belong to the JJ group.
  * Entities with these types appear as ownerKind='jj_group' in co-owner display.
- * P-ARCH-6: JJ group is shown as a single block, never by individual partner name.
+ *
+ * Verified against Production schema (2026-07-16):
+ *   'partner'    → Yossi, Jacob (JJ principals)
+ *   'jj_company' → JJ Property 10 (the company entity)
+ *
+ * 'investor' (Avi, Oren) and 'external' (Anastasia, Fabi) are NOT JJ group.
+ *
+ * NOTE: owner_type column does not exist in lifecycle.entity_identity.
+ * This constant supersedes the original JJ_OWNER_TYPES design which referenced
+ * a non-existent owner_type column with values 'jj_principal'/'jj_partner'/'jj_employee'.
  */
-const JJ_OWNER_TYPES = new Set<string>(['jj_principal', 'jj_partner', 'jj_employee'])
+const JJ_ENTITY_TYPES = new Set<string>(['jj_company', 'partner'])
 
 // ─── Exported helpers (tested in partnerStatement.test.ts) ────────────────────
 
@@ -160,6 +178,8 @@ export interface PartnerStatementOptions {
  *
  * Authorization flow:
  *   1. Resolve slug → entity_id via lifecycle.entity_identity (case-insensitive)
+ *      Filters entity_type IN ('partner', 'investor') — only loadable investor types.
+ *      entity_type 'jj_company' and 'external' are not accessible via partner routes.
  *   2. Verify at least one active partner_entry exists for this entity
  *   3. For each property: load capital events, ownership, timeline (lifecycle)
  *      and RC3 financial data (public schema, fetched independently)
@@ -181,17 +201,24 @@ export async function loadPartnerStatement(
   const db = createServiceClient()
 
   // ── Step 1: resolve entity from slug (case-insensitive) ──────────────────
-  // Load all person entities and match by slug — avoids case-sensitivity issues
-  // with .eq('canonical_name', ...) across different DB collations.
+  // Load all investor-type entities and match by slug — avoids case-sensitivity
+  // issues with .eq('canonical_name', ...) across different DB collations.
+  //
+  // entity_type filter: 'partner' (Yossi, Jacob) and 'investor' (Avi, Oren).
+  // 'jj_company' (JJ itself) and 'external' (Anastasia, Fabi) are excluded —
+  // they are never the subject of a partner-facing statement.
+  //
+  // Schema note: lifecycle.entity_identity has NO owner_type column.
+  // Use entity_type (text, NOT NULL) as the classification field.
   const { data: allEntities, error: entityErr } = await db
     .schema('lifecycle')
     .from('entity_identity')
-    .select('id, canonical_name, owner_type')
-    .eq('entity_type', 'person')
+    .select('id, canonical_name, entity_type')
+    .in('entity_type', ['partner', 'investor'])
 
   if (entityErr || !allEntities || allEntities.length === 0) return null
 
-  type EntityRow = { id: string; canonical_name: string; owner_type: string }
+  type EntityRow = { id: string; canonical_name: string; entity_type: string }
   const matchedEntity = (allEntities as EntityRow[]).find(
     e => buildSlug(e.canonical_name) === investorSlug.toLowerCase(),
   )
@@ -200,7 +227,9 @@ export async function loadPartnerStatement(
 
   const entityId = matchedEntity.id
   const canonicalName = matchedEntity.canonical_name
-  const ownerType = matchedEntity.owner_type ?? 'partner'
+  // ownerType populated from entity_type — owner_type column does not exist.
+  // 'partner' for JJ principals (Yossi, Jacob); 'investor' for external investors (Avi, Oren).
+  const ownerType = matchedEntity.entity_type ?? 'partner'
 
   // ── Step 2: load partner entries (authorization gate + property list) ─────
   const { data: partnerEntries, error: entriesErr } = await db
@@ -300,13 +329,18 @@ export async function loadPartnerStatement(
       const { data: coOwnerEntities } = await db
         .schema('lifecycle')
         .from('entity_identity')
-        .select('id, canonical_name, owner_type')
+        .select('id, canonical_name, entity_type')
         .in('id', otherOwners.map(o => o.entity_id))
 
-      type EntityIdentityRow = { id: string; canonical_name: string; owner_type: string }
+      // JJ group classification uses entity_type (owner_type column does not exist):
+      //   'partner'    → Yossi, Jacob → isJj = true  → shown as "JJ Group"
+      //   'jj_company' → JJ           → isJj = true  → shown as "JJ Group"
+      //   'investor'   → Avi, Oren    → isJj = false → shown by canonical name
+      //   'external'   → Anastasia    → isJj = false → shown by canonical name
+      type EntityIdentityRow = { id: string; canonical_name: string; entity_type: string }
       for (const entity of (coOwnerEntities as EntityIdentityRow[] ?? [])) {
         const pct = otherOwners.find(o => o.entity_id === entity.id)?.ownership_pct ?? 0
-        const isJj = JJ_OWNER_TYPES.has(entity.owner_type ?? '')
+        const isJj = JJ_ENTITY_TYPES.has(entity.entity_type ?? '')
         coOwners.push({
           name: isJj ? 'JJ Group' : entity.canonical_name,
           ownershipPct: pct,
@@ -399,7 +433,7 @@ export async function loadPartnerStatement(
     entityId,    // internal only — never expose in URLs
     canonicalName,
     slug: investorSlug,
-    ownerType,
+    ownerType,   // populated from entity_type (owner_type column does not exist)
   }
 
   const actions: StatementActions = {
