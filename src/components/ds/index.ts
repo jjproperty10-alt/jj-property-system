@@ -33,3 +33,6 @@ export type { BusinessHealthStatus } from './HealthSignal'
 export { DailyGreeting } from './DailyGreeting'
 export type { TimeOfDay } from './DailyGreeting'
 export { AllClearCard } from './AllClearCard'
+
+// R4 — NeedsAttentionItems (Section 9 action state)
+export { NeedsAttentionItems } from './NeedsAttentionItems'
