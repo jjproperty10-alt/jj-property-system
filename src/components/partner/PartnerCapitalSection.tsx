@@ -1,127 +1,144 @@
 import type { CapitalStatement } from '@/lib/lifecycle/partnerStatementTypes'
 
 const eur = (n: number) =>
-  new Intl.NumberFormat('en-IE', {
-    style: 'currency', currency: 'EUR', maximumFractionDigits: 0,
-  }).format(n)
+  new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n)
 
-interface Props {
-  capital: CapitalStatement
-}
+interface Props { capital: CapitalStatement }
 
 /**
- * PartnerCapitalSection
+ * PartnerCapitalSection — PR D v2: RTL-safe + a11y pass
  *
- * Renders capital events, status badge, and payment history.
- * No business logic — all values come pre-computed from the DTO.
- *
- * Handles all CapitalStatus values including deprecated `not_applicable`
- * (retained in v1.0 for source compatibility; never emitted by the service).
- * P-ARCH-1: NULL rendered as "—" / "Unknown", never coerced to 0.
+ * Changes from PR D v1:
+ * - dir="ltr" on all financial values (amounts, dates, percentages) — RTL-safe
+ * - text-[10px] text-gray-400 labels upgraded to text-xs text-gray-600 (WCAG contrast)
+ * - motion-reduce:transition-none on progress bar
+ * - No change to business logic or null handling
  */
 export function PartnerCapitalSection({ capital }: Props) {
-  return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Capital</h3>
-        <CapitalStatusBadge status={capital.capitalStatus} />
-      </div>
+  const {
+    capitalStatus,
+    agreedEntryValuationEur,
+    requiredCapitalEur,
+    capitalPaidEur,
+    capitalRemainingEur,
+    payments,
+  } = capital
 
-      <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm mb-4">
-        {capital.agreedEntryValuationEur !== null && (
-          <AmountRow label="Agreed Valuation" value={eur(capital.agreedEntryValuationEur)} />
+  const paidPct =
+    requiredCapitalEur !== null &&
+    requiredCapitalEur > 0 &&
+    capitalPaidEur !== null
+      ? Math.min(100, Math.round((capitalPaidEur / requiredCapitalEur) * 100))
+      : null
+
+  return (
+    <section className="px-6 py-6">
+      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-600">Capital</h3>
+
+      {/* KPI tiles */}
+      <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {agreedEntryValuationEur !== null && (
+          <KpiTile label="Agreed Valuation" value={eur(agreedEntryValuationEur)} />
         )}
-        {capital.requiredCapitalEur !== null && (
-          <AmountRow label="Required Capital" value={eur(capital.requiredCapitalEur)} />
+        {requiredCapitalEur !== null && (
+          <KpiTile label="Required" value={eur(requiredCapitalEur)} />
         )}
-        <AmountRow
-          label="Capital Paid"
-          value={capital.capitalPaidEur !== null ? eur(capital.capitalPaidEur) : null}
-          className={capital.capitalPaidEur !== null ? 'text-green-700 font-semibold' : 'text-gray-400 italic'}
+        <KpiTile
+          label="Paid"
+          value={capitalPaidEur !== null ? eur(capitalPaidEur) : '—'}
+          valueClass={
+            capitalPaidEur !== null
+              ? 'text-lg font-bold text-emerald-600'
+              : 'text-base text-gray-400 italic'
+          }
         />
-        {capital.capitalRemainingEur !== null && (
-          <AmountRow
+        {capitalRemainingEur !== null && (
+          <KpiTile
             label="Remaining"
-            value={eur(capital.capitalRemainingEur)}
-            className={capital.capitalRemainingEur > 0 ? 'text-amber-700 font-semibold' : 'text-green-700 font-semibold'}
+            value={eur(capitalRemainingEur)}
+            valueClass={
+              capitalRemainingEur > 0
+                ? 'text-lg font-bold text-amber-600'
+                : 'text-lg font-bold text-emerald-600'
+            }
           />
         )}
       </div>
 
-      {capital.payments.length > 0 && (
-        <div className="border-t border-gray-100 pt-4">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">
-            Payment History
-          </p>
-          <ul className="space-y-1.5">
-            {capital.payments.map((p) => (
-              <li key={p.eventId} className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-gray-500 shrink-0">
-                    {p.effectiveDate
-                      ? new Date(p.effectiveDate).toLocaleDateString('en-IE')
-                      : '—'}
-                  </span>
-                  {p.payerName && (
-                    <span className="text-xs text-gray-400 truncate">via {p.payerName}</span>
-                  )}
-                  {p.effectiveDateConfidence === 'pending_verification' && (
-                    <span className="text-[10px] text-amber-500 shrink-0">date unconfirmed</span>
-                  )}
-                </div>
-                <span className="font-semibold text-gray-900 shrink-0 ml-4">{eur(p.amountEur)}</span>
-              </li>
-            ))}
-          </ul>
+      {/* Progress bar — only when both required and paid are known */}
+      {paidPct !== null && (
+        <div className="mt-4">
+          <div className="flex justify-between text-xs text-gray-600 mb-1.5">
+            <span>Capital paid</span>
+            <span className="font-semibold tabular-nums" dir="ltr">{paidPct}%</span>
+          </div>
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all motion-reduce:transition-none ${
+                paidPct === 100 ? 'bg-emerald-500' : 'bg-blue-600'
+              }`}
+              style={{ width: `${paidPct}%` }}
+            />
+          </div>
         </div>
       )}
 
-      {capital.capitalStatus === 'capital_unknown' && capital.payments.length === 0 && (
-        <p className="text-xs text-gray-400 italic mt-2">
-          Capital details pending confirmation.
-        </p>
+      {/* Pending confirmation note — capital_unknown with no payments */}
+      {capitalStatus === 'capital_unknown' && payments.length === 0 && (
+        <p className="mt-3 text-xs text-gray-500 italic">Capital details pending confirmation.</p>
       )}
-    </div>
+
+      {/* Payment history */}
+      {payments.length > 0 && (
+        <div className="mt-5">
+          <p className="text-xs font-bold uppercase tracking-widest text-gray-600 mb-2">
+            Payment history
+          </p>
+          <div className="divide-y divide-gray-50">
+            {payments.map((payment) => (
+              <div key={payment.eventId} className="flex items-center justify-between py-2.5">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="text-xs tabular-nums text-gray-500 shrink-0" dir="ltr">
+                    {payment.effectiveDate
+                      ? new Date(payment.effectiveDate).toLocaleDateString('en-IE', {
+                          day: 'numeric', month: 'short', year: 'numeric',
+                        })
+                      : '—'}
+                  </span>
+                  {payment.payerName && (
+                    <span className="text-xs text-gray-500 truncate">via {payment.payerName}</span>
+                  )}
+                  {payment.effectiveDateConfidence === 'pending_verification' && (
+                    <span className="shrink-0 text-xs font-medium text-amber-600">
+                      date unconfirmed
+                    </span>
+                  )}
+                </div>
+                <span className="shrink-0 ml-4 text-sm font-semibold text-gray-800 tabular-nums" dir="ltr">
+                  {eur(payment.amountEur)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
   )
 }
 
-function AmountRow({
+function KpiTile({
   label,
   value,
-  className = 'text-gray-900',
+  valueClass = 'text-lg font-bold text-gray-900',
 }: {
   label: string
-  value: string | null
-  className?: string
+  value: string
+  valueClass?: string
 }) {
   return (
-    <div>
-      <div className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">{label}</div>
-      <div className={className}>
-        {value ?? <span className="text-gray-400 italic text-xs">Unknown</span>}
-      </div>
+    <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3">
+      <div className="text-xs font-semibold uppercase tracking-widest text-gray-600 mb-1">{label}</div>
+      <div className={`tabular-nums ${valueClass}`} dir="ltr">{value}</div>
     </div>
-  )
-}
-
-type CapStatus = CapitalStatement['capitalStatus']
-
-/**
- * Handles all 5 CapitalStatus values.
- * not_applicable: @deprecated in v1.0 — never emitted by service, but UI must handle it safely.
- */
-function CapitalStatusBadge({ status }: { status: CapStatus }) {
-  const map: Record<CapStatus, { label: string; className: string }> = {
-    no_capital_event: { label: 'No Capital Events', className: 'bg-gray-50 text-gray-400 border border-gray-200' },
-    fully_paid:       { label: 'Fully Paid',        className: 'bg-green-100 text-green-700' },
-    partially_paid:   { label: 'Partially Paid',    className: 'bg-amber-100 text-amber-700' },
-    capital_unknown:  { label: 'Capital Pending',   className: 'bg-gray-100 text-gray-600' },
-    not_applicable:   { label: 'N/A',               className: 'bg-gray-50 text-gray-400 border border-gray-200' }, // deprecated; unreachable in practice
-  }
-  const { label, className } = map[status] ?? { label: status, className: 'bg-gray-100 text-gray-600' }
-  return (
-    <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${className}`}>
-      {label}
-    </span>
   )
 }
