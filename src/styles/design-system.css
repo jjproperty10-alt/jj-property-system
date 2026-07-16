@@ -1,0 +1,120 @@
+/* ============================================================
+ * JJ Property 10 — Design System 2035
+ * Core design tokens as CSS custom properties.
+ *
+ * ADDITIVE — does not replace globals.css.
+ * Import order in layout.tsx (or globals.css):
+ *   1. globals.css  (Tailwind base + existing utility classes)
+ *   2. design-system.css  (this file — CSS custom properties)
+ *
+ * Tokens are consumed via var(--jj-*) in component style props
+ * or via Tailwind's arbitrary value syntax: text-[var(--jj-text-primary)]
+ * ============================================================ */
+
+:root {
+
+  /* ── Colors: Foundation ─────────────────────────────────── */
+  --jj-navy:        #0f1729;
+  --jj-navy-800:    #1a2744;
+  --jj-navy-700:    #243359;
+
+  /* ── Colors: Surfaces ───────────────────────────────────── */
+  --jj-surface:        #ffffff;
+  --jj-surface-subtle: #f8f9fb;
+  --jj-surface-muted:  #f1f3f7;
+
+  /* ── Colors: Borders ────────────────────────────────────── */
+  --jj-border:        #e4e7ed;
+  --jj-border-subtle: #eff1f5;
+
+  /* ── Colors: Text ───────────────────────────────────────── */
+  --jj-text-primary:   #0f1729;
+  --jj-text-secondary: #4b5568;
+  --jj-text-muted:     #9ca3af;
+  --jj-text-inverse:   #ffffff;
+
+  /* ── Colors: Accent / Brand ─────────────────────────────── */
+  --jj-accent:       #2563eb;
+  --jj-accent-light: #dbeafe;
+
+  /* ── Colors: Semantic ───────────────────────────────────── */
+  --jj-positive:        #059669;
+  --jj-positive-light:  #d1fae5;
+  --jj-attention:       #d97706;
+  --jj-attention-light: #fef3c7;
+  --jj-critical:        #e11d48;
+  --jj-critical-light:  #ffe4e6;
+  --jj-pending:         #7c3aed;
+  --jj-pending-light:   #ede9fe;
+
+  /* ── Typography: Scale ──────────────────────────────────── */
+  --jj-text-2xs:  0.625rem;   /* 10px — avoid unless necessary */
+  --jj-text-xs:   0.75rem;    /* 12px — labels, captions       */
+  --jj-text-sm:   0.875rem;   /* 14px — body, table rows       */
+  --jj-text-base: 1rem;       /* 16px — default                */
+  --jj-text-lg:   1.125rem;   /* 18px — section titles         */
+  --jj-text-xl:   1.25rem;    /* 20px — page subtitles         */
+  --jj-text-2xl:  1.5rem;     /* 24px — page title             */
+  --jj-text-3xl:  1.875rem;   /* 30px — hero KPI               */
+  --jj-text-4xl:  2.25rem;    /* 36px — hero primary           */
+
+  /* ── Spacing (reference — use Tailwind utilities directly) ─
+   * section-padding: px-6 py-6 (desktop) → px-4 py-4 (mobile)
+   * card-padding:    px-5 py-5
+   * tile-padding:    px-4 py-3
+   * ─────────────────────────────────────────────────────────── */
+
+  /* ── Border Radius ──────────────────────────────────────── */
+  --jj-radius-sm:   0.5rem;    /* 8px  — chips, badges */
+  --jj-radius-md:   0.75rem;   /* 12px — tiles         */
+  --jj-radius-lg:   1rem;      /* 16px — cards         */
+  --jj-radius-xl:   1.25rem;   /* 20px — panels        */
+  --jj-radius-full: 9999px;    /* pills                */
+
+  /* ── Shadows ────────────────────────────────────────────── */
+  --jj-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --jj-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  --jj-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.04);
+
+}
+
+/* ── Utility layer augmentations ────────────────────────────
+ * Thin semantic helpers built on top of the token set.
+ * These complement (not replace) the existing .card / .badge
+ * classes already in globals.css.
+ * ─────────────────────────────────────────────────────────── */
+@layer components {
+
+  /* JJ card — uses token radius and shadow */
+  .jj-card {
+    background: var(--jj-surface);
+    border-radius: var(--jj-radius-lg);
+    border: 1px solid var(--jj-border);
+    box-shadow: var(--jj-shadow-sm);
+  }
+
+  /* KPI tile — inner tile inside a card */
+  .jj-tile {
+    background: var(--jj-surface-subtle);
+    border-radius: var(--jj-radius-md);
+    border: 1px solid var(--jj-border-subtle);
+    padding: 0.75rem 1rem;
+  }
+
+  /* Section header label pattern */
+  .jj-label {
+    font-size: var(--jj-text-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--jj-text-secondary);
+  }
+
+  /* Financial value — always LTR, tabular */
+  .jj-money {
+    direction: ltr;
+    unicode-bidi: isolate;
+    font-variant-numeric: tabular-nums;
+  }
+
+}
