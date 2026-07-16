@@ -4,19 +4,19 @@
  * M9-C Partner Report Screen — focused test suite
  *
  * 28 cases:
- *   M9C-01..02  Avi known and fully paid capital
- *   M9C-03..04  Oren unknown capital (P-ARCH-1)
- *   M9C-05..07  Preservation of database NULL
- *   M9C-08..09  Partner/Admin output separation (P-ARCH-6)
- *   M9C-10..11  Verification visibility (pending_verification)
- *   M9C-12      Stable ordering (timeline events ordered ASC by service, not re-sorted by UI)
- *   M9C-13..14  Authorized property scope (portfolio count)
- *   M9C-15      Settlement sign mapping — currentBalanceEur null (P-ARCH-1)
- *   M9C-16      One consistent report period per financial section
- *   M9C-17..19  Absence of forbidden JJ internal fields (P-ARCH-6)
- *   M9C-20      No business calculations in UI-facing consumers
- *   M9C-21..24  no_capital_event new CapitalStatus
- *   SETTLE-01..04  Settlement stub safety
+ * M9C-01..02 Avi known and fully paid capital
+ * M9C-03..04 Oren unknown capital (P-ARCH-1)
+ * M9C-05..07 Preservation of database NULL
+ * M9C-08..09 Partner/Admin output separation (P-ARCH-6)
+ * M9C-10..11 Verification visibility (pending_verification)
+ * M9C-12 Stable ordering (timeline events ordered ASC by service, not re-sorted by UI)
+ * M9C-13..14 Authorized property scope (portfolio count)
+ * M9C-15 Settlement sign mapping — currentBalanceEur null (P-ARCH-1)
+ * M9C-16 One consistent report period per financial section
+ * M9C-17..19 Absence of forbidden JJ internal fields (P-ARCH-6)
+ * M9C-20 No business calculations in UI-facing consumers
+ * M9C-21..24 no_capital_event new CapitalStatus
+ * SETTLE-01..04 Settlement stub safety
  */
 
 import {
@@ -31,6 +31,7 @@ import type {
   TimelineStatement,
   TimelineEvent,
   FinancialStatement,
+  SettlementStatement,
 } from '@/lib/lifecycle/partnerStatementTypes'
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -58,22 +59,35 @@ function makeTimeline(events: TimelineEvent[] = []): TimelineStatement {
 function makeTimelineEvent(overrides: Partial<TimelineEvent> = {}): TimelineEvent {
   return {
     eventId: 'evt-1',
-    eventType: 'capital_payment',
     title: 'Capital Payment',
     description: null,
     effectiveDate: '2023-01-15',
     effectiveDateConfidence: 'confirmed',
     amountEur: 50000,
+    partnerVisible: true,
+    status: 'confirmed',
     ...overrides,
   }
 }
 
 function makeFinancial(overrides: Partial<FinancialStatement> = {}): FinancialStatement {
   return {
+    reportingName: 'Test Property',
     accountSections: [],
     fromDate: null,
     toDate: null,
+    hasSale: false,
+    hasRenovation: false,
+    hasRental: false,
+    hasAirbnb: false,
+    ...overrides,
+  }
+}
+
+function makeSettlement(overrides: Partial<SettlementStatement> = {}): SettlementStatement {
+  return {
     currentBalanceEur: null,
+    totalDistributionsPaidEur: 0,
     ...overrides,
   }
 }
@@ -84,7 +98,9 @@ function makePortfolio(overrides: Partial<PortfolioSummary> = {}): PortfolioSumm
     totalAgreedValuationEur: null,
     totalCapitalPaidEur: null,
     totalCapitalRemainingEur: null,
-    netSettlementEur: null,
+    totalReceivableFromJJ: 0,
+    totalPayableToJJ: 0,
+    finalNetBalance: 0,
     direction: 'unknown',
     ...overrides,
   }
@@ -109,6 +125,8 @@ test('M9C-02: Avi capital — capitalPaidEur preserved, payments length = 1', ()
       effectiveDate: '2023-08-15',
       effectiveDateConfidence: 'confirmed',
       payerName: 'Avi',
+      description: null,
+      payeeName: null,
     }],
   })
   expect(capital.capitalStatus).toBe('fully_paid')
@@ -157,19 +175,19 @@ test('M9C-07: NULL effectiveDate preserved on TimelineEvent — not replaced wit
 
 test('M9C-08: PartnerFacingStatementDTO has no jj_* fields at top level', () => {
   const dto: Partial<PartnerFacingStatementDTO> = {
-    meta: { slug: 'avi', viewMode: 'partner', generatedAt: new Date().toISOString() },
-    investor: { entityId: 'e1', canonicalName: 'Avi', aliases: [] },
+    meta: { schemaVersion: 'PartnerStatementDTO/1.0', viewMode: 'partner', generatedAt: new Date().toISOString() },
+    investor: { entityId: 'e1', canonicalName: 'Avi', slug: 'avi', ownerType: 'co_investor' },
     properties: [],
     portfolio: makePortfolio(),
-    actions: { canExportCsv: false, canGeneratePdf: false },
-    localization: { currency: 'EUR', generatedAt: new Date().toISOString() },
+    actions: { canExportCsv: false, canGeneratePdf: false, hasOpenVerificationTasks: false },
+    localization: { lang: 'en', currency: 'EUR', generatedAt: new Date().toISOString() },
   }
   const jjKeys = Object.keys(dto).filter((k) => k.startsWith('jj_'))
   expect(jjKeys).toHaveLength(0)
 })
 
 test('M9C-09: viewMode partner — not admin', () => {
-  const meta = { slug: 'avi', viewMode: 'partner' as const, generatedAt: new Date().toISOString() }
+  const meta = { schemaVersion: 'PartnerStatementDTO/1.0' as const, viewMode: 'partner' as const, generatedAt: new Date().toISOString() }
   expect(meta.viewMode).toBe('partner')
   expect(meta.viewMode).not.toBe('admin')
 })
@@ -223,9 +241,9 @@ test('M9C-14: Single-property investor — totalPropertiesCount = 1', () => {
 // ── M9C-15: Settlement sign mapping ──────────────────────────────────────────
 
 test('M9C-15: currentBalanceEur is null until Settlement Engine — not 0 (P-ARCH-1)', () => {
-  const financial = makeFinancial({ currentBalanceEur: null })
-  expect(financial.currentBalanceEur).toBeNull()
-  expect(financial.currentBalanceEur).not.toBe(0)
+  const settlement = makeSettlement({ currentBalanceEur: null })
+  expect(settlement.currentBalanceEur).toBeNull()
+  expect(settlement.currentBalanceEur).not.toBe(0)
 })
 
 // ── M9C-16: One consistent report period ─────────────────────────────────────
@@ -290,20 +308,20 @@ test('M9C-24: hasCapitalEvents defaults to true — 3-arg calls preserved', () =
 
 test('SETTLE-01: currentBalanceEur is null (stub) — direction not inferred from null', () => {
   // The UI renders null as em dash. Direction (payable/receivable/balanced) is NOT derived.
-  const financial = makeFinancial({ currentBalanceEur: null })
-  expect(financial.currentBalanceEur).toBeNull()
+  const settlement = makeSettlement({ currentBalanceEur: null })
+  expect(settlement.currentBalanceEur).toBeNull()
   // If balance were 0 → balanced; if positive → receivable; etc.
   // But we cannot compute this from null — Settlement Engine required.
 })
 
-test('SETTLE-02: direction unknown (stub) — netSettlementEur not included in portfolio arithmetic', () => {
+test('SETTLE-02: direction unknown (stub) — settlement values do not corrupt capital arithmetic', () => {
   const portfolio = makePortfolio({
     direction: 'unknown',
-    netSettlementEur: null,
+    finalNetBalance: 0,       // stub placeholder (M9-C scope)
     totalCapitalPaidEur: 250_000,
   })
   expect(portfolio.direction).toBe('unknown')
-  expect(portfolio.netSettlementEur).toBeNull()
+  expect(portfolio.finalNetBalance).toBe(0)  // stub, not real Settlement Engine output
   // totalCapitalPaidEur is knowable and independent of settlement
   expect(portfolio.totalCapitalPaidEur).toBe(250_000)
 })
@@ -311,19 +329,19 @@ test('SETTLE-02: direction unknown (stub) — netSettlementEur not included in p
 test('SETTLE-03: NULL totalCapitalRemainingEur stays null when one property is unknown (P-ARCH-1)', () => {
   // Avi: known; Oren: unknown → total must be null, not partial sum
   const portfolio = makePortfolio({
-    totalCapitalPaidEur: 250_000,   // Avi only (Oren unknown)
-    totalCapitalRemainingEur: null, // Cannot sum: one component unknown
+    totalCapitalPaidEur: 250_000,       // Avi only (Oren unknown)
+    totalCapitalRemainingEur: null,     // Cannot sum: one component unknown
   })
   expect(portfolio.totalCapitalRemainingEur).toBeNull()
 })
 
 test('SETTLE-04: direction unknown — UI does not render as balanced / payable / receivable', () => {
   // Architecture guard: PortfolioSection must not compute:
-  //   netSettlementEur === 0 → "Balanced"
-  //   netSettlementEur < 0  → "Payable"
-  //   netSettlementEur > 0  → "Receivable"
+  // finalNetBalance === 0 → "Balanced"
+  // finalNetBalance < 0  → "Payable"
+  // finalNetBalance > 0  → "Receivable"
   // Those are Settlement Engine responsibilities.
-  const portfolio = makePortfolio({ direction: 'unknown', netSettlementEur: null })
+  const portfolio = makePortfolio({ direction: 'unknown', finalNetBalance: 0 })
   expect(portfolio.direction).toBe('unknown')
   // The only valid rendering for direction:'unknown' is "—" or "Pending Settlement Engine"
 })
