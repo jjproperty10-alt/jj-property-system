@@ -20,19 +20,20 @@ function makeSection(
     total_income: number
   },
 ): RC3AccountSection {
+  // Destructure account_label_he with default so ...rest never contains it
+  // (avoids TS "specified more than once" when spreading the rest)
+  const { account_label_he = '', ...rest } = overrides
   return {
     account_type: 'airbnb',
-    account_label: overrides.account_label,
-    account_label_he: overrides.account_label_he ?? '',
     balance_convention: 'owner_credit',
     opening_balance: 0,
     rows: [],
     contract_baseline: 0,
-    total_income: overrides.total_income,
     total_expenses: 0,
     total_bpo: 0,
     closing_balance: 0,
-    ...overrides,
+    ...rest,
+    account_label_he,
   }
 }
 
