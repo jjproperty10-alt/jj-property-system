@@ -23,5 +23,8 @@ export { AiActivityCard } from './AiActivityCard'
 
 // Re-export column type so consumers can type their column definitions
 export type { DataTableColumn } from './DataTable'
+
+// E3-A1 — Experience Layer components
+// HealthSignal was pushed to main via PR-R1 (squash merge lost barrel export — restored here)
 export { HealthSignal } from './HealthSignal'
 export type { BusinessHealthStatus } from './HealthSignal'
