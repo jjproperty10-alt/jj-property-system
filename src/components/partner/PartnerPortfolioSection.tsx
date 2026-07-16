@@ -1,97 +1,77 @@
 import type { PortfolioSummary } from '@/lib/lifecycle/partnerStatementTypes'
+import { MoneyValue, SectionHeader } from '@/components/ds'
 
-const eur = (n: number | null): string =>
-  n === null
-    ? '—'
-    : new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n)
-
-interface Props { portfolio: PortfolioSummary }
-
-/**
- * PartnerPortfolioSection — PR D v2: RTL-safe + a11y pass
- *
- * Changes from PR D v1:
- * - dir="ltr" on all financial value divs in KPI tiles
- * - text-[10px] text-gray-400 labels upgraded to text-xs text-gray-600
- * - "Pending Settlement Engine" text upgraded to text-gray-500
- * - Unknown capital note upgraded to text-xs text-gray-500
- * - Business logic unchanged
- */
-export function PartnerPortfolioSection({ portfolio }: Props) {
-  const hasUnknownCapital =
-    portfolio.totalCapitalPaidEur === null || portfolio.totalCapitalRemainingEur === null
-
-  return (
-    <div className="rounded-2xl overflow-hidden border border-gray-200/80 bg-white shadow-sm">
-      {/* Header strip */}
-      <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/80">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500">
-          Portfolio Summary · {portfolio.totalPropertiesCount}{' '}
-          {portfolio.totalPropertiesCount === 1 ? 'property' : 'properties'}
-        </h2>
-      </div>
-
-      {/* KPI tiles */}
-      <div className="px-6 py-6">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <PortfolioTile
-            label="Agreed Valuation"
-            value={eur(portfolio.totalAgreedValuationEur)}
-          />
-          <PortfolioTile
-            label="Total Paid"
-            value={eur(portfolio.totalCapitalPaidEur)}
-            valueClass={
-              portfolio.totalCapitalPaidEur !== null
-                ? 'text-lg font-bold text-emerald-600 tabular-nums'
-                : 'text-base text-gray-400 italic'
-            }
-          />
-          <PortfolioTile
-            label="Total Remaining"
-            value={eur(portfolio.totalCapitalRemainingEur)}
-            valueClass={
-              portfolio.totalCapitalRemainingEur !== null
-                ? portfolio.totalCapitalRemainingEur > 0
-                  ? 'text-lg font-bold text-amber-600 tabular-nums'
-                  : 'text-lg font-bold text-emerald-600 tabular-nums'
-                : 'text-base text-gray-400 italic'
-            }
-          />
-
-          {/* Net Settlement — stub until Settlement Engine (RC2) */}
-          <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3">
-            <div className="text-xs font-semibold uppercase tracking-widest text-gray-600 mb-1">
-              Net Settlement
-            </div>
-            {/* direction: 'unknown' — NOT rendered as balanced/payable/receivable */}
-            <div className="text-xs text-gray-500 italic">Pending Settlement Engine</div>
-          </div>
-        </div>
-
-        {hasUnknownCapital && (
-          <p className="mt-4 text-xs text-gray-500 italic">
-            * Some totals unavailable — capital amounts for one or more properties are not yet confirmed.
-          </p>
-        )}
-      </div>
-    </div>
-  )
+interface Props {
+  portfolio: PortfolioSummary
 }
 
-function PortfolioTile({
-  label,
-  value,
-  valueClass = 'text-lg font-bold text-gray-900 tabular-nums',
-}: {
-  label: string
-  value: string
-  valueClass?: string
-}) {
+/**
+ * PartnerPortfolioSection
+ *
+ * Portfolio summary across all authorized properties for this investor.
+ * Only shown when investor has 2+ properties (guarded by PartnerReport).
+ *
+ * NULL totals rendered as "—" by MoneyValue (P-ARCH-1).
+ * Settlement fields (direction, netSettlementEur) remain stub until RC2:
+ *   - direction: 'unknown' — NOT inferred
+ *   - netSettlementEur: null — NOT included in totals arithmetic
+ *   - No "settled" / "payable" / "receivable" label is rendered for unknown direction
+ *
+ * E2: Migrated to MoneyValue (null handling + dir="ltr") and SectionHeader.
+ * PortfolioRow inline component removed — replaced by jj-label + MoneyValue.
+ */
+export function PartnerPortfolioSection({ portfolio }: Props) {
+  const hasUnknown =
+    portfolio.totalCapitalPaidEur === null || portfolio.totalCapitalRemainingEur === null
+
+  const propertyWord = portfolio.totalPropertiesCount === 1 ? 'property' : 'properties'
+
   return (
-    <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3">
-      <div className="text-xs font-semibold uppercase tracking-widest text-gray-600 mb-1">{label}</div>
-      <div className={valueClass} dir="ltr">{value}</div>
+    <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+      <SectionHeader
+        title={`Portfolio Summary \u2014 ${portfolio.totalPropertiesCount} ${propertyWord}`}
+        className="mb-4"
+      />
+
+      <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+        <div>
+          <div className="jj-label mb-0.5">Total Agreed Valuation</div>
+          <MoneyValue amount={portfolio.totalAgreedValuationEur} size="sm" />
+        </div>
+        <div>
+          <div className="jj-label mb-0.5">Total Capital Paid</div>
+          <MoneyValue
+            amount={portfolio.totalCapitalPaidEur}
+            size="sm"
+            className={portfolio.totalCapitalPaidEur !== null ? 'text-green-700 font-semibold' : ''}
+          />
+        </div>
+        <div>
+          <div className="jj-label mb-0.5">Total Remaining</div>
+          <MoneyValue
+            amount={portfolio.totalCapitalRemainingEur}
+            size="sm"
+            className={
+              portfolio.totalCapitalRemainingEur !== null && portfolio.totalCapitalRemainingEur > 0
+                ? 'text-amber-700 font-semibold'
+                : portfolio.totalCapitalRemainingEur !== null
+                  ? 'text-green-700 font-semibold'
+                  : ''
+            }
+          />
+        </div>
+        <div>
+          <div className="jj-label mb-0.5">Net Settlement</div>
+          {/* direction: 'unknown' — NOT rendered as balanced/payable/receivable */}
+          <div className="text-gray-400 text-xs italic">Pending Settlement Engine</div>
+        </div>
+      </div>
+
+      {hasUnknown && (
+        <p className="mt-3 text-[10px] text-gray-400 italic">
+          * Some totals are unavailable — capital amounts for one or more properties are not yet confirmed.
+        </p>
+      )}
     </div>
   )
 }
