@@ -4,7 +4,7 @@ import { PartnerFinancialSection } from './PartnerFinancialSection'
 import { PartnerTimelineSection } from './PartnerTimelineSection'
 import { PartnerPortfolioSection } from './PartnerPortfolioSection'
 import { WelcomeHeader } from '@/components/partner/WelcomeHeader'
-import { ExecutiveSummary, computeExecutiveKpis } from '@/components/partner/ExecutiveSummary'
+import { ExecutiveSummary } from '@/components/partner/ExecutiveSummary'
 
 
 interface Props { dto: PartnerFacingStatementDTO }
@@ -49,22 +49,24 @@ export function PartnerReport({ dto }: Props) {
   })
 
   return (
+    <>
       {/* R1: Partner Report Story — Welcome + Executive Summary */}
       <WelcomeHeader
-        ownerName={statement.ownerName ?? ''}
+        ownerName={investor.canonicalName}
         propertyName={null}
-        period=""
-        className="mb-6"
+        period={formattedDate}
+        className="mb-6 max-w-4xl mx-auto px-4 sm:px-6 pt-6"
       />
       <ExecutiveSummary
         income={null}
         expenses={null}
         netResult={null}
-        balance={null}
-        className="mb-6"
+        status={null}
+        className="mb-6 max-w-4xl mx-auto px-4 sm:px-6"
       />
-      {/* End R1 story sections */}
-    <div className="min-h-screen bg-gray-50">
+      {/* End R1 story sections — real DTO wiring in subsequent PRs */}
+      <div className="min-h-screen bg-gray-50">
+
 
       {/* ── Master header ── */}
       <header style={{ background: 'linear-gradient(135deg, #071a3e 0%, #0f2d5e 50%, #1a3a6b 100%)' }}>
@@ -162,6 +164,7 @@ export function PartnerReport({ dto }: Props) {
         </footer>
       </main>
     </div>
+    </>
   )
 }
 
