@@ -23,3 +23,5 @@ export { AiActivityCard } from './AiActivityCard'
 
 // Re-export column type so consumers can type their column definitions
 export type { DataTableColumn } from './DataTable'
+export { HealthSignal } from './HealthSignal'
+export type { BusinessHealthStatus } from './HealthSignal'
