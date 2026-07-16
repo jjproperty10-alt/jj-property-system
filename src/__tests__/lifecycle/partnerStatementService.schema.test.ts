@@ -31,21 +31,19 @@
  *   loadPartnerStatement regression     — 7
  */
 
-// ─── Module mocks (hoisted by Vitest before any imports) ─────────────────────
-// Must declare before importing the modules under test.
+// ─── Module mocks (hoisted by Jest before any imports) ───────────────────────
+// jest.mock() calls are automatically hoisted by babel-jest.
 
-import { vi, beforeEach } from 'vitest'
-
-vi.mock('@/lib/supabase', () => ({
-  createServiceClient: vi.fn(),
+jest.mock('@/lib/supabase', () => ({
+  createServiceClient: jest.fn(),
 }))
 
-vi.mock('@/lib/lifecycle/timelineService', () => ({
-  loadInvestmentTimeline: vi.fn().mockResolvedValue(null),
+jest.mock('@/lib/lifecycle/timelineService', () => ({
+  loadInvestmentTimeline: jest.fn().mockResolvedValue(null),
 }))
 
-vi.mock('@/lib/report/fetchReport', () => ({
-  fetchRC3Report: vi.fn().mockResolvedValue({
+jest.mock('@/lib/report/fetchReport', () => ({
+  fetchRC3Report: jest.fn().mockResolvedValue({
     accounts: [],
     from_date: null,
     to_date: null,
@@ -65,6 +63,8 @@ import {
   loadPartnerStatement,
 } from '@/lib/lifecycle/partnerStatementService'
 import { createServiceClient } from '@/lib/supabase'
+
+const mockCreateServiceClient = createServiceClient as jest.MockedFunction<typeof createServiceClient>
 import type { PartnerPropertyStatement } from '@/lib/lifecycle/partnerStatementTypes'
 
 // ─── buildSlug ────────────────────────────────────────────────────────────────
@@ -378,7 +378,7 @@ function buildMockDb(
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  vi.mocked(createServiceClient).mockReturnValue(mockDb as any)
+  mockCreateServiceClient.mockReturnValue(mockDb as any)
 
   return { capture }
 }
@@ -391,7 +391,7 @@ describe('loadPartnerStatement — entity_type regression (PR #60)', () => {
   let capture: QueryCapture
 
   beforeEach(() => {
-    vi.clearAllMocks()
+    jest.clearAllMocks()
     ;({ capture } = buildMockDb([YOSSI, AVI]))
   })
 
