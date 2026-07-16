@@ -1,4 +1,4 @@
-import type { FinancialStatement, RC3AccountRow } from '@/lib/lifecycle/partnerStatementTypes'
+import type { FinancialStatement, SettlementStatement } from '@/lib/lifecycle/partnerStatementTypes'
 
 const eur = (n: number) =>
   new Intl.NumberFormat('en-IE', {
@@ -7,6 +7,7 @@ const eur = (n: number) =>
 
 interface Props {
   financial: FinancialStatement
+  settlement: SettlementStatement
 }
 
 /**
@@ -19,7 +20,7 @@ interface Props {
  * currentBalanceEur is null until Settlement Engine (RC2).
  * Rendered as "—". Direction is NOT inferred from null.
  */
-export function PartnerFinancialSection({ financial }: Props) {
+export function PartnerFinancialSection({ financial, settlement }: Props) {
   const visibleSections = financial.accountSections.filter(
     (s) => s.rows.filter(visibleRow).length > 0 || s.closing_balance !== 0,
   )
@@ -87,10 +88,10 @@ export function PartnerFinancialSection({ financial }: Props) {
       <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-between">
         <span className="text-sm font-bold text-gray-700">Current Balance</span>
         <span className="text-sm font-bold text-gray-400">
-          {financial.currentBalanceEur !== null ? eur(financial.currentBalanceEur) : '—'}
+          {settlement.currentBalanceEur !== null ? eur(settlement.currentBalanceEur) : '—'}
         </span>
       </div>
-      {financial.currentBalanceEur === null && (
+      {settlement.currentBalanceEur === null && (
         <p className="text-[10px] text-gray-400 italic mt-1">
           Final balance pending Settlement Engine.
         </p>
@@ -99,6 +100,6 @@ export function PartnerFinancialSection({ financial }: Props) {
   )
 }
 
-function visibleRow(row: RC3AccountRow): boolean {
+function visibleRow(row: { display_group: string }): boolean {
   return row.display_group !== 'info' && row.display_group !== 'reference'
 }
