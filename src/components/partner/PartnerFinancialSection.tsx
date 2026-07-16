@@ -1,7 +1,5 @@
 import type { FinancialStatement, SettlementStatement } from '@/lib/lifecycle/partnerStatementTypes'
-
-const eur = (n: number) =>
-  new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n)
+import { MoneyValue, SectionHeader } from '@/components/ds'
 
 interface Props {
   financial: FinancialStatement
@@ -9,15 +7,16 @@ interface Props {
 }
 
 /**
- * PartnerFinancialSection — PR D v2: RTL-safe + a11y pass
+ * PartnerFinancialSection
  *
- * Changes from PR D v1:
- * - dir="ltr" on date range span; replaced hardcoded → arrow with en dash –
- * - dir="ltr" on table date cells, amount cells, closing balance, settlement balance
- * - text-[10px] text-gray-400 table headers upgraded to text-xs text-gray-600
- * - break-words on description cells to prevent overflow
- * - motion-reduce:transition-none on table row hover transition
- * - Business logic unchanged (visibleRow, null handling, P-ARCH-1)
+ * Renders RC3 financial data (platform income, expenses, BPO, balance).
+ * Skips info/reference rows — those are internal classification markers only.
+ * No business logic — all values pre-computed by fetchRC3Report().
+ *
+ * currentBalanceEur is null until Settlement Engine (RC2).
+ * Rendered as "—" by MoneyValue. Direction is NOT inferred from null.
+ *
+ * E2: Migrated to MoneyValue (amounts + null) and SectionHeader.
  */
 export function PartnerFinancialSection({ financial, settlement }: Props) {
   const visibleSections = financial.accountSections.filter(
@@ -27,91 +26,82 @@ export function PartnerFinancialSection({ financial, settlement }: Props) {
   if (visibleSections.length === 0) return null
 
   return (
-    <section className="px-6 py-6">
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-600">Financial</h3>
-        {(financial.fromDate || financial.toDate) && (
-          <span className="text-xs text-gray-600 tabular-nums" dir="ltr">
-            {financial.fromDate ?? 'all time'} – {financial.toDate ?? 'present'}
+    <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+      <SectionHeader
+        title="Financial Report"
+        action={(financial.fromDate || financial.toDate) ? (
+          <span dir="ltr">
+            {financial.fromDate ?? 'all time'} → {financial.toDate ?? 'present'}
           </span>
-        )}
-      </div>
+        ) : undefined}
+        className="mb-4"
+      />
 
-      <div className="mt-4 space-y-6">
+      <div className="space-y-6">
         {visibleSections.map((section) => {
           const rows = section.rows.filter(visibleRow)
-          const isPositive = section.closing_balance >= 0
           return (
             <div key={section.account_type}>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-semibold text-gray-800">{section.account_label}</span>
-                <span
-                  className={`text-sm font-bold tabular-nums ${isPositive ? 'text-blue-700' : 'text-red-600'}`}
-                  dir="ltr"
-                >
-                  {eur(section.closing_balance)}
-                </span>
+                <MoneyValue
+                  amount={section.closing_balance}
+                  size="sm"
+                  className={`font-bold ${section.closing_balance >= 0 ? 'text-blue-700' : 'text-red-600'}`}
+                />
               </div>
 
               {rows.length > 0 && (
-                <div className="rounded-lg bg-gray-50 border border-gray-100 overflow-hidden">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-gray-200 text-xs text-gray-600 uppercase tracking-wide">
-                        <th className="text-left px-3 py-2 font-semibold w-24">Date</th>
-                        <th className="text-left px-3 py-2 font-semibold">Description</th>
-                        <th className="text-right px-3 py-2 font-semibold w-24">Amount</th>
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="text-[10px] text-gray-400 uppercase tracking-wide border-b border-gray-100">
+                      <th className="text-left py-1 font-medium w-24">Date</th>
+                      <th className="text-left py-1 font-medium">Description</th>
+                      <th className="text-right py-1 font-medium w-20">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {rows.map((row) => (
+                      <tr key={row.id} className="text-gray-700 hover:bg-gray-50">
+                        <td className="py-1.5 text-gray-400 align-top" dir="ltr">{row.date}</td>
+                        <td className="py-1.5 align-top pr-2">
+                          <span className="font-medium">{row.display_label}</span>
+                          {row.description && (
+                            <span className="text-gray-400"> — {row.description}</span>
+                          )}
+                        </td>
+                        <td className="py-1.5 text-right align-top">
+                          <MoneyValue
+                            amount={row.client_amount}
+                            size="sm"
+                            className={`font-medium ${row.balance_effect >= 0 ? 'text-green-600' : 'text-red-500'}`}
+                          />
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {rows.map((row) => (
-                        <tr key={row.id} className="hover:bg-white/70 transition-colors motion-reduce:transition-none">
-                          <td className="px-3 py-2 text-gray-500 align-top tabular-nums whitespace-nowrap" dir="ltr">
-                            {row.date}
-                          </td>
-                          <td className="px-3 py-2 align-top break-words">
-                            <span className="font-medium text-gray-700">{row.display_label}</span>
-                            {row.description && (
-                              <span className="text-gray-500 ml-1">— {row.description}</span>
-                            )}
-                          </td>
-                          <td
-                            className={`px-3 py-2 text-right align-top font-semibold tabular-nums ${
-                              row.balance_effect >= 0 ? 'text-emerald-600' : 'text-red-500'
-                            }`}
-                            dir="ltr"
-                          >
-                            {eur(row.client_amount)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                    ))}
+                  </tbody>
+                </table>
               )}
             </div>
           )
         })}
       </div>
 
-      {/* Settlement balance — null until Settlement Engine (RC2) */}
-      <div className="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between">
+      {/* Settlement balance — null until RC2; direction NOT inferred */}
+      <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-between">
         <span className="text-sm font-bold text-gray-700">Current Balance</span>
-        <div className="text-right">
-          <span
-            className={`text-sm font-bold tabular-nums ${
-              settlement.currentBalanceEur !== null ? 'text-gray-900' : 'text-gray-400'
-            }`}
-            dir="ltr"
-          >
-            {settlement.currentBalanceEur !== null ? eur(settlement.currentBalanceEur) : '—'}
-          </span>
-          {settlement.currentBalanceEur === null && (
-            <p className="text-xs text-gray-500 italic mt-0.5">Pending Settlement Engine</p>
-          )}
-        </div>
+        <MoneyValue
+          amount={settlement.currentBalanceEur}
+          size="sm"
+          className="font-bold text-gray-400"
+        />
       </div>
-    </section>
+      {settlement.currentBalanceEur === null && (
+        <p className="text-[10px] text-gray-400 italic mt-1">
+          Final balance pending Settlement Engine.
+        </p>
+      )}
+    </div>
   )
 }
 
