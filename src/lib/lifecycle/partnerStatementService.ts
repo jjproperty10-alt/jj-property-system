@@ -84,17 +84,19 @@ export function resolveCapitalStatus(
   capitalPaid: number | null,
   capitalRemaining: number | null,
   requiredCapital: number | null,
+  hasCapitalEvents = true,
 ): CapitalStatus {
-  // Both paid and required unknown → fully unknown
-  if (capitalPaid === null && requiredCapital === null) return 'capital_unknown'
-  // Remaining <= 0 → fully paid
-  if (capitalRemaining !== null && capitalRemaining <= 0) return 'fully_paid'
-  // Have paid amount > 0 but still has remaining → partial
-  if (capitalPaid !== null && capitalPaid > 0 && (capitalRemaining === null || capitalRemaining > 0)) {
-    return 'partially_paid'
+  // no_capital_event: no rows exist in DB for this entity + property (P-ARCH-1)
+  if (!hasCapitalEvents) return 'no_capital_event'
+
+  // paid + required are the authoritative fields.
+  // capitalRemaining is accepted for compatibility but is NOT the source of truth.
+  // Contradictory inputs (e.g. remaining=0 but paid < required) → paid+required wins.
+  if (capitalPaid !== null && requiredCapital !== null) {
+    return capitalPaid >= requiredCapital ? 'fully_paid' : 'partially_paid'
   }
-  // Known required but nothing paid yet
-  if (capitalPaid !== null && capitalPaid === 0) return 'partially_paid'
+
+  // At least one event exists but amounts are unknown (P-ARCH-1: never coerce to 0)
   return 'capital_unknown'
 }
 
@@ -271,7 +273,7 @@ export async function loadPartnerStatement(
       requiredCapitalEur,
       capitalPaidEur,      // P-ARCH-1: null = unknown, not 0
       capitalRemainingEur, // P-ARCH-1: null = unknown, not 0
-      capitalStatus: resolveCapitalStatus(capitalPaidEur, capitalRemainingEur, requiredCapitalEur),
+      capitalStatus: resolveCapitalStatus(capitalPaidEur, capitalRemainingEur, requiredCapitalEur, payments.length > 0),
       payments,
     }
 

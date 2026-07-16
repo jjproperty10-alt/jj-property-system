@@ -28,10 +28,12 @@ import type { RC3AccountSection } from '@/lib/report/types'
  * 'not_applicable' covers JJ-owned assets with no external investor capital.
  */
 export type CapitalStatus =
-  | 'fully_paid'      // capital_remaining_eur <= 0
-  | 'partially_paid'  // capital_paid_eur > 0 and capital_remaining_eur > 0
-  | 'capital_unknown' // required / paid amounts unknown — P-ARCH-1: never coerce to 0
-  | 'not_applicable'  // JJ-owned asset: no external investor capital
+  | 'no_capital_event'  // no capital_event rows exist for this entity + property
+  | 'fully_paid'        // capitalPaidEur >= requiredCapitalEur (both known)
+  | 'partially_paid'    // capitalPaidEur < requiredCapitalEur (both known)
+  | 'capital_unknown'   // at least one event exists but paid or required is null — P-ARCH-1
+  // @deprecated — retained for v1.0 source compatibility; never emitted by the v1.0 service
+  | 'not_applicable'
 
 /** Net direction of the cross-property settlement balance */
 export type NetDirection =
