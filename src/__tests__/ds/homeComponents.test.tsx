@@ -121,12 +121,12 @@ describe('AllClearCard', () => {
     )
     expect(html).toContain('Everything important has already been handled.')
     expect(html).toContain('There are no approvals waiting for you.')
-    expect(html).toContain("AI completed today's routine work.")
+    expect(html).toContain("AI completed today&#x27;s routine work.")
   })
 
   it('renders emoji when provided', () => {
     const html = renderToStaticMarkup(
-      <AllClearCard headline="Done." lines={[]} emoji="\u2615" />,
+      <AllClearCard headline="Done." lines={[]} emoji={'\u2615'} />,
     )
     expect(html).toContain('\u2615')
   })
