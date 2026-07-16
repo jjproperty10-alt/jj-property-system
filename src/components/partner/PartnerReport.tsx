@@ -12,7 +12,7 @@ interface Props { dto: PartnerFacingStatementDTO }
  * to avoid build-time purge issues with dynamic values).
  */
 function propertyAccent(name: string): string {
-  const hash = [...name].reduce((h, c) => Math.imul(h, 31) + c.charCodeAt(0), 0)
+  const hash = name.split('').reduce((h, c) => Math.imul(h, 31) + c.charCodeAt(0), 0)
   const palettes = [
     ['#0f2d5e', '#071a3e'],
     ['#1a3a6b', '#0d2045'],
