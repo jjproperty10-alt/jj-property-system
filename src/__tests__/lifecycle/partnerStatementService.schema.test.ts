@@ -317,8 +317,10 @@ interface QueryCapture {
  * 3. Returns [] for every other table.
  * 4. Captures the first entity_identity select + filter call in `capture`.
  *
- * The capture happens before the filter resolves, so tests can assert query
- * structure regardless of whether the downstream function returns null or data.
+ * The chain is thenable: every method returns `this`, and `await chain`
+ * resolves via chain.then(). This mirrors the real Supabase builder pattern
+ * and allows chaining like .select().eq().neq() without returning a Promise
+ * prematurely.
  */
 function buildMockDb(
   entities: EntityRow[],
@@ -332,36 +334,45 @@ function buildMockDb(
   }
   let capturedFirstEntityQuery = false
 
-  function makeChain(table: string, resolveData: unknown[]) {
-    const chain = {
-      select(fields: string): typeof chain {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function makeChain(table: string, resolveData: unknown[]): any {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const chain: any = {
+      select(fields: string) {
         if (table === 'entity_identity' && !capturedFirstEntityQuery) {
           capture.selectFields = fields
         }
         return chain
       },
-      in(field: string, values: string[]): Promise<{ data: unknown[]; error: null }> {
+      in(field: string, values: string[]) {
         if (table === 'entity_identity' && !capturedFirstEntityQuery) {
           capture.filterMethod = 'in'
           capture.filterField = field
           capture.filterValues = values
           capturedFirstEntityQuery = true
         }
-        return Promise.resolve({ data: resolveData, error: null })
+        return chain
       },
-      eq(field: string, value: string): Promise<{ data: unknown[]; error: null }> {
+      eq(field: string, value: string) {
         if (table === 'entity_identity' && !capturedFirstEntityQuery) {
           capture.filterMethod = 'eq'
           capture.filterField = field
           capture.filterValues = [value]
           capturedFirstEntityQuery = true
         }
-        return Promise.resolve({ data: [], error: null })
+        return chain
       },
-      neq(): typeof chain { return chain },
-      is(): typeof chain { return chain },
-      order(): Promise<{ data: unknown[]; error: null }> {
-        return Promise.resolve({ data: [], error: null })
+      neq()  { return chain },
+      is()   { return chain },
+      order(){ return chain },
+      // Thenable: makes `await chain` resolve with { data, error }
+      // Called by the JS runtime when the chain is awaited.
+      then(
+        resolve: (v: { data: unknown[]; error: null }) => void,
+        _reject?: (e: unknown) => void,
+      ) {
+        // Use a microtask so async/await timing works correctly
+        Promise.resolve({ data: resolveData, error: null }).then(resolve)
       },
     }
     return chain
