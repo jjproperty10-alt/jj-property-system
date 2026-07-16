@@ -36,11 +36,6 @@ export function PartnerReport({ dto }: Props) {
           </div>
           <h1 className="text-lg font-bold">Partner Statement</h1>
           <p className="text-sm text-blue-200 mt-0.5">{investor.canonicalName}</p>
-          {meta.viewMode === 'admin' && (
-            <span className="mt-1 inline-block text-[10px] bg-amber-400 text-amber-900 font-bold px-2 py-0.5 rounded uppercase tracking-wide">
-              Admin View
-            </span>
-          )}
         </div>
       </div>
 
@@ -54,9 +49,6 @@ export function PartnerReport({ dto }: Props) {
               {prop.ownership.currentOwnershipPct !== null && (
                 <p className="text-xs text-gray-500 mt-0.5">
                   {prop.ownership.currentOwnershipPct}% ownership
-                  {prop.ownership.effectiveFrom && (
-                    <span className="ml-1">
-                      since {new Date(prop.ownership.effectiveFrom).toLocaleDateString('en-IE')}
                     </span>
                   )}
                 </p>
@@ -66,7 +58,7 @@ export function PartnerReport({ dto }: Props) {
             <PartnerCapitalSection capital={prop.capital} />
 
             {prop.financial && (
-              <PartnerFinancialSection financial={prop.financial} />
+              <PartnerFinancialSection financial={prop.financial} settlement={prop.settlement} />
             )}
 
             <PartnerTimelineSection timeline={prop.timeline} />
