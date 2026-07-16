@@ -16,15 +16,17 @@ interface Props {
  * Delegates all section rendering to sub-components.
  *
  * The UI never calculates business truth:
- *   - capitalStatus  ← resolveCapitalStatus() in partnerStatementService
- *   - balances       ← RC3 views via fetchRC3Report()
- *   - portfolio      ← buildPortfolioSummary()
- *   - settlement     ← stub (null) until Settlement Engine (RC2)
+ * - capitalStatus ← resolveCapitalStatus() in partnerStatementService
+ * - balances ← RC3 views via fetchRC3Report()
+ * - portfolio ← buildPortfolioSummary()
+ * - settlement ← stub (null) until Settlement Engine (RC2)
  *
  * P-ARCH-6: No jj_* fields are present on the DTO — enforced by type shape.
+ * Note: Admin view (meta.viewMode === 'admin') is rendered by AdminReport,
+ *       not by this component. PartnerFacingStatementDTO.meta.viewMode is always 'partner'.
  */
 export function PartnerReport({ dto }: Props) {
-  const { investor, properties, portfolio, meta, actions, localization } = dto
+  const { investor, properties, portfolio, actions, localization } = dto
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -49,8 +51,6 @@ export function PartnerReport({ dto }: Props) {
               {prop.ownership.currentOwnershipPct !== null && (
                 <p className="text-xs text-gray-500 mt-0.5">
                   {prop.ownership.currentOwnershipPct}% ownership
-                    </span>
-                  )}
                 </p>
               )}
             </div>
@@ -58,7 +58,10 @@ export function PartnerReport({ dto }: Props) {
             <PartnerCapitalSection capital={prop.capital} />
 
             {prop.financial && (
-              <PartnerFinancialSection financial={prop.financial} settlement={prop.settlement} />
+              <PartnerFinancialSection
+                financial={prop.financial}
+                settlement={prop.settlement}
+              />
             )}
 
             <PartnerTimelineSection timeline={prop.timeline} />
@@ -76,7 +79,7 @@ export function PartnerReport({ dto }: Props) {
             {actions.canGeneratePdf && (
               <button
                 className="px-4 py-2 text-sm border border-gray-300 rounded text-gray-600 bg-white
-                           disabled:opacity-40 disabled:cursor-not-allowed"
+                  disabled:opacity-40 disabled:cursor-not-allowed"
                 disabled
                 title="Available after Settlement Engine (RC2)"
               >
@@ -86,7 +89,7 @@ export function PartnerReport({ dto }: Props) {
             {actions.canExportCsv && (
               <button
                 className="px-4 py-2 text-sm border border-gray-300 rounded text-gray-600 bg-white
-                           disabled:opacity-40 disabled:cursor-not-allowed"
+                  disabled:opacity-40 disabled:cursor-not-allowed"
                 disabled
                 title="Available after Settlement Engine (RC2)"
               >
