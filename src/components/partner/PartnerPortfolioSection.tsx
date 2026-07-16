@@ -8,21 +8,14 @@ const eur = (n: number | null): string =>
 interface Props { portfolio: PortfolioSummary }
 
 /**
- * PartnerPortfolioSection — PR D: Modern Visual Polish
+ * PartnerPortfolioSection — PR D v2: RTL-safe + a11y pass
  *
- * Standalone card (rendered outside per-property articles in PartnerReport).
- * Visual changes from PR C:
- * - Subtle gray header strip with section label
- * - KPI tiles in a responsive grid matching PartnerCapitalSection style
- * - Net Settlement shown as "Pending Settlement Engine" chip — direction NOT inferred
- * - Unknown total note preserved (P-ARCH-1)
- * - tabular-nums on all amounts
- *
- * Business logic UNCHANGED:
- * - Only shown when investor has 2+ properties (guarded by PartnerReport)
- * - NULL totals rendered as "—" (P-ARCH-1)
- * - direction: 'unknown' — NOT rendered as balanced/payable/receivable
- * - netSettlementEur: null — NOT shown (Settlement Engine pending)
+ * Changes from PR D v1:
+ * - dir="ltr" on all financial value divs in KPI tiles
+ * - text-[10px] text-gray-400 labels upgraded to text-xs text-gray-600
+ * - "Pending Settlement Engine" text upgraded to text-gray-500
+ * - Unknown capital note upgraded to text-xs text-gray-500
+ * - Business logic unchanged
  */
 export function PartnerPortfolioSection({ portfolio }: Props) {
   const hasUnknownCapital =
@@ -68,16 +61,16 @@ export function PartnerPortfolioSection({ portfolio }: Props) {
 
           {/* Net Settlement — stub until Settlement Engine (RC2) */}
           <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1">
+            <div className="text-xs font-semibold uppercase tracking-widest text-gray-600 mb-1">
               Net Settlement
             </div>
             {/* direction: 'unknown' — NOT rendered as balanced/payable/receivable */}
-            <div className="text-xs text-gray-400 italic">Pending Settlement Engine</div>
+            <div className="text-xs text-gray-500 italic">Pending Settlement Engine</div>
           </div>
         </div>
 
         {hasUnknownCapital && (
-          <p className="mt-4 text-[10px] text-gray-400 italic">
+          <p className="mt-4 text-xs text-gray-500 italic">
             * Some totals unavailable — capital amounts for one or more properties are not yet confirmed.
           </p>
         )}
@@ -97,8 +90,8 @@ function PortfolioTile({
 }) {
   return (
     <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3">
-      <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1">{label}</div>
-      <div className={valueClass}>{value}</div>
+      <div className="text-xs font-semibold uppercase tracking-widest text-gray-600 mb-1">{label}</div>
+      <div className={valueClass} dir="ltr">{value}</div>
     </div>
   )
 }
