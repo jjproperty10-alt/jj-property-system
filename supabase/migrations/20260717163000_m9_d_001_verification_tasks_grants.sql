@@ -1,0 +1,68 @@
+-- =============================================================================
+-- m9_d_001_verification_tasks_grants
+-- Created: 2026-07-17
+-- Author: Yossi (authorization) + Claude
+--
+-- Purpose: Canonical GRANT for lifecycle.verification_tasks.
+--   Closes the delivery gap identified during Stage 1.5 QA (2026-07-17):
+--   m9_d_verification_tasks.sql created the table and enabled RLS but did not
+--   include an explicit GRANT SELECT to service_role. This migration adds the
+--   minimum required privileges so the table is accessible via service_role
+--   in every target environment without manual intervention.
+--
+-- Background:
+--   Stage 1.5 applied GRANT SELECT manually to QA (tukarrrzalczjosefclh).
+--   This migration makes that grant canonical and reproducible.
+--
+-- Ordering:
+--   Must run AFTER m9_d_verification_tasks.sql (version 20260713162742).
+--   GitHub filename: supabase/migrations/20260717163000_m9_d_001_verification_tasks_grants.sql
+--
+-- Privileges granted (minimum required only):
+--   service_role USAGE on lifecycle schema — included for safety and portability.
+--     Whether service_role held implicit USAGE before this migration was not
+--     measured: has_schema_privilege was checked only after the GRANT was
+--     applied, so the prior state is unknown. This statement is included
+--     unconditionally — it is idempotent and harmless in all cases.
+--   service_role SELECT on lifecycle.verification_tasks — required for
+--     server-side reads (Supabase MCP, Edge Functions, server components).
+--
+-- Privileges NOT granted:
+--   INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER — none granted.
+--   anon — no privileges.
+--   authenticated — no privileges.
+--   PUBLIC — no privileges.
+--
+-- RLS posture:
+--   This migration does NOT create, modify, or remove any RLS policy.
+--   RLS remains enabled with zero policies (deny-all for non-service-role) —
+--   unchanged from m9_d_verification_tasks.sql.
+--   Intended state: identical RLS posture as all other lifecycle tables.
+--
+-- Idempotency:
+--   GRANT is idempotent in PostgreSQL. Running this migration twice produces
+--   no error and no side effects. Safe to apply in any order relative to
+--   Stage 1.5 runtime fix (the runtime fix is subsumed by this migration).
+--
+-- Rollback:
+--   REVOKE SELECT ON TABLE lifecycle.verification_tasks FROM service_role;
+--   Do NOT revoke USAGE on lifecycle schema — service_role requires it for
+--   all other lifecycle tables and the USAGE grant may be implicit/system-level.
+-- =============================================================================
+
+
+-- GRANT 1: Schema USAGE
+-- Included for safety and portability across environments.
+-- Whether service_role held implicit USAGE on the lifecycle schema before this
+-- migration was applied is unknown: has_schema_privilege was only measured
+-- after the GRANT was already in place (Stage 1.5 QA, 2026-07-17). This
+-- statement is included unconditionally — GRANT is idempotent in PostgreSQL
+-- and produces no side effects if the privilege was already held.
+GRANT USAGE ON SCHEMA lifecycle TO service_role;
+
+
+-- GRANT 2: Table SELECT (minimum required)
+-- Allows server-side reads. No write privileges are granted.
+-- RLS with zero policies continues to deny anon and authenticated access
+-- regardless of this grant (RLS deny-all is enforced at the row level).
+GRANT SELECT ON TABLE lifecycle.verification_tasks TO service_role;
