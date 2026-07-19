@@ -24,6 +24,7 @@ import type {
   RawCapitalEventRow,
   RawOwnershipPeriodRow,
 } from '../../lib/lifecycle/timelineProjection'
+import type { VerificationTaskItem } from '../../lib/lifecycle/timelineTypes'
 
 import {
   isCapitalEventVisible,
@@ -100,6 +101,22 @@ function makeOwnershipPeriod(overrides: Partial<RawOwnershipPeriodRow> = {}): Ra
     created_at:                   '2026-07-13T10:02:00Z',
     business_source_type:         null,
     ...overrides,
+  }
+}
+
+/**
+ * Minimal VerificationTaskItem stub for computeEvidence() tests.
+ * humanLabel is UI-safe; taskId/sourceId/sourceTable are internal only.
+ */
+function makeTaskItem(id: string): VerificationTaskItem {
+  return {
+    taskId:           id,
+    priority:         'high',
+    sourceTable:      'capital_event',
+    sourceId:         'ce-0001',
+    missingField:     'effective_date',
+    humanLabel:       'Payment date pending confirmation',
+    relatedAmountEur: null,
   }
 }
 
@@ -416,7 +433,9 @@ test('EVIDENCE (bonus): computeEvidence flags hasPendingDates when any event has
     entityId: ENTITY_ID, investorName: INVESTOR,
     partnerEntries: [], capitalEvents: [ce], ownershipPeriods: [],
   })
-  const evidence = computeEvidence(events, 3)
+  // F3: computeEvidence now accepts VerificationTaskItem[] — pass 3 stubs to prove count
+  const taskItems = [makeTaskItem('t1'), makeTaskItem('t2'), makeTaskItem('t3')]
+  const evidence = computeEvidence(events, taskItems)
   expect(evidence.hasPendingDates).toBe(true)
   expect(evidence.openVerificationTasks).toBe(3)
 })
