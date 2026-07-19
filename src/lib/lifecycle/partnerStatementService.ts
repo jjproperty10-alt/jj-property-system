@@ -267,6 +267,8 @@ export async function loadPartnerStatement(
     const s = summaryByProperty.get(propertyName) ?? null
 
     // ── 4a: Capital events (inflows only = investor payments) ───────────────
+    // F1 fix: direction='inflow' — DB constraint only allows 'inflow'/'outflow'.
+    // Using 'in' returned 0 rows (constraint violation in query filter).
     const { data: capitalRows } = await db
       .schema('lifecycle')
       .from('capital_event')
@@ -276,7 +278,7 @@ export async function loadPartnerStatement(
       .eq('entity_id', entityId)
       .eq('property_name', propertyName)
       .neq('status', 'void')
-      .eq('direction', 'in')
+      .eq('direction', 'inflow')
       .order('effective_date', { ascending: true, nullsFirst: false })
 
     const payments: CapitalPayment[] = (
