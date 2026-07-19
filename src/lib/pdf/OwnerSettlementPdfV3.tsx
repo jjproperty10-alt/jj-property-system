@@ -1,23 +1,18 @@
 /**
  * JJ Property 10 — Owner Settlement Report V3
  * Phase B — 2026-07-09
- * Gate 2 — 2026-07-19: Certified STR, Settlement Position, Evidence Footer in PDF
+ * M4.1  — 2026-07-12 — Hebrew RTL layout (react-pdf)
+ * M6    — 2026-07-12 — Visual Polish / Design System
  *
- * Gate 2 additions:
- *  - CertifiedSTRBlockPdf: mirrors CertifiedSTRCard from page.tsx
- *  - SettlementBlockPdf: mirrors SettlementSummaryCard from page.tsx
- *  - EvidenceFooterPdf: financial attribution policy
- *  - All consume the same RC3PropertyReport DTO — no separate queries
+ * RTL implementation:
+ * - All row containers: rtlRowDirection(lang) → flexDirection:'row-reverse' in HE
+ * - All translated text: rtlTextStyle(lang) → textAlign:'right' in HE
+ * - Amount columns: rtlColumnOrder(lang) → textAlign:'left' in HE (col is leftmost)
+ * - End-anchored panels: rtlAlignEnd(lang) → alignItems:'flex-start' in HE
+ * - Dates: always LTR (English format, numeric — no bidi issue)
+ * - Currency: always LTR-readable (€1,234.56 — numeric, never character-reversed)
  *
- * Phase B additions:
- *  - lang prop: all labels flow through t(key, lang) from labels.ts
- *  - Client-facing balance wording: Amount Payable to You / Amount Payable by You / Settled
- *  - Per-module summary table (key metrics for each account type)
- *  - Section labels in both EN / HE
- *
- * UX / presentation layer only. No accounting logic changed.
- *
- * Font: Heebo (Hebrew + Latin, SIL OFL). Served from /fonts/Heebo-*.ttf.
+ * No accounting logic changed. English output is pixel-stable.
  */
 
 'use client'
@@ -32,17 +27,25 @@ import {
   Font,
 } from '@react-pdf/renderer'
 import { fmt } from './formatters'
-import type {
-  RC3PropertyReport,
-  RC3AccountSection,
-  RC3AccountRow,
-  CertifiedSTRSummary,
-  CounterpartySettlement,
-} from '../report/types'
+
+/** Format ISO date as "Jan 2026" */
+function fmtMonth(iso: string): string {
+  try {
+    const d = new Date(iso + 'T00:00:00')
+    return d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+  } catch { return iso }
+}
+import { isRTL, rtlRowDirection, rtlTextStyle, rtlColumnOrder, rtlAlignEnd } from './rtlHelpers'
+import { filterSectionsByReportType, type ReportType } from '../report/reportTypes'
+import type { RC3PropertyReport, RC3AccountSection, CertifiedSTRSummary, CounterpartySettlement } from '../report/types'
+import { toClientRow } from '../report/clientRow'
+import type { ClientDisplayRow } from '../report/clientRow'
 import {
   buildRowLabel,
-  t, type Lang,
+  t, type Lang, type LabelKey,
 } from '../report/labels'
+import { groupExpenses } from '../report/expenseGroups'
+import { computeOperationalKPIs, computeNetOwnerBalance } from '../report/executiveSummary'
 
 /* ─── Font ──────────────────────────────────────────────────────────────────── */
 
@@ -57,40 +60,52 @@ Font.register({
 /* ─── Palette ───────────────────────────────────────────────────────────────── */
 
 const C = {
-  navy:        '#1e3a5f',
-  navyLight:   '#2d5a9e',
-  green:       '#15803d',
-  greenBg:     '#f0fdf4',
+  navy: '#1e3a5f',
+  navyLight: '#2d5a9e',
+  green: '#15803d',
+  greenBg: '#f0fdf4',
   greenBorder: '#86efac',
-  red:         '#b91c1c',
-  redBg:       '#fef2f2',
-  redBorder:   '#fca5a5',
-  amber:       '#92400e',
-  amberBg:     '#fffbeb',
+  red: '#b91c1c',
+  redBg: '#fef2f2',
+  redBorder: '#fca5a5',
+  amber: '#92400e',
+  amberBg: '#fffbeb',
   amberBorder: '#fcd34d',
-  grayBg:      '#f8fafc',
-  grayBorder:  '#e2e8f0',
-  grayLine:    '#f1f5f9',
-  grayText:    '#64748b',
-  grayMid:     '#94a3b8',
-  grayDark:    '#1e293b',
-  white:       '#ffffff',
-  purple:      '#6d28d9',
-  purpleBg:    '#f5f3ff',
-  teal:        '#0f766e',
-  tealBg:      '#f0fdfa',
-  tealBorder:  '#99f6e4',
-  indigo:      '#4338ca',
-  indigoBg:    '#eef2ff',
+  grayBg: '#f8fafc',
+  grayBorder: '#e2e8f0',
+  grayLine: '#f1f5f9',
+  grayText: '#64748b',
+  grayMid: '#94a3b8',
+  grayDark: '#1e293b',
+  white: '#ffffff',
+  purple: '#6d28d9',
+  purpleBg: '#f5f3ff',
+  blue: '#1d4ed8',
+  blueBg: '#eff6ff',
+  orange: '#c2410c',
+  orangeBg: '#fff7ed',
+  teal: '#0f766e',
+  tealBg: '#f0fdfa',
+  tealBorder: '#99f6e4',
+  indigo: '#3730a3',
+  indigoBg: '#eef2ff',
   indigoBorder: '#c7d2fe',
+  slateBg: '#f8fafc',
+  slateText: '#64748b',
 }
 
 const ACCOUNT_COLOURS = {
-  sale:       C.navy,
+  sale: C.navy,
   renovation: C.purple,
-  rental:     C.green,
-  airbnb:     C.navyLight,
+  rental: C.blue,
+  airbnb: C.orange,
 } as const
+
+/* M6: monolingual label keys per account type */
+const ACCOUNT_LABEL_KEYS_PDF: Record<string, LabelKey> = {
+  sale: 'accountSale', renovation: 'accountRenovation',
+  rental: 'accountRental', airbnb: 'accountAirbnb',
+}
 
 /* ─── Styles ────────────────────────────────────────────────────────────────── */
 
@@ -115,11 +130,12 @@ const s = StyleSheet.create({
     borderBottomWidth: 2,
     borderBottomColor: C.navy,
   },
-  companyName:  { fontSize: 17, fontWeight: 'bold', color: C.navy, letterSpacing: 0.4 },
-  reportTitle:  { fontSize: 8.5, color: C.grayText, marginTop: 3 },
-  headerRight:  { alignItems: 'flex-end' },
-  headerDate:   { fontSize: 7.5, color: C.grayText, marginBottom: 2 },
-  headerLabel:  { fontSize: 7.5, fontWeight: 'bold', color: C.navy, letterSpacing: 0.5 },
+  companyName: { fontSize: 17, fontWeight: 'bold', color: C.navy, letterSpacing: 0.4 },
+  reportTitle: { fontSize: 8.5, color: C.grayText, marginTop: 2 },
+  reportSubTitle: { fontSize: 11, fontWeight: 'bold', color: C.navy, marginTop: 3 },
+  headerRight: { alignItems: 'flex-end' },
+  headerDate: { fontSize: 7.5, color: C.grayText, marginBottom: 2 },
+  headerLabel: { fontSize: 7.5, fontWeight: 'bold', color: C.navy, letterSpacing: 0.5 },
 
   // Meta
   metaBlock: {
@@ -128,27 +144,32 @@ const s = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: C.grayBorder,
   },
-  metaRow:   { flexDirection: 'row', marginBottom: 3 },
+  metaRow: { flexDirection: 'row', marginBottom: 3 },
   metaLabel: {
     fontSize: 7.5, fontWeight: 'bold', color: C.grayText,
     width: 72, textTransform: 'uppercase', letterSpacing: 0.3,
   },
   metaValue: { fontSize: 8.5, color: C.grayDark, flex: 1, lineHeight: 1.4 },
 
-  // Owner Dashboard strip
-  dashSection: { marginBottom: 14 },
+  // Owner Dashboard strip (aggregate KPIs — very top of report body)
+  dashSection: {
+    marginBottom: 14,
+  },
   dashHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 4,
+    paddingHorizontal: 0,
     marginBottom: 5,
   },
   dashHeaderTitle: {
     fontSize: 7.5, fontWeight: 'bold', color: C.navy,
     textTransform: 'uppercase', letterSpacing: 0.5,
   },
-  dashHeaderSub: { fontSize: 7, color: C.grayText },
+  dashHeaderSub: {
+    fontSize: 7, color: C.grayText,
+  },
   dashStrip: {
     flexDirection: 'row',
     borderWidth: 1,
@@ -177,12 +198,14 @@ const s = StyleSheet.create({
     textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 4,
     textAlign: 'center',
   },
-  dashCellValue: { fontSize: 13, fontWeight: 'bold', color: C.grayDark },
+  dashCellValue: {
+    fontSize: 13, fontWeight: 'bold', color: C.grayDark,
+  },
   dashCellSub: {
     fontSize: 6, color: C.grayText, marginTop: 2, textAlign: 'center',
   },
 
-  // Cross-account summary
+  // Cross-account summary card (at top of document)
   summaryCard: {
     flexDirection: 'row',
     borderWidth: 1,
@@ -192,16 +215,23 @@ const s = StyleSheet.create({
     overflow: 'hidden',
   },
   summaryCell: {
-    flex: 1, padding: 10, alignItems: 'center',
-    borderRightWidth: 1, borderRightColor: C.grayBorder,
+    flex: 1,
+    padding: 10,
+    alignItems: 'center',
+    borderRightWidth: 1,
+    borderRightColor: C.grayBorder,
   },
-  summaryCellLast: { flex: 1, padding: 10, alignItems: 'center' },
+  summaryCellLast: {
+    flex: 1,
+    padding: 10,
+    alignItems: 'center',
+  },
   summaryCellLabel: {
     fontSize: 7, fontWeight: 'bold', color: C.grayText,
     textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 4,
   },
   summaryCellValue: { fontSize: 13, fontWeight: 'bold' },
-  summaryCellSub:   { fontSize: 7, color: C.grayText, marginTop: 2 },
+  summaryCellSub: { fontSize: 7, color: C.grayText, marginTop: 2 },
 
   // Per-module metrics strip
   moduleMetrics: {
@@ -214,11 +244,18 @@ const s = StyleSheet.create({
     overflow: 'hidden',
   },
   moduleMetricCell: {
-    flex: 1, paddingVertical: 8, paddingHorizontal: 8,
-    borderRightWidth: 1, borderRightColor: C.grayBorder, alignItems: 'center',
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRightWidth: 1,
+    borderRightColor: C.grayBorder,
+    alignItems: 'center',
   },
   moduleMetricCellLast: {
-    flex: 1, paddingVertical: 8, paddingHorizontal: 8, alignItems: 'center',
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    alignItems: 'center',
   },
   moduleMetricLabel: {
     fontSize: 6.5, fontWeight: 'bold', color: C.grayText,
@@ -226,7 +263,7 @@ const s = StyleSheet.create({
     textAlign: 'center',
   },
   moduleMetricValue: { fontSize: 9, fontWeight: 'bold', color: C.grayDark },
-  moduleMetricSub:   { fontSize: 6, color: C.grayText, marginTop: 1, textAlign: 'center' },
+  moduleMetricSub: { fontSize: 6, color: C.grayText, marginTop: 1, textAlign: 'center' },
 
   // Account section
   accountSection: { marginBottom: 22 },
@@ -239,53 +276,78 @@ const s = StyleSheet.create({
     marginBottom: 6,
     borderRadius: 4,
   },
-  accountHeaderLeft:  { flexDirection: 'column' },
+  accountHeaderLeft: { flexDirection: 'column' },
   accountHeaderRight: { alignItems: 'flex-end' },
-  accountTitle:    { fontSize: 10, fontWeight: 'bold', color: C.white, letterSpacing: 0.6 },
-  accountTitleHe:  { fontSize: 8, color: C.white, opacity: 0.8, marginTop: 1 },
-  accountBalance:  { fontSize: 11, fontWeight: 'bold', color: C.white },
+  accountTitle: { fontSize: 10, fontWeight: 'bold', color: C.white, letterSpacing: 0.6 },
+  accountTitleHe: { fontSize: 8, color: C.white, opacity: 0.8, marginTop: 1 },
+  accountBalance: { fontSize: 11, fontWeight: 'bold', color: C.white },
   accountBalLabel: { fontSize: 7, color: C.white, opacity: 0.85, marginTop: 1 },
 
   // Sub-group header
   groupLabel: {
-    fontSize: 7.5, fontWeight: 'bold', color: C.grayText,
-    textTransform: 'uppercase', letterSpacing: 0.4,
-    paddingTop: 8, paddingBottom: 4, paddingHorizontal: 4,
+    fontSize: 7.5,
+    fontWeight: 'bold',
+    color: C.grayText,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    paddingTop: 8,
+    paddingBottom: 4,
+    paddingHorizontal: 4,
   },
 
   // Table
   tableHead: {
-    flexDirection: 'row', backgroundColor: C.grayBg,
-    paddingVertical: 3, paddingHorizontal: 6,
-    borderTopWidth: 1, borderBottomWidth: 1, borderColor: C.grayBorder,
+    flexDirection: 'row',
+    backgroundColor: C.grayBg,
+    paddingVertical: 3,
+    paddingHorizontal: 6,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: C.grayBorder,
   },
   tableRow: {
-    flexDirection: 'row', paddingVertical: 3.5, paddingHorizontal: 6,
-    borderBottomWidth: 1, borderBottomColor: C.grayLine,
+    flexDirection: 'row',
+    paddingVertical: 3.5,
+    paddingHorizontal: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: C.grayLine,
   },
   tableRowAlt: { backgroundColor: '#fafafa' },
   tableTot: {
-    flexDirection: 'row', paddingVertical: 3.5, paddingHorizontal: 6,
-    borderTopWidth: 1, borderTopColor: C.grayBorder, backgroundColor: C.grayBg,
+    flexDirection: 'row',
+    paddingVertical: 3.5,
+    paddingHorizontal: 6,
+    borderTopWidth: 1,
+    borderTopColor: C.grayBorder,
+    backgroundColor: C.grayBg,
   },
-  th:      { fontSize: 7, fontWeight: 'bold', color: C.grayText, textTransform: 'uppercase', letterSpacing: 0.2 },
-  td:      { fontSize: 7.5, color: C.grayDark },
+  th: { fontSize: 7, fontWeight: 'bold', color: C.grayText, textTransform: 'uppercase', letterSpacing: 0.2 },
+  td: { fontSize: 7.5, color: C.grayDark },
   tdMuted: { fontSize: 7.5, color: C.grayText },
-  tdBold:  { fontSize: 7.5, fontWeight: 'bold', color: C.grayDark },
-  tdInfo:  { fontSize: 7, color: C.grayMid },
-  cDate:   { width: 54 },
-  cDesc:   { flex: 1 },
-  cAmt:    { width: 74, textAlign: 'right' },
+  tdBold: { fontSize: 7.5, fontWeight: 'bold', color: C.grayDark },
+  tdInfo: { fontSize: 7, color: C.grayMid },
+  cDate: { width: 54 },
+  cDesc: { flex: 1 },
+  // NOTE: cAmt no longer has static textAlign — use rtlColumnOrder(lang) inline
+  cAmt: { width: 74 },
 
-  // Reference section
+  // Reference section (Section A)
   refSection: {
-    marginBottom: 6, borderWidth: 1, borderColor: C.grayBorder,
-    borderRadius: 3, overflow: 'hidden',
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: C.grayBorder,
+    borderRadius: 3,
+    overflow: 'hidden',
   },
   refHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    backgroundColor: '#f0f4f8', paddingVertical: 4, paddingHorizontal: 8,
-    borderBottomWidth: 1, borderBottomColor: C.grayBorder,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#f0f4f8',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: C.grayBorder,
   },
   refHeaderLabel: {
     fontSize: 7, fontWeight: 'bold', color: C.grayText,
@@ -293,173 +355,124 @@ const s = StyleSheet.create({
   },
   refHeaderNote: { fontSize: 6.5, color: C.grayMid },
   refRow: {
-    flexDirection: 'row', paddingVertical: 3.5, paddingHorizontal: 8,
-    borderBottomWidth: 1, borderBottomColor: C.grayLine,
+    flexDirection: 'row',
+    paddingVertical: 3.5,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: C.grayLine,
   },
 
   // Balance strip
   balStrip: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingVertical: 6, paddingHorizontal: 12, marginTop: 4,
-    borderTopWidth: 1.5, borderTopColor: C.grayBorder,
-    backgroundColor: C.grayBg, borderRadius: 3,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginTop: 4,
+    borderTopWidth: 1.5,
+    borderTopColor: C.grayBorder,
+    backgroundColor: C.grayBg,
+    borderRadius: 3,
   },
   balLabel: { fontSize: 8.5, fontWeight: 'bold', color: C.grayDark },
   balValue: { fontSize: 8.5, fontWeight: 'bold' },
-  balSub:   { fontSize: 7, color: C.grayText, marginTop: 1 },
+  balSub: { fontSize: 7, color: C.grayText, marginTop: 1 },
 
-  // Final Summary
+  // Final Summary block
   finalSection: {
-    marginTop: 16, backgroundColor: '#1e3a5f', borderRadius: 5, padding: 14,
+    marginTop: 16,
+    backgroundColor: '#1e3a5f',
+    borderRadius: 5,
+    padding: 14,
   },
   finalTitle: {
     fontSize: 6.5, fontWeight: 'bold', color: '#93c5fd',
     textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8,
   },
-  finalKpiRow: { flexDirection: 'row', marginBottom: 8 },
+  finalKpiRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
   finalKpiCell: {
-    flex: 1, backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 4, padding: 8, marginRight: 5,
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 4,
+    padding: 8,
+    marginRight: 5,
   },
   finalKpiCellLast: {
-    flex: 1, backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 4, padding: 8,
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 4,
+    padding: 8,
   },
   finalKpiLabel: { fontSize: 5.5, color: '#93c5fd', marginBottom: 3 },
   finalKpiValue: { fontSize: 9, fontWeight: 'bold', color: '#ffffff' },
   finalBalRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 4,
-    padding: 10, marginBottom: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 4,
+    padding: 10,
+    marginBottom: 10,
   },
   finalBalLabel: { fontSize: 8, fontWeight: 'bold', color: '#bfdbfe' },
   finalBalValue: { fontSize: 14, fontWeight: 'bold' },
-  finalBalSub:   { fontSize: 6.5, marginTop: 1 },
+  finalBalSub: { fontSize: 6.5, marginTop: 1 },
   finalDiscBorder: {
-    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.2)', paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.2)',
+    paddingTop: 8,
   },
   finalDiscTitle: {
     fontSize: 6, fontWeight: 'bold', color: '#60a5fa',
     textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 3,
   },
   finalDiscText: { fontSize: 6.5, color: '#bfdbfe', lineHeight: 1.5 },
-  finalDiscGen:  { fontSize: 6, color: '#60a5fa', marginTop: 4 },
+  finalDiscGen: { fontSize: 6, color: '#60a5fa', marginTop: 4 },
 
   // Footer
   footer: {
-    position: 'absolute', bottom: 18, left: 46, right: 46,
-    flexDirection: 'row', justifyContent: 'space-between',
-    borderTopWidth: 1, borderTopColor: C.grayBorder, paddingTop: 4,
+    position: 'absolute',
+    bottom: 18,
+    left: 46,
+    right: 46,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: C.grayBorder,
+    paddingTop: 4,
   },
   footerText: { fontSize: 6.5, color: C.grayText },
 
   // Disclosure
   disclosure: {
-    marginTop: 16, padding: 8,
-    backgroundColor: C.amberBg, borderWidth: 1,
-    borderColor: C.amberBorder, borderRadius: 3,
-  },
-  disclosureText: { fontSize: 7, color: C.amber, lineHeight: 1.5 },
-
-  // Gate 2: Certified STR block
-  strBlock: {
-    marginBottom: 16, borderWidth: 1, borderColor: C.tealBorder,
-    borderRadius: 5, overflow: 'hidden',
-  },
-  strHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    backgroundColor: C.tealBg, paddingVertical: 6, paddingHorizontal: 10,
-    borderBottomWidth: 1, borderBottomColor: C.tealBorder,
-  },
-  strHeaderTitle: {
-    fontSize: 8, fontWeight: 'bold', color: C.teal, letterSpacing: 0.3,
-  },
-  strHeaderSub: { fontSize: 6.5, color: C.teal, marginTop: 2 },
-  strStatusBadge: {
-    fontSize: 6.5, fontWeight: 'bold', paddingVertical: 2, paddingHorizontal: 6,
-    borderRadius: 3, borderWidth: 1,
-  },
-  strRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingVertical: 3, paddingHorizontal: 10,
-    borderBottomWidth: 1, borderBottomColor: C.grayLine,
-  },
-  strRowHighlight: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingVertical: 4, paddingHorizontal: 10,
-    borderBottomWidth: 1, borderBottomColor: C.grayLine,
-    backgroundColor: C.tealBg,
-  },
-  strLabel:     { fontSize: 7, color: C.grayDark },
-  strLabelBold: { fontSize: 7.5, fontWeight: 'bold', color: C.teal },
-  strValue:     { fontSize: 7, color: C.grayDark, textAlign: 'right' },
-  strValueBold: { fontSize: 7.5, fontWeight: 'bold', color: C.teal, textAlign: 'right' },
-  strWarning: {
-    paddingVertical: 3, paddingHorizontal: 10,
+    marginTop: 16,
+    padding: 8,
     backgroundColor: C.amberBg,
+    borderWidth: 1,
+    borderColor: C.amberBorder,
+    borderRadius: 3,
   },
-  strWarningText: { fontSize: 6, color: C.amber },
-
-  // Gate 2: Settlement block
-  settBlock: {
-    marginBottom: 16, borderWidth: 1, borderColor: C.indigoBorder,
-    borderRadius: 5, overflow: 'hidden',
-  },
-  settHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    backgroundColor: C.indigoBg, paddingVertical: 6, paddingHorizontal: 10,
-    borderBottomWidth: 1, borderBottomColor: C.indigoBorder,
-  },
-  settHeaderTitle: {
-    fontSize: 8, fontWeight: 'bold', color: C.indigo, letterSpacing: 0.3,
-  },
-  settHeaderSub: { fontSize: 6.5, color: C.indigo, marginTop: 2 },
-  settRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingVertical: 3, paddingHorizontal: 10,
-    borderBottomWidth: 1, borderBottomColor: C.grayLine,
-  },
-  settRowHighlight: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingVertical: 4, paddingHorizontal: 10,
-    backgroundColor: C.indigoBg,
-  },
-  settLabel:     { fontSize: 7, color: C.grayDark },
-  settLabelBold: { fontSize: 7.5, fontWeight: 'bold', color: C.indigo },
-  settValue:     { fontSize: 7, color: C.grayDark, textAlign: 'right' },
-  settValueBold: { fontSize: 7.5, fontWeight: 'bold', color: C.indigo, textAlign: 'right' },
-  settNotFinal:  { fontSize: 5.5, color: C.amber, marginTop: 1 },
-
-  // Gate 2: Evidence footer
-  evidenceBlock: {
-    marginTop: 14, padding: 10,
-    backgroundColor: C.grayBg, borderWidth: 1,
-    borderColor: C.grayBorder, borderRadius: 4,
-  },
-  evidenceTitle: {
-    fontSize: 6.5, fontWeight: 'bold', color: C.grayText,
-    textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 5,
-  },
-  evidenceRow: {
-    flexDirection: 'row', marginBottom: 2,
-  },
-  evidenceTag: {
-    fontSize: 5.5, fontWeight: 'bold', width: 22,
-    paddingVertical: 1, textAlign: 'center', borderRadius: 2,
-    marginRight: 5,
-  },
-  evidenceText: { fontSize: 6.5, color: C.grayText, flex: 1, lineHeight: 1.4 },
-  evidenceDisclaimer: {
-    fontSize: 6, color: C.grayMid, marginTop: 5,
-    paddingTop: 4, borderTopWidth: 1, borderTopColor: C.grayBorder,
-    lineHeight: 1.4,
-  },
+  // Gate 2 styles
+  strBlock: { marginBottom: 12, borderWidth: 1, borderColor: '#99f6e4', borderRadius: 6 },
+  strHeader: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#f0fdfa', borderBottomWidth: 1, borderBottomColor: '#99f6e4' },
+  strRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, paddingHorizontal: 10, paddingVertical: 4 },
+  strRowHighlight: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: '#f0fdfa' },
+  settlementBlock: { marginBottom: 12, borderWidth: 1, borderColor: '#c7d2fe', borderRadius: 6 },
+  settlementHeader: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#eef2ff', borderBottomWidth: 1, borderBottomColor: '#c7d2fe' },
+  settlementRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, paddingHorizontal: 10, paddingVertical: 4 },
+  settlementHighlight: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#eef2ff' },
+  evidenceBlock: { marginTop: 12, padding: 10, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 6 },
+  evidenceRow: { flexDirection: 'row' as const, gap: 4, marginBottom: 3 },
+  disclosureText: { fontSize: 7, color: C.amber, lineHeight: 1.5 },
 })
 
 /* ─── Balance helpers ───────────────────────────────────────────────────────── */
 
 function getBalLabel(section: RC3AccountSection, lang: Lang): string {
-  const b    = section.closing_balance
+  const b = section.closing_balance
   const conv = section.balance_convention
   if (Math.abs(b) < 0.005) return t('balSettled', lang)
   if (conv === 'owner_credit') {
@@ -470,11 +483,11 @@ function getBalLabel(section: RC3AccountSection, lang: Lang): string {
 }
 
 function getBalColor(section: RC3AccountSection): string {
-  const b    = section.closing_balance
+  const b = section.closing_balance
   const conv = section.balance_convention
   if (Math.abs(b) < 0.005) return C.grayText
   if (conv === 'owner_credit') return b > 0 ? C.green : C.red
-  else                         return b > 0 ? C.red   : C.green
+  else return b > 0 ? C.red : C.green
 }
 
 function fmtDate(iso: string): string {
@@ -485,18 +498,10 @@ function fmtDate(iso: string): string {
   } catch { return iso }
 }
 
-function fmtMonth(iso: string): string {
-  try {
-    return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', {
-      month: 'short', year: 'numeric',
-    })
-  } catch { return iso }
-}
-
 function fmtPeriod(report: RC3PropertyReport, lang: Lang): string {
   if (!report.from_date && !report.to_date) return t('execAllDates', lang)
   if (!report.from_date) return `Up to ${fmtDate(report.to_date!)}`
-  if (!report.to_date)   return `From ${fmtDate(report.from_date)}`
+  if (!report.to_date) return `From ${fmtDate(report.from_date)}`
   return `${fmtDate(report.from_date)} – ${fmtDate(report.to_date)}`
 }
 
@@ -511,18 +516,17 @@ function fmtGenerated(iso: string): string {
 
 /* ─── Sub-components ────────────────────────────────────────────────────────── */
 
-function DocHeader({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
+function DocHeader({ report, lang, reportTypeLabel }: { report: RC3PropertyReport; lang: Lang; reportTypeLabel: string }) {
   return (
-    <View style={s.header} fixed>
+    <View style={[s.header, rtlRowDirection(lang)]} fixed>
       <View>
-        <Text style={s.companyName}>JJ Property 10</Text>
-        <Text style={s.reportTitle}>
-          {t('reportTitle', lang)} — {report.reporting_name}
-        </Text>
+        <Text style={[s.companyName, rtlTextStyle(lang)]}>JJ Property 10</Text>
+        <Text style={[s.reportTitle, rtlTextStyle(lang)]}>{reportTypeLabel}</Text>
+        <Text style={[s.reportSubTitle, rtlTextStyle(lang)]}>{report.reporting_name}</Text>
       </View>
-      <View style={s.headerRight}>
-        <Text style={s.headerDate}>{fmtGenerated(report.generated_at)}</Text>
-        <Text style={s.headerLabel}>{t('confidential', lang)}</Text>
+      <View style={[s.headerRight, rtlAlignEnd(lang)]}>
+        <Text style={[s.headerDate, rtlTextStyle(lang)]}>{fmtGenerated(report.generated_at)}</Text>
+        <Text style={[s.headerLabel, rtlTextStyle(lang)]}>{t('confidential', lang)}</Text>
       </View>
     </View>
   )
@@ -531,30 +535,31 @@ function DocHeader({ report, lang }: { report: RC3PropertyReport; lang: Lang }) 
 function MetaBlock({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
   return (
     <View style={s.metaBlock}>
-      <View style={s.metaRow}>
-        <Text style={s.metaLabel}>{t('execProperty', lang)}</Text>
-        <Text style={s.metaValue}>{report.reporting_name}</Text>
+      <View style={[s.metaRow, rtlRowDirection(lang)]}>
+        <Text style={[s.metaLabel, rtlTextStyle(lang)]}>{t('execProperty', lang)}</Text>
+        <Text style={[s.metaValue, rtlTextStyle(lang)]}>{report.reporting_name}</Text>
       </View>
-      <View style={s.metaRow}>
-        <Text style={s.metaLabel}>{t('execPeriod', lang)}</Text>
-        <Text style={s.metaValue}>{fmtPeriod(report, lang)}</Text>
+      <View style={[s.metaRow, rtlRowDirection(lang)]}>
+        <Text style={[s.metaLabel, rtlTextStyle(lang)]}>{t('execPeriod', lang)}</Text>
+        <Text style={[s.metaValue, rtlTextStyle(lang)]}>{fmtPeriod(report, lang)}</Text>
       </View>
-      <View style={s.metaRow}>
-        <Text style={s.metaLabel}>Generated</Text>
-        <Text style={s.metaValue}>{fmtGenerated(report.generated_at)}</Text>
+      <View style={[s.metaRow, rtlRowDirection(lang)]}>
+        <Text style={[s.metaLabel, rtlTextStyle(lang)]}>{t('metaGenerated', lang)}</Text>
+        <Text style={[s.metaValue, rtlTextStyle(lang)]}>{fmtGenerated(report.generated_at)}</Text>
       </View>
     </View>
   )
 }
 
+/** Compute aggregate KPIs from account sections (presentation-only, no accounting logic). */
 function computeDashboard(accounts: RC3AccountSection[]) {
-  let totalIncome     = 0
-  let totalExpenses   = 0
-  let totalTransfers  = 0
+  let totalIncome = 0
+  let totalExpenses = 0
+  let totalTransfers = 0
   let netOwnerBalance = 0
   for (const acc of accounts) {
-    totalIncome    += acc.total_income
-    totalExpenses  += acc.total_expenses
+    totalIncome += acc.total_income
+    totalExpenses += acc.total_expenses
     totalTransfers += acc.total_bpo
     if (acc.balance_convention === 'owner_credit') {
       netOwnerBalance += acc.closing_balance
@@ -565,66 +570,111 @@ function computeDashboard(accounts: RC3AccountSection[]) {
   return { totalIncome, totalExpenses, totalTransfers, netOwnerBalance }
 }
 
-function OwnerDashboardPdf({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
-  const { totalIncome, totalExpenses, totalTransfers, netOwnerBalance } = computeDashboard(report.accounts)
+const M2_PDF_COLORS: Record<string, string> = {
+  sale: C.navy, renovation: C.purple, rental: C.blue, airbnb: C.orange,
+}
 
-  let balLabel: string; let balColor: string
-  if (Math.abs(netOwnerBalance) < 0.005) {
-    balLabel = t('balSettled', lang); balColor = C.grayText
-  } else if (netOwnerBalance > 0) {
-    balLabel = t('balPayableToYou', lang); balColor = C.green
-  } else {
-    balLabel = t('balPayableByYou', lang); balColor = C.red
+function PremiumSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
+  const net = computeNetOwnerBalance(report.accounts)
+  const { income: opIncome, expenses: opExpenses, transfers: opTransfers, hasOperational } =
+    computeOperationalKPIs(report.accounts)
+  const absNet = Math.abs(net)
+  const heroBg = absNet < 0.005 ? '#334155' : net > 0 ? '#14532d' : '#7f1d1d'
+  const heroColor = absNet < 0.005 ? '#ffffff' : net > 0 ? '#86efac' : '#fca5a5'
+  const heroLabel = absNet < 0.005 ? t('balSettled', lang) : net > 0 ? t('balPayableToYou', lang) : t('balPayableByYou', lang)
+  const period = report.from_date || report.to_date
+    ? `${report.from_date ? fmtDate(report.from_date) : '—'} – ${report.to_date ? fmtDate(report.to_date) : '—'}`
+    : t('execAllDates', lang)
+  const accLabelKeys: Record<string, LabelKey> = {
+    sale: 'accountSale', renovation: 'accountRenovation', rental: 'accountRental', airbnb: 'accountAirbnb',
   }
-
-  const cells = [
-    { label: t('dashIncome',    lang), value: totalIncome,               color: C.grayDark, sub: null     },
-    { label: t('dashExpenses',  lang), value: totalExpenses,             color: C.grayDark, sub: null     },
-    { label: t('dashTransfers', lang), value: totalTransfers,            color: C.grayDark, sub: null     },
-    { label: t('dashBalance',   lang), value: Math.abs(netOwnerBalance), color: balColor,   sub: balLabel },
-  ]
-
   return (
-    <View style={s.dashSection}>
-      <View style={s.dashHeader}>
-        <Text style={s.dashHeaderTitle}>{t('dashTitle', lang)}</Text>
-        <Text style={s.dashHeaderSub}>{report.reporting_name}</Text>
+    <View style={{ backgroundColor: '#0d1f36', borderRadius: 8, padding: 20, marginBottom: 16 }}>
+      {/* Header */}
+      <View style={[{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }, rtlRowDirection(lang)]}>
+        <View>
+          <Text style={[{ fontSize: 7, color: '#60a5fa', marginBottom: 3 }, rtlTextStyle(lang)]}>{t('execTitle', lang).toUpperCase()}</Text>
+          <Text style={[{ fontSize: 14, color: '#ffffff', fontWeight: 'bold' }, rtlTextStyle(lang)]}>{report.reporting_name}</Text>
+          <Text style={[{ fontSize: 9, color: '#93c5fd', marginTop: 3 }, rtlTextStyle(lang)]}>{period}</Text>
+        </View>
+        <Text style={[{ fontSize: 7, color: '#60a5fa' }, rtlTextStyle(lang)]}>{t('confidential', lang).toUpperCase()}</Text>
       </View>
-      <View style={s.dashStrip}>
-        {cells.map((cell, i) => {
-          const isLast = i === cells.length - 1
+      {/* Hero balance */}
+      <View style={[{ backgroundColor: heroBg, borderRadius: 6, padding: 14, marginBottom: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, rtlRowDirection(lang)]}>
+        <Text style={[{ fontSize: 7, color: 'rgba(255,255,255,0.5)' }, rtlTextStyle(lang)]}>{t('dashBalance', lang).toUpperCase()}</Text>
+        <View style={[{ alignItems: 'flex-end' }, rtlAlignEnd(lang)]}>
+          <Text style={{ fontSize: 22, color: heroColor, fontWeight: 'bold' }}>{fmt(absNet)}</Text>
+          <Text style={[{ fontSize: 8, color: heroColor, marginTop: 2 }, rtlTextStyle(lang)]}>{heroLabel}</Text>
+        </View>
+      </View>
+      {/* Operational KPIs */}
+      {hasOperational && (
+        <View style={{ marginBottom: 14 }}>
+          <Text style={[{ fontSize: 7, color: '#60a5fa', marginBottom: 6 }, rtlTextStyle(lang)]}>{t('opSummaryTitle', lang).toUpperCase()}</Text>
+          <View style={[{ flexDirection: 'row' }, rtlRowDirection(lang)]}>
+            {([
+              { label: t('opIncomeLabel', lang), value: opIncome },
+              { label: t('opExpensesLabel', lang), value: opExpenses },
+              { label: t('dashTransfers', lang), value: opTransfers },
+            ] as { label: string; value: number }[]).map((kpi, i) => (
+              <View key={kpi.label} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 4, padding: 8, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.1)', marginLeft: i > 0 ? 6 : 0 }}>
+                <Text style={[{ fontSize: 7, color: '#93c5fd', marginBottom: 4 }, rtlTextStyle(lang)]}>{kpi.label}</Text>
+                <Text style={{ fontSize: 10, color: '#ffffff', fontWeight: 'bold' }}>{fmt(kpi.value)}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+      {/* Module cards */}
+      <View style={[{ flexDirection: 'row', flexWrap: 'wrap' }, rtlRowDirection(lang)]}>
+        {report.accounts.map((acc, i) => {
+          const accColor = M2_PDF_COLORS[acc.account_type] ?? '#334155'
+          const balLabel = getBalLabel(acc, lang)
+          const absBalance = Math.abs(acc.closing_balance)
+          const lkKey = accLabelKeys[acc.account_type]
+          const metrics: { label: string; value: number }[] = (() => {
+            if (acc.account_type === 'sale') return [
+              { label: t('cardSaleContract', lang), value: acc.contract_baseline },
+              { label: t('cardSaleExpenses', lang), value: acc.total_income },
+              { label: t('cardSalePayments', lang), value: acc.total_expenses },
+            ]
+            if (acc.account_type === 'renovation') return [
+              { label: t('cardRenovContract', lang), value: acc.contract_baseline },
+              { label: t('cardRenovExtras', lang), value: acc.total_income },
+              { label: t('cardRenovPayments', lang), value: acc.total_expenses },
+            ]
+            if (acc.account_type === 'rental') return [
+              { label: t('cardRentalIncome', lang), value: acc.total_income },
+              { label: t('cardRentalExpenses', lang), value: acc.total_expenses },
+              { label: t('cardRentalBpo', lang), value: acc.total_bpo },
+            ]
+            return [
+              { label: t('cardAirbnbIncome', lang), value: acc.total_income },
+              { label: t('cardAirbnbExpenses', lang), value: acc.total_expenses },
+              { label: t('cardAirbnbBpo', lang), value: acc.total_bpo },
+            ]
+          })()
           return (
-            <View key={i} style={isLast ? s.dashCellLast : s.dashCell}>
-              <Text style={s.dashCellLabel}>{cell.label}</Text>
-              <Text style={[s.dashCellValue, { color: cell.color }]}>{fmt(cell.value)}</Text>
-              {cell.sub ? (
-                <Text style={[s.dashCellSub, { color: cell.color }]}>{cell.sub}</Text>
-              ) : null}
+            <View key={acc.account_type} style={{ flex: 1, minWidth: 90, borderRadius: 6, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.1)', marginLeft: i > 0 ? 6 : 0, marginTop: 0 }}>
+              <View style={{ backgroundColor: accColor, padding: 10 }}>
+                <Text style={[{ fontSize: 7, color: 'rgba(255,255,255,0.7)', marginBottom: 3 }, rtlTextStyle(lang)]}>
+                  {lkKey ? t(lkKey, lang) : acc.account_label}
+                </Text>
+                <Text style={[{ fontSize: 14, color: '#ffffff', fontWeight: 'bold' }, rtlTextStyle(lang)]}>{fmt(absBalance)}</Text>
+                <Text style={[{ fontSize: 7, color: 'rgba(255,255,255,0.75)', marginTop: 2 }, rtlTextStyle(lang)]}>{balLabel}</Text>
+              </View>
+              <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', padding: 8 }}>
+                {metrics.map(m => (
+                  <View key={m.label} style={[{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 }, rtlRowDirection(lang)]}>
+                    <Text style={[{ fontSize: 7, color: '#93c5fd' }, rtlTextStyle(lang)]}>{m.label}</Text>
+                    <Text style={{ fontSize: 7, color: 'rgba(255,255,255,0.85)' }}>{fmt(m.value)}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
           )
         })}
       </View>
-    </View>
-  )
-}
-
-function CrossAccountSummary({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
-  if (report.accounts.length <= 1) return null
-  return (
-    <View style={s.summaryCard}>
-      {report.accounts.map((acc, i) => {
-        const b     = acc.closing_balance
-        const color = getBalColor(acc)
-        const label = getBalLabel(acc, lang)
-        const isLast = i === report.accounts.length - 1
-        return (
-          <View key={acc.account_type} style={isLast ? s.summaryCellLast : s.summaryCell}>
-            <Text style={s.summaryCellLabel}>{acc.account_label}</Text>
-            <Text style={[s.summaryCellValue, { color }]}>{fmt(Math.abs(b))}</Text>
-            <Text style={[s.summaryCellSub, { color }]}>{label}</Text>
-          </View>
-        )
-      })}
     </View>
   )
 }
@@ -635,33 +685,33 @@ function ModuleMetrics({ section, lang }: { section: RC3AccountSection; lang: La
 
   if (section.account_type === 'sale') {
     metrics = [
-      { label: t('cardSaleContract', lang),  value: section.contract_baseline },
-      { label: t('cardSaleExpenses', lang),  value: section.total_income      },
-      { label: t('cardSalePayments', lang),  value: section.total_expenses     },
-      { label: t('cardSaleBalance', lang),   value: Math.abs(section.closing_balance), highlight: true },
+      { label: t('cardSaleContract', lang), value: section.contract_baseline },
+      { label: t('cardSaleExpenses', lang), value: section.total_income },
+      { label: t('cardSalePayments', lang), value: section.total_expenses },
+      { label: t('cardSaleBalance', lang), value: Math.abs(section.closing_balance), highlight: true },
     ]
   } else if (section.account_type === 'renovation') {
     const totalContract = section.contract_baseline + section.total_income
     metrics = [
-      { label: t('cardRenovContract', lang),  value: section.contract_baseline },
-      { label: t('cardRenovExtras', lang),    value: section.total_income       },
-      { label: t('cardRenovTotal', lang),     value: totalContract              },
-      { label: t('cardRenovPayments', lang),  value: section.total_expenses     },
-      { label: t('cardRenovBalance', lang),   value: Math.abs(section.closing_balance), highlight: true },
+      { label: t('cardRenovContract', lang), value: section.contract_baseline },
+      { label: t('cardRenovExtras', lang), value: section.total_income },
+      { label: t('cardRenovTotal', lang), value: totalContract },
+      { label: t('cardRenovPayments', lang), value: section.total_expenses },
+      { label: t('cardRenovBalance', lang), value: Math.abs(section.closing_balance), highlight: true },
     ]
   } else if (section.account_type === 'rental') {
     metrics = [
-      { label: t('cardRentalIncome', lang),    value: section.total_income    },
-      { label: t('cardRentalExpenses', lang),  value: section.total_expenses   },
-      { label: t('cardRentalBpo', lang),       value: section.total_bpo        },
-      { label: t('cardRentalBalance', lang),   value: Math.abs(section.closing_balance), highlight: true },
+      { label: t('cardRentalIncome', lang), value: section.total_income },
+      { label: t('cardRentalExpenses', lang), value: section.total_expenses },
+      { label: t('cardRentalBpo', lang), value: section.total_bpo },
+      { label: t('cardRentalBalance', lang), value: Math.abs(section.closing_balance), highlight: true },
     ]
   } else {
     metrics = [
-      { label: t('cardAirbnbIncome', lang),    value: section.total_income    },
-      { label: t('cardAirbnbExpenses', lang),  value: section.total_expenses   },
-      { label: t('cardAirbnbBpo', lang),       value: section.total_bpo        },
-      { label: t('cardAirbnbBalance', lang),   value: Math.abs(section.closing_balance), highlight: true },
+      { label: t('cardAirbnbIncome', lang), value: section.total_income },
+      { label: t('cardAirbnbExpenses', lang), value: section.total_expenses },
+      { label: t('cardAirbnbBpo', lang), value: section.total_bpo },
+      { label: t('cardAirbnbBalance', lang), value: Math.abs(section.closing_balance), highlight: true },
     ]
   }
 
@@ -673,12 +723,12 @@ function ModuleMetrics({ section, lang }: { section: RC3AccountSection; lang: La
         const isLast = i === metrics.length - 1
         return (
           <View key={i} style={isLast ? s.moduleMetricCellLast : s.moduleMetricCell}>
-            <Text style={s.moduleMetricLabel}>{m.label}</Text>
+            <Text style={[s.moduleMetricLabel, rtlTextStyle(lang)]}>{m.label}</Text>
             <Text style={[s.moduleMetricValue, m.highlight ? { color: balColor } : {}]}>
               {fmt(m.value)}
             </Text>
             {m.highlight && (
-              <Text style={[s.moduleMetricSub, { color: balColor }]}>
+              <Text style={[s.moduleMetricSub, { color: balColor }, rtlTextStyle(lang)]}>
                 {getBalLabel(section, lang)}
               </Text>
             )}
@@ -690,36 +740,48 @@ function ModuleMetrics({ section, lang }: { section: RC3AccountSection; lang: La
 }
 
 function TxGroupTable({
-  rows, groupLabel: label, isIncome, lang,
+  rows,
+  groupLabel: label,
+  isIncome,
+  lang,
 }: {
-  rows: RC3AccountRow[]; groupLabel: string; isIncome: boolean; lang: Lang
+  rows: ClientDisplayRow[]
+  groupLabel: string
+  isIncome: boolean
+  lang: Lang
 }) {
   if (rows.length === 0) return null
   const total = rows.reduce((s, r) => s + r.client_amount, 0)
   return (
     <View>
-      <Text style={s.groupLabel}>{label}</Text>
-      <View style={s.tableHead}>
-        <Text style={[s.th, s.cDate]}>{t('thDate', lang)}</Text>
-        <Text style={[s.th, s.cDesc]}>{t('thDescription', lang)}</Text>
-        <Text style={[s.th, s.cAmt]}>{t('thAmount', lang)}</Text>
+      <Text style={[s.groupLabel, rtlTextStyle(lang)]}>{label}</Text>
+      <View style={[s.tableHead, rtlRowDirection(lang)]}>
+        <Text style={[s.th, s.cDate, rtlTextStyle(lang)]}>{t('thDate', lang)}</Text>
+        <Text style={[s.th, s.cDesc, rtlTextStyle(lang)]}>{t('thDescription', lang)}</Text>
+        <Text style={[s.th, s.cAmt, rtlColumnOrder(lang)]}>{t('thAmount', lang)}</Text>
       </View>
       {rows.map((row, i) => {
         const desc = buildRowLabel(row, lang)
         return (
-          <View key={row.id} style={[s.tableRow, i % 2 === 1 ? s.tableRowAlt : {}]} wrap={false}>
+          <View
+            key={row.id}
+            style={[s.tableRow, i % 2 === 1 ? s.tableRowAlt : {}, rtlRowDirection(lang)]}
+            wrap={false}
+          >
             <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date)}</Text>
-            <View style={s.cDesc}><Text style={s.td}>{desc}</Text></View>
-            <Text style={[s.cAmt, s.td, { color: isIncome ? C.green : C.grayDark }]}>
+            <View style={s.cDesc}>
+              <Text style={[s.td, rtlTextStyle(lang)]}>{desc}</Text>
+            </View>
+            <Text style={[s.cAmt, s.td, rtlColumnOrder(lang), { color: isIncome ? C.green : C.grayDark }]}>
               {fmt(row.client_amount)}
             </Text>
           </View>
         )
       })}
-      <View style={s.tableTot}>
+      <View style={[s.tableTot, rtlRowDirection(lang)]}>
         <Text style={[s.tdBold, s.cDate]} />
-        <Text style={[s.tdBold, s.cDesc]}>{t('total', lang)}</Text>
-        <Text style={[s.tdBold, s.cAmt, { color: isIncome ? C.green : C.grayDark }]}>
+        <Text style={[s.tdBold, s.cDesc, rtlTextStyle(lang)]}>{t('total', lang)}</Text>
+        <Text style={[s.tdBold, s.cAmt, rtlColumnOrder(lang), { color: isIncome ? C.green : C.grayDark }]}>
           {fmt(total)}
         </Text>
       </View>
@@ -727,21 +789,23 @@ function TxGroupTable({
   )
 }
 
-function RefSection({ rows, lang }: { rows: RC3AccountRow[]; lang: Lang }) {
+function RefSection({ rows, lang }: { rows: ClientDisplayRow[]; lang: Lang }) {
   if (rows.length === 0) return null
   return (
     <View style={s.refSection}>
-      <View style={s.refHeader}>
-        <Text style={s.refHeaderLabel}>{t('contractInfo', lang)}</Text>
-        <Text style={s.refHeaderNote}>{t('contractInfoNote', lang)}</Text>
+      <View style={[s.refHeader, rtlRowDirection(lang)]}>
+        <Text style={[s.refHeaderLabel, rtlTextStyle(lang)]}>{t('contractInfo', lang)}</Text>
+        <Text style={[s.refHeaderNote, rtlTextStyle(lang)]}>{t('contractInfoNote', lang)}</Text>
       </View>
       {rows.map((row) => {
         const desc = buildRowLabel(row, lang)
         return (
-          <View key={row.id} style={s.refRow} wrap={false}>
+          <View key={row.id} style={[s.refRow, rtlRowDirection(lang)]} wrap={false}>
             <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date)}</Text>
-            <View style={s.cDesc}><Text style={s.tdInfo}>{desc}</Text></View>
-            <Text style={[s.cAmt, s.tdInfo]}>{fmt(row.client_amount)}</Text>
+            <View style={s.cDesc}>
+              <Text style={[s.tdInfo, rtlTextStyle(lang)]}>{desc}</Text>
+            </View>
+            <Text style={[s.cAmt, s.tdInfo, rtlColumnOrder(lang)]}>{fmt(row.client_amount)}</Text>
           </View>
         )
       })}
@@ -749,57 +813,122 @@ function RefSection({ rows, lang }: { rows: RC3AccountRow[]; lang: Lang }) {
   )
 }
 
-function AccountBlock({ section, lang }: { section: RC3AccountSection; lang: Lang }) {
-  const acColor  = ACCOUNT_COLOURS[section.account_type] ?? C.navy
-  const balColor = getBalColor(section)
-  const balText  = getBalLabel(section, lang)
+function GroupedExpensesPdf({
+  rows,
+  sectionLabel,
+  lang,
+}: {
+  rows: ClientDisplayRow[]
+  sectionLabel: string
+  lang: Lang
+}) {
+  if (rows.length === 0) return null
+  const groups = groupExpenses(rows)
+  if (groups.length === 0) return null
+  return (
+    <View>
+      <Text style={[s.groupLabel, rtlTextStyle(lang)]}>{sectionLabel}</Text>
+      {groups.map(({ key: groupKey, rows: groupRows, total: groupTotal }) => (
+        <View key={groupKey}>
+          <View style={[s.tableHead, { paddingLeft: isRTL(lang) ? 6 : 10, paddingRight: isRTL(lang) ? 10 : 6 }, rtlRowDirection(lang)]}>
+            <Text style={[s.th, s.cDesc, { color: '#1e3a5f' }, rtlTextStyle(lang)]}>{t(groupKey, lang)}</Text>
+            <Text style={[s.th, { width: 22, textAlign: 'center', color: '#94a3b8' }]}>({groupRows.length})</Text>
+            <Text style={[s.th, s.cAmt, rtlColumnOrder(lang), { color: '#1e3a5f' }]}>{fmt(groupTotal)}</Text>
+          </View>
+          {groupRows.map((row, i) => (
+            <View key={row.id} style={[s.tableRow, i % 2 === 1 ? s.tableRowAlt : {}, { paddingLeft: isRTL(lang) ? 6 : 18, paddingRight: isRTL(lang) ? 18 : 6 }, rtlRowDirection(lang)]} wrap={false}>
+              <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date)}</Text>
+              <View style={s.cDesc}><Text style={[s.tdMuted, rtlTextStyle(lang)]}>{buildRowLabel(row, lang)}</Text></View>
+              <Text style={[s.cAmt, s.tdMuted, rtlColumnOrder(lang)]}>{fmt(row.client_amount)}</Text>
+            </View>
+          ))}
+        </View>
+      ))}
+      <View style={[s.tableTot, rtlRowDirection(lang)]}>
+        <Text style={[s.tdBold, s.cDate]} />
+        <Text style={[s.tdBold, s.cDesc, rtlTextStyle(lang)]}>{t('total', lang)}</Text>
+        <Text style={[s.tdBold, s.cAmt, rtlColumnOrder(lang)]}>{fmt(rows.reduce((sum, r) => sum + r.client_amount, 0))}</Text>
+      </View>
+    </View>
+  )
+}
 
-  const referenceRows = section.rows.filter(r => r.display_group === 'reference')
-  const incomeRows    = section.rows.filter(r => r.display_group === 'income')
-  const expenseRows   = section.rows.filter(r => r.display_group === 'expense')
-  const payoutRows    = section.rows.filter(r => r.display_group === 'payment_out')
+function AccountBlock({ section, lang }: { section: RC3AccountSection; lang: Lang }) {
+  const acColor = ACCOUNT_COLOURS[section.account_type] ?? C.navy
+  const balColor = getBalColor(section)
+  const balText = getBalLabel(section, lang)
+
+  const referenceRows = section.rows.filter(r => r.display_group === 'reference').map(toClientRow)
+  const incomeRows = section.rows.filter(r => r.display_group === 'income').map(toClientRow)
+  const expenseRows = section.rows.filter(r => r.display_group === 'expense').map(toClientRow)
+  const payoutRows = section.rows.filter(r => r.display_group === 'payment_out').map(toClientRow)
 
   type AccountKey = 'sale' | 'renovation' | 'rental' | 'airbnb'
   const incomeLabelMap: Record<AccountKey, string> = {
-    sale: t('incomeSale', lang), renovation: t('incomeRenov', lang),
-    rental: t('incomeRental', lang), airbnb: t('incomeAirbnb', lang),
+    sale: t('incomeSale', lang),
+    renovation: t('incomeRenov', lang),
+    rental: t('incomeRental', lang),
+    airbnb: t('incomeAirbnb', lang),
   }
   const expenseLabelMap: Record<AccountKey, string> = {
-    sale: t('expensesSale', lang), renovation: t('expensesRenov', lang),
-    rental: t('expensesRental', lang), airbnb: t('expensesAirbnb', lang),
+    sale: t('expensesSale', lang),
+    renovation: t('expensesRenov', lang),
+    rental: t('expensesRental', lang),
+    airbnb: t('expensesAirbnb', lang),
   }
 
   const at = section.account_type as AccountKey
+  const incomeLabel = incomeLabelMap[at] ?? 'Income'
+  const expenseLabel = expenseLabelMap[at] ?? 'Expenses'
 
   return (
     <View style={s.accountSection} break={false}>
-      <View style={[s.accountHeader, { backgroundColor: acColor }]}>
+      {/* Account header bar */}
+      <View style={[s.accountHeader, { backgroundColor: acColor }, rtlRowDirection(lang)]}>
         <View style={s.accountHeaderLeft}>
-          <Text style={s.accountTitle}>{section.account_label}</Text>
-          {section.account_label_he ? (
-            <Text style={s.accountTitleHe}>{section.account_label_he}</Text>
-          ) : null}
+          {/* M6: monolingual label — t(key, lang) never raw account_label */}
+          <Text style={[s.accountTitle, rtlTextStyle(lang)]}>
+            {ACCOUNT_LABEL_KEYS_PDF[section.account_type]
+              ? t(ACCOUNT_LABEL_KEYS_PDF[section.account_type], lang)
+              : section.account_label}
+          </Text>
         </View>
-        <View style={s.accountHeaderRight}>
+        <View style={[s.accountHeaderRight, rtlAlignEnd(lang)]}>
           <Text style={[s.accountBalance, { color: C.white }]}>
             {fmt(Math.abs(section.closing_balance))}
           </Text>
-          <Text style={s.accountBalLabel}>{balText}</Text>
+          <Text style={[s.accountBalLabel, rtlTextStyle(lang)]}>{balText}</Text>
         </View>
       </View>
 
+      {/* Per-module metrics strip */}
       <ModuleMetrics section={section} lang={lang} />
+
+      {/* Section A — Reference rows */}
       <RefSection rows={referenceRows} lang={lang} />
-      <TxGroupTable rows={incomeRows}  groupLabel={incomeLabelMap[at] ?? 'Income'}  isIncome={true}  lang={lang} />
-      <TxGroupTable rows={expenseRows} groupLabel={expenseLabelMap[at] ?? 'Expenses'} isIncome={false} lang={lang} />
+
+      {/* Section B — Balance-affecting transactions */}
+      <TxGroupTable rows={incomeRows} groupLabel={incomeLabel} isIncome={true} lang={lang} />
+      {(section.account_type === 'rental' || section.account_type === 'airbnb')
+        ? <GroupedExpensesPdf rows={expenseRows} sectionLabel={expenseLabel} lang={lang} />
+        : <TxGroupTable rows={expenseRows} groupLabel={expenseLabel} isIncome={false} lang={lang} />
+      }
       {payoutRows.length > 0 ? (
         <TxGroupTable rows={payoutRows} groupLabel={t('bpoLabel', lang)} isIncome={false} lang={lang} />
       ) : null}
 
-      <View style={s.balStrip}>
+      {/* Section C — suppressed from client PDF */}
+
+      {/* Balance strip */}
+      <View style={[s.balStrip, rtlRowDirection(lang)]}>
         <View>
-          <Text style={s.balLabel}>{section.account_label}</Text>
-          <Text style={s.balSub}>{balText}</Text>
+          {/* M6: monolingual balance label */}
+          <Text style={[s.balLabel, rtlTextStyle(lang)]}>
+            {ACCOUNT_LABEL_KEYS_PDF[section.account_type]
+              ? t(ACCOUNT_LABEL_KEYS_PDF[section.account_type], lang)
+              : section.account_label}
+          </Text>
+          <Text style={[s.balSub, rtlTextStyle(lang)]}>{balText}</Text>
         </View>
         <Text style={[s.balValue, { color: balColor }]}>
           {fmt(Math.abs(section.closing_balance))}
@@ -809,198 +938,7 @@ function AccountBlock({ section, lang }: { section: RC3AccountSection; lang: Lan
   )
 }
 
-/* ─── Gate 2: Certified STR Block (PDF) ─────────────────────────────────────── */
-
-function CertifiedSTRBlockPdf({ str, lang }: { str: CertifiedSTRSummary; lang: Lang }) {
-  const isCertified = str.all_months_certified && str.all_controls_pass
-  const statusColor = isCertified ? C.green : C.amber
-  const statusBg    = isCertified ? C.greenBg : C.amberBg
-  const statusBorder = isCertified ? C.greenBorder : C.amberBorder
-  const statusText  = isCertified ? t('certifiedStrCertified', lang) : t('certifiedStrPending', lang)
-
-  const firstMonth = str.months[0]?.reporting_month
-  const lastMonth  = str.months[str.months.length - 1]?.reporting_month
-  const periodLabel = firstMonth && lastMonth
-    ? `${fmtMonth(firstMonth)} – ${fmtMonth(lastMonth)} (${str.months.length} ${t('certifiedStrMonths', lang)})`
-    : ''
-
-  const lines: { label: string; value: number; bold?: boolean; neg?: boolean }[] = [
-    { label: t('certifiedStrRevenue', lang),      value: str.total_gross_rental_revenue },
-    { label: t('certifiedStrCleaning', lang),      value: str.total_cleaning_income },
-    { label: t('certifiedStrPlatformFees', lang),  value: -(str.total_platform_fees + str.total_payment_fees), neg: true },
-    { label: t('certifiedStrTaxes', lang),         value: -str.total_taxes, neg: true },
-    { label: t('certifiedStrMgmtFee', lang),       value: -str.total_management_fee, neg: true },
-    { label: t('certifiedStrExpenses', lang),       value: -str.total_owner_chargeable_expenses, neg: true },
-    { label: t('certifiedStrEntitlement', lang),   value: str.total_owner_entitlement, bold: true },
-    { label: t('certifiedStrPayments', lang),      value: -str.total_owner_payments, neg: true },
-    { label: t('certifiedStrBalance', lang),       value: str.total_period_balance, bold: true },
-  ]
-
-  return (
-    <View style={s.strBlock}>
-      <View style={s.strHeader}>
-        <View>
-          <Text style={s.strHeaderTitle}>{t('certifiedStrTitle', lang)}</Text>
-          <Text style={s.strHeaderSub}>{t('certifiedStrSubtitle', lang)}</Text>
-        </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={[s.strStatusBadge, {
-            color: statusColor,
-            backgroundColor: statusBg,
-            borderColor: statusBorder,
-          }]}>
-            {statusText}
-          </Text>
-          <Text style={{ fontSize: 6, color: C.teal, marginTop: 2 }}>{periodLabel}</Text>
-          <Text style={{ fontSize: 5.5, color: C.grayText, marginTop: 1 }}>
-            {str.total_reservation_count} {t('certifiedStrReservations', lang)} · {str.total_booked_nights} {t('certifiedStrNights', lang)}
-          </Text>
-        </View>
-      </View>
-
-      {str.period_coverage === 'partial' && (
-        <View style={s.strWarning}>
-          <Text style={s.strWarningText}>{t('certifiedStrPartial', lang)}</Text>
-        </View>
-      )}
-
-      {lines.map((line, i) => (
-        <View key={i} style={line.bold ? s.strRowHighlight : s.strRow}>
-          <Text style={line.bold ? s.strLabelBold : s.strLabel}>{line.label}</Text>
-          <Text style={[
-            line.bold ? s.strValueBold : s.strValue,
-            line.bold ? {} : { color: line.neg ? C.red : C.green },
-          ]}>
-            {fmt(line.value)}
-          </Text>
-        </View>
-      ))}
-
-      {str.has_any_unresolved && (
-        <View style={s.strWarning}>
-          <Text style={s.strWarningText}>Some months have unresolved data items</Text>
-        </View>
-      )}
-    </View>
-  )
-}
-
-/* ─── Gate 2: Settlement Block (PDF) ─────────────────────────────────────────── */
-
-function SettlementBlockPdf({ settlement, lang }: { settlement: CounterpartySettlement; lang: Lang }) {
-  const isCertified = settlement.confidence_status === 'CERTIFIED'
-
-  let posColor: string; let posLabel: string
-  if (settlement.position_direction === 'jj_owes_counterparty') {
-    posColor = C.green; posLabel = t('settlementJjOwes', lang)
-  } else if (settlement.position_direction === 'counterparty_owes_jj') {
-    posColor = C.red; posLabel = t('settlementCpOwes', lang)
-  } else {
-    posColor = C.grayText; posLabel = t('settlementSettled', lang)
-  }
-
-  const domains = [
-    { label: t('settlementStrDomain', lang),  value: settlement.str_balance },
-    { label: t('settlementMgmtDomain', lang), value: settlement.management_balance },
-    { label: t('settlementRenoDomain', lang), value: settlement.renovation_balance },
-    { label: t('settlementSaleDomain', lang), value: settlement.sale_balance },
-  ]
-
-  return (
-    <View style={s.settBlock}>
-      <View style={s.settHeader}>
-        <View>
-          <Text style={s.settHeaderTitle}>{t('settlementTitle', lang)}</Text>
-          <Text style={s.settHeaderSub}>{t('settlementSubtitle', lang)}</Text>
-        </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={{ fontSize: 7, color: C.indigo }}>
-            {t('settlementCounterparty', lang)}: {settlement.counterparty_name}
-          </Text>
-          <Text style={{ fontSize: 6, color: C.grayText, marginTop: 1 }}>
-            {t('settlementAsOf', lang)} {fmtDate(settlement.as_of_date)}
-          </Text>
-        </View>
-      </View>
-
-      {settlement.has_unresolved_history && (
-        <View style={s.strWarning}>
-          <Text style={s.strWarningText}>{t('settlementWarning', lang)}</Text>
-        </View>
-      )}
-
-      {domains.map((d, i) => (
-        <View key={i} style={s.settRow}>
-          <Text style={s.settLabel}>{d.label}</Text>
-          <Text style={[s.settValue, { color: d.value > 0 ? C.green : d.value < 0 ? C.red : C.grayMid }]}>
-            {fmt(d.value)}
-          </Text>
-        </View>
-      ))}
-
-      <View style={[s.settRow, { backgroundColor: C.grayBg }]}>
-        <Text style={[s.settLabel, { fontWeight: 'bold' }]}>{t('settlementGross', lang)}</Text>
-        <Text style={[s.settValue, { fontWeight: 'bold' }]}>{fmt(settlement.gross_counterparty_position)}</Text>
-      </View>
-
-      <View style={s.settRow}>
-        <Text style={s.settLabel}>{t('settlementOwnerPayments', lang)}</Text>
-        <Text style={[s.settValue, { color: C.red }]}>{fmt(-settlement.owner_payments)}</Text>
-      </View>
-
-      <View style={s.settRowHighlight}>
-        <View>
-          <Text style={s.settLabelBold}>{t('settlementFinal', lang)}</Text>
-          {!isCertified && (
-            <Text style={s.settNotFinal}>{t('settlementNotFinal', lang)}</Text>
-          )}
-        </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={[s.settValueBold, { color: posColor, fontSize: 10 }]}>
-            {fmt(Math.abs(settlement.final_counterparty_position))}
-          </Text>
-          <Text style={{ fontSize: 6, color: posColor, marginTop: 1 }}>{posLabel}</Text>
-        </View>
-      </View>
-    </View>
-  )
-}
-
-/* ─── Gate 2: Evidence Footer (PDF) ──────────────────────────────────────────── */
-
-function EvidenceFooterPdf({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
-  const hasStr = report.certifiedSTR !== null
-  const hasSettlement = report.settlement !== null
-  if (!hasStr && !hasSettlement) return null
-
-  return (
-    <View style={s.evidenceBlock}>
-      <Text style={s.evidenceTitle}>{t('evidenceTitle', lang)}</Text>
-
-      {hasStr && (
-        <View style={s.evidenceRow}>
-          <Text style={[s.evidenceTag, { color: C.teal, backgroundColor: C.tealBg }]}>STR</Text>
-          <Text style={s.evidenceText}>{t('evidenceStrSource', lang)}</Text>
-        </View>
-      )}
-      <View style={s.evidenceRow}>
-        <Text style={[s.evidenceTag, { color: C.navy, backgroundColor: '#eff6ff' }]}>TXN</Text>
-        <Text style={s.evidenceText}>{t('evidenceMgmtSource', lang)}</Text>
-      </View>
-      {hasSettlement && (
-        <View style={s.evidenceRow}>
-          <Text style={[s.evidenceTag, { color: C.indigo, backgroundColor: C.indigoBg }]}>SET</Text>
-          <Text style={s.evidenceText}>{t('evidenceSettlementSource', lang)}</Text>
-        </View>
-      )}
-
-      <Text style={s.evidenceDisclaimer}>{t('evidenceDisclaimer', lang)}</Text>
-    </View>
-  )
-}
-
-/* ─── Final Summary ─────────────────────────────────────────────────────────── */
-
+/** Final settlement summary + disclaimer (dark navy block at end of PDF) */
 function FinalSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
   const { totalIncome, totalExpenses, totalTransfers, netOwnerBalance } = computeDashboard(report.accounts)
 
@@ -1022,38 +960,45 @@ function FinalSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: La
   })()
 
   const kpis = [
-    { label: t('finalTotalIncome',    lang), value: totalIncome    },
-    { label: t('finalTotalExpenses',  lang), value: totalExpenses  },
+    { label: t('finalTotalIncome', lang), value: totalIncome },
+    { label: t('finalTotalExpenses', lang), value: totalExpenses },
     { label: t('finalTotalTransfers', lang), value: totalTransfers },
   ]
 
   return (
     <View style={s.finalSection}>
-      <Text style={s.finalTitle}>{t('finalTitle', lang)}</Text>
+      <Text style={[s.finalTitle, rtlTextStyle(lang)]}>{t('finalTitle', lang)}</Text>
 
-      <View style={s.finalKpiRow}>
+      {/* 3 KPI cells */}
+      <View style={[s.finalKpiRow, rtlRowDirection(lang)]}>
         {kpis.map((k, i) => (
           <View key={i} style={i < kpis.length - 1 ? s.finalKpiCell : s.finalKpiCellLast}>
-            <Text style={s.finalKpiLabel}>{k.label}</Text>
+            <Text style={[s.finalKpiLabel, rtlTextStyle(lang)]}>{k.label}</Text>
             <Text style={s.finalKpiValue}>{fmt(k.value)}</Text>
           </View>
         ))}
       </View>
 
-      <View style={s.finalBalRow}>
-        <Text style={s.finalBalLabel}>{t('finalCurrentBalance', lang)}</Text>
-        <View style={{ alignItems: 'flex-end' }}>
+      {/* Net balance */}
+      <View style={[s.finalBalRow, rtlRowDirection(lang)]}>
+        <Text style={[s.finalBalLabel, rtlTextStyle(lang)]}>{t('finalCurrentBalance', lang)}</Text>
+        <View style={[{ alignItems: 'flex-end' }, rtlAlignEnd(lang)]}>
           <Text style={[s.finalBalValue, { color: balColor }]}>
             {fmt(Math.abs(netOwnerBalance))}
           </Text>
-          <Text style={[s.finalBalSub, { color: balColor }]}>{balLabel}</Text>
+          <Text style={[s.finalBalSub, { color: balColor }, rtlTextStyle(lang)]}>{balLabel}</Text>
         </View>
       </View>
 
+      {/* Disclaimer */}
       <View style={s.finalDiscBorder}>
-        <Text style={s.finalDiscTitle}>{t('finalNoteTitle', lang)}</Text>
-        <Text style={s.finalDiscText}>{t('finalDisclaimer', lang)}</Text>
-        <Text style={s.finalDiscGen}>{t('finalGenerated', lang)}: {genDate}</Text>
+        <Text style={[s.finalDiscTitle, rtlTextStyle(lang)]}>{t('finalNoteTitle', lang)}</Text>
+        <Text style={[s.finalDiscText, rtlTextStyle(lang)]}>{t('finalDisclaimer', lang)}</Text>
+        <Text style={[s.finalDiscGen, rtlTextStyle(lang)]}>{t('finalGenerated', lang)}: {genDate}</Text>
+        {/* M6: closing statement */}
+        <Text style={[{ fontSize: 6, color: 'rgba(255,255,255,0.25)', marginTop: 8, textAlign: isRTL(lang) ? 'left' : 'right' }]}>
+          {t('finalEndStatement', lang)}
+        </Text>
       </View>
     </View>
   )
@@ -1062,14 +1007,30 @@ function FinalSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: La
 function DocFooter({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
   const period = fmtPeriod(report, lang)
   return (
-    <View style={s.footer} fixed>
-      <Text style={s.footerText}>
-        JJ Property 10 · {report.reporting_name} · {period} · {t('confidential', lang)}
+    <View style={[s.footer, rtlRowDirection(lang)]} fixed>
+      <Text style={[s.footerText, rtlTextStyle(lang)]}>
+        JJ Property 10 · {report.reporting_name} · {period} · {t('confidential', lang)} · {t('footerVersion', lang)}
       </Text>
       <Text
         style={s.footerText}
-        render={({ pageNumber, totalPages }) => `Page ${pageNumber} / ${totalPages}`}
+        render={({ pageNumber, totalPages }) => `${t('pageLabel', lang)} ${pageNumber} / ${totalPages}`}
       />
+    </View>
+  )
+}
+
+function Disclosure({ lang }: { lang: Lang }) {
+  return (
+    <View style={s.disclosure}>
+      <Text style={[s.disclosureText, { fontWeight: 'bold' }, rtlTextStyle(lang)]}>
+        ⚠ {t('openingBalTitle', lang)}
+      </Text>
+      <Text style={[s.disclosureText, rtlTextStyle(lang)]}>
+        {t('openingBalDetail', lang)}
+      </Text>
+      <Text style={[s.disclosureText, { marginTop: 4 }, rtlTextStyle(lang)]}>
+        {t('finalDisclaimer', lang)}
+      </Text>
     </View>
   )
 }
@@ -1078,47 +1039,229 @@ function DocFooter({ report, lang }: { report: RC3PropertyReport; lang: Lang }) 
 
 export interface OwnerSettlementPdfV3Props {
   report: RC3PropertyReport
-  lang?:  Lang
+  lang?: Lang
+  reportType?: ReportType
 }
 
-export function OwnerSettlementPdfV3({ report, lang = 'en' }: OwnerSettlementPdfV3Props) {
+/* ─── Gate 2: Certified STR Block ─────────────────────────────────────────── */
+
+function CertifiedSTRBlockPdf({ str, lang }: { str: CertifiedSTRSummary; lang: Lang }) {
+  const isCertified = str.all_months_certified && str.all_controls_pass
+  const statusText = isCertified ? t('certifiedStrCertified', lang) : t('certifiedStrPending', lang)
+  const statusColor = isCertified ? C.green : C.amber
+
+  const firstMonth = str.months[0]?.reporting_month
+  const lastMonth = str.months[str.months.length - 1]?.reporting_month
+  const periodLabel = firstMonth && lastMonth
+    ? `${fmtMonth(firstMonth)} \u2013 ${fmtMonth(lastMonth)} (${str.months.length} ${t('certifiedStrMonths', lang)})`
+    : ''
+
+  const lines: { label: string; value: number; highlight?: boolean; negative?: boolean }[] = [
+    { label: t('certifiedStrRevenue', lang), value: str.total_gross_rental_revenue },
+    { label: t('certifiedStrCleaning', lang), value: str.total_cleaning_income },
+    { label: t('certifiedStrPlatformFees', lang), value: -(str.total_platform_fees + str.total_payment_fees), negative: true },
+    { label: t('certifiedStrTaxes', lang), value: -str.total_taxes, negative: true },
+    { label: t('certifiedStrMgmtFee', lang), value: -str.total_management_fee, negative: true },
+    { label: t('certifiedStrExpenses', lang), value: -str.total_owner_chargeable_expenses, negative: true },
+    { label: t('certifiedStrEntitlement', lang), value: str.total_owner_entitlement, highlight: true },
+    { label: t('certifiedStrPayments', lang), value: -str.total_owner_payments, negative: true },
+    { label: t('certifiedStrBalance', lang), value: str.total_period_balance, highlight: true },
+  ]
+
+  return (
+    <View style={s.strBlock}>
+      <View style={s.strHeader}>
+        <View>
+          <Text style={{ fontSize: 9, fontWeight: 700, color: C.teal }}>{t('certifiedStrTitle', lang)}</Text>
+          <Text style={{ fontSize: 7, color: C.teal, marginTop: 1 }}>{t('certifiedStrSubtitle', lang)}</Text>
+        </View>
+        <View style={{ alignItems: 'flex-end' as const }}>
+          <Text style={{ fontSize: 7, color: statusColor, fontWeight: 700 }}>{statusText}</Text>
+          <Text style={{ fontSize: 7, color: C.teal }}>{periodLabel}</Text>
+          <Text style={{ fontSize: 6, color: C.grayMid }}>
+            {str.total_reservation_count} {t('certifiedStrReservations', lang)} \u00b7 {str.total_booked_nights} {t('certifiedStrNights', lang)}
+          </Text>
+        </View>
+      </View>
+
+      {str.period_coverage === 'partial' && (
+        <View style={{ paddingHorizontal: 10, paddingVertical: 3, backgroundColor: C.amberBg }}>
+          <Text style={{ fontSize: 6, color: C.amber, fontStyle: 'italic' }}>{t('certifiedStrPartial', lang)}</Text>
+        </View>
+      )}
+
+      {lines.map((line, i) => (
+        <View key={i} style={line.highlight ? s.strRowHighlight : s.strRow}>
+          <Text style={{ fontSize: 7, color: line.highlight ? C.teal : C.grayDark, fontWeight: line.highlight ? 700 : 400 }}>
+            {line.label}
+          </Text>
+          <Text style={{ fontSize: 7, fontFamily: 'Courier', color: line.highlight ? C.teal : line.negative ? C.red : C.green, fontWeight: line.highlight ? 700 : 400 }}>
+            {fmt(line.value)}
+          </Text>
+        </View>
+      ))}
+
+      {str.has_any_unresolved && (
+        <View style={{ paddingHorizontal: 10, paddingVertical: 3, backgroundColor: C.amberBg, borderTopWidth: 1, borderTopColor: C.amberBorder }}>
+          <Text style={{ fontSize: 6, color: C.amber }}>Some months have unresolved data items</Text>
+        </View>
+      )}
+    </View>
+  )
+}
+
+/* ─── Gate 2: Settlement Block ────────────────────────────────────────────── */
+
+function SettlementBlockPdf({ settlement, lang }: { settlement: CounterpartySettlement; lang: Lang }) {
+  const isCertified = settlement.confidence_status === 'CERTIFIED'
+  const hasWarning = settlement.has_unresolved_history
+
+  let posColor = C.grayMid
+  let posLabel = t('settlementSettled', lang)
+  if (settlement.position_direction === 'jj_owes_counterparty') {
+    posColor = C.green; posLabel = t('settlementJjOwes', lang)
+  } else if (settlement.position_direction === 'counterparty_owes_jj') {
+    posColor = C.red; posLabel = t('settlementCpOwes', lang)
+  }
+
+  const domains = [
+    { label: t('settlementStrDomain', lang), value: settlement.str_balance },
+    { label: t('settlementMgmtDomain', lang), value: settlement.management_balance },
+    { label: t('settlementRenoDomain', lang), value: settlement.renovation_balance },
+    { label: t('settlementSaleDomain', lang), value: settlement.sale_balance },
+  ]
+
+  return (
+    <View style={s.settlementBlock}>
+      <View style={s.settlementHeader}>
+        <View>
+          <Text style={{ fontSize: 9, fontWeight: 700, color: C.indigo }}>{t('settlementTitle', lang)}</Text>
+          <Text style={{ fontSize: 7, color: C.indigo, marginTop: 1 }}>{t('settlementSubtitle', lang)}</Text>
+        </View>
+        <View style={{ alignItems: 'flex-end' as const }}>
+          <Text style={{ fontSize: 7, color: C.indigo }}>{t('settlementCounterparty', lang)}: {settlement.counterparty_name}</Text>
+          <Text style={{ fontSize: 6, color: C.grayMid }}>{t('settlementAsOf', lang)} {settlement.as_of_date}</Text>
+        </View>
+      </View>
+
+      {hasWarning && (
+        <View style={{ paddingHorizontal: 10, paddingVertical: 3, backgroundColor: C.amberBg, borderBottomWidth: 1, borderBottomColor: C.amberBorder }}>
+          <Text style={{ fontSize: 6, color: C.amber, fontWeight: 500 }}>{t('settlementWarning', lang)}</Text>
+        </View>
+      )}
+
+      {domains.map((d, i) => (
+        <View key={i} style={s.settlementRow}>
+          <Text style={{ fontSize: 7, color: C.grayDark }}>{d.label}</Text>
+          <Text style={{ fontSize: 7, fontFamily: 'Courier', color: d.value > 0 ? C.green : d.value < 0 ? C.red : C.grayMid }}>{fmt(d.value)}</Text>
+        </View>
+      ))}
+
+      <View style={{ ...s.settlementRow, backgroundColor: C.grayBg, paddingVertical: 5 }}>
+        <Text style={{ fontSize: 7, fontWeight: 700, color: C.grayDark }}>{t('settlementGross', lang)}</Text>
+        <Text style={{ fontSize: 7, fontFamily: 'Courier', fontWeight: 700 }}>{fmt(settlement.gross_counterparty_position)}</Text>
+      </View>
+
+      <View style={s.settlementRow}>
+        <Text style={{ fontSize: 7, color: C.grayDark }}>{t('settlementOwnerPayments', lang)}</Text>
+        <Text style={{ fontSize: 7, fontFamily: 'Courier', color: C.red }}>{fmt(-settlement.owner_payments)}</Text>
+      </View>
+
+      <View style={s.settlementHighlight}>
+        <View>
+          <Text style={{ fontSize: 8, fontWeight: 700, color: C.indigo }}>{t('settlementFinal', lang)}</Text>
+          {!isCertified && (
+            <Text style={{ fontSize: 5, color: C.amber, marginTop: 1 }}>{t('settlementNotFinal', lang)}</Text>
+          )}
+        </View>
+        <View style={{ alignItems: 'flex-end' as const }}>
+          <Text style={{ fontSize: 10, fontWeight: 700, fontFamily: 'Courier', color: posColor }}>
+            {fmt(Math.abs(settlement.final_counterparty_position))}
+          </Text>
+          <Text style={{ fontSize: 6, color: posColor }}>{posLabel}</Text>
+        </View>
+      </View>
+    </View>
+  )
+}
+
+/* ─── Gate 2: Evidence Footer ─────────────────────────────────────────────── */
+
+function EvidenceFooterPdf({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
+  const hasStr = report.certifiedSTR !== null
+  const hasSettlement = report.settlement !== null
+  if (!hasStr && !hasSettlement) return null
+
+  return (
+    <View style={s.evidenceBlock}>
+      <Text style={{ fontSize: 7, fontWeight: 700, color: C.slateText, letterSpacing: 1, marginBottom: 4 }}>
+        {t('evidenceTitle', lang)}
+      </Text>
+
+      {hasStr && (
+        <View style={s.evidenceRow}>
+          <Text style={{ fontSize: 6, color: C.teal, fontWeight: 700 }}>STR</Text>
+          <Text style={{ fontSize: 6, color: C.slateText }}>{t('evidenceStrSource', lang)}</Text>
+        </View>
+      )}
+      <View style={s.evidenceRow}>
+        <Text style={{ fontSize: 6, color: C.blue, fontWeight: 700 }}>TXN</Text>
+        <Text style={{ fontSize: 6, color: C.slateText }}>{t('evidenceMgmtSource', lang)}</Text>
+      </View>
+      {hasSettlement && (
+        <View style={s.evidenceRow}>
+          <Text style={{ fontSize: 6, color: C.indigo, fontWeight: 700 }}>SET</Text>
+          <Text style={{ fontSize: 6, color: C.slateText }}>{t('evidenceSettlementSource', lang)}</Text>
+        </View>
+      )}
+
+      <View style={{ marginTop: 4, paddingTop: 4, borderTopWidth: 0.5, borderTopColor: C.grayBorder }}>
+        <Text style={{ fontSize: 6, color: C.slateText, fontStyle: 'italic' }}>
+          {t('evidenceDisclaimer', lang)}
+        </Text>
+      </View>
+    </View>
+  )
+}
+
+
+export function OwnerSettlementPdfV3({ report, lang = 'en', reportType = 'full' }: OwnerSettlementPdfV3Props) {
+  const filteredReport = { ...report, accounts: filterSectionsByReportType(report.accounts, reportType) }
+  const reportTypeLabel = reportType === 'periodic' ? t('reportTypePeriodic', lang) : t('reportTypeFull', lang)
+
   return (
     <Document
-      title={`Owner Settlement Report — ${report.reporting_name}`}
+      title={`JJ ${reportTypeLabel} — ${report.reporting_name}`}
       author="JJ Property 10"
-      creator="JJ Property 10 Platform (RC3 V2 + Gate 2)"
+      creator="JJ Property 10 Platform (RC3 V3)"
     >
       <Page size="A4" style={s.page}>
-        <DocHeader report={report} lang={lang} />
-        <MetaBlock  report={report} lang={lang} />
+        <DocHeader report={filteredReport} lang={lang} reportTypeLabel={reportTypeLabel} />
+        <MetaBlock report={filteredReport} lang={lang} />
 
-        {/* Owner Dashboard */}
-        <OwnerDashboardPdf report={report} lang={lang} />
+        {/* M2: Premium Executive Summary */}
+        <PremiumSummaryPdf report={filteredReport} lang={lang} />
 
-        {/* Cross-account summary (when >1 account) */}
-        <CrossAccountSummary report={report} lang={lang} />
-
-        {/* Gate 2: Certified STR Settlement (before domain accounts) */}
+        {/* Gate 2: Certified STR Settlement */}
         {report.certifiedSTR && (
           <CertifiedSTRBlockPdf str={report.certifiedSTR} lang={lang} />
         )}
 
-        {/* Domain account sections */}
-        {report.accounts.map(acc => (
+        {/* One section per account */}
+        {filteredReport.accounts.map(acc => (
           <AccountBlock key={acc.account_type} section={acc} lang={lang} />
         ))}
 
-        {/* Gate 2: Counterparty Settlement Position (after domain accounts) */}
+        {/* Gate 2: Counterparty Settlement Position */}
         {report.settlement && (
           <SettlementBlockPdf settlement={report.settlement} lang={lang} />
         )}
 
-        <FinalSummaryPdf report={report} lang={lang} />
+        <FinalSummaryPdf report={filteredReport} lang={lang} />
 
         {/* Gate 2: Financial Evidence Footer */}
         <EvidenceFooterPdf report={report} lang={lang} />
-
-        <DocFooter report={report} lang={lang} />
+        <DocFooter report={filteredReport} lang={lang} />
       </Page>
     </Document>
   )
