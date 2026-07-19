@@ -1079,7 +1079,7 @@ function CertifiedSTRBlockPdf({ str, lang }: { str: CertifiedSTRSummary; lang: L
           <Text style={{ fontSize: 7, color: statusColor, fontWeight: 700 }}>{statusText}</Text>
           <Text style={{ fontSize: 7, color: C.teal }}>{periodLabel}</Text>
           <Text style={{ fontSize: 6, color: C.grayMid }}>
-            {str.total_reservation_count} {t('certifiedStrReservations', lang)} \u00b7 {str.total_booked_nights} {t('certifiedStrNights', lang)}
+            {str.total_reservation_count} {t('certifiedStrReservations', lang)} · {str.total_booked_nights} {t('certifiedStrNights', lang)}
           </Text>
         </View>
       </View>
@@ -1257,10 +1257,13 @@ export function OwnerSettlementPdfV3({ report, lang = 'en', reportType = 'full' 
           <SettlementBlockPdf settlement={report.settlement} lang={lang} />
         )}
 
-        <FinalSummaryPdf report={filteredReport} lang={lang} />
+        {/* Grouped to avoid nearly-empty last page */}
+        <View wrap={false}>
+          <FinalSummaryPdf report={filteredReport} lang={lang} />
 
-        {/* Gate 2: Financial Evidence Footer */}
-        <EvidenceFooterPdf report={report} lang={lang} />
+          {/* Gate 2: Financial Evidence Footer */}
+          <EvidenceFooterPdf report={report} lang={lang} />
+        </View>
         <DocFooter report={filteredReport} lang={lang} />
       </Page>
     </Document>
