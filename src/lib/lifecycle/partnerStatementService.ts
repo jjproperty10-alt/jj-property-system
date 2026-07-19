@@ -31,7 +31,7 @@
  * - Investor entities (loadable as /partner/{slug}): 'partner', 'investor'
  * - JJ group entities (shown as "JJ Group" in co-owner display): 'partner', 'jj_company'
  *
- * @see PartnerStatementDTO Contract v1.0 (partnerStatementTypes.ts)
+ * @see PartnerStatementDTO Contract v1.1 (partnerStatementTypes.ts)
  * @see P-ARCH-1: Unknown = NULL. Never 0 or placeholder.
  * @see P-ARCH-2: Payer identity must not be normalised — Yossi ≠ Jacob ≠ JJ.
  * @see P-ARCH-5: lifecycle schema and public schema never cross-referenced by FK.
@@ -155,7 +155,6 @@ export function buildPortfolioSummary(
     totalCapitalPaidEur: totalCapitalPaid,
     totalCapitalRemainingEur: totalCapitalRemaining,
     // TODO M9-C: Replace all four fields below with Settlement Engine values.
-    // Settlement Engine is out of scope for PR 44 / M9-A.
     totalReceivableFromJJ: 0,
     totalPayableToJJ: 0,
     finalNetBalance: 0,
@@ -178,17 +177,13 @@ export interface PartnerStatementOptions {
  *
  * Authorization flow:
  *   1. Resolve slug → entity_id via lifecycle.entity_identity (case-insensitive)
- *      Filters entity_type IN ('partner', 'investor') — only loadable investor types.
- *      entity_type 'jj_company' and 'external' are not accessible via partner routes.
  *   2. Verify at least one active partner_entry exists for this entity
  *   3. For each property: load capital events, ownership, timeline (lifecycle)
  *      and RC3 financial data (public schema, fetched independently)
  *   4. Compose PortfolioSummary from per-property statements
  *   5. Return discriminated union based on viewMode
  *
- * Returns null when:
- *   - Slug does not match any entity in lifecycle.entity_identity
- *   - Entity exists but has no active partner_entry rows
+ * Returns null when slug is unknown or entity has no active partner_entry rows.
  *
  * @param investorSlug  URL slug (e.g. 'avi' for /partner/avi)
  * @param options       View mode, language, date range
@@ -201,15 +196,6 @@ export async function loadPartnerStatement(
   const db = createServiceClient()
 
   // ── Step 1: resolve entity from slug (case-insensitive) ──────────────────
-  // Load all investor-type entities and match by slug — avoids case-sensitivity
-  // issues with .eq('canonical_name', ...) across different DB collations.
-  //
-  // entity_type filter: 'partner' (Yossi, Jacob) and 'investor' (Avi, Oren).
-  // 'jj_company' (JJ itself) and 'external' (Anastasia, Fabi) are excluded —
-  // they are never the subject of a partner-facing statement.
-  //
-  // Schema note: lifecycle.entity_identity has NO owner_type column.
-  // Use entity_type (text, NOT NULL) as the classification field.
   const { data: allEntities, error: entityErr } = await db
     .schema('lifecycle')
     .from('entity_identity')
@@ -227,8 +213,6 @@ export async function loadPartnerStatement(
 
   const entityId = matchedEntity.id
   const canonicalName = matchedEntity.canonical_name
-  // ownerType populated from entity_type — owner_type column does not exist.
-  // 'partner' for JJ principals (Yossi, Jacob); 'investor' for external investors (Avi, Oren).
   const ownerType = matchedEntity.entity_type ?? 'partner'
 
   // ── Step 2: load partner entries (authorization gate + property list) ─────
@@ -268,7 +252,6 @@ export async function loadPartnerStatement(
 
     // ── 4a: Capital events (inflows only = investor payments) ───────────────
     // F1 fix: direction='inflow' — DB constraint only allows 'inflow'/'outflow'.
-    // Using 'in' returned 0 rows (constraint violation in query filter).
     const { data: capitalRows } = await db
       .schema('lifecycle')
       .from('capital_event')
@@ -302,15 +285,13 @@ export async function loadPartnerStatement(
       agreedEntryValuationEur:
         s ? (s.agreed_entry_valuation_eur as number | null) ?? null : null,
       requiredCapitalEur,
-      capitalPaidEur,      // P-ARCH-1: null = unknown, not 0
-      capitalRemainingEur, // P-ARCH-1: null = unknown, not 0
+      capitalPaidEur,
+      capitalRemainingEur,
       capitalStatus: resolveCapitalStatus(capitalPaidEur, capitalRemainingEur, requiredCapitalEur, payments.length > 0),
       payments,
     }
 
     // ── 4b: Ownership + co-owners ────────────────────────────────────────────
-    // Query all active ownership periods for this property (not just this entity)
-    // to find co-owners. 'Active' = no effective_to (open-ended period).
     const { data: ownershipRows } = await db
       .schema('lifecycle')
       .from('ownership_period')
@@ -323,7 +304,6 @@ export async function loadPartnerStatement(
     const allOwners = (ownershipRows as OwnershipRow[] ?? [])
     const currentOwnerRow = allOwners.find(r => r.entity_id === entityId)
 
-    // Co-owners: all other entities with active ownership in this property
     const otherOwners = allOwners.filter(r => r.entity_id !== entityId)
     const coOwners: CoOwner[] = []
 
@@ -334,11 +314,6 @@ export async function loadPartnerStatement(
         .select('id, canonical_name, entity_type')
         .in('id', otherOwners.map(o => o.entity_id))
 
-      // JJ group classification uses entity_type (owner_type column does not exist):
-      //   'partner'    → Yossi, Jacob → isJj = true  → shown as "JJ Group"
-      //   'jj_company' → JJ           → isJj = true  → shown as "JJ Group"
-      //   'investor'   → Avi, Oren    → isJj = false → shown by canonical name
-      //   'external'   → Anastasia    → isJj = false → shown by canonical name
       type EntityIdentityRow = { id: string; canonical_name: string; entity_type: string }
       for (const entity of (coOwnerEntities as EntityIdentityRow[] ?? [])) {
         const pct = otherOwners.find(o => o.entity_id === entity.id)?.ownership_pct ?? 0
@@ -360,9 +335,6 @@ export async function loadPartnerStatement(
     }
 
     // ── 4c: Financial data from RC3 engine ───────────────────────────────────
-    // RC3 uses `reporting_name`, which in the current schema equals property_name.
-    // If no RC3 rows exist for this name, financial is null.
-    // Lifecycle and RC3 data are fetched independently (P-ARCH-5).
     let financial: FinancialStatement | null = null
     try {
       const rc3Report = await fetchRC3Report({ reportingName: propertyName, fromDate, toDate })
@@ -380,21 +352,17 @@ export async function loadPartnerStatement(
       }
     } catch {
       // RC3 unavailable for this property — financial stays null.
-      // Logged upstream; not a fatal error for the DTO.
     }
 
     // ── 4d: Settlement (M9-C scope) ──────────────────────────────────────────
-    // TODO M9-C: Replace currentBalanceEur with Settlement Engine value.
     const settlement: SettlementStatement = {
-      currentBalanceEur: null, // null = Settlement Engine not yet run (P-ARCH-1)
+      currentBalanceEur: null,
       totalDistributionsPaidEur: s
         ? (s.total_distributions_eur as number) ?? 0
         : 0,
     }
 
     // ── 4e: Timeline — reuse loadInvestmentTimeline from timelineService ─────
-    // Admin mode includes internal events (acquisition payments, expenses).
-    // Partner mode includes only partner-visible events.
     const timelineDTO = await loadInvestmentTimeline(canonicalName, propertyName, {
       includeInternal: viewMode === 'admin',
     })
@@ -413,8 +381,15 @@ export async function loadPartnerStatement(
           })),
           openVerificationTasks: timelineDTO.evidence.openVerificationTasks,
           hasPendingDates: timelineDTO.evidence.hasPendingDates,
+          // F3: real per-task rows — humanLabel computed server-side in timelineService
+          verificationTaskItems: timelineDTO.evidence.verificationTaskItems,
         }
-      : { events: [], openVerificationTasks: 0, hasPendingDates: false }
+      : {
+          events:                [],
+          openVerificationTasks: 0,
+          hasPendingDates:       false,
+          verificationTaskItems: [],
+        }
 
     propertyStatements.push({
       propertyName,
@@ -432,10 +407,10 @@ export async function loadPartnerStatement(
 
   // ── Step 6: shared blocks ─────────────────────────────────────────────────
   const investor: InvestorInfo = {
-    entityId,    // internal only — never expose in URLs
+    entityId,
     canonicalName,
     slug: investorSlug,
-    ownerType,   // populated from entity_type (owner_type column does not exist)
+    ownerType,
   }
 
   const actions: StatementActions = {
@@ -450,7 +425,7 @@ export async function loadPartnerStatement(
   const localization: StatementLocalization = { lang, currency: 'EUR', generatedAt: now }
 
   const baseMeta = {
-    schemaVersion: 'PartnerStatementDTO/1.0' as const,
+    schemaVersion: 'PartnerStatementDTO/1.1' as const,
     generatedAt: now,
   }
 
@@ -480,7 +455,6 @@ export async function loadPartnerStatement(
     } satisfies AdminStatementDTO
   }
 
-  // Partner view — verification block ABSENT (not empty, not present)
   return {
     meta: { ...baseMeta, viewMode: 'partner' },
     investor,
@@ -488,6 +462,5 @@ export async function loadPartnerStatement(
     portfolio,
     actions,
     localization,
-    // `verification` intentionally absent — discriminated union enforces this (P-ARCH-6)
   } satisfies PartnerFacingStatementDTO
 }
