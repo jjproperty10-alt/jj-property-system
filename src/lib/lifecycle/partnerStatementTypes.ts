@@ -1,9 +1,11 @@
 /**
  * @module lifecycle/partnerStatementTypes
- * @description PartnerStatementDTO Contract v1.0 — LOCKED.
+ * @description PartnerStatementDTO Contract v1.1
  *
- * Approved by Yossi (July 2026 session). Any change = v1.1 or v2.0.
- * v1.0 is NOT reopened during development.
+ * v1.0 approved by Yossi (July 2026 session).
+ * v1.1 — F3 (July 2026): TimelineStatement gains `verificationTaskItems?` — the full
+ *   per-task rows from lifecycle.verification_tasks, carrying a server-computed
+ *   humanLabel safe for partner display. No UUIDs or internal table names in the UI.
  *
  * Design decisions:
  *   - Discriminated union on `meta.viewMode`: 'partner' | 'admin'
@@ -19,6 +21,7 @@
  */
 
 import type { RC3AccountSection } from '@/lib/report/types'
+import type { VerificationTaskItem } from './timelineTypes'
 
 // ─── Primitives ───────────────────────────────────────────────────────────────
 
@@ -155,13 +158,24 @@ export interface TimelineEvent {
  * Ordered timeline of lifecycle events for one property.
  * Ordering: dated events first (ASC), then null-date events (by recordedAt ASC),
  * then UUID tie-breaker — mirrors TIMELINE_ORDERING_RULES.
+ *
+ * v1.1: adds `verificationTaskItems` — real task rows from lifecycle.verification_tasks.
+ * Each item carries a server-computed humanLabel safe for partner display.
+ * NEVER expose taskId, sourceId, or sourceTable directly in partner-facing UI.
  */
 export interface TimelineStatement {
   readonly events: readonly TimelineEvent[]
-  /** Count of verification_tasks with status IN ('pending', 'evidence_found') */
+  /** Count of open verification tasks (convenience; equals verificationTaskItems.length) */
   readonly openVerificationTasks: number
   /** True when any event has effectiveDateConfidence = 'pending_verification' */
   readonly hasPendingDates: boolean
+  /**
+   * Per-task verification items from lifecycle.verification_tasks.
+   * Use item.humanLabel for partner-facing display.
+   * item.taskId / item.sourceId / item.sourceTable are internal — NEVER render in UI.
+   * Optional for backward compatibility with existing test fixtures.
+   */
+  readonly verificationTaskItems?: readonly VerificationTaskItem[]
 }
 
 // ─── Settlement Statement ──────────────────────────────────────────────────────
@@ -270,9 +284,9 @@ export interface StatementLocalization {
 interface StatementMetaBase {
   /**
    * Namespaced schema version — avoids collision with other DTOs.
-   * Next change: increment to 'PartnerStatementDTO/1.1'. v1.0 is locked.
+   * v1.1: TimelineStatement.verificationTaskItems added (F3).
    */
-  readonly schemaVersion: 'PartnerStatementDTO/1.0'
+  readonly schemaVersion: 'PartnerStatementDTO/1.1'
   readonly generatedAt: string
 }
 
@@ -339,3 +353,6 @@ export interface AdminStatementDTO {
 
 /** Top-level discriminated union — use `dto.meta.viewMode` to narrow */
 export type PartnerStatementDTO = PartnerFacingStatementDTO | AdminStatementDTO
+
+// Re-export VerificationTaskItem so consumers can import it from this module
+export type { VerificationTaskItem }
