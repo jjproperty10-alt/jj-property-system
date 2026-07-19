@@ -16,6 +16,8 @@ import { PropertyCard } from '@/components/owner/PropertyCard'
 import { AlertsPanel } from '@/components/owner/AlertsPanel'
 import { PortfolioSettlement } from '@/components/owner/PortfolioSettlement'
 
+export const dynamic = 'force-dynamic'
+
 interface Props {
   params: { owner: string }
 }
