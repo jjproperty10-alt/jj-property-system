@@ -2,7 +2,7 @@
  * JJ Property 10 — Client-Facing Label Overrides & i18n
  * Phase A: display label overrides (Sale → Purchase perspective)
  * Phase B: full EN / HE label system, expense group mapping, buildRowLabel()
- * M6: Premium branding — "Owner Financial Statement", module rename, footer labels
+ * Gate 2:  Certified STR, Counterparty Settlement, Financial Evidence labels
  *
  * Rules:
  *  - NEVER write these values to the database
@@ -10,7 +10,7 @@
  *  - All client-visible strings must come from this file
  */
 
-import type { ClientDisplayRow } from './clientRow'
+import type { RC3AccountRow } from './types'
 
 /* ──────────────────────────────────────────────────────────────────────────────
  * PHASE A — Display label overrides (kept for backward compatibility)
@@ -43,7 +43,7 @@ export const SECTION_LABELS = {
 export const ACCOUNT_LABEL_EN: Record<string, string> = {
   sale:       'Property Purchase',
   renovation: 'Renovation',
-  rental:     'Property Management',
+  rental:     'Rental',
   airbnb:     'Short-Term Rental',
 }
 
@@ -51,7 +51,7 @@ export const ACCOUNT_LABEL_EN: Record<string, string> = {
 export const ACCOUNT_LABEL_HE: Record<string, string> = {
   sale:       'רכישת נכס',
   renovation: 'שיפוץ',
-  rental:     'ניהול נכס',
+  rental:     'השכרה',
   airbnb:     'השכרה לטווח קצר',
 }
 
@@ -70,16 +70,14 @@ const L = {
   balSettled:           { en: 'Settled',                       he: 'סגור / ללא יתרה'            },
 
   /* ── Top bar ─────────────────────────────────────────────────────────────── */
-  // M6: renamed from "Client Financial Report" to premium branding
-  reportTitle:          { en: 'Owner Financial Statement',     he: 'דוח פיננסי לבעל הנכס'       },
+  reportTitle:          { en: 'Client Financial Report',       he: 'דוח פיננסי ללקוח'           },
   confidential:         { en: 'Confidential',                  he: 'סודי'                        },
 
   /* ── Module names ────────────────────────────────────────────────────────── */
-  accountSale:          { en: 'Property Purchase',    he: 'רכישת נכס'          },
-  accountRenovation:    { en: 'Renovation',           he: 'שיפוץ'              },
-  // M6: renamed from "Rental" → "Property Management"
-  accountRental:        { en: 'Property Management',  he: 'ניהול נכס'          },
-  accountAirbnb:        { en: 'Short-Term Rental',    he: 'השכרה לטווח קצר'   },
+  accountSale:          { en: 'Property Purchase',   he: 'רכישת נכס'          },
+  accountRenovation:    { en: 'Renovation',          he: 'שיפוץ'              },
+  accountRental:        { en: 'Rental',              he: 'השכרה'              },
+  accountAirbnb:        { en: 'Short-Term Rental',   he: 'השכרה לטווח קצר'   },
 
   /* ── Owner Dashboard — aggregate KPIs ───────────────────────────────────── */
   dashTitle:            { en: 'Owner Dashboard',                  he: 'לוח בקרה לבעלים'        },
@@ -146,7 +144,7 @@ const L = {
   subInsurance:         { en: 'Insurance',               he: 'ביטוח'              },
   subManagementFee:     { en: 'Management Fee',          he: 'דמי ניהול'          },
   subFurniture:         { en: 'Furniture & Equipment',   he: 'ריהוט וציוד'        },
-  subGuestSupplies:     { en: 'Guest Supplies',          he: 'אביזרי אורחים'      },
+  subGuestSupplies:     { en: 'Guest Supplies',          he: 'אביזרי אורחים'     },
   subSoftware:          { en: 'Software',                he: 'תוכנה'              },
 
   /* ── Expense group headers (Rental / Airbnb grouping — 10 groups) ─────────── */
@@ -160,11 +158,6 @@ const L = {
   expGuestSupplies:     { en: 'Guest Supplies',          he: 'אביזרי אורחים'               },
   expSoftware:          { en: 'Software',                he: 'תוכנה'                        },
   expOther:             { en: 'Other Property Expenses', he: 'הוצאות נכס אחרות'            },
-
-  // Expense group headers — individual utility lines (M3)
-  grpElectricity:       { en: 'Electricity',              he: 'חשמל'                         },
-  grpWater:             { en: 'Water',                    he: 'מים'                          },
-  grpInternet:          { en: 'Internet',                 he: 'אינטרנט'                      },
 
   /* ── Section labels ──────────────────────────────────────────────────────── */
   contractInfo:         { en: 'Contract Information',
@@ -199,15 +192,12 @@ const L = {
   finalDisclaimer:      { en: 'This report is prepared for informational purposes. Figures are based on recorded transactions and are subject to final audit and reconciliation. Opening balances from prior periods are not yet included.',
                           he: 'דוח זה נערך למטרות מידע בלבד. הנתונים מבוססים על עסקאות שנרשמו וכפופים לביקורת ופיוס סופי. יתרות פתיחה מתקופות קודמות אינן כלולות עדיין.' },
   finalGenerated:       { en: 'Report generated',                he: 'הדוח נוצר'                },
-  // M6: closing statement
-  finalEndStatement:    { en: 'End of Owner Statement',          he: 'סוף דוח בעל הנכס'        },
 
   /* ── Controls ────────────────────────────────────────────────────────────── */
   property:             { en: 'Property',     he: 'נכס'         },
   fromDate:             { en: 'From Date',    he: 'מתאריך'      },
   toDate:               { en: 'To Date',      he: 'עד תאריך'    },
   loadReport:           { en: 'Load Report',  he: 'טען דוח'     },
-  viewReport:           { en: 'View Report',  he: 'צפה בדוח'    },
   loading:              { en: 'Loading…',     he: 'טוען…'        },
   downloadPdf:          { en: 'Download PDF', he: 'הורד PDF'    },
   buildingPdf:          { en: 'Building PDF…',he: 'מכין PDF…'   },
@@ -221,15 +211,15 @@ const L = {
   platformTracking:     { en: 'platform tracking, trust account, needs review',
                           he: 'מעקב פלטפורמה, חשבון נאמנות, דורש בדיקה' },
 
+  /* ── Future / placeholder ────────────────────────────────────────────────── */
+  multiPropertyComing:  { en: 'Multi-property view — coming soon',
+                          he: 'תצוגה מרובת נכסים — בקרוב' },
+  rentalAllocationNote: { en: 'Monthly rental allocation — available in next release.',
+                          he: 'הקצאה חודשית — תהיה זמינה בגרסה הבאה.' },
+
   /* ── Report type selector (M1) — added M0 ──────────────────────────────── */
-  reportTypeLabel:      { en: 'Report Type',     he: 'סוג דוח'      },
   reportTypeFull:       { en: 'Full Report',     he: 'דוח מלא'      },
   reportTypePeriodic:   { en: 'Periodic Report', he: 'דוח תקופתי'   },
-
-  /* ── Executive Summary M2 ────────────────────────────────────────────────── */
-  opSummaryTitle:       { en: 'Operational Summary',   he: 'סיכום תפעולי'       },
-  opIncomeLabel:        { en: 'Operational Income',    he: 'הכנסות תפעוליות'    },
-  opExpensesLabel:      { en: 'Operational Expenses',  he: 'הוצאות תפעוליות'   },
 
   /* ── Opening balance warning ──────────────────────────────────────────────── */
   openingBalTitle:      { en: 'Opening Balance Not Included.',
@@ -237,11 +227,61 @@ const L = {
   openingBalDetail:     { en: 'Date-filtered reports may show incorrect closing balances because prior-period balances are not yet carried forward. Use all-time (unfiltered) reports only for financial review.',
                           he: 'דוחות עם סינון תאריכים עלולים להציג יתרות סגירה שגויות. יש להשתמש בדוחות ללא סינון בלבד לצורכי בדיקה פיננסית.' },
 
-  /* ── Meta / footer ─────────────────────────────────────────────────────── */
-  metaGenerated:        { en: 'Generated',       he: 'נוצר ב'      },
-  pageLabel:            { en: 'Page',            he: 'עמוד'        },
-  // M6: footer version label
-  footerVersion:        { en: 'Version 3.0',     he: 'גרסה 3.0'   },
+  /* ── Gate 2: Certified STR Section ─────────────────────────────────────────── */
+  certifiedStrTitle:        { en: 'Certified STR Settlement',       he: 'התחשבנות STR מאושרת' },
+  certifiedStrSubtitle:     { en: 'Source: Hostaway Certified Financial Data', he: 'מקור: נתונים פיננסיים מאושרים מ-Hostaway' },
+  certifiedStrPeriod:       { en: 'Certified Period',               he: 'תקופה מאושרת' },
+  certifiedStrMonths:       { en: 'months',                         he: 'חודשים' },
+  certifiedStrRevenue:      { en: 'Gross Rental Revenue',           he: 'הכנסות שכירות ברוטו' },
+  certifiedStrCleaning:     { en: 'Cleaning Income',                he: 'הכנסות ניקיון' },
+  certifiedStrPlatformFees: { en: 'Platform & Payment Fees',        he: 'עמלות פלטפורמה ותשלום' },
+  certifiedStrTaxes:        { en: 'Taxes',                          he: 'מסים' },
+  certifiedStrMgmtFee:      { en: 'Management Fee',                 he: 'דמי ניהול' },
+  certifiedStrExpenses:     { en: 'Owner Chargeable Expenses',      he: 'הוצאות לחיוב בעלים' },
+  certifiedStrEntitlement:  { en: 'Owner Entitlement',              he: 'זכאות בעלים' },
+  certifiedStrPayments:     { en: 'Owner Payments Made',            he: 'תשלומים לבעלים שבוצעו' },
+  certifiedStrBalance:      { en: 'Property Period Balance',        he: 'יתרת תקופה לנכס' },
+  certifiedStrReservations: { en: 'Reservations',                   he: 'הזמנות' },
+  certifiedStrNights:       { en: 'Booked Nights',                  he: 'לילות שהוזמנו' },
+  certifiedStrStatus:       { en: 'Certification Status',           he: 'סטטוס אישור' },
+  certifiedStrCertified:    { en: 'CERTIFIED',                      he: 'מאושר' },
+  certifiedStrPending:      { en: 'Pending Verification',           he: 'ממתין לאימות' },
+  certifiedStrPartial:      { en: 'Partial Period — certified data covers full calendar months only',
+                              he: 'תקופה חלקית — נתונים מאושרים מכסים חודשים קלנדריים מלאים בלבד' },
+  certifiedStrUnavailable:  { en: 'Certified STR data not available for this property',
+                              he: 'נתוני STR מאושרים אינם זמינים לנכס זה' },
+
+  /* ── Gate 2: Counterparty Settlement Summary ───────────────────────────────── */
+  settlementTitle:          { en: 'Settlement Position',            he: 'עמדת התחשבנות' },
+  settlementSubtitle:       { en: 'Counterparty-wide position across all domains',
+                              he: 'עמדה כוללת מול צד נגדי בכל התחומים' },
+  settlementCounterparty:   { en: 'Counterparty',                   he: 'צד נגדי' },
+  settlementStrDomain:      { en: 'STR Domain',                     he: 'תחום STR' },
+  settlementMgmtDomain:     { en: 'Management Domain',              he: 'תחום ניהול' },
+  settlementRenoDomain:     { en: 'Renovation Domain',              he: 'תחום שיפוץ' },
+  settlementSaleDomain:     { en: 'Sale Domain',                    he: 'תחום מכירה' },
+  settlementGross:          { en: 'Gross Position',                 he: 'עמדה ברוטו' },
+  settlementOwnerPayments:  { en: 'Owner Payments',                 he: 'תשלומים לבעלים' },
+  settlementFinal:          { en: 'Net Settlement Position',        he: 'עמדת התחשבנות נטו' },
+  settlementJjOwes:         { en: 'JJ owes counterparty',           he: 'JJ חייב לצד הנגדי' },
+  settlementCpOwes:         { en: 'Counterparty owes JJ',           he: 'הצד הנגדי חייב ל-JJ' },
+  settlementSettled:        { en: 'Settled',                        he: 'מסולק' },
+  settlementAsOf:           { en: 'Position as of',                 he: 'עמדה נכון ל' },
+  settlementWarning:        { en: 'This position includes domains with unresolved historical items. Not all amounts are final.',
+                              he: 'עמדה זו כוללת תחומים עם פריטים היסטוריים שלא סולקו. לא כל הסכומים סופיים.' },
+  settlementNotFinal:       { en: 'NOT FINAL — pending full reconciliation',
+                              he: 'לא סופי — ממתין להתחשבנות מלאה' },
+
+  /* ── Gate 2: Financial Evidence Footer ─────────────────────────────────────── */
+  evidenceTitle:            { en: 'Financial Evidence',             he: 'ראיות פיננסיות' },
+  evidenceStrSource:        { en: 'STR data: Hostaway Certified Financial Snapshots (check-in date attribution)',
+                              he: 'נתוני STR: תמונות מצב פיננסיות מאושרות מ-Hostaway (ייחוס לפי תאריך צ\'ק-אין)' },
+  evidenceMgmtSource:       { en: 'Management data: JJ transaction ledger (transaction date attribution)',
+                              he: 'נתוני ניהול: ספר עסקאות JJ (ייחוס לפי תאריך עסקה)' },
+  evidenceSettlementSource: { en: 'Settlement position: v_counterparty_position (cumulative, all domains)',
+                              he: 'עמדת התחשבנות: v_counterparty_position (מצטבר, כל התחומים)' },
+  evidenceDisclaimer:       { en: 'Different report sections may use different time attribution policies. This is by design — see ADR: Time Attribution Policy.',
+                              he: 'חלקים שונים בדוח עשויים להשתמש במדיניות ייחוס זמן שונה. זה בכוונה — ראה ADR: מדיניות ייחוס זמן.' },
 
 } as const
 
@@ -260,12 +300,12 @@ export function t(key: LabelKey, lang: Lang = 'en'): string {
 
 /** Maps transaction subcategory strings → expense group label key */
 export const EXPENSE_GROUP_MAP: Partial<Record<string, LabelKey>> = {
-  // Utilities — individual groups (M3)
-  'Electricity':           'grpElectricity',
-  'Electricity bill':      'grpElectricity',
-  'Electric':              'grpElectricity',
-  'Water':                 'grpWater',
-  'Internet':              'grpInternet',
+  // Utilities (Electricity + Water + Internet)
+  'Electricity':           'expUtilities',
+  'Electricity bill':      'expUtilities',
+  'Electric':              'expUtilities',
+  'Water':                 'expUtilities',
+  'Internet':              'expUtilities',
   // Maintenance
   'Repairs':               'expMaintenance',
   'Repair':                'expMaintenance',
@@ -388,7 +428,7 @@ const SUBCATEGORY_LABEL_KEYS: Partial<Record<string, LabelKey>> = {
  * Presentation-only. Do not change behavior in response to accounting questions.
  * ──────────────────────────────────────────────────────────────────────────── */
 
-export function buildRowLabel(row: ClientDisplayRow, lang: Lang): string {
+export function buildRowLabel(row: RC3AccountRow, lang: Lang): string {
   const dl   = row.display_label ?? ''
   const grp  = row.display_group
   const acct = row.account_type
