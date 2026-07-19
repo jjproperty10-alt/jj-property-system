@@ -1086,7 +1086,7 @@ function CertifiedSTRBlockPdf({ str, lang }: { str: CertifiedSTRSummary; lang: L
 
       {str.period_coverage === 'partial' && (
         <View style={{ paddingHorizontal: 10, paddingVertical: 3, backgroundColor: C.amberBg }}>
-          <Text style={{ fontSize: 6, color: C.amber, fontStyle: 'italic' }}>{t('certifiedStrPartial', lang)}</Text>
+          <Text style={{ fontSize: 6, color: C.amber }}>{t('certifiedStrPartial', lang)}</Text>
         </View>
       )}
 
@@ -1216,7 +1216,7 @@ function EvidenceFooterPdf({ report, lang }: { report: RC3PropertyReport; lang: 
       )}
 
       <View style={{ marginTop: 4, paddingTop: 4, borderTopWidth: 0.5, borderTopColor: C.grayBorder }}>
-        <Text style={{ fontSize: 6, color: C.slateText, fontStyle: 'italic' }}>
+        <Text style={{ fontSize: 6, color: C.slateText }}>
           {t('evidenceDisclaimer', lang)}
         </Text>
       </View>
