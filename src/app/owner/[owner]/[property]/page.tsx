@@ -17,6 +17,8 @@ import { OwnerShareSection } from '@/components/owner/OwnerShareSection'
 import { ProjectViewSection } from '@/components/owner/ProjectViewSection'
 import { OwnershipStructure } from '@/components/owner/OwnershipStructure'
 
+export const dynamic = 'force-dynamic'
+
 const EUR = (n: number) =>
   new Intl.NumberFormat('en-IE', {
     style: 'currency',

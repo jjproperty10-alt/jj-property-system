@@ -1,6 +1,7 @@
 /**
  * JJ Property 10 — RC3 Report Engine Types
  * Phase 3 — 2026-07-09
+ * Gate 2 — 2026-07-19: Certified STR + Counterparty Settlement types
  *
  * Source of truth for the account-based client report model.
  * All Phase 3 report components must import from here.
@@ -98,6 +99,100 @@ export interface RC3AccountSection {
   closing_balance:     number           // contract_baseline + opening_balance + Σ balance_effect
 }
 
+// ─── Certified STR Settlement (from v_str_settlement_report) ────────────────
+
+/** One month of certified STR financial data for a single property.
+ *  Source: pms.v_str_property_settlement via public.v_str_settlement_report wrapper.
+ *  Semantic owner: "What is the certified STR financial result for this property and reporting month?" */
+export interface CertifiedSTRMonth {
+  property_name:                          string
+  owner_name:                             string
+  reporting_month:                        string           // ISO date, first of month e.g. "2026-01-01"
+  reservation_count:                      number
+  booked_nights:                          number
+  gross_rental_revenue:                   number
+  cleaning_income:                        number
+  total_platform_fees:                    number
+  total_payment_fees:                     number
+  total_taxes:                            number
+  total_payout:                           number
+  management_fee:                         number
+  hostaway_monthly_fee:                   number
+  other_owner_chargeable_str_expenses:    number
+  total_owner_chargeable_expenses:        number
+  hostaway_owner_entitlement:             number
+  owner_payments_attributed_to_property:  number
+  property_period_balance:                number
+  // Certification
+  snapshot_count:                         number
+  all_control_checks_pass:                boolean
+  source_confidence:                      string           // 'CERTIFIED' | 'PROVISIONAL' | ...
+  has_unresolved_data:                    boolean
+  rounding_delta:                         number
+}
+
+/** Period coverage status for certified STR data */
+export type STRPeriodCoverage =
+  | 'full'            // selected range aligns to full calendar months
+  | 'partial'         // selected range contains partial months
+  | 'unavailable'     // no certified STR data for this property/period
+
+/** Aggregated certified STR data for the report period */
+export interface CertifiedSTRSummary {
+  months:                       CertifiedSTRMonth[]
+  // Aggregates across all months in range
+  total_reservation_count:      number
+  total_booked_nights:          number
+  total_gross_rental_revenue:   number
+  total_cleaning_income:        number
+  total_platform_fees:          number
+  total_payment_fees:           number
+  total_taxes:                  number
+  total_payout:                 number
+  total_management_fee:         number
+  total_owner_chargeable_expenses: number
+  total_owner_entitlement:      number
+  total_owner_payments:         number
+  total_period_balance:         number
+  // Certification status
+  all_months_certified:         boolean
+  all_controls_pass:            boolean
+  has_any_unresolved:           boolean
+  period_coverage:              STRPeriodCoverage
+  // Owner name (for counterparty lookup)
+  owner_name:                   string | null
+}
+
+// ─── Counterparty Settlement (from v_counterparty_position) ─────────────────
+
+/** Settlement position for the property owner (counterparty-wide).
+ *  Source: public.v_counterparty_position.
+ *  Semantic owner: "What is the current known settlement position between JJ and the counterparty?" */
+export interface CounterpartySettlement {
+  counterparty_name:            string
+  counterparty_id:              string
+  // Domain balances
+  str_balance:                  number
+  management_balance:           number
+  renovation_balance:           number
+  sale_balance:                 number
+  // Aggregate position
+  gross_counterparty_position:  number
+  owner_payments:               number
+  final_counterparty_position:  number
+  position_direction:           string        // 'jj_owes_counterparty' | 'counterparty_owes_jj' | 'settled'
+  position_label:               string
+  // Coverage & confidence
+  has_certified_str:            boolean
+  str_controls_pass:            boolean
+  has_unresolved_history:       boolean
+  unresolved_item_count:        number
+  confidence_status:            string         // 'CERTIFIED' | 'PROVISIONAL' | ...
+  str_coverage_count:           number
+  total_property_count:         number
+  as_of_date:                   string
+}
+
 // ─── Full report ──────────────────────────────────────────────────────────────
 
 /** Complete RC3 report for one property (one reporting_name) */
@@ -112,4 +207,8 @@ export interface RC3PropertyReport {
   has_renovation:  boolean
   has_rental:      boolean
   has_airbnb:      boolean
+  // Gate 2 — Certified STR settlement (null if unavailable or failed to load)
+  certifiedSTR:    CertifiedSTRSummary | null
+  // Gate 2 — Counterparty settlement position (null if unavailable or failed to load)
+  settlement:      CounterpartySettlement | null
 }

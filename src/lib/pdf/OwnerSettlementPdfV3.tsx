@@ -27,9 +27,17 @@ import {
   Font,
 } from '@react-pdf/renderer'
 import { fmt } from './formatters'
+
+/** Format ISO date as "Jan 2026" */
+function fmtMonth(iso: string): string {
+  try {
+    const d = new Date(iso + 'T00:00:00')
+    return d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+  } catch { return iso }
+}
 import { isRTL, rtlRowDirection, rtlTextStyle, rtlColumnOrder, rtlAlignEnd } from './rtlHelpers'
 import { filterSectionsByReportType, type ReportType } from '../report/reportTypes'
-import type { RC3PropertyReport, RC3AccountSection } from '../report/types'
+import type { RC3PropertyReport, RC3AccountSection, CertifiedSTRSummary, CounterpartySettlement } from '../report/types'
 import { toClientRow } from '../report/clientRow'
 import type { ClientDisplayRow } from '../report/clientRow'
 import {
@@ -76,6 +84,14 @@ const C = {
   blueBg: '#eff6ff',
   orange: '#c2410c',
   orangeBg: '#fff7ed',
+  teal: '#0f766e',
+  tealBg: '#f0fdfa',
+  tealBorder: '#99f6e4',
+  indigo: '#3730a3',
+  indigoBg: '#eef2ff',
+  indigoBorder: '#c7d2fe',
+  slateBg: '#f8fafc',
+  slateText: '#64748b',
 }
 
 const ACCOUNT_COLOURS = {
@@ -439,6 +455,17 @@ const s = StyleSheet.create({
     borderColor: C.amberBorder,
     borderRadius: 3,
   },
+  // Gate 2 styles
+  strBlock: { marginBottom: 12, borderWidth: 1, borderColor: '#99f6e4', borderRadius: 6 },
+  strHeader: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#f0fdfa', borderBottomWidth: 1, borderBottomColor: '#99f6e4' },
+  strRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, paddingHorizontal: 10, paddingVertical: 4 },
+  strRowHighlight: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: '#f0fdfa' },
+  settlementBlock: { marginBottom: 12, borderWidth: 1, borderColor: '#c7d2fe', borderRadius: 6 },
+  settlementHeader: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#eef2ff', borderBottomWidth: 1, borderBottomColor: '#c7d2fe' },
+  settlementRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, paddingHorizontal: 10, paddingVertical: 4 },
+  settlementHighlight: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#eef2ff' },
+  evidenceBlock: { marginTop: 12, padding: 10, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 6 },
+  evidenceRow: { flexDirection: 'row' as const, gap: 4, marginBottom: 3 },
   disclosureText: { fontSize: 7, color: C.amber, lineHeight: 1.5 },
 })
 
@@ -1016,6 +1043,188 @@ export interface OwnerSettlementPdfV3Props {
   reportType?: ReportType
 }
 
+/* ─── Gate 2: Certified STR Block ─────────────────────────────────────────── */
+
+function CertifiedSTRBlockPdf({ str, lang }: { str: CertifiedSTRSummary; lang: Lang }) {
+  const isCertified = str.all_months_certified && str.all_controls_pass
+  const statusText = isCertified ? t('certifiedStrCertified', lang) : t('certifiedStrPending', lang)
+  const statusColor = isCertified ? C.green : C.amber
+
+  const firstMonth = str.months[0]?.reporting_month
+  const lastMonth = str.months[str.months.length - 1]?.reporting_month
+  const periodLabel = firstMonth && lastMonth
+    ? `${fmtMonth(firstMonth)} \u2013 ${fmtMonth(lastMonth)} (${str.months.length} ${t('certifiedStrMonths', lang)})`
+    : ''
+
+  const lines: { label: string; value: number; highlight?: boolean; negative?: boolean }[] = [
+    { label: t('certifiedStrRevenue', lang), value: str.total_gross_rental_revenue },
+    { label: t('certifiedStrCleaning', lang), value: str.total_cleaning_income },
+    { label: t('certifiedStrPlatformFees', lang), value: -(str.total_platform_fees + str.total_payment_fees), negative: true },
+    { label: t('certifiedStrTaxes', lang), value: -str.total_taxes, negative: true },
+    { label: t('certifiedStrMgmtFee', lang), value: -str.total_management_fee, negative: true },
+    { label: t('certifiedStrExpenses', lang), value: -str.total_owner_chargeable_expenses, negative: true },
+    { label: t('certifiedStrEntitlement', lang), value: str.total_owner_entitlement, highlight: true },
+    { label: t('certifiedStrPayments', lang), value: -str.total_owner_payments, negative: true },
+    { label: t('certifiedStrBalance', lang), value: str.total_period_balance, highlight: true },
+  ]
+
+  return (
+    <View style={s.strBlock}>
+      <View style={s.strHeader}>
+        <View>
+          <Text style={{ fontSize: 9, fontWeight: 700, color: C.teal }}>{t('certifiedStrTitle', lang)}</Text>
+          <Text style={{ fontSize: 7, color: C.teal, marginTop: 1 }}>{t('certifiedStrSubtitle', lang)}</Text>
+        </View>
+        <View style={{ alignItems: 'flex-end' as const }}>
+          <Text style={{ fontSize: 7, color: statusColor, fontWeight: 700 }}>{statusText}</Text>
+          <Text style={{ fontSize: 7, color: C.teal }}>{periodLabel}</Text>
+          <Text style={{ fontSize: 6, color: C.grayMid }}>
+            {str.total_reservation_count} {t('certifiedStrReservations', lang)} · {str.total_booked_nights} {t('certifiedStrNights', lang)}
+          </Text>
+        </View>
+      </View>
+
+      {str.period_coverage === 'partial' && (
+        <View style={{ paddingHorizontal: 10, paddingVertical: 3, backgroundColor: C.amberBg }}>
+          <Text style={{ fontSize: 6, color: C.amber }}>{t('certifiedStrPartial', lang)}</Text>
+        </View>
+      )}
+
+      {lines.map((line, i) => (
+        <View key={i} style={line.highlight ? s.strRowHighlight : s.strRow}>
+          <Text style={{ fontSize: 7, color: line.highlight ? C.teal : C.grayDark, fontWeight: line.highlight ? 700 : 400 }}>
+            {line.label}
+          </Text>
+          <Text style={{ fontSize: 7, fontFamily: 'Courier', color: line.highlight ? C.teal : line.negative ? C.red : C.green, fontWeight: line.highlight ? 700 : 400 }}>
+            {fmt(line.value)}
+          </Text>
+        </View>
+      ))}
+
+      {str.has_any_unresolved && (
+        <View style={{ paddingHorizontal: 10, paddingVertical: 3, backgroundColor: C.amberBg, borderTopWidth: 1, borderTopColor: C.amberBorder }}>
+          <Text style={{ fontSize: 6, color: C.amber }}>Some months have unresolved data items</Text>
+        </View>
+      )}
+    </View>
+  )
+}
+
+/* ─── Gate 2: Settlement Block ────────────────────────────────────────────── */
+
+function SettlementBlockPdf({ settlement, lang }: { settlement: CounterpartySettlement; lang: Lang }) {
+  const isCertified = settlement.confidence_status === 'CERTIFIED'
+  const hasWarning = settlement.has_unresolved_history
+
+  let posColor = C.grayMid
+  let posLabel = t('settlementSettled', lang)
+  if (settlement.position_direction === 'jj_owes_counterparty') {
+    posColor = C.green; posLabel = t('settlementJjOwes', lang)
+  } else if (settlement.position_direction === 'counterparty_owes_jj') {
+    posColor = C.red; posLabel = t('settlementCpOwes', lang)
+  }
+
+  const domains = [
+    { label: t('settlementStrDomain', lang), value: settlement.str_balance },
+    { label: t('settlementMgmtDomain', lang), value: settlement.management_balance },
+    { label: t('settlementRenoDomain', lang), value: settlement.renovation_balance },
+    { label: t('settlementSaleDomain', lang), value: settlement.sale_balance },
+  ]
+
+  return (
+    <View style={s.settlementBlock}>
+      <View style={s.settlementHeader}>
+        <View>
+          <Text style={{ fontSize: 9, fontWeight: 700, color: C.indigo }}>{t('settlementTitle', lang)}</Text>
+          <Text style={{ fontSize: 7, color: C.indigo, marginTop: 1 }}>{t('settlementSubtitle', lang)}</Text>
+        </View>
+        <View style={{ alignItems: 'flex-end' as const }}>
+          <Text style={{ fontSize: 7, color: C.indigo }}>{t('settlementCounterparty', lang)}: {settlement.counterparty_name}</Text>
+          <Text style={{ fontSize: 6, color: C.grayMid }}>{t('settlementAsOf', lang)} {settlement.as_of_date}</Text>
+        </View>
+      </View>
+
+      {hasWarning && (
+        <View style={{ paddingHorizontal: 10, paddingVertical: 3, backgroundColor: C.amberBg, borderBottomWidth: 1, borderBottomColor: C.amberBorder }}>
+          <Text style={{ fontSize: 6, color: C.amber, fontWeight: 500 }}>{t('settlementWarning', lang)}</Text>
+        </View>
+      )}
+
+      {domains.map((d, i) => (
+        <View key={i} style={s.settlementRow}>
+          <Text style={{ fontSize: 7, color: C.grayDark }}>{d.label}</Text>
+          <Text style={{ fontSize: 7, fontFamily: 'Courier', color: d.value > 0 ? C.green : d.value < 0 ? C.red : C.grayMid }}>{fmt(d.value)}</Text>
+        </View>
+      ))}
+
+      <View style={{ ...s.settlementRow, backgroundColor: C.grayBg, paddingVertical: 5 }}>
+        <Text style={{ fontSize: 7, fontWeight: 700, color: C.grayDark }}>{t('settlementGross', lang)}</Text>
+        <Text style={{ fontSize: 7, fontFamily: 'Courier', fontWeight: 700 }}>{fmt(settlement.gross_counterparty_position)}</Text>
+      </View>
+
+      <View style={s.settlementRow}>
+        <Text style={{ fontSize: 7, color: C.grayDark }}>{t('settlementOwnerPayments', lang)}</Text>
+        <Text style={{ fontSize: 7, fontFamily: 'Courier', color: C.red }}>{fmt(-settlement.owner_payments)}</Text>
+      </View>
+
+      <View style={s.settlementHighlight}>
+        <View>
+          <Text style={{ fontSize: 8, fontWeight: 700, color: C.indigo }}>{t('settlementFinal', lang)}</Text>
+          {!isCertified && (
+            <Text style={{ fontSize: 5, color: C.amber, marginTop: 1 }}>{t('settlementNotFinal', lang)}</Text>
+          )}
+        </View>
+        <View style={{ alignItems: 'flex-end' as const }}>
+          <Text style={{ fontSize: 10, fontWeight: 700, fontFamily: 'Courier', color: posColor }}>
+            {fmt(Math.abs(settlement.final_counterparty_position))}
+          </Text>
+          <Text style={{ fontSize: 6, color: posColor }}>{posLabel}</Text>
+        </View>
+      </View>
+    </View>
+  )
+}
+
+/* ─── Gate 2: Evidence Footer ─────────────────────────────────────────────── */
+
+function EvidenceFooterPdf({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
+  const hasStr = report.certifiedSTR !== null
+  const hasSettlement = report.settlement !== null
+  if (!hasStr && !hasSettlement) return null
+
+  return (
+    <View style={s.evidenceBlock}>
+      <Text style={{ fontSize: 7, fontWeight: 700, color: C.slateText, letterSpacing: 1, marginBottom: 4 }}>
+        {t('evidenceTitle', lang)}
+      </Text>
+
+      {hasStr && (
+        <View style={s.evidenceRow}>
+          <Text style={{ fontSize: 6, color: C.teal, fontWeight: 700 }}>STR</Text>
+          <Text style={{ fontSize: 6, color: C.slateText }}>{t('evidenceStrSource', lang)}</Text>
+        </View>
+      )}
+      <View style={s.evidenceRow}>
+        <Text style={{ fontSize: 6, color: C.blue, fontWeight: 700 }}>TXN</Text>
+        <Text style={{ fontSize: 6, color: C.slateText }}>{t('evidenceMgmtSource', lang)}</Text>
+      </View>
+      {hasSettlement && (
+        <View style={s.evidenceRow}>
+          <Text style={{ fontSize: 6, color: C.indigo, fontWeight: 700 }}>SET</Text>
+          <Text style={{ fontSize: 6, color: C.slateText }}>{t('evidenceSettlementSource', lang)}</Text>
+        </View>
+      )}
+
+      <View style={{ marginTop: 4, paddingTop: 4, borderTopWidth: 0.5, borderTopColor: C.grayBorder }}>
+        <Text style={{ fontSize: 6, color: C.slateText }}>
+          {t('evidenceDisclaimer', lang)}
+        </Text>
+      </View>
+    </View>
+  )
+}
+
+
 export function OwnerSettlementPdfV3({ report, lang = 'en', reportType = 'full' }: OwnerSettlementPdfV3Props) {
   const filteredReport = { ...report, accounts: filterSectionsByReportType(report.accounts, reportType) }
   const reportTypeLabel = reportType === 'periodic' ? t('reportTypePeriodic', lang) : t('reportTypeFull', lang)
@@ -1033,12 +1242,28 @@ export function OwnerSettlementPdfV3({ report, lang = 'en', reportType = 'full' 
         {/* M2: Premium Executive Summary */}
         <PremiumSummaryPdf report={filteredReport} lang={lang} />
 
+        {/* Gate 2: Certified STR Settlement */}
+        {report.certifiedSTR && (
+          <CertifiedSTRBlockPdf str={report.certifiedSTR} lang={lang} />
+        )}
+
         {/* One section per account */}
         {filteredReport.accounts.map(acc => (
           <AccountBlock key={acc.account_type} section={acc} lang={lang} />
         ))}
 
-        <FinalSummaryPdf report={filteredReport} lang={lang} />
+        {/* Gate 2: Counterparty Settlement Position */}
+        {report.settlement && (
+          <SettlementBlockPdf settlement={report.settlement} lang={lang} />
+        )}
+
+        {/* Grouped to avoid nearly-empty last page */}
+        <View wrap={false}>
+          <FinalSummaryPdf report={filteredReport} lang={lang} />
+
+          {/* Gate 2: Financial Evidence Footer */}
+          <EvidenceFooterPdf report={report} lang={lang} />
+        </View>
         <DocFooter report={filteredReport} lang={lang} />
       </Page>
     </Document>

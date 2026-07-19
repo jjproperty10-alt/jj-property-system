@@ -3,9 +3,10 @@
  * Phase B — 2026-07-09
  * M6 — 2026-07-12 — Visual Polish / Design System
  * PR B — 2026-07-16 — Report Scope Selector (server-validated authorization)
+ * Gate 2 — 2026-07-19 — Certified STR + Counterparty Settlement + Evidence Footer
  *
  * M6 changes (presentation only — no accounting logic touched):
- * - Module colour system: Purchase=slate, Renovation=purple, Management=blue, Airbnb=orange
+ * - Module colour system: Purchase=slate, Renovahtion=purple, Management=blue, Airbnb=orange
  * - Lucide icons per module + expense group
  * - Monolingual labels (no mixed EN/HE in badge/footer)
  * - KPI card values text-lg (+12%), row padding py-2.5
@@ -18,6 +19,11 @@
  * - Scope validated via validateAuthorizedReportScope() (PR A Server Action)
  * - Removed browser-only authorization paths (legacy client-side scope + property resolution)
  * - Authorization errors surfaced in UI
+ *
+ * Gate 2 additions (data integration — no accounting logic touched):
+ * - CertifiedSTRCard: certified STR settlement from v_str_settlement_report
+ * - SettlementSummaryCard: counterparty position from v_counterparty_position
+ * - EvidenceFooter: financial attribution policy and source documentation
  */
 
 'use client'
@@ -29,7 +35,7 @@ import {
   Zap, Droplets, Wifi, Brush, Wrench, Sofa, Monitor, Package, Shield,
 } from 'lucide-react'
 import { fetchRC3Report } from '@/lib/report/fetchReport'
-import type { RC3PropertyReport, RC3AccountSection } from '@/lib/report/types'
+import type { RC3PropertyReport, RC3AccountSection, CertifiedSTRSummary, CounterpartySettlement } from '@/lib/report/types'
 import { toClientRow } from '@/lib/report/clientRow'
 import type { ClientDisplayRow } from '@/lib/report/clientRow'
 import { filterSectionsByReportType, type ReportType } from '@/lib/report/reportTypes'
@@ -98,6 +104,14 @@ function fmtDate(iso: string): string {
   } catch {
     return iso
   }
+}
+
+/** Format ISO date as "Jan 2026" style month label */
+function fmtMonth(iso: string): string {
+  try {
+    const d = new Date(iso + 'T00:00:00')
+    return d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+  } catch { return iso }
 }
 
 /* ─── Balance wording (client-facing) ──────────────────────────────────────── */
@@ -529,6 +543,226 @@ function PremiumSummary({ report, lang }: { report: RC3PropertyReport; lang: Lan
         {report.accounts.map(acc => (
           <M2ModuleCard key={acc.account_type} section={acc} lang={lang} />
         ))}
+      </div>
+    </div>
+  )
+}
+
+
+/* ─── Gate 2: Certified STR Card ──────────────────────────────────────────────── */
+
+function CertifiedSTRCard({ str, lang }: { str: CertifiedSTRSummary; lang: Lang }) {
+  const isCertified = str.all_months_certified && str.all_controls_pass
+  const statusColor = isCertified ? 'text-green-700' : 'text-amber-700'
+  const statusBg    = isCertified ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'
+  const statusText  = isCertified ? t('certifiedStrCertified', lang) : t('certifiedStrPending', lang)
+
+  const firstMonth = str.months[0]?.reporting_month
+  const lastMonth  = str.months[str.months.length - 1]?.reporting_month
+  const periodLabel = firstMonth && lastMonth
+    ? `${fmtMonth(firstMonth)} \u2013 ${fmtMonth(lastMonth)} (${str.months.length} ${t('certifiedStrMonths', lang)})`
+    : ''
+
+  const lines: { label: string; value: number; isHighlight?: boolean; isNegative?: boolean }[] = [
+    { label: t('certifiedStrRevenue', lang),      value: str.total_gross_rental_revenue },
+    { label: t('certifiedStrCleaning', lang),      value: str.total_cleaning_income },
+    { label: t('certifiedStrPlatformFees', lang),  value: -(str.total_platform_fees + str.total_payment_fees), isNegative: true },
+    { label: t('certifiedStrTaxes', lang),         value: -str.total_taxes, isNegative: true },
+    { label: t('certifiedStrMgmtFee', lang),       value: -str.total_management_fee, isNegative: true },
+    { label: t('certifiedStrExpenses', lang),       value: -str.total_owner_chargeable_expenses, isNegative: true },
+    { label: t('certifiedStrEntitlement', lang),   value: str.total_owner_entitlement, isHighlight: true },
+    { label: t('certifiedStrPayments', lang),      value: -str.total_owner_payments, isNegative: true },
+    { label: t('certifiedStrBalance', lang),       value: str.total_period_balance, isHighlight: true },
+  ]
+
+  return (
+    <div className="bg-white rounded-2xl border border-teal-200 mb-5 overflow-hidden shadow-sm">
+      <div className="flex items-center justify-between px-5 py-4 bg-teal-50 border-b border-teal-200">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="px-3 py-1 rounded-lg text-xs font-bold bg-teal-700 text-white">
+              {t('certifiedStrTitle', lang)}
+            </span>
+            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${statusBg} ${statusColor}`}>
+              {statusText}
+            </span>
+          </div>
+          <div className="text-[10px] text-teal-600 mt-1">{t('certifiedStrSubtitle', lang)}</div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-teal-600">{periodLabel}</div>
+          <div className="text-[10px] text-teal-500 mt-0.5">
+            {str.total_reservation_count} {t('certifiedStrReservations', lang)} · {str.total_booked_nights} {t('certifiedStrNights', lang)}
+          </div>
+        </div>
+      </div>
+
+      {str.period_coverage === 'partial' && (
+        <div className="px-5 py-2 bg-amber-50 border-b border-amber-200">
+          <span className="text-[10px] text-amber-700 italic">
+            {t('certifiedStrPartial', lang)}
+          </span>
+        </div>
+      )}
+
+      <div className="divide-y divide-gray-100">
+        {lines.map((line, i) => (
+          <div key={i} className={`flex items-center justify-between px-5 py-2.5 ${line.isHighlight ? 'bg-teal-50' : ''}`}>
+            <span className={`text-xs ${line.isHighlight ? 'font-bold text-teal-800' : 'text-gray-700'}`}>
+              {line.label}
+            </span>
+            <span className={`text-xs font-mono ${
+              line.isHighlight ? 'font-bold text-teal-800' :
+              line.isNegative ? 'text-red-600' : 'text-green-700'
+            }`}>
+              {eur(line.value)}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {str.has_any_unresolved && (
+        <div className="px-5 py-2 bg-amber-50 border-t border-amber-200">
+          <span className="text-[10px] text-amber-700">
+            Some months have unresolved data items
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ─── Gate 2: Settlement Summary Card ─────────────────────────────────────────── */
+
+function SettlementSummaryCard({ settlement, lang }: { settlement: CounterpartySettlement; lang: Lang }) {
+  const isCertified = settlement.confidence_status === 'CERTIFIED'
+  const hasWarning  = settlement.has_unresolved_history
+
+  let posColor: string
+  let posLabel: string
+  if (settlement.position_direction === 'jj_owes_counterparty') {
+    posColor = 'text-green-700'
+    posLabel = t('settlementJjOwes', lang)
+  } else if (settlement.position_direction === 'counterparty_owes_jj') {
+    posColor = 'text-red-700'
+    posLabel = t('settlementCpOwes', lang)
+  } else {
+    posColor = 'text-gray-500'
+    posLabel = t('settlementSettled', lang)
+  }
+
+  const domains: { label: string; value: number }[] = [
+    { label: t('settlementStrDomain', lang),  value: settlement.str_balance },
+    { label: t('settlementMgmtDomain', lang), value: settlement.management_balance },
+    { label: t('settlementRenoDomain', lang), value: settlement.renovation_balance },
+    { label: t('settlementSaleDomain', lang), value: settlement.sale_balance },
+  ]
+
+  return (
+    <div className="bg-white rounded-2xl border border-indigo-200 mb-5 overflow-hidden shadow-sm">
+      <div className="flex items-center justify-between px-5 py-4 bg-indigo-50 border-b border-indigo-200">
+        <div>
+          <span className="px-3 py-1 rounded-lg text-xs font-bold bg-indigo-700 text-white">
+            {t('settlementTitle', lang)}
+          </span>
+          <div className="text-[10px] text-indigo-600 mt-1">{t('settlementSubtitle', lang)}</div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-indigo-600">
+            {t('settlementCounterparty', lang)}: {settlement.counterparty_name}
+          </div>
+          <div className="text-[10px] text-indigo-500 mt-0.5">
+            {t('settlementAsOf', lang)} {fmtDate(settlement.as_of_date)}
+          </div>
+        </div>
+      </div>
+
+      {hasWarning && (
+        <div className="px-5 py-2 bg-amber-50 border-b border-amber-200">
+          <span className="text-[10px] text-amber-700 font-medium">
+            {t('settlementWarning', lang)}
+          </span>
+        </div>
+      )}
+
+      <div className="divide-y divide-gray-100">
+        {domains.map((d, i) => (
+          <div key={i} className="flex items-center justify-between px-5 py-2.5">
+            <span className="text-xs text-gray-700">{d.label}</span>
+            <span className={`text-xs font-mono ${d.value > 0 ? 'text-green-700' : d.value < 0 ? 'text-red-600' : 'text-gray-400'}`}>
+              {eur(d.value)}
+            </span>
+          </div>
+        ))}
+
+        <div className="flex items-center justify-between px-5 py-2.5 bg-gray-50">
+          <span className="text-xs font-bold text-gray-700">{t('settlementGross', lang)}</span>
+          <span className="text-xs font-mono font-bold text-gray-800">{eur(settlement.gross_counterparty_position)}</span>
+        </div>
+
+        <div className="flex items-center justify-between px-5 py-2.5">
+          <span className="text-xs text-gray-700">{t('settlementOwnerPayments', lang)}</span>
+          <span className="text-xs font-mono text-red-600">{eur(-settlement.owner_payments)}</span>
+        </div>
+
+        <div className="flex items-center justify-between px-5 py-3 bg-indigo-50">
+          <div>
+            <span className="text-sm font-bold text-indigo-800">{t('settlementFinal', lang)}</span>
+            {!isCertified && (
+              <div className="text-[9px] text-amber-600 font-medium mt-0.5">
+                {t('settlementNotFinal', lang)}
+              </div>
+            )}
+          </div>
+          <div className="text-right">
+            <div className={`text-lg font-bold font-mono ${posColor}`}>
+              {eur(Math.abs(settlement.final_counterparty_position))}
+            </div>
+            <div className={`text-[10px] ${posColor}`}>{posLabel}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ─── Gate 2: Financial Evidence Footer ───────────────────────────────────────── */
+
+function EvidenceFooter({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
+  const hasStr = report.certifiedSTR !== null
+  const hasSettlement = report.settlement !== null
+
+  if (!hasStr && !hasSettlement) return null
+
+  return (
+    <div className="bg-slate-50 rounded-2xl border border-slate-200 p-5 mt-5 shadow-sm">
+      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">
+        {t('evidenceTitle', lang)}
+      </div>
+
+      <div className="space-y-2">
+        {hasStr && (
+          <div className="flex items-start gap-2">
+            <span className="text-[9px] text-teal-600 mt-0.5 shrink-0">STR</span>
+            <span className="text-[10px] text-slate-600">{t('evidenceStrSource', lang)}</span>
+          </div>
+        )}
+        <div className="flex items-start gap-2">
+          <span className="text-[9px] text-blue-600 mt-0.5 shrink-0">TXN</span>
+          <span className="text-[10px] text-slate-600">{t('evidenceMgmtSource', lang)}</span>
+        </div>
+        {hasSettlement && (
+          <div className="flex items-start gap-2">
+            <span className="text-[9px] text-indigo-600 mt-0.5 shrink-0">SET</span>
+            <span className="text-[10px] text-slate-600">{t('evidenceSettlementSource', lang)}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-3 pt-3 border-t border-slate-200">
+        <p className="text-[10px] text-slate-500 italic leading-relaxed">
+          {t('evidenceDisclaimer', lang)}
+        </p>
       </div>
     </div>
   )
@@ -1200,6 +1434,11 @@ function ClientReportRC3Content() {
             {/* M2: Premium Executive Summary */}
             <PremiumSummary report={filteredReport!} lang={lang} />
 
+            {/* Gate 2: Certified STR Settlement */}
+            {report.certifiedSTR && (
+              <CertifiedSTRCard str={report.certifiedSTR} lang={lang} />
+            )}
+
             {/* Account cards */}
             {visibleAccounts.length === 0 ? (
               <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm rounded-xl p-5">
@@ -1211,8 +1450,16 @@ function ClientReportRC3Content() {
               ))
             )}
 
+            {/* Gate 2: Counterparty Settlement Position */}
+            {report.settlement && (
+              <SettlementSummaryCard settlement={report.settlement} lang={lang} />
+            )}
+
             {/* Final Summary — accounting summary + disclaimer */}
             <FinalSummary report={filteredReport!} lang={lang} />
+
+            {/* Gate 2: Financial Evidence Footer */}
+            <EvidenceFooter report={report} lang={lang} />
           </>
         )}
 
