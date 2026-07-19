@@ -31,20 +31,27 @@ function propertyAccent(name: string): string {
 }
 
 /**
- * Derive attention items from real DTO values (F3: no hardcoding).
- * Source: timeline.openVerificationTasks is fetched server-side from
- * lifecycle.verification_tasks by timelineService. Items ordered by
- * consequence severity — NeedsAttentionItems shows max 3.
+ * Derive attention items for NeedsAttentionItems.
+ *
+ * F3 (v1.1): items come from real lifecycle.verification_tasks rows, not a count.
+ * Each task provides a server-computed humanLabel safe for partner display.
+ * No UUIDs or internal table names reach the UI — humanLabel only.
+ *
+ * Ordering: verification task items first (server priority order),
+ * then capital-unknown status.
  */
 function deriveAttentionItems(prop: PartnerPropertyStatement): string[] {
   const items: string[] = []
-  if (prop.timeline.openVerificationTasks > 0) {
-    const n = prop.timeline.openVerificationTasks
-    items.push(`${n} date${n === 1 ? '' : 's'} pending confirmation`)
+
+  // Per-task labels from real verification_tasks rows (humanLabel is UI-safe — no UUIDs)
+  for (const task of (prop.timeline.verificationTaskItems ?? [])) {
+    items.push(task.humanLabel)
   }
+
   if (prop.capital.capitalStatus === 'capital_unknown') {
     items.push('Investment amount to be verified')
   }
+
   return items
 }
 
@@ -54,7 +61,7 @@ function deriveAttentionItems(prop: PartnerPropertyStatement): string[] {
  * R4 wiring (functional closure):
  * - F1: partnerStatementService uses direction='inflow' (DB constraint fix)
  * - F2: HighlightTimeline wired via PartnerTimelineSection (FR-001 compliant)
- * - F3: NeedsAttentionItems populated from real DTO values (server-side DB count)
+ * - F3: NeedsAttentionItems populated from real verification_tasks rows (per-task humanLabel)
  * - F4: SettlementCard outside {prop.financial && ...} guard — renders when financial===null
  *
  * P-ARCH-6: no jj_* fields. Discriminated union ensures PartnerFacingStatementDTO
@@ -148,7 +155,7 @@ export function PartnerReport({ dto }: Props) {
                 <PartnerTimelineSection timeline={prop.timeline} />
                 {/* F4: SettlementCard outside financial guard — renders when financial===null */}
                 <SettlementCard settlement={prop.settlement} className="px-6 py-6" />
-                {/* F3: NeedsAttentionItems from real server-side DTO values */}
+                {/* F3: NeedsAttentionItems from real per-task humanLabels (server-side) */}
                 {attentionItems.length > 0 && (
                   <NeedsAttentionItems items={attentionItems} className="px-6 py-6" />
                 )}
