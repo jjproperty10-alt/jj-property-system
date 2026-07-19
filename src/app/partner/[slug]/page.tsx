@@ -3,6 +3,8 @@ import { redirect, notFound } from 'next/navigation'
 import { loadStatementForCurrentPartner } from '@/lib/lifecycle/partnerAuthService'
 import { PartnerReport } from '@/components/partner/PartnerReport'
 
+export const dynamic = 'force-dynamic'
+
 interface Props {
   params: { slug: string }
 }
