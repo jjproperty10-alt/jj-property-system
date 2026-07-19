@@ -25,6 +25,8 @@ import { loadInvestmentTimeline } from '@/lib/lifecycle/timelineService'
 import type { TimelineViewMode } from '@/lib/lifecycle/timelineTypes'
 import { InvestmentTimeline } from '@/components/owner/InvestmentTimeline'
 
+export const dynamic = 'force-dynamic'
+
 interface Props {
   params: { owner: string; property: string }
 }
