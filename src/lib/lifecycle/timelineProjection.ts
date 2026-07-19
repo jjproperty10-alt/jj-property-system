@@ -18,6 +18,7 @@ import type {
   InvestmentTimelineDTO,
   TimelineEventNature,
   TimelineDateConfidence,
+  VerificationTaskItem,
 } from './timelineTypes'
 
 import {
@@ -410,17 +411,21 @@ export function projectTimeline(input: ProjectTimelineInput): InvestmentTimeline
 // ---------------------------------------------------------------------------
 
 /**
- * Compute the evidence panel summary from projected events.
+ * Compute the evidence panel summary from projected events and task items.
  *
- * @param events                 The projected (already-sorted) event list
- * @param openVerificationTasks  Count from lifecycle.verification_tasks (status=pending)
+ * @param events                  The projected (already-sorted) event list
+ * @param verificationTaskItems   Full task rows from lifecycle.verification_tasks
  */
 export function computeEvidence(
   events: InvestmentTimelineEventDTO[],
-  openVerificationTasks: number,
+  verificationTaskItems: readonly VerificationTaskItem[],
 ): InvestmentTimelineDTO['evidence'] {
   const hasPendingDates = events.some(
     e => e.effectiveDateConfidence === 'pending_verification',
   )
-  return { openVerificationTasks, hasPendingDates }
+  return {
+    openVerificationTasks: verificationTaskItems.length,
+    hasPendingDates,
+    verificationTaskItems,
+  }
 }
