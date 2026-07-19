@@ -56,6 +56,9 @@ function makeReport(
     has_renovation: false,
     has_rental: true,
     has_airbnb: false,
+    // Gate 2
+    certifiedSTR: null,
+    settlement: null,
   }
 }
 
