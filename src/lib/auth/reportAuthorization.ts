@@ -5,7 +5,12 @@
  * SECURITY:
  * - Server Action ('use server') — executes ONLY on the server, never in client bundles.
  * - Resolves authenticated user from session cookie via @supabase/ssr.
- * - Queries user_roles with createServiceClient() (elevated privileges) — bypasses RLS.
+ * - Queries user_roles and property data using the AUTHENTICATED session client.
+ *   All queried tables have RLS policies granting SELECT to authenticated users:
+ *     user_roles:      superadmin_manage_roles (ALL, auth.role()='authenticated')
+ *     property_owners: auth_all_property_owners (ALL, true) for authenticated role
+ *     transactions:    auth_read_transactions (SELECT, auth.role()='authenticated')
+ *   No service_role bypass is needed or used.
  * - Never trusts browser-submitted property names or owner identifiers.
  * - Fails closed: missing role, unknown role, unauthenticated → rejected.
  * - Error messages never reveal which properties belong to other owners.
@@ -21,13 +26,18 @@
  * - Roles beyond superadmin/partner are not yet defined for report access.
  * - When external partners get accounts, this service must be extended.
  *
+ * LEAST-PRIVILEGE REFACTOR (2026-07-19):
+ * - Replaced createServiceClient() with authenticated session client.
+ * - RLS investigation confirmed service_role was unnecessary:
+ *   all queried tables allow authenticated SELECT.
+ * - No SUPABASE_SERVICE_KEY dependency remains in this module.
+ *
  * @see PR_B_GATE1_BLOCKER.md — investigation that led to this service
  */
 'use server'
 
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { createServiceClient } from '@/lib/supabase'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,15 +70,17 @@ const RC3_VIEWS = [
   'v_rc3_sale',
 ] as const
 
-// ── Internal: resolve authenticated user ─────────────────────────────────────
+// ── Internal: create authenticated server client ─────────────────────────────
 
-async function resolveAuthenticatedUser(): Promise<
-  | { ok: true; userId: string }
-  | { ok: false; error: 'unauthenticated' }
-> {
+/**
+ * Create an authenticated Supabase client using the request's session cookie.
+ * This client carries the user's JWT and is subject to RLS policies.
+ * No service_role key is used — least-privilege principle.
+ */
+async function createAuthenticatedServerClient() {
   const cookieStore = await cookies()
 
-  const supabase = createServerClient(
+  return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -82,7 +94,16 @@ async function resolveAuthenticatedUser(): Promise<
       },
     },
   )
+}
 
+// ── Internal: resolve authenticated user ─────────────────────────────────────
+
+async function resolveAuthenticatedUser(
+  supabase: ReturnType<typeof createServerClient>,
+): Promise<
+  | { ok: true; userId: string }
+  | { ok: false; error: 'unauthenticated' }
+> {
   const { data: { user }, error } = await supabase.auth.getUser()
 
   if (error || !user) {
@@ -101,14 +122,13 @@ interface UserRoleRecord {
 }
 
 async function resolveUserRole(
+  supabase: ReturnType<typeof createServerClient>,
   userId: string,
 ): Promise<
   | { ok: true; role: string; fullName: string }
   | { ok: false; error: AuthorizationError }
 > {
-  const db = createServiceClient()
-
-  const { data, error } = await db
+  const { data, error } = await supabase
     .from('user_roles')
     .select('role, full_name, is_active')
     .eq('user_id', userId)
@@ -133,13 +153,14 @@ async function resolveUserRole(
 
 // ── Internal: load canonical reportable properties ───────────────────────────
 
-async function loadAllReportableProperties(): Promise<string[]> {
-  const db = createServiceClient()
+async function loadAllReportableProperties(
+  supabase: ReturnType<typeof createServerClient>,
+): Promise<string[]> {
   const nameSet = new Set<string>()
 
   await Promise.all(
     RC3_VIEWS.map(async (view) => {
-      const { data } = await db.from(view).select('reporting_name')
+      const { data } = await supabase.from(view).select('reporting_name')
       if (data) {
         for (const row of data as Array<{ reporting_name: string | null }>) {
           if (row.reporting_name) nameSet.add(row.reporting_name)
@@ -151,11 +172,12 @@ async function loadAllReportableProperties(): Promise<string[]> {
   return Array.from(nameSet).sort((a, b) => a.localeCompare(b))
 }
 
-async function loadPartnerProperties(ownerName: string): Promise<string[]> {
-  const db = createServiceClient()
-
+async function loadPartnerProperties(
+  supabase: ReturnType<typeof createServerClient>,
+  ownerName: string,
+): Promise<string[]> {
   // Get properties owned by this partner
-  const { data: owned } = await db
+  const { data: owned } = await supabase
     .from('property_owners')
     .select('property_name')
     .eq('owner_name', ownerName)
@@ -168,7 +190,7 @@ async function loadPartnerProperties(ownerName: string): Promise<string[]> {
   )
 
   // Intersect with canonical reportable properties (only properties with RC3 data)
-  const allReportable = await loadAllReportableProperties()
+  const allReportable = await loadAllReportableProperties(supabase)
   return allReportable.filter(name => ownedNames.has(name))
 }
 
@@ -181,15 +203,19 @@ async function loadPartnerProperties(ownerName: string): Promise<string[]> {
  * Authorization chain:
  *   session cookie → auth.uid → user_roles → policy → property set
  *
+ * Uses authenticated session client throughout — no service_role.
  * Fails closed at every step.
  */
 export async function getAuthorizedReportProperties(): Promise<AuthorizationResult> {
+  // Create authenticated client from session cookie
+  const supabase = await createAuthenticatedServerClient()
+
   // Step 1: Resolve authenticated user from session
-  const authResult = await resolveAuthenticatedUser()
+  const authResult = await resolveAuthenticatedUser(supabase)
   if (!authResult.ok) return authResult
 
   // Step 2: Resolve role from user_roles
-  const roleResult = await resolveUserRole(authResult.userId)
+  const roleResult = await resolveUserRole(supabase, authResult.userId)
   if (!roleResult.ok) return roleResult
 
   // Step 3: Apply authorization policy
@@ -197,14 +223,11 @@ export async function getAuthorizedReportProperties(): Promise<AuthorizationResu
 
   switch (roleResult.role as ReportAccessRole) {
     case 'superadmin': {
-      // Explicit policy: superadmin is authorized for all canonical reportable properties.
-      // This is an explicit admin authorization policy, not an owner-specific mapping.
-      properties = await loadAllReportableProperties()
+      properties = await loadAllReportableProperties(supabase)
       break
     }
     case 'partner': {
-      // Partner: authorized only for properties where property_owners.owner_name matches
-      properties = await loadPartnerProperties(roleResult.fullName)
+      properties = await loadPartnerProperties(supabase, roleResult.fullName)
       break
     }
   }
@@ -218,10 +241,6 @@ export async function getAuthorizedReportProperties(): Promise<AuthorizationResu
 
 // ── Public API: validateAuthorizedReportScope ─────────────────────────────────
 
-/**
- * Scope types — re-exported here so consumers don't need to import reportScope.ts
- * (which may not exist until PR B). Structurally identical to reportScope.ReportScope.
- */
 export type ReportScope =
   | { type: 'portfolio' }
   | { type: 'selected_properties'; propertyNames: string[] }
@@ -250,26 +269,21 @@ export type ScopeValidationError =
 export async function validateAuthorizedReportScope(
   scope: ReportScope,
 ): Promise<ScopeValidationResult> {
-  // Step 1-3: Get authorized properties (full auth chain)
   const authResult = await getAuthorizedReportProperties()
   if (!authResult.ok) return authResult
 
   const authorized = authResult.properties
 
-  // Step 4: Validate scope against authorized set
   switch (scope.type) {
     case 'portfolio': {
-      // Portfolio = all authorized properties
       return { ok: true, resolvedProperties: authorized, role: authResult.role }
     }
 
     case 'selected_properties': {
-      // Normalize: trim, dedup, preserve order
       const normalized = dedup(scope.propertyNames.map(n => n.trim()).filter(Boolean))
       if (normalized.length === 0) {
         return { ok: false, error: 'empty_selection' }
       }
-      // Filter to authorized set only — silently drop unauthorized
       const authorizedSet = new Set(authorized)
       const resolved = normalized.filter(n => authorizedSet.has(n))
       if (resolved.length === 0) {
@@ -284,7 +298,6 @@ export async function validateAuthorizedReportScope(
         return { ok: false, error: 'missing_property' }
       }
       if (!authorized.includes(name)) {
-        // Do not reveal whether the property exists for another owner
         return { ok: false, error: 'no_authorized_properties' }
       }
       return { ok: true, resolvedProperties: [name], role: authResult.role }
