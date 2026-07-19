@@ -1,19 +1,19 @@
 /**
- * JJ Property 10 â RC3 Report Fetch Layer
- * Phase 3 â 2026-07-09
- * Gate 2 â 2026-07-19: Certified STR + Counterparty Settlement queries
+ * JJ Property 10 — RC3 Report Fetch Layer
+ * Phase 3 — 2026-07-09
+ * Gate 2 — 2026-07-19: Certified STR + Counterparty Settlement queries
  *
  * Queries the four RC3 account views for a given reporting_name and date range.
  * Gate 2 adds parallel queries for certified STR data and counterparty settlement.
  *
  * View chain:
  *   transactions
- *   â v_transactions_reporting (canonical property names)
- *   â v_rc3_classified (account_type + flags)
- *   â v_rc3_sale | v_rc3_renovation | v_rc3_rental | v_rc3_airbnb
+ *   → v_transactions_reporting (canonical property names)
+ *   → v_rc3_classified (account_type + flags)
+ *   → v_rc3_sale | v_rc3_renovation | v_rc3_rental | v_rc3_airbnb
  *
  * Gate 2 additional sources:
- *   pms.v_str_property_settlement â public.v_str_settlement_report (wrapper view)
+ *   pms.v_str_property_settlement → public.v_str_settlement_report (wrapper view)
  *   public.v_counterparty_position
  *
  * All views apply base filters automatically:
@@ -32,7 +32,7 @@ import type {
   CounterpartySettlement,
 } from './types'
 
-// âââ View map âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─── View map ───────────────────────────────────────────────────────────────
 
 const RC3_VIEWS: Record<RC3AccountType, string> = {
   sale: 'v_rc3_sale',
@@ -44,7 +44,7 @@ const RC3_VIEWS: Record<RC3AccountType, string> = {
 /** Client-facing account order (confirmed 2026-07-08, Yossi) */
 const ACCOUNT_ORDER: RC3AccountType[] = ['sale', 'renovation', 'rental', 'airbnb']
 
-// âââ Query helper âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─── Query helper ───────────────────────────────────────────────────────────
 
 async function fetchViewRows(
   view: string,
@@ -69,7 +69,7 @@ async function fetchViewRows(
   return (data ?? []) as RC3Row[]
 }
 
-// âââ Gate 2: Period coverage detection ââââââââââââââââââââââââââââââââââââââ
+// ─── Gate 2: Period coverage detection ──────────────────────────────────────
 
 /**
  * Determine if date range aligns to full calendar months.
@@ -77,7 +77,7 @@ async function fetchViewRows(
  * If the user selects a partial month range, we mark coverage as 'partial'.
  */
 function detectPeriodCoverage(fromDate?: string, toDate?: string): STRPeriodCoverage {
-  // No date filter â full coverage (all available months)
+  // No date filter → full coverage (all available months)
   if (!fromDate && !toDate) return 'full'
 
   // Check if fromDate is 1st of month
@@ -128,7 +128,7 @@ function getFullMonthRange(fromDate?: string, toDate?: string): {
   return { fromMonth, toMonth }
 }
 
-// âââ Gate 2: Certified STR fetch ââââââââââââââââââââââââââââââââââââââââââââ
+// ─── Gate 2: Certified STR fetch ────────────────────────────────────────────
 
 /**
  * Fetch certified STR settlement data from public.v_str_settlement_report.
@@ -203,7 +203,7 @@ async function fetchCertifiedSTR(
   }
 }
 
-// âââ Gate 2: Counterparty Settlement fetch ââââââââââââââââââââââââââââââââââ
+// ─── Gate 2: Counterparty Settlement fetch ──────────────────────────────────
 
 /**
  * Fetch counterparty settlement position from public.v_counterparty_position.
@@ -239,14 +239,14 @@ async function fetchCounterpartySettlement(
   }
 }
 
-// âââ Public API âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─── Public API ─────────────────────────────────────────────────────────────
 
 export interface FetchReportParams {
   reportingName: string
   fromDate?: string  // ISO date e.g. "2024-01-01"
   toDate?: string    // ISO date e.g. "2026-12-31"
   /** Opening balances per account type.
-   *  Currently always 0 â will be populated from contact_opening_balances (Task 5). */
+   *  Currently always 0 — will be populated from contact_opening_balances (Task 5). */
   openingBalances?: Partial<Record<RC3AccountType, number>>
 }
 
@@ -280,7 +280,7 @@ export async function fetchRC3Report(params: FetchReportParams): Promise<RC3Prop
         return buildAccountSection(accountType, rows, opening)
       }),
     ),
-    // Certified STR query (graceful failure â null)
+    // Certified STR query (graceful failure → null)
     fetchCertifiedSTR(reportingName, fromDate, toDate),
   ])
 

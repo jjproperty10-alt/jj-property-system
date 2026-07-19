@@ -1,7 +1,7 @@
 /**
- * JJ Property 10 â RC3 Report Engine Types
- * Phase 3 â 2026-07-09
- * Gate 2 â 2026-07-19: Certified STR + Counterparty Settlement types
+ * JJ Property 10 — RC3 Report Engine Types
+ * Phase 3 — 2026-07-09
+ * Gate 2 — 2026-07-19: Certified STR + Counterparty Settlement types
  *
  * Source of truth for the account-based client report model.
  * All Phase 3 report components must import from here.
@@ -13,10 +13,10 @@
  *   sale / renovation : positive = client owes JJ (client_debt)
  */
 
-// âââ Account type âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─── Account type ─────────────────────────────────────────────────────────────
 
 /** The four client-facing account types in RC3.
- *  Order matches client report display order: Sale â Renovation â Rental â Airbnb */
+ *  Order matches client report display order: Sale → Renovation → Rental → Airbnb */
 export type RC3AccountType = 'sale' | 'renovation' | 'rental' | 'airbnb'
 
 /** Which direction the account balance is expressed */
@@ -26,11 +26,11 @@ export type BalanceConvention = 'owner_credit' | 'client_debt'
 export type DisplayGroup =
   | 'income'       // increases the positive side of the balance
   | 'expense'      // decreases the positive side of the balance
-  | 'payment_out'  // BPO â money sent to owner
-  | 'info'         // platform tracking, internal cost tracking â shown but balance_effect = 0
-  | 'reference'    // contract values, internal-only rows â shown collapsed or hidden
+  | 'payment_out'  // BPO — money sent to owner
+  | 'info'         // platform tracking, internal cost tracking — shown but balance_effect = 0
+  | 'reference'    // contract values, internal-only rows — shown collapsed or hidden
 
-// âââ Raw view row âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─── Raw view row ─────────────────────────────────────────────────────────────
 
 /** Raw row shape returned by v_rc3_sale | v_rc3_renovation | v_rc3_rental | v_rc3_airbnb.
  *  All fields match the Supabase view columns exactly. */
@@ -46,7 +46,7 @@ export interface RC3Row {
   payee:                string | null
   amount_eur:           number         // JJ internal cost
   client_charge:        number | null
-  client_amount:        number         // COALESCE(client_charge, amount_eur) â computed by view
+  client_amount:        number         // COALESCE(client_charge, amount_eur) — computed by view
   notes:                string | null
   k_note:               string | null
   account_type:         string         // 'sale' | 'renovation' | 'rental' | 'airbnb' from view
@@ -58,7 +58,7 @@ export interface RC3Row {
   updated_at?:          string
 }
 
-// âââ Enriched row âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─── Enriched row ─────────────────────────────────────────────────────────────
 
 /** RC3Row enriched with computed display + balance fields by computeBalance.ts */
 export interface RC3AccountRow extends RC3Row {
@@ -77,13 +77,13 @@ export interface RC3AccountRow extends RC3Row {
   display_label: string
 }
 
-// âââ Account section ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─── Account section ──────────────────────────────────────────────────────────
 
 /** One account section in the report (one per account_type with data) */
 export interface RC3AccountSection {
   account_type:        RC3AccountType
   account_label:       string           // e.g. 'Property Purchase'
-  account_label_he:    string           // e.g. '×¨×××©×ª × ××¡'
+  account_label_he:    string           // e.g. 'רכישת נכס'
   balance_convention:  BalanceConvention
   opening_balance:     number           // 0 until contact_opening_balances is implemented (Task 5)
   rows:                RC3AccountRow[]  // all rows including info/reference
@@ -96,10 +96,10 @@ export interface RC3AccountSection {
   total_income:        number           // sum of positive balance effects
   total_expenses:      number           // sum of expense effects (absolute value)
   total_bpo:           number           // Bank Payments to Owner (absolute value)
-  closing_balance:     number           // contract_baseline + opening_balance + Î£ balance_effect
+  closing_balance:     number           // contract_baseline + opening_balance + Σ balance_effect
 }
 
-// âââ Certified STR Settlement (from v_str_settlement_report) ââââââââââââââââ
+// ─── Certified STR Settlement (from v_str_settlement_report) ────────────────
 
 /** One month of certified STR financial data for a single property.
  *  Source: pms.v_str_property_settlement via public.v_str_settlement_report wrapper.
@@ -163,7 +163,7 @@ export interface CertifiedSTRSummary {
   owner_name:                   string | null
 }
 
-// âââ Counterparty Settlement (from v_counterparty_position) âââââââââââââââââ
+// ─── Counterparty Settlement (from v_counterparty_position) ─────────────────
 
 /** Settlement position for the property owner (counterparty-wide).
  *  Source: public.v_counterparty_position.
@@ -193,7 +193,7 @@ export interface CounterpartySettlement {
   as_of_date:                   string
 }
 
-// âââ Full report ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─── Full report ──────────────────────────────────────────────────────────────
 
 /** Complete RC3 report for one property (one reporting_name) */
 export interface RC3PropertyReport {
@@ -202,13 +202,13 @@ export interface RC3PropertyReport {
   to_date:        string | null
   generated_at:   string          // ISO timestamp
   accounts:       RC3AccountSection[]
-  // Convenience flags â which accounts have data
+  // Convenience flags — which accounts have data
   has_sale:        boolean
   has_renovation:  boolean
   has_rental:      boolean
   has_airbnb:      boolean
-  // Gate 2 â Certified STR settlement (null if unavailable or failed to load)
+  // Gate 2 — Certified STR settlement (null if unavailable or failed to load)
   certifiedSTR:    CertifiedSTRSummary | null
-  // Gate 2 â Counterparty settlement position (null if unavailable or failed to load)
+  // Gate 2 — Counterparty settlement position (null if unavailable or failed to load)
   settlement:      CounterpartySettlement | null
 }
