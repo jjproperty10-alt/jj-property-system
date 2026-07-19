@@ -1,25 +1,22 @@
-import type { FinancialStatement, SettlementStatement } from '@/lib/lifecycle/partnerStatementTypes'
+import type { FinancialStatement } from '@/lib/lifecycle/partnerStatementTypes'
 
 const eur = (n: number) =>
   new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n)
 
 interface Props {
   financial: FinancialStatement
-  settlement: SettlementStatement
 }
 
 /**
  * PartnerFinancialSection — PR D v2: RTL-safe + a11y pass
  *
- * Changes from PR D v1:
- * - dir="ltr" on date range span; replaced hardcoded → arrow with en dash –
- * - dir="ltr" on table date cells, amount cells, closing balance, settlement balance
- * - text-[10px] text-gray-400 table headers upgraded to text-xs text-gray-600
- * - break-words on description cells to prevent overflow
- * - motion-reduce:transition-none on table row hover transition
- * - Business logic unchanged (visibleRow, null handling, P-ARCH-1)
+ * Renders financial data table only. Settlement balance moved to SettlementCard
+ * which renders independently outside the financial guard (F4 fix — settlement
+ * must appear even when financial is null).
+ *
+ * Removed: settlement prop, SettlementStatement import, "Current Balance" block.
  */
-export function PartnerFinancialSection({ financial, settlement }: Props) {
+export function PartnerFinancialSection({ financial }: Props) {
   const visibleSections = financial.accountSections.filter(
     (s) => s.rows.filter(visibleRow).length > 0 || s.closing_balance !== 0,
   )
@@ -32,7 +29,7 @@ export function PartnerFinancialSection({ financial, settlement }: Props) {
         <h3 className="text-xs font-bold uppercase tracking-widest text-gray-600">Financial</h3>
         {(financial.fromDate || financial.toDate) && (
           <span className="text-xs text-gray-600 tabular-nums" dir="ltr">
-            {financial.fromDate ?? 'all time'} – {financial.toDate ?? 'present'}
+            {financial.fromDate ?? 'all time'} &ndash; {financial.toDate ?? 'present'}
           </span>
         )}
       </div>
@@ -72,7 +69,7 @@ export function PartnerFinancialSection({ financial, settlement }: Props) {
                           <td className="px-3 py-2 align-top break-words">
                             <span className="font-medium text-gray-700">{row.display_label}</span>
                             {row.description && (
-                              <span className="text-gray-500 ml-1">— {row.description}</span>
+                              <span className="text-gray-500 ml-1">&mdash; {row.description}</span>
                             )}
                           </td>
                           <td
@@ -92,24 +89,6 @@ export function PartnerFinancialSection({ financial, settlement }: Props) {
             </div>
           )
         })}
-      </div>
-
-      {/* Settlement balance — null until Settlement Engine (RC2) */}
-      <div className="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between">
-        <span className="text-sm font-bold text-gray-700">Current Balance</span>
-        <div className="text-right">
-          <span
-            className={`text-sm font-bold tabular-nums ${
-              settlement.currentBalanceEur !== null ? 'text-gray-900' : 'text-gray-400'
-            }`}
-            dir="ltr"
-          >
-            {settlement.currentBalanceEur !== null ? eur(settlement.currentBalanceEur) : '—'}
-          </span>
-          {settlement.currentBalanceEur === null && (
-            <p className="text-xs text-gray-500 italic mt-0.5">Pending Settlement Engine</p>
-          )}
-        </div>
       </div>
     </section>
   )
