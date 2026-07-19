@@ -6,7 +6,7 @@
  * Gate 2 — 2026-07-19 — Certified STR + Counterparty Settlement + Evidence Footer
  *
  * M6 changes (presentation only — no accounting logic touched):
- * - Module colour system: Purchase=slate, Renovation=purple, Management=blue, Airbnb=orange
+ * - Module colour system: Purchase=slate, Renovahtion=purple, Management=blue, Airbnb=orange
  * - Lucide icons per module + expense group
  * - Monolingual labels (no mixed EN/HE in badge/footer)
  * - KPI card values text-lg (+12%), row padding py-2.5
@@ -592,7 +592,7 @@ function CertifiedSTRCard({ str, lang }: { str: CertifiedSTRSummary; lang: Lang 
         <div className="text-right">
           <div className="text-xs text-teal-600">{periodLabel}</div>
           <div className="text-[10px] text-teal-500 mt-0.5">
-            {str.total_reservation_count} {t('certifiedStrReservations', lang)} \u00b7 {str.total_booked_nights} {t('certifiedStrNights', lang)}
+            {str.total_reservation_count} {t('certifiedStrReservations', lang)} · {str.total_booked_nights} {t('certifiedStrNights', lang)}
           </div>
         </div>
       </div>
