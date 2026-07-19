@@ -119,6 +119,9 @@ function makeReport(name: string, sections: RC3AccountSection[]) {
     has_renovation: sections.some(s => s.account_type === 'renovation'),
     has_rental:     sections.some(s => s.account_type === 'rental'),
     has_airbnb:     sections.some(s => s.account_type === 'airbnb'),
+    // Gate 2
+    certifiedSTR: null,
+    settlement: null,
   }
 }
 
