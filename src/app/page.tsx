@@ -4,7 +4,7 @@
 // ============================================================
 //
 // Section A — Cashboxes          → v_cashbox_audit
-// Section B — Partner Settlement → v_settlement_verification
+// Section B — Partner Settlement → v_settlement_vherification
 // Section C — Anastasia Clearing → v_anastasia_clearing
 // Section D — Owner/Client Bal.  → v_ceo_summary
 // Section E — Profit Overview    → v_ceo_summary
@@ -21,6 +21,8 @@
 // ============================================================
 
 import { createClient } from '@supabase/supabase-js'
+
+export const dynamic = 'force-dynamic'
 
 // ---- Numeric coercion ----
 // Supabase returns PostgreSQL NUMERIC columns as strings.
