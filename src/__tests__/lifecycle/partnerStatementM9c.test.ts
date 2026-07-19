@@ -175,7 +175,7 @@ test('M9C-07: NULL effectiveDate preserved on TimelineEvent — not replaced wit
 
 test('M9C-08: PartnerFacingStatementDTO has no jj_* fields at top level', () => {
   const dto: Partial<PartnerFacingStatementDTO> = {
-    meta: { schemaVersion: 'PartnerStatementDTO/1.0', viewMode: 'partner', generatedAt: new Date().toISOString() },
+    meta: { schemaVersion: 'PartnerStatementDTO/1.1', viewMode: 'partner', generatedAt: new Date().toISOString() },
     investor: { entityId: 'e1', canonicalName: 'Avi', slug: 'avi', ownerType: 'co_investor' },
     properties: [],
     portfolio: makePortfolio(),
@@ -187,7 +187,7 @@ test('M9C-08: PartnerFacingStatementDTO has no jj_* fields at top level', () => 
 })
 
 test('M9C-09: viewMode partner — not admin', () => {
-  const meta = { schemaVersion: 'PartnerStatementDTO/1.0' as const, viewMode: 'partner' as const, generatedAt: new Date().toISOString() }
+  const meta = { schemaVersion: 'PartnerStatementDTO/1.1' as const, viewMode: 'partner' as const, generatedAt: new Date().toISOString() }
   expect(meta.viewMode).toBe('partner')
   expect(meta.viewMode).not.toBe('admin')
 })
