@@ -219,17 +219,24 @@ const OREN_PARTNER_ENTRY = {
  * 4a. partner_entry rows  → [AVI_PARTNER_ENTRY]
  * 4b. capital_event rows  → [AVI_CAPITAL_200K, AVI_CAPITAL_50K]
  * 4c. ownership_period rows  → []
- * 4d. verification_tasks count  → count: 2
+ * 4d. verification_tasks rows → 2 task rows (D3 F3: SELECT rows, not COUNT)
  */
 function aviHappyPath(): MockDb {
   return buildMockDb([
-    { data: AVI_ENTITY,                         error: null },
-    { data: ENTRY_CHECK,                        error: null },
-    { data: AVI_SUMMARY,                        error: null },
-    { data: [AVI_PARTNER_ENTRY],                error: null },
+    { data: AVI_ENTITY,                          error: null },
+    { data: ENTRY_CHECK,                         error: null },
+    { data: AVI_SUMMARY,                         error: null },
+    { data: [AVI_PARTNER_ENTRY],                 error: null },
     { data: [AVI_CAPITAL_200K, AVI_CAPITAL_50K], error: null },
-    { data: [],                                 error: null },
-    { data: null, error: null,                  count: 2   },
+    { data: [],                                  error: null },
+    {
+      // D3 F3: SELECT rows (not COUNT). Two tasks for Avi's capital events.
+      data: [
+        { id: 'task-1', priority: 'high', source_table: 'capital_event', source_id: 'cap-200k', missing_field: 'effective_date' },
+        { id: 'task-2', priority: 'high', source_table: 'capital_event', source_id: 'cap-50k',  missing_field: 'effective_date' },
+      ],
+      error: null,
+    },
   ])
 }
 
@@ -245,7 +252,13 @@ function orenHappyPath(): MockDb {
     { data: [OREN_PARTNER_ENTRY], error: null },
     { data: [],                   error: null },   // no capital events
     { data: [],                   error: null },   // no ownership periods
-    { data: null, error: null,    count: 1   },    // 1 task for oren-pe-uuid
+    {
+      // D3 F3: SELECT rows — 1 task for oren-pe-uuid
+      data: [
+        { id: 'task-3', priority: 'high', source_table: 'partner_entry', source_id: 'oren-pe-uuid', missing_field: 'effective_from' },
+      ],
+      error: null,
+    },
   ])
 }
 
@@ -321,12 +334,12 @@ describe('loadInvestmentTimeline — data mapping hotfix (D1/D2/D3/E)', () => {
     expect(recordIdCalls).toHaveLength(0)
   })
 
-  it('T6 (D3): relevant verification task count is reflected in DTO evidence', async () => {
+  it('T6 (D3): relevant verification task rows are reflected in DTO evidence count', async () => {
     const { db } = aviHappyPath()
     mockCreateServiceClient.mockReturnValue(db)
     const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
 
-    // Mock returns count=2 for Avi's two capital events
+    // Mock returns 2 task rows for Avi's two capital events (F3: SELECT rows, not COUNT)
     expect(dto?.evidence.openVerificationTasks).toBe(2)
   })
 
