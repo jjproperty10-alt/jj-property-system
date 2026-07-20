@@ -452,7 +452,7 @@ describe('v3 corrections', () => {
 
   test('[v3] Orit SELECT INTO uses v_orit_target', () => {
     const orit = sql.split('$orit$')[1] || '';
-    expect(orit).toMatch(/INTO\s+.*v_orit_target/s);
+    expect(orit).toMatch(/INTO\s+[\s\S]*v_orit_target/);
   });
 
   test('[v3] header documents v3 corrections', () => {
