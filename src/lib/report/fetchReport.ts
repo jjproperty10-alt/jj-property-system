@@ -2,19 +2,37 @@
  * JJ Property 10 — RC3 Report Fetch Layer
  * Phase 3 — 2026-07-09
  *
- * Queries the four RC3 account views for a given reporting_name and date range.
+ * SERVER-ONLY. This module is called exclusively from partnerStatementService,
+ * which runs after partnerAuthService has completed its 8-step authorization
+ * check (lifecycle.investor_auth). Never import this module in browser or
+ * client-component code.
+ *
+ * createServiceClient() is used intentionally — the RC3 financial engine
+ * requires service_role access because the underlying transactions table has
+ * RLS policies that block the anon role (auth.role() = 'authenticated' required).
+ * Authorization boundary: partnerAuthService. The DB client is not the
+ * access-control layer here; partnerAuthService is.
+ *
+ * Architecture note: Authorization is completed in partnerAuthService.
+ * This module only replaces the database credential used inside the
+ * already-authorized server-side reporting layer. No authorization
+ * model changes.
+ *
+ * Follow-up: add `import 'server-only'` once the `server-only` npm package
+ * is installed (not currently in package.json). This will cause the compiler
+ * to reject any accidental client-bundle import.
  *
  * View chain:
- *   transactions
- *   → v_transactions_reporting (canonical property names)
- *   → v_rc3_classified (account_type + flags)
- *   → v_rc3_sale | v_rc3_renovation | v_rc3_rental | v_rc3_airbnb
+ * transactions
+ * → v_transactions_reporting (canonical property names)
+ * → v_rc3_classified (account_type + flags)
+ * → v_rc3_sale | v_rc3_renovation | v_rc3_rental | v_rc3_airbnb
  *
  * All views apply base filters automatically:
- *   (review_status = 'active' OR review_status IS NULL) AND reporting_name IS NOT NULL
+ * (review_status = 'active' OR review_status IS NULL) AND reporting_name IS NOT NULL
  */
 
-import { supabase } from '@/lib/supabase'
+import { createServiceClient } from '@/lib/supabase'
 import { buildAccountSection } from './computeBalance'
 import type { RC3AccountType, RC3PropertyReport, RC3Row } from './types'
 
@@ -38,7 +56,8 @@ async function fetchViewRows(
   fromDate?: string,
   toDate?: string,
 ): Promise<RC3Row[]> {
-  let q = (supabase as any)
+  const client = createServiceClient()
+  let q = (client as any)
     .from(view)
     .select('*')
     .eq('reporting_name', reportingName)
@@ -62,7 +81,7 @@ export interface FetchReportParams {
   fromDate?: string  // ISO date e.g. "2024-01-01"
   toDate?: string    // ISO date e.g. "2026-12-31"
   /** Opening balances per account type.
-   *  Currently always 0 — will be populated from contact_opening_balances (Task 5). */
+   * Currently always 0 — will be populated from contact_opening_balances (Task 5). */
   openingBalances?: Partial<Record<RC3AccountType, number>>
 }
 
@@ -73,6 +92,10 @@ export interface FetchReportParams {
  */
 export async function fetchRC3Report(params: FetchReportParams): Promise<RC3PropertyReport> {
   const { reportingName, fromDate, toDate, openingBalances = {} } = params
+
+  if (!reportingName) {
+    throw new Error('[fetchReport] reportingName is required — cannot query RC3 views without a property name')
+  }
 
   const results = await Promise.all(
     ACCOUNT_ORDER.map(async (accountType) => {
@@ -111,10 +134,11 @@ export async function fetchRC3Report(params: FetchReportParams): Promise<RC3Prop
  */
 export async function fetchRC3PropertyList(): Promise<string[]> {
   const nameSet = new Set<string>()
+  const client = createServiceClient()
 
   await Promise.all(
     Object.values(RC3_VIEWS).map(async (view) => {
-      const { data } = await (supabase as any)
+      const { data } = await (client as any)
         .from(view)
         .select('reporting_name')
       if (data) {
