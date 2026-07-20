@@ -7,19 +7,22 @@ import type { TimelineStatement } from '@/lib/lifecycle/partnerStatementTypes'
 type SupportedLocale = 'en' | 'he'
 
 const STRINGS: Record<SupportedLocale, {
-  sectionLabel: string
-  datePending: string
-  moreEvents: (n: number) => string
+  sectionLabel:     string
+  datePending:      string
+  datePendingLabel: string
+  moreEvents:       (n: number) => string
 }> = {
   en: {
-    sectionLabel: 'What Happened',
-    datePending:  'Date pending',
-    moreEvents:   (n) => `+${n} more`,
+    sectionLabel:     'What Happened',
+    datePending:      'Date pending',
+    datePendingLabel: 'Date pending confirmation',
+    moreEvents:       (n) => `+${n} more`,
   },
   he: {
-    sectionLabel: 'מה קרה',
-    datePending:  'תאריך ממתין',
-    moreEvents:   (n) => `+${n} עוד`,
+    sectionLabel:     'מה קרה',
+    datePending:      'תאריך ממתין',
+    datePendingLabel: 'תאריך ממתין לאישור',
+    moreEvents:       (n) => `+${n} עוד`,
   },
 }
 
@@ -45,6 +48,24 @@ function formatDate(iso: string | null, locale: SupportedLocale): string {
   })
 }
 
+/**
+ * Returns true when the event's date has not yet been confirmed.
+ *
+ * Two conditions independently imply pending (P-ARCH-1):
+ *   1. effectiveDate is null — date is entirely unknown.
+ *   2. effectiveDateConfidence === 'pending_verification' — a date value exists
+ *      in the data but has not yet been confirmed from a source document.
+ *
+ * Color is never the sole signal; callers must also render an explicit
+ * accessible label (WCAG 1.4.1 — Use of Color).
+ */
+function isDatePending(
+  effectiveDate: string | null,
+  effectiveDateConfidence: string,
+): boolean {
+  return !effectiveDate || effectiveDateConfidence === 'pending_verification'
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface HighlightTimelineProps {
@@ -60,11 +81,16 @@ interface HighlightTimelineProps {
  * Shows partner-visible lifecycle events (partnerVisible === true).
  * Max 8 events; an overflow count appears when more exist.
  *
+ * Date confidence indicators (WCAG 1.4.1 — color is never the sole signal):
+ *   confirmed + non-null date  → green ✓  [data-testid="event-confirmed-indicator"]
+ *   pending_verification or    → amber ⏰  [data-testid="event-pending-indicator"]
+ *     null date                   + aria-label "{datePendingLabel}"
+ *
  * Filtering contract: the PartnerStatementDTO already marks events as
  * partnerVisible. This component does NOT re-apply business logic — it
  * only enforces the 8-event display cap.
  *
- * null effectiveDate → "Date pending" (P-ARCH-1).
+ * null effectiveDate → "Date pending" text (P-ARCH-1).
  * Zero visible events → renders nothing (silence > empty placeholder).
  */
 export function HighlightTimeline({
@@ -90,43 +116,61 @@ export function HighlightTimeline({
       </p>
 
       <ol className="space-y-3">
-        {shown.map((event) => (
-          <li
-            key={event.eventId}
-            className="flex items-start gap-3"
-            data-testid="timeline-event"
-          >
-            {/* Checkmark — decorative only */}
-            <span
-              className="mt-0.5 text-green-500 text-sm select-none"
-              aria-hidden="true"
+        {shown.map((event) => {
+          const pending = isDatePending(
+            event.effectiveDate,
+            event.effectiveDateConfidence,
+          )
+
+          return (
+            <li
+              key={event.eventId}
+              className="flex items-start gap-3"
+              data-testid="timeline-event"
             >
-              ✓
-            </span>
-
-            <div className="flex-1 min-w-0">
-              {/* Title + optional amount on same row */}
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-sm font-medium text-gray-800 truncate">
-                  {event.title}
+              {/* Date confidence indicator — never color alone (WCAG 1.4.1) */}
+              {pending ? (
+                <span
+                  className="mt-0.5 text-amber-400 text-sm select-none"
+                  aria-label={s.datePendingLabel}
+                  data-testid="event-pending-indicator"
+                >
+                  ⏰
                 </span>
-                {event.amountEur !== null && (
-                  <span className="shrink-0" data-testid="event-amount">
-                    <MoneyValue amount={event.amountEur} size="sm" />
-                  </span>
-                )}
-              </div>
+              ) : (
+                <span
+                  className="mt-0.5 text-green-500 text-sm select-none"
+                  aria-hidden="true"
+                  data-testid="event-confirmed-indicator"
+                >
+                  ✓
+                </span>
+              )}
 
-              {/* Date — always shown (even when pending) */}
-              <span
-                className="text-xs text-gray-400"
-                data-testid="event-date"
-              >
-                {formatDate(event.effectiveDate, locale)}
-              </span>
-            </div>
-          </li>
-        ))}
+              <div className="flex-1 min-w-0">
+                {/* Title + optional amount on same row */}
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-sm font-medium text-gray-800 truncate">
+                    {event.title}
+                  </span>
+                  {event.amountEur !== null && (
+                    <span className="shrink-0" data-testid="event-amount">
+                      <MoneyValue amount={event.amountEur} size="sm" />
+                    </span>
+                  )}
+                </div>
+
+                {/* Date — always shown; "Date pending" text for unconfirmed (P-ARCH-1) */}
+                <span
+                  className="text-xs text-gray-400"
+                  data-testid="event-date"
+                >
+                  {formatDate(event.effectiveDate, locale)}
+                </span>
+              </div>
+            </li>
+          )
+        })}
       </ol>
 
       {overflow > 0 && (

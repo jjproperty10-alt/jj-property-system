@@ -190,6 +190,69 @@ describe('HighlightTimeline', () => {
     expect(html).toContain('תאריך ממתין')
     expect(html).not.toContain('Date pending')
   })
+
+  // ── Date confidence indicator tests (visual semantics fix) ────────────────
+
+  it('confirmed date shows green check indicator', () => {
+    const timeline = makeTimeline({
+      events: [makeEvent({
+        title:                   'Payment received',
+        effectiveDate:           '2026-01-15',
+        effectiveDateConfidence: 'confirmed',
+      })],
+    })
+    const html = renderToStaticMarkup(<HighlightTimeline timeline={timeline} />)
+    expect(html).toContain('data-testid="event-confirmed-indicator"')
+    expect(html).not.toContain('event-pending-indicator')
+  })
+
+  it('pending_verification date does not show green check indicator', () => {
+    const timeline = makeTimeline({
+      events: [makeEvent({
+        title:                   'Entry',
+        effectiveDate:           '2024-06-01',
+        effectiveDateConfidence: 'pending_verification',
+      })],
+    })
+    const html = renderToStaticMarkup(<HighlightTimeline timeline={timeline} />)
+    expect(html).not.toContain('event-confirmed-indicator')
+  })
+
+  it('null effectiveDate does not show green check indicator', () => {
+    const timeline = makeTimeline({
+      events: [makeEvent({
+        title:                   'Entry',
+        effectiveDate:           null,
+        effectiveDateConfidence: 'pending_verification',
+      })],
+    })
+    const html = renderToStaticMarkup(<HighlightTimeline timeline={timeline} />)
+    expect(html).not.toContain('event-confirmed-indicator')
+  })
+
+  it('pending_verification shows clock/pending indicator', () => {
+    const timeline = makeTimeline({
+      events: [makeEvent({
+        title:                   'Entry',
+        effectiveDate:           null,
+        effectiveDateConfidence: 'pending_verification',
+      })],
+    })
+    const html = renderToStaticMarkup(<HighlightTimeline timeline={timeline} />)
+    expect(html).toContain('data-testid="event-pending-indicator"')
+  })
+
+  it('pending_verification indicator carries accessible pending label', () => {
+    const timeline = makeTimeline({
+      events: [makeEvent({
+        title:                   'Entry',
+        effectiveDate:           null,
+        effectiveDateConfidence: 'pending_verification',
+      })],
+    })
+    const html = renderToStaticMarkup(<HighlightTimeline timeline={timeline} />)
+    expect(html).toContain('Date pending confirmation')
+  })
 })
 
 // ─── SettlementCard ───────────────────────────────────────────────────────────
