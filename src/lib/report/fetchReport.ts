@@ -13,6 +13,11 @@
  * Authorization boundary: partnerAuthService. The DB client is not the
  * access-control layer here; partnerAuthService is.
  *
+ * Architecture note: Authorization is completed in partnerAuthService.
+ * This module only replaces the database credential used inside the
+ * already-authorized server-side reporting layer. No authorization
+ * model changes.
+ *
  * Follow-up: add `import 'server-only'` once the `server-only` npm package
  * is installed (not currently in package.json). This will cause the compiler
  * to reject any accidental client-bundle import.
@@ -87,6 +92,10 @@ export interface FetchReportParams {
  */
 export async function fetchRC3Report(params: FetchReportParams): Promise<RC3PropertyReport> {
   const { reportingName, fromDate, toDate, openingBalances = {} } = params
+
+  if (!reportingName) {
+    throw new Error('[fetchReport] reportingName is required — cannot query RC3 views without a property name')
+  }
 
   const results = await Promise.all(
     ACCOUNT_ORDER.map(async (accountType) => {
