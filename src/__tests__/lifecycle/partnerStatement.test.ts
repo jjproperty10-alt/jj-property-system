@@ -15,7 +15,7 @@
  *   ARCH1-19..20   — P-ARCH-1: null ≠ 0 (Oren real case)
  *   ARCH2-21       — P-ARCH-2: payer identity preserved
  *
- * @see PartnerStatementDTO Contract v1.0
+ * @see PartnerStatementDTO Contract v1.1
  * @see P-ARCH-1: Unknown = NULL. Never 0 or placeholder.
  * @see P-ARCH-2: Payer identity must not be normalised — Yossi ≠ Jacob ≠ JJ.
  * @see I-12: DTO is immutable. Consumers never mutate business data.
@@ -215,7 +215,7 @@ test('PORT-14: settlement fields are 0/unknown until Settlement Engine (M9-C)', 
  */
 function makePartnerDTO(): PartnerFacingStatementDTO {
   return {
-    meta: { schemaVersion: 'PartnerStatementDTO/1.0', viewMode: 'partner', generatedAt: new Date().toISOString() },
+    meta: { schemaVersion: 'PartnerStatementDTO/1.1', viewMode: 'partner', generatedAt: new Date().toISOString() },
     investor: { entityId: 'e1', canonicalName: 'Avi', slug: 'avi', ownerType: 'partner' },
     properties: [makePropertyStatement()],
     portfolio: buildPortfolioSummary([makePropertyStatement()]),
@@ -226,7 +226,7 @@ function makePartnerDTO(): PartnerFacingStatementDTO {
 
 function makeAdminDTO(): AdminStatementDTO {
   return {
-    meta: { schemaVersion: 'PartnerStatementDTO/1.0', viewMode: 'admin', generatedAt: new Date().toISOString() },
+    meta: { schemaVersion: 'PartnerStatementDTO/1.1', viewMode: 'admin', generatedAt: new Date().toISOString() },
     investor: { entityId: 'e1', canonicalName: 'Avi', slug: 'avi', ownerType: 'partner' },
     properties: [makePropertyStatement()],
     portfolio: buildPortfolioSummary([makePropertyStatement()]),
@@ -272,10 +272,10 @@ test('DISC-17: narrowing via viewMode works correctly on PartnerStatementDTO uni
 // SCHEMA — schemaVersion format
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('SCHEMA-18: schemaVersion is namespaced and locked at v1.0', () => {
+test('SCHEMA-18: schemaVersion is namespaced and locked at v1.1', () => {
   const dto = makePartnerDTO()
-  // Namespaced to avoid collision: 'PartnerStatementDTO/1.0' not '1.0'
-  expect(dto.meta.schemaVersion).toBe('PartnerStatementDTO/1.0')
+  // Namespaced to avoid collision: 'PartnerStatementDTO/1.1' not '1.1'
+  expect(dto.meta.schemaVersion).toBe('PartnerStatementDTO/1.1')
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -390,4 +390,3 @@ test('CAP-32: paid=100000, remaining=null, required=null → capital_unknown (re
   // paid is known, but we cannot determine fully/partially without required
   expect(resolveCapitalStatus(100_000, null, null, true)).toBe('capital_unknown')
 })
-

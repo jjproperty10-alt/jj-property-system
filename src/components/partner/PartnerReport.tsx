@@ -1,10 +1,12 @@
-import type { PartnerFacingStatementDTO } from '@/lib/lifecycle/partnerStatementTypes'
+import type { PartnerFacingStatementDTO, PartnerPropertyStatement } from '@/lib/lifecycle/partnerStatementTypes'
 import { PartnerCapitalSection } from './PartnerCapitalSection'
 import { PartnerFinancialSection } from './PartnerFinancialSection'
 import { PartnerTimelineSection } from './PartnerTimelineSection'
 import { PartnerPortfolioSection } from './PartnerPortfolioSection'
+import { SettlementCard } from './SettlementCard'
 import { WelcomeHeader } from '@/components/partner/WelcomeHeader'
 import { ExecutiveSummary } from '@/components/partner/ExecutiveSummary'
+import { NeedsAttentionItems } from '@/components/ds/NeedsAttentionItems'
 
 
 interface Props { dto: PartnerFacingStatementDTO }
@@ -29,14 +31,38 @@ function propertyAccent(name: string): string {
 }
 
 /**
+ * Derive attention items for NeedsAttentionItems.
+ *
+ * F3 (v1.1): items come from real lifecycle.verification_tasks rows, not a count.
+ * Each task provides a server-computed humanLabel safe for partner display.
+ * No UUIDs or internal table names reach the UI — humanLabel only.
+ *
+ * Ordering: verification task items first (server priority order),
+ * then capital-unknown status.
+ */
+function deriveAttentionItems(prop: PartnerPropertyStatement): string[] {
+  const items: string[] = []
+
+  // Per-task labels from real verification_tasks rows (humanLabel is UI-safe — no UUIDs)
+  for (const task of (prop.timeline.verificationTaskItems ?? [])) {
+    items.push(task.humanLabel)
+  }
+
+  if (prop.capital.capitalStatus === 'capital_unknown') {
+    items.push('Investment amount to be verified')
+  }
+
+  return items
+}
+
+/**
  * PartnerReport — PR D: Modern Visual Polish
  *
- * Layout changes (no business logic changes):
- * - Premium navy gradient master header
- * - Per-property article card with deterministic gradient header strip
- * - Co-owner chips in property header
- * - Section stack with divide-y inside each card
- * - Inner section components render their own padding (no nested cards)
+ * R4 wiring (functional closure):
+ * - F1: partnerStatementService uses direction='inflow' (DB constraint fix)
+ * - F2: HighlightTimeline wired via PartnerTimelineSection (FR-001 compliant)
+ * - F3: NeedsAttentionItems populated from real verification_tasks rows (per-task humanLabel)
+ * - F4: SettlementCard outside {prop.financial && ...} guard — renders when financial===null
  *
  * P-ARCH-6: no jj_* fields. Discriminated union ensures PartnerFacingStatementDTO
  * is the only type accepted here.
@@ -84,53 +110,59 @@ export function PartnerReport({ dto }: Props) {
       {/* ── Properties ── */}
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-8">
 
-        {properties.map((prop) => (
-          <article
-            key={prop.propertyName}
-            className="rounded-2xl overflow-hidden border border-gray-200/80 bg-white shadow-sm"
-          >
-            {/* Property gradient header */}
-            <div style={{ background: propertyAccent(prop.propertyName) }} className="px-6 py-6">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <h2 className="text-xl font-bold text-white leading-snug">{prop.propertyName}</h2>
-                  {prop.ownership.currentOwnershipPct !== null && (
-                    <p className="text-sm text-white/55 mt-1">
-                      {prop.ownership.currentOwnershipPct}% ownership
-                    </p>
-                  )}
+        {properties.map((prop) => {
+          const attentionItems = deriveAttentionItems(prop)
+          return (
+            <article
+              key={prop.propertyName}
+              className="rounded-2xl overflow-hidden border border-gray-200/80 bg-white shadow-sm"
+            >
+              {/* Property gradient header */}
+              <div style={{ background: propertyAccent(prop.propertyName) }} className="px-6 py-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h2 className="text-xl font-bold text-white leading-snug">{prop.propertyName}</h2>
+                    {prop.ownership.currentOwnershipPct !== null && (
+                      <p className="text-sm text-white/55 mt-1">
+                        {prop.ownership.currentOwnershipPct}% ownership
+                      </p>
+                    )}
+                  </div>
+                  <OwnershipBadge status={prop.ownership.entryStatus} />
                 </div>
-                <OwnershipBadge status={prop.ownership.entryStatus} />
+
+                {/* Co-owner chips */}
+                {prop.ownership.coOwners.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {prop.ownership.coOwners.map((co) => (
+                      <span
+                        key={co.name}
+                        className="text-[10px] font-semibold text-white/55 bg-white/[0.08] px-2 py-0.5 rounded-full border border-white/10"
+                      >
+                        {co.name} · {co.ownershipPct}%
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              {/* Co-owner chips */}
-              {prop.ownership.coOwners.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {prop.ownership.coOwners.map((co) => (
-                    <span
-                      key={co.name}
-                      className="text-[10px] font-semibold text-white/55 bg-white/[0.08] px-2 py-0.5 rounded-full border border-white/10"
-                    >
-                      {co.name} · {co.ownershipPct}%
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Section stack — divide-y creates separators; null sections collapse cleanly */}
-            <div className="divide-y divide-gray-100">
-              <PartnerCapitalSection capital={prop.capital} />
-              {prop.financial && (
-                <PartnerFinancialSection
-                  financial={prop.financial}
-                  settlement={prop.settlement}
-                />
-              )}
-              <PartnerTimelineSection timeline={prop.timeline} />
-            </div>
-          </article>
-        ))}
+              {/* Section stack — divide-y creates separators; null sections collapse cleanly */}
+              <div className="divide-y divide-gray-100">
+                <PartnerCapitalSection capital={prop.capital} />
+                {prop.financial && (
+                  <PartnerFinancialSection financial={prop.financial} />
+                )}
+                <PartnerTimelineSection timeline={prop.timeline} />
+                {/* F4: SettlementCard outside financial guard — renders when financial===null */}
+                <SettlementCard settlement={prop.settlement} className="px-6 py-6" />
+                {/* F3: NeedsAttentionItems from real per-task humanLabels (server-side) */}
+                {attentionItems.length > 0 && (
+                  <NeedsAttentionItems items={attentionItems} className="px-6 py-6" />
+                )}
+              </div>
+            </article>
+          )
+        })}
 
         {/* Portfolio summary (2+ properties only) */}
         {properties.length > 1 && <PartnerPortfolioSection portfolio={portfolio} />}

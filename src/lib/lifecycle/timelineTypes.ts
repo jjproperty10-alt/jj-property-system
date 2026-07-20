@@ -187,6 +187,46 @@ export interface InvestmentTimelineEventDTO {
 }
 
 // ---------------------------------------------------------------------------
+// Verification Task Item  (F3 — DTO v1.1)
+// ---------------------------------------------------------------------------
+
+/**
+ * A single open verification task for a lifecycle event.
+ *
+ * Sourced from lifecycle.verification_tasks
+ * (status IN ('pending', 'evidence_found')).
+ *
+ * Design:
+ * - taskId / sourceId / sourceTable are internal identifiers — NEVER rendered in UI.
+ * - humanLabel is computed server-side and is safe for partner-facing display.
+ * - relatedAmountEur is populated from the source capital_event row when available.
+ *
+ * @see P-ARCH-6: Partner route never exposes jj_* fields or internal identifiers.
+ */
+export interface VerificationTaskItem {
+  /** lifecycle.verification_tasks.id — internal, NEVER shown in UI */
+  readonly taskId: string
+  readonly priority: 'high' | 'medium' | 'low'
+  /** Source lifecycle table name — internal, NEVER shown in UI as-is */
+  readonly sourceTable: string
+  /** UUID of source record — internal, NEVER shown in UI */
+  readonly sourceId: string
+  /** DB column name that needs verification (e.g. 'effective_date', 'amount_eur') */
+  readonly missingField: string
+  /**
+   * Human-readable label safe for partner-facing display.
+   * Derived server-side from missingField + relatedAmountEur.
+   * Never contains UUIDs or internal table names.
+   * Examples:
+   *   "Payment date pending confirmation (€250,000)"
+   *   "Entry date pending confirmation"
+   */
+  readonly humanLabel: string
+  /** EUR amount of related capital_event when source is a capital event; null otherwise */
+  readonly relatedAmountEur: number | null
+}
+
+// ---------------------------------------------------------------------------
 // Full Investment Timeline DTO
 // ---------------------------------------------------------------------------
 
@@ -246,10 +286,16 @@ export interface InvestmentTimelineDTO {
   events: InvestmentTimelineEventDTO[]
 
   evidence: {
-    /** Number of lifecycle.verification_tasks with status IN ('pending','evidence_found') */
+    /** Count of open verification tasks (convenience; equals verificationTaskItems.length) */
     openVerificationTasks: number
     /** True if any event has effectiveDateConfidence = 'pending_verification' */
     hasPendingDates: boolean
+    /**
+     * Full task row data from lifecycle.verification_tasks.
+     * Each item has a humanLabel safe for partner display.
+     * NEVER expose taskId, sourceId, or sourceTable directly in the UI.
+     */
+    verificationTaskItems: readonly VerificationTaskItem[]
   }
 
   /** ISO datetime when this DTO was assembled */

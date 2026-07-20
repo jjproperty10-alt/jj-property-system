@@ -21,7 +21,7 @@
  * - D2: capital_event.notes (DB column) is selected and mapped -> RawCapitalEventRow.description.
  *       (The DB column is `notes`; the projection interface field is `description`.)
  * - D3: verification_tasks is filtered by source_id (not record_id).
- *       Count is only run when there are event IDs to look up.
+ *       Rows (not count) are fetched; humanLabel is computed per task before returning.
  *
  * IMMUTABILITY:
  * - This service is READ-ONLY. It never writes to any lifecycle table.
@@ -39,7 +39,7 @@ import {
   type RawCapitalEventRow,
   type RawOwnershipPeriodRow,
 } from './timelineProjection'
-import type { InvestmentTimelineDTO, TimelineViewMode } from './timelineTypes'
+import type { InvestmentTimelineDTO, TimelineViewMode, VerificationTaskItem } from './timelineTypes'
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -63,6 +63,51 @@ export interface TimelineServiceOptions {
 /** PostgREST code for "0 rows returned by .single()" - a valid empty result, not a bug. */
 const PGRST116 = 'PGRST116'
 
+// ---------------------------------------------------------------------------
+// Human label builder (F3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a partner-safe human label for a verification task.
+ *
+ * Maps DB field names (missingField) to readable English.
+ * Never exposes UUIDs, table names, or internal identifiers.
+ * If relatedAmountEur is known, appends a formatted EUR amount for context.
+ *
+ * Examples:
+ *   buildTaskHumanLabel('effective_date', 250000)  → "Payment date pending confirmation (€250,000)"
+ *   buildTaskHumanLabel('effective_from', null)    → "Entry date pending confirmation"
+ *   buildTaskHumanLabel('amount_eur', null)        → "Payment amount pending confirmation"
+ */
+function buildTaskHumanLabel(
+  missingField: string,
+  relatedAmountEur: number | null,
+): string {
+  const fieldLabels: Record<string, string> = {
+    effective_date:            'Payment date',
+    effective_date_confidence: 'Payment date',
+    effective_from:            'Entry date',
+    effective_from_confidence: 'Entry date',
+    entry_date:                'Entry date',
+    amount_eur:                'Payment amount',
+  }
+  const label = fieldLabels[missingField] ?? 'Information'
+
+  if (relatedAmountEur !== null) {
+    const fmt = new Intl.NumberFormat('en-IE', {
+      style:                 'currency',
+      currency:              'EUR',
+      maximumFractionDigits: 0,
+    }).format(relatedAmountEur)
+    return `${label} pending confirmation (${fmt})`
+  }
+  return `${label} pending confirmation`
+}
+
+// ---------------------------------------------------------------------------
+// Main service function
+// ---------------------------------------------------------------------------
+
 /**
  * Load the Investment Timeline DTO for one investor+property combination.
  *
@@ -76,7 +121,7 @@ const PGRST116 = 'PGRST116'
  *   - Steps 1-2: any failure -> return null (caller calls notFound())
  *   - Steps 3-4: schema/connectivity error -> log server-side, throw (caller gets 500)
  *     PGRST116 in Step 3 is valid -> summaryRow = null, assembly continues
- *   - Verification task count errors -> log, use 0 (non-critical)
+ *   - Verification task errors -> log, use [] (non-critical; evidence panel degrades gracefully)
  *
  * @param ownerName     Canonical investor name (decoded from URL param)
  * @param propertyName  Canonical property name (decoded from URL param)
@@ -251,9 +296,10 @@ export async function loadInvestmentTimeline(
     )
   }
 
-  // -- Verification task count -----------------------------------------------
-  // D3 fix: verification_tasks.source_id (not record_id).
-  // Only count tasks linked to events in this owner+property timeline.
+  // -- Verification task rows  (F3: rows, not count) -------------------------
+  // D3 fix: fetch full rows from verification_tasks so each task's missingField,
+  // priority, source_table, source_id are available for humanLabel computation.
+  // Only tasks linked to events in this owner+property timeline are returned.
   // Guard: skip query when allEventIds is empty (avoids PostgREST .in([]) edge cases).
   const allEventIds = [
     ...(rawEntries   ?? []).map(r => r.id),
@@ -261,23 +307,39 @@ export async function loadInvestmentTimeline(
     ...(rawOwnership ?? []).map(r => r.id),
   ]
 
-  let taskCount = 0
+  // Build amount lookup from already-fetched capital events (no extra DB round-trip).
+  const capitalAmountMap = new Map<string, number>(
+    (rawCapital ?? []).map(r => [r.id as string, (r as any).amount_eur as number]),
+  )
+
+  let taskItems: VerificationTaskItem[] = []
   if (allEventIds.length > 0) {
-    const { count, error: taskErr } = await db
+    const { data: taskRows, error: taskErr } = await db
       .schema('lifecycle')
       .from('verification_tasks')
-      .select('id', { count: 'exact', head: true })
+      .select('id, priority, source_table, source_id, missing_field')
       .in('status',    ['pending', 'evidence_found'])
       .in('source_id', allEventIds)               // D3: source_id - not record_id
 
     if (taskErr) {
-      // Non-critical: evidence panel degrades gracefully to 0. Do not throw.
-      console.error('[timelineService] verification_tasks count error', {
+      // Non-critical: evidence panel degrades gracefully to empty. Do not throw.
+      console.error('[timelineService] verification_tasks error', {
         code:    taskErr.code,
         message: taskErr.message,
       })
     } else {
-      taskCount = count ?? 0
+      taskItems = (taskRows ?? []).map(t => {
+        const relatedAmountEur = capitalAmountMap.get(t.source_id as string) ?? null
+        return {
+          taskId:          t.id as string,
+          priority:        ((t.priority as string) ?? 'medium') as 'high' | 'medium' | 'low',
+          sourceTable:     t.source_table as string,
+          sourceId:        t.source_id as string,
+          missingField:    t.missing_field as string,
+          humanLabel:      buildTaskHumanLabel(t.missing_field as string, relatedAmountEur),
+          relatedAmountEur,
+        } satisfies VerificationTaskItem
+      })
     }
   }
 
@@ -310,7 +372,7 @@ export async function loadInvestmentTimeline(
     includeInternal: options.includeInternal ?? false,
   })
 
-  const evidence = computeEvidence(events, taskCount)
+  const evidence = computeEvidence(events, taskItems)
 
   // -- Step 7: assemble DTO --------------------------------------------------
   const s = summaryRow as any
