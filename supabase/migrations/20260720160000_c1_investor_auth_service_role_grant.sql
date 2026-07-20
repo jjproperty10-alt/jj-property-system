@@ -1,0 +1,73 @@
+-- =============================================================================
+-- Migration: c1_investor_auth_service_role_grant
+-- Timestamp: 20260720160000
+-- Author: Yossi (authorization) + Claude
+-- Closes: C1 -- Service-client authentication failure on /partner/yossi
+--
+-- Root cause (confirmed by probe v1.0.2, 2026-07-20):
+--   lifecycle.investor_auth was created by m9_e_investor_auth.sql with RLS
+--   enabled and zero policies (deny-all for anon/authenticated). The migration
+--   comment stated "service_role bypasses RLS entirely and retains access" --
+--   but PostgreSQL requires an explicit object-level GRANT in addition to the
+--   RLS bypass. No GRANT SELECT was issued to service_role, so every read
+--   via createServiceClient() returned PostgreSQL error 42501
+--   "permission denied for table investor_auth".
+--
+--   Probe evidence (2026-07-20):
+--     Probe A (apikey only, backend UA): HTTP 403, 42501
+--     Probe B (apikey + Bearer, backend UA): HTTP 403, 42501
+--     has_schema_privilege('service_role','lifecycle','USAGE')       = true
+--     has_table_privilege('service_role','lifecycle.investor_auth','SELECT') = false
+--     role_table_grants: only postgres grantee -- service_role absent
+--
+--   Identical pattern to verification_tasks omission, fixed by
+--   m9_d_001_verification_tasks_grants.sql (2026-07-17).
+--
+-- This migration:
+--   Grants the minimum privilege required for server-side auth-chain reads.
+--   No other tables, roles, or privileges are affected.
+--
+-- Privileges granted:
+--   service_role USAGE on lifecycle schema -- included for safety and
+--     portability (idempotent; audit showed it was already held, but the
+--     grant is harmless and ensures reproducibility across environments).
+--   service_role SELECT on lifecycle.investor_auth -- minimum required for
+--     partnerAuthService.ts step 3 (.select('entity_id, status')).
+--
+-- Privileges NOT granted:
+--   INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER -- none.
+--   anon -- no privileges.
+--   authenticated -- no privileges.
+--   PUBLIC -- no privileges.
+--
+-- RLS posture (UNCHANGED):
+--   RLS remains enabled on lifecycle.investor_auth.
+--   Zero policies remain in place (deny-all for anon/authenticated).
+--   This migration does NOT create, modify, or remove any RLS policy.
+--   The security posture for non-service-role clients is identical after
+--   this migration as before it.
+--
+-- Idempotency:
+--   GRANT is idempotent in PostgreSQL. Safe to apply in any environment
+--   or to re-apply without error or side effects.
+--
+-- Rollback:
+--   REVOKE SELECT ON TABLE lifecycle.investor_auth FROM service_role;
+--   Do NOT revoke USAGE on lifecycle schema -- service_role requires it
+--   for all other lifecycle tables.
+--
+-- Verification (run after applying):
+--   SELECT
+--     has_schema_privilege('service_role','lifecycle','USAGE')                  AS schema_usage,
+--     has_table_privilege('service_role','lifecycle.investor_auth','SELECT')    AS table_select,
+--     has_table_privilege('service_role','lifecycle.investor_auth','INSERT')    AS table_insert,
+--     has_table_privilege('service_role','lifecycle.investor_auth','UPDATE')    AS table_update,
+--     has_table_privilege('service_role','lifecycle.investor_auth','DELETE')    AS table_delete;
+--   Expected: schema_usage=true, table_select=true, others=false.
+-- =============================================================================
+
+-- GRANT 1: Schema USAGE (idempotent -- already held per audit, included for portability)
+GRANT USAGE ON SCHEMA lifecycle TO service_role;
+
+-- GRANT 2: Table SELECT (minimum required for auth-chain reads)
+GRANT SELECT ON TABLE lifecycle.investor_auth TO service_role;
