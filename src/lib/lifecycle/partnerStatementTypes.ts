@@ -1,11 +1,19 @@
 /**
  * @module lifecycle/partnerStatementTypes
- * @description PartnerStatementDTO Contract v1.1
+ * @description PartnerStatementDTO Contract v1.2
  *
  * v1.0 approved by Yossi (July 2026 session).
  * v1.1 — F3 (July 2026): TimelineStatement gains `verificationTaskItems?` — the full
- *   per-task rows from lifecycle.verification_tasks, carrying a server-computed
- *   humanLabel safe for partner display. No UUIDs or internal table names in the UI.
+ * per-task rows from lifecycle.verification_tasks, carrying a server-computed
+ * humanLabel safe for partner display. No UUIDs or internal table names in the UI.
+ * v1.2 — RC3 Financial Presentation Layer (July 2026): PortfolioSummary gains three
+ * pre-computed OPERATIONAL financial totals: operationalIncomeEur,
+ * operationalExpensesEur, operationalNetResultEur.
+ * "Operational" = rental + airbnb only (balance_convention='owner_credit').
+ * Renovation and Sale are excluded — their total_expenses field represents
+ * client payments received (debt reduction), not business expenses.
+ * Computed by buildPortfolioSummary — never in the UI.
+ * "Every number must answer: where did you come from?" — Yossi, 2026-07-21.
  *
  * Design decisions:
  *   - Discriminated union on `meta.viewMode`: 'partner' | 'admin'
@@ -31,10 +39,10 @@ import type { VerificationTaskItem } from './timelineTypes'
  * 'not_applicable' covers JJ-owned assets with no external investor capital.
  */
 export type CapitalStatus =
-  | 'no_capital_event'  // no capital_event rows exist for this entity + property
-  | 'fully_paid'        // capitalPaidEur >= requiredCapitalEur (both known)
-  | 'partially_paid'    // capitalPaidEur < requiredCapitalEur (both known)
-  | 'capital_unknown'   // at least one event exists but paid or required is null — P-ARCH-1
+  | 'no_capital_event' // no capital_event rows exist for this entity + property
+  | 'fully_paid'      // capitalPaidEur >= requiredCapitalEur (both known)
+  | 'partially_paid'  // capitalPaidEur < requiredCapitalEur (both known)
+  | 'capital_unknown' // at least one event exists but paid or required is null — P-ARCH-1
   // @deprecated — retained for v1.0 source compatibility; never emitted by the v1.0 service
   | 'not_applicable'
 
@@ -202,6 +210,9 @@ export interface SettlementStatement {
  * Settlement values (receivable/payable/net) come exclusively from
  * the Settlement Engine — never computed in DTO builder or UI (M9-C scope).
  * P-ARCH-1: total capital fields are null if ANY property has unknown capital.
+ *
+ * v1.2: adds three pre-computed financial totals from RC3 accountSections.
+ * Computed in buildPortfolioSummary (service layer) — never in the UI.
  */
 export interface PortfolioSummary {
   readonly totalPropertiesCount: number
@@ -219,6 +230,34 @@ export interface PortfolioSummary {
   readonly totalPayableToJJ: number
   readonly finalNetBalance: number
   readonly direction: NetDirection
+  /**
+   * Operational financial totals — RENTAL + AIRBNB accounts only.
+   *
+   * "Operational" means accounts with balance_convention = 'owner_credit':
+   *   - 'rental'  (Management category — long-term rent)
+   *   - 'airbnb'  (Short-term rental)
+   *
+   * Renovation and Sale are intentionally EXCLUDED.
+   * Their sections use balance_convention = 'client_debt', where:
+   *   - total_income  = extra charges billed to client (Extras, Sale Expenses)
+   *   - total_expenses = client payments received (debt reduction)
+   * Folding client payments into "Expenses" in an executive summary would
+   * misrepresent a partner's financial position.
+   * Renovation and Sale are presented in their own dedicated sections with
+   * contract / charges / paid / remaining balance semantics.
+   *
+   * Computed by buildPortfolioSummary using OPERATIONAL_ACCOUNT_TYPES.
+   * null when NO property has operational financial data (P-ARCH-1: unknown ≠ 0).
+   * 0 when operational data exists and the aggregate is genuinely zero.
+   *
+   * operationalExpensesEur is absolute-value (positive) — sign matches RC3AccountSection.
+   * operationalNetResultEur = operationalIncomeEur − operationalExpensesEur
+   * (computed once in service; never inferred in UI — "where did you come from?").
+   */
+  readonly operationalIncomeEur: number | null
+  readonly operationalExpensesEur: number | null
+  /** null when operationalIncomeEur is null (no operational financial data). */
+  readonly operationalNetResultEur: number | null
 }
 
 // ─── Per-Property Statement ───────────────────────────────────────────────────
@@ -285,8 +324,13 @@ interface StatementMetaBase {
   /**
    * Namespaced schema version — avoids collision with other DTOs.
    * v1.1: TimelineStatement.verificationTaskItems added (F3).
+   * v1.2: PortfolioSummary gains operationalIncomeEur, operationalExpensesEur,
+   * and operationalNetResultEur — operational totals derived only from rental and
+   * airbnb account sections (balance_convention = 'owner_credit').
+   * Renovation and Sale are excluded; their sections use client_debt convention
+   * where total_expenses represents client payments received, not business expenses.
    */
-  readonly schemaVersion: 'PartnerStatementDTO/1.1'
+  readonly schemaVersion: 'PartnerStatementDTO/1.2'
   readonly generatedAt: string
 }
 

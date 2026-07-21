@@ -102,6 +102,10 @@ function makePortfolio(overrides: Partial<PortfolioSummary> = {}): PortfolioSumm
     totalPayableToJJ: 0,
     finalNetBalance: 0,
     direction: 'unknown',
+    // v1.2: financial totals — null by default (no financial data in base fixture)
+    operationalIncomeEur: null,
+    operationalExpensesEur: null,
+    operationalNetResultEur: null,
     ...overrides,
   }
 }
@@ -175,7 +179,7 @@ test('M9C-07: NULL effectiveDate preserved on TimelineEvent — not replaced wit
 
 test('M9C-08: PartnerFacingStatementDTO has no jj_* fields at top level', () => {
   const dto: Partial<PartnerFacingStatementDTO> = {
-    meta: { schemaVersion: 'PartnerStatementDTO/1.1', viewMode: 'partner', generatedAt: new Date().toISOString() },
+    meta: { schemaVersion: 'PartnerStatementDTO/1.2', viewMode: 'partner', generatedAt: new Date().toISOString() },
     investor: { entityId: 'e1', canonicalName: 'Avi', slug: 'avi', ownerType: 'co_investor' },
     properties: [],
     portfolio: makePortfolio(),
@@ -187,7 +191,7 @@ test('M9C-08: PartnerFacingStatementDTO has no jj_* fields at top level', () => 
 })
 
 test('M9C-09: viewMode partner — not admin', () => {
-  const meta = { schemaVersion: 'PartnerStatementDTO/1.1' as const, viewMode: 'partner' as const, generatedAt: new Date().toISOString() }
+  const meta = { schemaVersion: 'PartnerStatementDTO/1.2' as const, viewMode: 'partner' as const, generatedAt: new Date().toISOString() }
   expect(meta.viewMode).toBe('partner')
   expect(meta.viewMode).not.toBe('admin')
 })
@@ -317,11 +321,11 @@ test('SETTLE-01: currentBalanceEur is null (stub) — direction not inferred fro
 test('SETTLE-02: direction unknown (stub) — settlement values do not corrupt capital arithmetic', () => {
   const portfolio = makePortfolio({
     direction: 'unknown',
-    finalNetBalance: 0,       // stub placeholder (M9-C scope)
+    finalNetBalance: 0, // stub placeholder (M9-C scope)
     totalCapitalPaidEur: 250_000,
   })
   expect(portfolio.direction).toBe('unknown')
-  expect(portfolio.finalNetBalance).toBe(0)  // stub, not real Settlement Engine output
+  expect(portfolio.finalNetBalance).toBe(0) // stub, not real Settlement Engine output
   // totalCapitalPaidEur is knowable and independent of settlement
   expect(portfolio.totalCapitalPaidEur).toBe(250_000)
 })
@@ -329,17 +333,17 @@ test('SETTLE-02: direction unknown (stub) — settlement values do not corrupt c
 test('SETTLE-03: NULL totalCapitalRemainingEur stays null when one property is unknown (P-ARCH-1)', () => {
   // Avi: known; Oren: unknown → total must be null, not partial sum
   const portfolio = makePortfolio({
-    totalCapitalPaidEur: 250_000,       // Avi only (Oren unknown)
-    totalCapitalRemainingEur: null,     // Cannot sum: one component unknown
+    totalCapitalPaidEur: 250_000, // Avi only (Oren unknown)
+    totalCapitalRemainingEur: null, // Cannot sum: one component unknown
   })
   expect(portfolio.totalCapitalRemainingEur).toBeNull()
 })
 
 test('SETTLE-04: direction unknown — UI does not render as balanced / payable / receivable', () => {
   // Architecture guard: PortfolioSection must not compute:
-  // finalNetBalance === 0 → "Balanced"
-  // finalNetBalance < 0  → "Payable"
-  // finalNetBalance > 0  → "Receivable"
+  //   finalNetBalance === 0 → "Balanced"
+  //   finalNetBalance < 0  → "Payable"
+  //   finalNetBalance > 0  → "Receivable"
   // Those are Settlement Engine responsibilities.
   const portfolio = makePortfolio({ direction: 'unknown', finalNetBalance: 0 })
   expect(portfolio.direction).toBe('unknown')
