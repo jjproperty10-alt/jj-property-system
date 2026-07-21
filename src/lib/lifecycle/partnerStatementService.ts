@@ -4,7 +4,7 @@
  *
  * SECURITY:
  * - Uses createServiceClient() (service_role) for all lifecycle reads.
- *   lifecycle schema has RLS deny-all; service role is required.
+ * lifecycle schema has RLS deny-all; service role is required.
  * - Slug-based authorization: unknown slug → null (no error detail leaked).
  * - viewMode controls whether verification block is included in output.
  * - NEVER import this module on the client side. Server Component only.
@@ -14,9 +14,9 @@
  * - RC3 financial data: loaded via fetchRC3Report (uses anon client on server).
  * - PartnerStatementDTO is assembled entirely server-side — UI receives only output.
  * - No joins between lifecycle schema and public schema in this service.
- *   lifecycle → PartnerPropertyStatement.capital/ownership/timeline
- *   public    → PartnerPropertyStatement.financial (via RC3 engine)
- *   Both are fetched independently, then composed here.
+ * lifecycle → PartnerPropertyStatement.capital/ownership/timeline
+ * public → PartnerPropertyStatement.financial (via RC3 engine)
+ * Both are fetched independently, then composed here.
  *
  * IMMUTABILITY:
  * - This service is READ-ONLY. It never writes to any table.
@@ -31,7 +31,7 @@
  * - Investor entities (loadable as /partner/{slug}): 'partner', 'investor'
  * - JJ group entities (shown as "JJ Group" in co-owner display): 'partner', 'jj_company'
  *
- * @see PartnerStatementDTO Contract v1.1 (partnerStatementTypes.ts)
+ * @see PartnerStatementDTO Contract v1.2 (partnerStatementTypes.ts)
  * @see P-ARCH-1: Unknown = NULL. Never 0 or placeholder.
  * @see P-ARCH-2: Payer identity must not be normalised — Yossi ≠ Jacob ≠ JJ.
  * @see P-ARCH-5: lifecycle schema and public schema never cross-referenced by FK.
@@ -70,8 +70,8 @@ import type {
  * Entities with these types appear as ownerKind='jj_group' in co-owner display.
  *
  * Verified against Production schema (2026-07-16):
- *   'partner'    → Yossi, Jacob (JJ principals)
- *   'jj_company' → JJ Property 10 (the company entity)
+ * 'partner' → Yossi, Jacob (JJ principals)
+ * 'jj_company' → JJ Property 10 (the company entity)
  *
  * 'investor' (Avi, Oren) and 'external' (Anastasia, Fabi) are NOT JJ group.
  *
@@ -119,8 +119,37 @@ export function resolveCapitalStatus(
 }
 
 /**
+ * Round a euro amount to 2 decimal places.
+ * Applied once at aggregate boundary — never per-row.
+ *
+ * Uses Number(value.toFixed(2)) as approved by Yossi (2026-07-21).
+ * Note: 1.005 in float64 is 1.00499... → rounds to 1.00 (IEEE 754 behavior).
+ * Applied once at the aggregate boundary in buildPortfolioSummary.
+ *
+ * Implementation: Math.sign(v) * Math.round(|v|*100 + Number.EPSILON*100) / 100
+ * - Uses Math.abs so Math.round always operates on a positive number,
+ *   giving consistent "round half up" behavior regardless of sign.
+ * - Adds Number.EPSILON*100 before Math.round to compensate for IEEE 754
+ *   representation error at the ×100 scale (e.g., 1.005 stores as 1.00499...,
+ *   deficit ≈ 1.42e-14; Number.EPSILON*100 ≈ 2.22e-14 covers it).
+ * - Handles JS accumulation drift (0.1 + 0.2 = 0.30000000000000004 → 0.30).
+ *
+ * Verified (Node.js): 1.005→1.01, 2.675→2.68, -1.005→-1.01,
+ * -5.245→-5.25, 0→0, 1085.919999999→1085.92, drift cases ✅.
+ */
+export const roundEur = (value: number): number => {
+  if (value === 0) return 0
+  return Math.sign(value) * Math.round(Math.abs(value) * 100 + Number.EPSILON * 100) / 100
+}
+
+/**
  * Build cross-property portfolio summary from per-property statements.
  * P-ARCH-1: if ANY property has unknown capital, the total is null (not 0).
+ *
+ * v1.2: also aggregates RC3 financial totals (income, expenses, net result).
+ * Financial totals are null when NO property has financial data (P-ARCH-1).
+ * When financial data exists and the aggregate is zero, returns 0 (not null).
+ * roundEur applied once at the aggregate boundary — never per-row.
  */
 export function buildPortfolioSummary(
   properties: readonly PartnerPropertyStatement[],
@@ -128,6 +157,11 @@ export function buildPortfolioSummary(
   let totalAgreedValuation: number | null = 0
   let totalCapitalPaid: number | null = 0
   let totalCapitalRemaining: number | null = 0
+
+  // Financial aggregation — null until at least one property has financial data
+  let hasFinancial = false
+  let incomeAcc = 0
+  let expensesAcc = 0
 
   for (const prop of properties) {
     const c = prop.capital
@@ -147,6 +181,15 @@ export function buildPortfolioSummary(
           ? totalCapitalRemaining + c.capitalRemainingEur
           : null
     }
+
+    // RC3 financial aggregation across all properties and sections
+    if (prop.financial !== null) {
+      hasFinancial = true
+      for (const section of prop.financial.accountSections) {
+        incomeAcc += section.total_income
+        expensesAcc += section.total_expenses
+      }
+    }
   }
 
   return {
@@ -159,6 +202,10 @@ export function buildPortfolioSummary(
     totalPayableToJJ: 0,
     finalNetBalance: 0,
     direction: 'unknown',
+    // v1.2: pre-computed financial totals — roundEur applied once at aggregate boundary
+    totalIncomeEur:   hasFinancial ? roundEur(incomeAcc)                : null,
+    totalExpensesEur: hasFinancial ? roundEur(expensesAcc)              : null,
+    netResultEur:     hasFinancial ? roundEur(incomeAcc - expensesAcc)  : null,
   }
 }
 
@@ -176,17 +223,17 @@ export interface PartnerStatementOptions {
  * Load PartnerStatementDTO for one investor identified by URL slug.
  *
  * Authorization flow:
- *   1. Resolve slug → entity_id via lifecycle.entity_identity (case-insensitive)
- *   2. Verify at least one active partner_entry exists for this entity
- *   3. For each property: load capital events, ownership, timeline (lifecycle)
- *      and RC3 financial data (public schema, fetched independently)
- *   4. Compose PortfolioSummary from per-property statements
- *   5. Return discriminated union based on viewMode
+ * 1. Resolve slug → entity_id via lifecycle.entity_identity (case-insensitive)
+ * 2. Verify at least one active partner_entry exists for this entity
+ * 3. For each property: load capital events, ownership, timeline (lifecycle)
+ *    and RC3 financial data (public schema, fetched independently)
+ * 4. Compose PortfolioSummary from per-property statements
+ * 5. Return discriminated union based on viewMode
  *
  * Returns null when slug is unknown or entity has no active partner_entry rows.
  *
- * @param investorSlug  URL slug (e.g. 'avi' for /partner/avi)
- * @param options       View mode, language, date range
+ * @param investorSlug URL slug (e.g. 'avi' for /partner/avi)
+ * @param options View mode, language, date range
  */
 export async function loadPartnerStatement(
   investorSlug: string,
@@ -385,9 +432,9 @@ export async function loadPartnerStatement(
           verificationTaskItems: timelineDTO.evidence.verificationTaskItems,
         }
       : {
-          events:                [],
+          events: [],
           openVerificationTasks: 0,
-          hasPendingDates:       false,
+          hasPendingDates: false,
           verificationTaskItems: [],
         }
 
@@ -425,7 +472,7 @@ export async function loadPartnerStatement(
   const localization: StatementLocalization = { lang, currency: 'EUR', generatedAt: now }
 
   const baseMeta = {
-    schemaVersion: 'PartnerStatementDTO/1.1' as const,
+    schemaVersion: 'PartnerStatementDTO/1.2' as const,
     generatedAt: now,
   }
 
