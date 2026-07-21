@@ -324,7 +324,11 @@ interface StatementMetaBase {
   /**
    * Namespaced schema version — avoids collision with other DTOs.
    * v1.1: TimelineStatement.verificationTaskItems added (F3).
-   * v1.2: PortfolioSummary gains totalIncomeEur, totalExpensesEur, netResultEur.
+   * v1.2: PortfolioSummary gains operationalIncomeEur, operationalExpensesEur,
+   * and operationalNetResultEur — operational totals derived only from rental and
+   * airbnb account sections (balance_convention = 'owner_credit').
+   * Renovation and Sale are excluded; their sections use client_debt convention
+   * where total_expenses represents client payments received, not business expenses.
    */
   readonly schemaVersion: 'PartnerStatementDTO/1.2'
   readonly generatedAt: string
