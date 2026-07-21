@@ -7,21 +7,24 @@
  * No DB, no HTTP, no mocks required.
  *
  * Test map:
- *   SLUG-01..04    — buildSlug: name → URL-safe slug
- *   CAP-05..09     — resolveCapitalStatus: all four CapitalStatus values
- *   PORT-10..14    — buildPortfolioSummary: aggregation and null propagation (P-ARCH-1)
- *   DISC-15..17    — discriminated union: admin vs partner viewMode
- *   SCHEMA-18      — schemaVersion format
- *   ARCH1-19..20   — P-ARCH-1: null ≠ 0 (Oren real case)
- *   ARCH2-21       — P-ARCH-2: payer identity preserved
+ * SLUG-01..04 — buildSlug: name → URL-safe slug
+ * CAP-05..09  — resolveCapitalStatus: all four CapitalStatus values
+ * PORT-10..14 — buildPortfolioSummary: aggregation and null propagation (P-ARCH-1)
+ * DISC-15..17 — discriminated union: admin vs partner viewMode
+ * SCHEMA-18   — schemaVersion format (v1.2)
+ * ARCH1-19..20 — P-ARCH-1: null ≠ 0 (Oren real case)
+ * ARCH2-21    — P-ARCH-2: payer identity preserved
+ * CAP-22..32  — no_capital_event + contradictory inputs (added by M9-C)
+ * ROUND-01..07 — roundEur: Math.sign/abs/EPSILON approach (added RC3 v1.2, fixed RC3 Gate)
+ * PORT-F1..F8  — buildPortfolioSummary financial aggregation (added RC3 v1.2)
  *
- * @see PartnerStatementDTO Contract v1.1
+ * @see PartnerStatementDTO Contract v1.2
  * @see P-ARCH-1: Unknown = NULL. Never 0 or placeholder.
  * @see P-ARCH-2: Payer identity must not be normalised — Yossi ≠ Jacob ≠ JJ.
  * @see I-12: DTO is immutable. Consumers never mutate business data.
  */
 
-import { buildSlug, resolveCapitalStatus, buildPortfolioSummary } from '../../lib/lifecycle/partnerStatementService'
+import { buildSlug, resolveCapitalStatus, buildPortfolioSummary, roundEur } from '../../lib/lifecycle/partnerStatementService'
 import type {
   PartnerPropertyStatement,
   PartnerFacingStatementDTO,
@@ -32,6 +35,7 @@ import type {
   OwnershipStatement,
   SettlementStatement,
   TimelineStatement,
+  FinancialStatement,
 } from '../../lib/lifecycle/partnerStatementTypes'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -75,6 +79,29 @@ function makeTimeline(overrides: Partial<TimelineStatement> = {}): TimelineState
     ...overrides,
   }
 }
+
+function makeFinancialStatement(overrides: Partial<FinancialStatement> = {}): FinancialStatement {
+  return {
+    reportingName: 'Test Property',
+    fromDate: null,
+    toDate: null,
+    accountSections: [],
+    hasSale: false,
+    hasRenovation: false,
+    hasRental: false,
+    hasAirbnb: false,
+    ...overrides,
+  }
+}
+
+/** Minimal RC3AccountSection for financial aggregation tests. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const makeSection = (total_income: number, total_expenses: number): any => ({
+  total_income,
+  total_expenses,
+  total_bpo: 0,
+  closing_balance: 0,
+})
 
 function makePropertyStatement(overrides: Partial<PartnerPropertyStatement> = {}): PartnerPropertyStatement {
   return {
@@ -135,7 +162,7 @@ test('CAP-09: capital_unknown when capitalPaid is null even if required is known
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PORT — buildPortfolioSummary
+// PORT — buildPortfolioSummary (capital aggregation)
 // ─────────────────────────────────────────────────────────────────────────────
 
 test('PORT-10: single property — totals equal property values', () => {
@@ -215,7 +242,7 @@ test('PORT-14: settlement fields are 0/unknown until Settlement Engine (M9-C)', 
  */
 function makePartnerDTO(): PartnerFacingStatementDTO {
   return {
-    meta: { schemaVersion: 'PartnerStatementDTO/1.1', viewMode: 'partner', generatedAt: new Date().toISOString() },
+    meta: { schemaVersion: 'PartnerStatementDTO/1.2', viewMode: 'partner', generatedAt: new Date().toISOString() },
     investor: { entityId: 'e1', canonicalName: 'Avi', slug: 'avi', ownerType: 'partner' },
     properties: [makePropertyStatement()],
     portfolio: buildPortfolioSummary([makePropertyStatement()]),
@@ -226,7 +253,7 @@ function makePartnerDTO(): PartnerFacingStatementDTO {
 
 function makeAdminDTO(): AdminStatementDTO {
   return {
-    meta: { schemaVersion: 'PartnerStatementDTO/1.1', viewMode: 'admin', generatedAt: new Date().toISOString() },
+    meta: { schemaVersion: 'PartnerStatementDTO/1.2', viewMode: 'admin', generatedAt: new Date().toISOString() },
     investor: { entityId: 'e1', canonicalName: 'Avi', slug: 'avi', ownerType: 'partner' },
     properties: [makePropertyStatement()],
     portfolio: buildPortfolioSummary([makePropertyStatement()]),
@@ -272,10 +299,10 @@ test('DISC-17: narrowing via viewMode works correctly on PartnerStatementDTO uni
 // SCHEMA — schemaVersion format
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('SCHEMA-18: schemaVersion is namespaced and locked at v1.1', () => {
+test('SCHEMA-18: schemaVersion is namespaced and locked at v1.2', () => {
   const dto = makePartnerDTO()
-  // Namespaced to avoid collision: 'PartnerStatementDTO/1.1' not '1.1'
-  expect(dto.meta.schemaVersion).toBe('PartnerStatementDTO/1.1')
+  // Namespaced to avoid collision: 'PartnerStatementDTO/1.2' not '1.2'
+  expect(dto.meta.schemaVersion).toBe('PartnerStatementDTO/1.2')
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -285,10 +312,10 @@ test('SCHEMA-18: schemaVersion is namespaced and locked at v1.1', () => {
 test('ARCH1-19: Oren capital_unknown case: capitalPaidEur stays null, not 0', () => {
   // Oren's M8 Business Validation: required_entry_capital = NULL (unknown)
   const orenCapital = makeCapitalStatement({
-    agreedEntryValuationEur: null,   // unknown
-    requiredCapitalEur: null,        // unknown
-    capitalPaidEur: null,            // P-ARCH-1: null = unknown
-    capitalRemainingEur: null,       // P-ARCH-1: null = unknown
+    agreedEntryValuationEur: null, // unknown
+    requiredCapitalEur: null,      // unknown
+    capitalPaidEur: null,          // P-ARCH-1: null = unknown
+    capitalRemainingEur: null,     // P-ARCH-1: null = unknown
     capitalStatus: 'capital_unknown',
   })
 
@@ -317,7 +344,7 @@ test('ARCH2-21: CapitalPayment preserves payerName — Yossi ≠ Jacob ≠ JJ', 
     effectiveDateConfidence: 'confirmed',
     amountEur: 125000,
     description: 'Yossi initial deposit',
-    payerName: 'Yossi',   // must NOT be normalised to 'JJ'
+    payerName: 'Yossi', // must NOT be normalised to 'JJ'
     payeeName: 'Seller',
   }
 
@@ -327,7 +354,7 @@ test('ARCH2-21: CapitalPayment preserves payerName — Yossi ≠ Jacob ≠ JJ', 
     effectiveDateConfidence: 'confirmed',
     amountEur: 125000,
     description: 'Jacob initial deposit',
-    payerName: 'Jacob',   // must NOT be normalised to 'JJ'
+    payerName: 'Jacob', // must NOT be normalised to 'JJ'
     payeeName: 'Seller',
   }
 
@@ -389,4 +416,151 @@ test('CAP-31: paid=null, remaining=0, required=250000 → capital_unknown (remai
 test('CAP-32: paid=100000, remaining=null, required=null → capital_unknown (required unknown)', () => {
   // paid is known, but we cannot determine fully/partially without required
   expect(resolveCapitalStatus(100_000, null, null, true)).toBe('capital_unknown')
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ROUND — roundEur (added RC3 Financial Presentation Layer v1.2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('ROUND-01: 1085.919999999 rounds to 1085.92 (motivating example — float accumulation)', () => {
+  expect(roundEur(1085.919999999)).toBe(1085.92)
+})
+
+test('ROUND-02: 1.005 → 1.01 (IEEE 754 half-up: Math.abs+EPSILON approach)', () => {
+  // 1.005 stores as 1.00499999... (deficit 1.42e-14).
+  // Number.EPSILON*100 ≈ 2.22e-14 bridges the gap — rounds correctly to 1.01.
+  // Verified in Node.js: Number(1.005.toFixed(2)) === 1 (WRONG); roundEur(1.005) === 1.01 (CORRECT).
+  expect(roundEur(1.005)).toBe(1.01)
+})
+
+test('ROUND-03: negative symmetry — round half away from zero', () => {
+  // Math.abs ensures consistent half-up behavior; sign is restored after.
+  expect(roundEur(-1.005)).toBe(-1.01)   // mirror of ROUND-02
+  expect(roundEur(-100.5)).toBe(-100.5)   // half values
+  expect(roundEur(-1.255)).toBe(-1.26)
+})
+
+test('ROUND-04: exact integer → unchanged', () => {
+  expect(roundEur(100)).toBe(100)
+})
+
+test('ROUND-05: zero → 0', () => {
+  expect(roundEur(0)).toBe(0)
+})
+
+test('ROUND-06: 2.675 → 2.68 (another known IEEE 754 half-rounding case)', () => {
+  // 2.675 stores as 2.67499999... → plain toFixed(2) gives 2.67.
+  // Math.abs+EPSILON approach correctly returns 2.68.
+  expect(roundEur(2.675)).toBe(2.68)
+})
+
+test('ROUND-07: JS accumulation drift on 2dp inputs (real use case)', () => {
+  // In practice, section.total_income values come from Postgres NUMERIC (exact 2dp).
+  // Summing them in JS can drift: 0.10 + 0.20 = 0.30000000000000004.
+  // roundEur cleans the drift correctly.
+  expect(roundEur(0.10 + 0.20)).toBe(0.30)
+  expect(roundEur(0.1 + 0.2 + 0.3)).toBe(0.60)
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PORT-F — buildPortfolioSummary financial aggregation (added RC3 v1.2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('PORT-F1: null/null/null when no property has financial data (P-ARCH-1)', () => {
+  const props = [
+    makePropertyStatement({ financial: null }),
+    makePropertyStatement({ propertyName: 'Prop 2', financial: null }),
+  ]
+  const portfolio = buildPortfolioSummary(props)
+  expect(portfolio.totalIncomeEur).toBeNull()
+  expect(portfolio.totalExpensesEur).toBeNull()
+  expect(portfolio.netResultEur).toBeNull()
+})
+
+test('PORT-F2: 0/0/0 when financial data exists but sums are genuinely zero', () => {
+  const props = [makePropertyStatement({
+    financial: makeFinancialStatement({
+      accountSections: [makeSection(0, 0)],
+    }),
+  })]
+  const portfolio = buildPortfolioSummary(props)
+  expect(portfolio.totalIncomeEur).toBe(0)
+  expect(portfolio.totalExpensesEur).toBe(0)
+  expect(portfolio.netResultEur).toBe(0)
+})
+
+test('PORT-F3: income-only — expenses=0, netResult=income', () => {
+  const props = [makePropertyStatement({
+    financial: makeFinancialStatement({
+      accountSections: [makeSection(1000, 0)],
+    }),
+  })]
+  const portfolio = buildPortfolioSummary(props)
+  expect(portfolio.totalIncomeEur).toBe(1000)
+  expect(portfolio.totalExpensesEur).toBe(0)
+  expect(portfolio.netResultEur).toBe(1000)
+})
+
+test('PORT-F4: expenses-only — income=0, netResult is negative', () => {
+  const props = [makePropertyStatement({
+    financial: makeFinancialStatement({
+      accountSections: [makeSection(0, 500)],
+    }),
+  })]
+  const portfolio = buildPortfolioSummary(props)
+  expect(portfolio.totalIncomeEur).toBe(0)
+  expect(portfolio.totalExpensesEur).toBe(500)
+  expect(portfolio.netResultEur).toBe(-500)
+})
+
+test('PORT-F5: negative netResultEur when expenses exceed income', () => {
+  const props = [makePropertyStatement({
+    financial: makeFinancialStatement({
+      accountSections: [makeSection(200, 800)],
+    }),
+  })]
+  const portfolio = buildPortfolioSummary(props)
+  expect(portfolio.netResultEur).toBe(-600)
+})
+
+test('PORT-F6: multiple account sections — income and expenses summed across sections', () => {
+  const props = [makePropertyStatement({
+    financial: makeFinancialStatement({
+      accountSections: [makeSection(1000, 200), makeSection(500, 100)],
+    }),
+  })]
+  const portfolio = buildPortfolioSummary(props)
+  expect(portfolio.totalIncomeEur).toBe(1500)
+  expect(portfolio.totalExpensesEur).toBe(300)
+  expect(portfolio.netResultEur).toBe(1200)
+})
+
+test('PORT-F7: multiple properties with financial data — aggregated across all', () => {
+  const prop1 = makePropertyStatement({
+    financial: makeFinancialStatement({
+      accountSections: [makeSection(1000, 300)],
+    }),
+  })
+  const prop2 = makePropertyStatement({
+    propertyName: 'Prop 2',
+    financial: makeFinancialStatement({
+      accountSections: [makeSection(500, 100)],
+    }),
+  })
+  const portfolio = buildPortfolioSummary([prop1, prop2])
+  expect(portfolio.totalIncomeEur).toBe(1500)
+  expect(portfolio.totalExpensesEur).toBe(400)
+  expect(portfolio.netResultEur).toBe(1100)
+})
+
+test('PORT-F8: decimal-cent precision — roundEur applied at aggregate boundary', () => {
+  // 1085.919999999 is the motivating example from pre-code checks
+  const props = [makePropertyStatement({
+    financial: makeFinancialStatement({
+      accountSections: [makeSection(1085.919999999, 0)],
+    }),
+  })]
+  const portfolio = buildPortfolioSummary(props)
+  expect(portfolio.totalIncomeEur).toBe(1085.92)
+  expect(portfolio.netResultEur).toBe(1085.92)
 })
