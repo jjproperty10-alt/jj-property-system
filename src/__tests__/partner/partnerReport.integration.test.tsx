@@ -10,6 +10,11 @@
  * not from a count-based generic string. Two seeded QA tasks prove per-task
  * identity: taskId, priority, sourceTable, sourceId, missingField, and
  * relatedAmountEur are each present in the fixture and reflected in humanLabel.
+ *
+ * v1.2 (RC3 Financial Presentation Layer): portfolio now includes pre-computed
+ * financial totals (totalIncomeEur, totalExpensesEur, netResultEur).
+ * All integration test fixtures have financial: null → totals are null (P-ARCH-1).
+ * ExecutiveSummary receives null for all three (correct — no financial data in tests).
  */
 
 import React from 'react'
@@ -98,7 +103,7 @@ function makeDTO(overrides: Partial<PartnerPropertyStatement> = {}): PartnerFaci
 
   return {
     meta: {
-      schemaVersion: 'PartnerStatementDTO/1.1',
+      schemaVersion: 'PartnerStatementDTO/1.2',
       generatedAt:   '2026-01-01T00:00:00.000Z',
       viewMode:      'partner',
     },
@@ -118,6 +123,10 @@ function makeDTO(overrides: Partial<PartnerPropertyStatement> = {}): PartnerFaci
       totalPayableToJJ:         0,
       finalNetBalance:          0,
       direction:                'unknown',
+      // v1.2: all null because financial: null in all test fixtures (P-ARCH-1)
+      totalIncomeEur:           null,
+      totalExpensesEur:         null,
+      netResultEur:             null,
     },
     actions: {
       canExportCsv:             false,
