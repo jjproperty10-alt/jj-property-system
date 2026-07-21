@@ -7,8 +7,12 @@
  * per-task rows from lifecycle.verification_tasks, carrying a server-computed
  * humanLabel safe for partner display. No UUIDs or internal table names in the UI.
  * v1.2 — RC3 Financial Presentation Layer (July 2026): PortfolioSummary gains three
- * pre-computed financial totals (totalIncomeEur, totalExpensesEur, netResultEur).
- * Computed by buildPortfolioSummary from RC3 accountSections — never in the UI.
+ * pre-computed OPERATIONAL financial totals: operationalIncomeEur,
+ * operationalExpensesEur, operationalNetResultEur.
+ * "Operational" = rental + airbnb only (balance_convention='owner_credit').
+ * Renovation and Sale are excluded — their total_expenses field represents
+ * client payments received (debt reduction), not business expenses.
+ * Computed by buildPortfolioSummary — never in the UI.
  * "Every number must answer: where did you come from?" — Yossi, 2026-07-21.
  *
  * Design decisions:
@@ -227,18 +231,33 @@ export interface PortfolioSummary {
   readonly finalNetBalance: number
   readonly direction: NetDirection
   /**
-   * Aggregate operational financial totals across all RC3 account sections.
-   * Computed by buildPortfolioSummary from per-property financial.accountSections.
-   * null when NO property has financial data (P-ARCH-1: unknown ≠ 0).
-   * 0 when financial data exists and the aggregate is genuinely zero.
+   * Operational financial totals — RENTAL + AIRBNB accounts only.
    *
-   * total_expenses is the absolute-value sum (positive) — sign matches RC3AccountSection.
-   * netResultEur = totalIncomeEur − totalExpensesEur (computed once; never inferred in UI).
+   * "Operational" means accounts with balance_convention = 'owner_credit':
+   *   - 'rental'  (Management category — long-term rent)
+   *   - 'airbnb'  (Short-term rental)
+   *
+   * Renovation and Sale are intentionally EXCLUDED.
+   * Their sections use balance_convention = 'client_debt', where:
+   *   - total_income  = extra charges billed to client (Extras, Sale Expenses)
+   *   - total_expenses = client payments received (debt reduction)
+   * Folding client payments into "Expenses" in an executive summary would
+   * misrepresent a partner's financial position.
+   * Renovation and Sale are presented in their own dedicated sections with
+   * contract / charges / paid / remaining balance semantics.
+   *
+   * Computed by buildPortfolioSummary using OPERATIONAL_ACCOUNT_TYPES.
+   * null when NO property has operational financial data (P-ARCH-1: unknown ≠ 0).
+   * 0 when operational data exists and the aggregate is genuinely zero.
+   *
+   * operationalExpensesEur is absolute-value (positive) — sign matches RC3AccountSection.
+   * operationalNetResultEur = operationalIncomeEur − operationalExpensesEur
+   * (computed once in service; never inferred in UI — "where did you come from?").
    */
-  readonly totalIncomeEur: number | null
-  readonly totalExpensesEur: number | null
-  /** null when totalIncomeEur is null (no financial data). */
-  readonly netResultEur: number | null
+  readonly operationalIncomeEur: number | null
+  readonly operationalExpensesEur: number | null
+  /** null when operationalIncomeEur is null (no operational financial data). */
+  readonly operationalNetResultEur: number | null
 }
 
 // ─── Per-Property Statement ───────────────────────────────────────────────────

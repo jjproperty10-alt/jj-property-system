@@ -92,14 +92,16 @@ export function PartnerReport({ dto }: Props) {
       />
       {/*
         RC3 Financial Presentation Layer (v1.2):
-        ExecutiveSummary receives pre-computed totals from dto.portfolio.
-        No arithmetic here — buildPortfolioSummary owns this computation.
-        P-ARCH-1: null when no financial data (not 0).
+        ExecutiveSummary receives OPERATIONAL totals (rental + airbnb only) from dto.portfolio.
+        Renovation and Sale are excluded — their sections use client_debt convention where
+        total_expenses represents client payments received, not business expenses.
+        No arithmetic here — buildPortfolioSummary owns the operational aggregation.
+        P-ARCH-1: null when no operational financial data (not 0).
       */}
       <ExecutiveSummary
-        income={portfolio.totalIncomeEur}
-        expenses={portfolio.totalExpensesEur}
-        netResult={portfolio.netResultEur}
+        income={portfolio.operationalIncomeEur}
+        expenses={portfolio.operationalExpensesEur}
+        netResult={portfolio.operationalNetResultEur}
         status={null}
         className="mb-6 max-w-4xl mx-auto px-4 sm:px-6"
       />

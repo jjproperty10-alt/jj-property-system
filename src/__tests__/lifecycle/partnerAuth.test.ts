@@ -103,7 +103,7 @@ const AVI_PROPERTY_NAMES  = ['Villa Mazotos']
 const OREN_PROPERTY_NAMES = ['Villa Mazotos 2']
 
 // Minimal PartnerFacingStatementDTO fixture (shape not tested here — see partnerStatement.test.ts)
-// Updated to DTO v1.2: portfolio includes totalIncomeEur/totalExpensesEur/netResultEur.
+// Updated to DTO v1.2: portfolio includes operationalIncomeEur/operationalExpensesEur/operationalNetResultEur.
 // financial: null → all three financial totals are null (P-ARCH-1).
 const AVI_DTO: any = {
   meta: { schemaVersion: 'PartnerStatementDTO/1.2', viewMode: 'partner', generatedAt: '2026-07-15T00:00:00.000Z' },
@@ -129,16 +129,16 @@ const AVI_DTO: any = {
     totalCapitalRemainingEur: 0,
     totalReceivableFromJJ: 0, totalPayableToJJ: 0, finalNetBalance: 0, direction: 'unknown',
     // v1.2: financial totals — null because financial: null (P-ARCH-1)
-    totalIncomeEur: null,
-    totalExpensesEur: null,
-    netResultEur: null,
+    operationalIncomeEur: null,
+    operationalExpensesEur: null,
+    operationalNetResultEur: null,
   },
   actions: { canExportCsv: false, canGeneratePdf: false, hasOpenVerificationTasks: false },
   localization: { lang: 'en', currency: 'EUR', generatedAt: '2026-07-15T00:00:00.000Z' },
 }
 
 // Oren DTO — all capital fields null (P-ARCH-1: capital_unknown)
-// Updated to DTO v1.2: portfolio includes totalIncomeEur/totalExpensesEur/netResultEur.
+// Updated to DTO v1.2: portfolio includes operationalIncomeEur/operationalExpensesEur/operationalNetResultEur.
 const OREN_DTO: any = {
   meta: { schemaVersion: 'PartnerStatementDTO/1.2', viewMode: 'partner', generatedAt: '2026-07-15T00:00:00.000Z' },
   investor: { entityId: OREN_ENTITY_ID, canonicalName: 'Oren', slug: 'oren', ownerType: 'partner' },
@@ -164,9 +164,9 @@ const OREN_DTO: any = {
     totalCapitalRemainingEur: null,
     totalReceivableFromJJ: 0, totalPayableToJJ: 0, finalNetBalance: 0, direction: 'unknown',
     // v1.2: financial totals — null because financial: null (P-ARCH-1)
-    totalIncomeEur: null,
-    totalExpensesEur: null,
-    netResultEur: null,
+    operationalIncomeEur: null,
+    operationalExpensesEur: null,
+    operationalNetResultEur: null,
   },
   actions: { canExportCsv: false, canGeneratePdf: false, hasOpenVerificationTasks: true },
   localization: { lang: 'en', currency: 'EUR', generatedAt: '2026-07-15T00:00:00.000Z' },

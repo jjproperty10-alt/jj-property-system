@@ -103,9 +103,9 @@ function makePortfolio(overrides: Partial<PortfolioSummary> = {}): PortfolioSumm
     finalNetBalance: 0,
     direction: 'unknown',
     // v1.2: financial totals — null by default (no financial data in base fixture)
-    totalIncomeEur: null,
-    totalExpensesEur: null,
-    netResultEur: null,
+    operationalIncomeEur: null,
+    operationalExpensesEur: null,
+    operationalNetResultEur: null,
     ...overrides,
   }
 }

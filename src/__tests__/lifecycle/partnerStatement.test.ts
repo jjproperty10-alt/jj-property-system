@@ -16,7 +16,7 @@
  * ARCH2-21    — P-ARCH-2: payer identity preserved
  * CAP-22..32  — no_capital_event + contradictory inputs (added by M9-C)
  * ROUND-01..07 — roundEur: Math.sign/abs/EPSILON approach (added RC3 v1.2, fixed RC3 Gate)
- * PORT-F1..F8  — buildPortfolioSummary financial aggregation (added RC3 v1.2)
+ * PORT-F1..F12 — buildPortfolioSummary OPERATIONAL aggregation (rental+airbnb only, RC3 v1.2)
  *
  * @see PartnerStatementDTO Contract v1.2
  * @see P-ARCH-1: Unknown = NULL. Never 0 or placeholder.
@@ -94,9 +94,19 @@ function makeFinancialStatement(overrides: Partial<FinancialStatement> = {}): Fi
   }
 }
 
-/** Minimal RC3AccountSection for financial aggregation tests. */
+/**
+ * Minimal RC3AccountSection for financial aggregation tests.
+ * Defaults to account_type='airbnb' (operational) so PORT-F tests pass through
+ * the OPERATIONAL_ACCOUNT_TYPES filter in buildPortfolioSummary.
+ * Override account_type='renovation' or 'sale' to test exclusion logic.
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const makeSection = (total_income: number, total_expenses: number): any => ({
+const makeSection = (
+  total_income: number,
+  total_expenses: number,
+  account_type = 'airbnb',
+): any => ({
+  account_type,
   total_income,
   total_expenses,
   total_bpo: 0,
@@ -463,104 +473,171 @@ test('ROUND-07: JS accumulation drift on 2dp inputs (real use case)', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PORT-F — buildPortfolioSummary financial aggregation (added RC3 v1.2)
+// PORT-F — buildPortfolioSummary operational financial aggregation (RC3 v1.2)
+//
+// "Operational" = rental + airbnb (balance_convention='owner_credit').
+// Renovation + Sale are excluded — their total_expenses field represents
+// client payments received (debt reduction), not business expenses.
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('PORT-F1: null/null/null when no property has financial data (P-ARCH-1)', () => {
+test('PORT-F1: null/null/null when no property has operational financial data (P-ARCH-1)', () => {
   const props = [
     makePropertyStatement({ financial: null }),
     makePropertyStatement({ propertyName: 'Prop 2', financial: null }),
   ]
   const portfolio = buildPortfolioSummary(props)
-  expect(portfolio.totalIncomeEur).toBeNull()
-  expect(portfolio.totalExpensesEur).toBeNull()
-  expect(portfolio.netResultEur).toBeNull()
+  expect(portfolio.operationalIncomeEur).toBeNull()
+  expect(portfolio.operationalExpensesEur).toBeNull()
+  expect(portfolio.operationalNetResultEur).toBeNull()
 })
 
-test('PORT-F2: 0/0/0 when financial data exists but sums are genuinely zero', () => {
+test('PORT-F2: 0/0/0 when operational financial data exists but sums are genuinely zero', () => {
   const props = [makePropertyStatement({
     financial: makeFinancialStatement({
-      accountSections: [makeSection(0, 0)],
+      accountSections: [makeSection(0, 0, 'airbnb')],
     }),
   })]
   const portfolio = buildPortfolioSummary(props)
-  expect(portfolio.totalIncomeEur).toBe(0)
-  expect(portfolio.totalExpensesEur).toBe(0)
-  expect(portfolio.netResultEur).toBe(0)
+  expect(portfolio.operationalIncomeEur).toBe(0)
+  expect(portfolio.operationalExpensesEur).toBe(0)
+  expect(portfolio.operationalNetResultEur).toBe(0)
 })
 
 test('PORT-F3: income-only — expenses=0, netResult=income', () => {
   const props = [makePropertyStatement({
     financial: makeFinancialStatement({
-      accountSections: [makeSection(1000, 0)],
+      accountSections: [makeSection(1000, 0, 'rental')],
     }),
   })]
   const portfolio = buildPortfolioSummary(props)
-  expect(portfolio.totalIncomeEur).toBe(1000)
-  expect(portfolio.totalExpensesEur).toBe(0)
-  expect(portfolio.netResultEur).toBe(1000)
+  expect(portfolio.operationalIncomeEur).toBe(1000)
+  expect(portfolio.operationalExpensesEur).toBe(0)
+  expect(portfolio.operationalNetResultEur).toBe(1000)
 })
 
 test('PORT-F4: expenses-only — income=0, netResult is negative', () => {
   const props = [makePropertyStatement({
     financial: makeFinancialStatement({
-      accountSections: [makeSection(0, 500)],
+      accountSections: [makeSection(0, 500, 'airbnb')],
     }),
   })]
   const portfolio = buildPortfolioSummary(props)
-  expect(portfolio.totalIncomeEur).toBe(0)
-  expect(portfolio.totalExpensesEur).toBe(500)
-  expect(portfolio.netResultEur).toBe(-500)
+  expect(portfolio.operationalIncomeEur).toBe(0)
+  expect(portfolio.operationalExpensesEur).toBe(500)
+  expect(portfolio.operationalNetResultEur).toBe(-500)
 })
 
-test('PORT-F5: negative netResultEur when expenses exceed income', () => {
+test('PORT-F5: negative operationalNetResultEur when expenses exceed income', () => {
   const props = [makePropertyStatement({
     financial: makeFinancialStatement({
-      accountSections: [makeSection(200, 800)],
+      accountSections: [makeSection(200, 800, 'airbnb')],
     }),
   })]
   const portfolio = buildPortfolioSummary(props)
-  expect(portfolio.netResultEur).toBe(-600)
+  expect(portfolio.operationalNetResultEur).toBe(-600)
 })
 
-test('PORT-F6: multiple account sections — income and expenses summed across sections', () => {
+test('PORT-F6: multiple operational sections — income and expenses summed across sections', () => {
   const props = [makePropertyStatement({
     financial: makeFinancialStatement({
-      accountSections: [makeSection(1000, 200), makeSection(500, 100)],
+      accountSections: [makeSection(1000, 200, 'airbnb'), makeSection(500, 100, 'rental')],
     }),
   })]
   const portfolio = buildPortfolioSummary(props)
-  expect(portfolio.totalIncomeEur).toBe(1500)
-  expect(portfolio.totalExpensesEur).toBe(300)
-  expect(portfolio.netResultEur).toBe(1200)
+  expect(portfolio.operationalIncomeEur).toBe(1500)
+  expect(portfolio.operationalExpensesEur).toBe(300)
+  expect(portfolio.operationalNetResultEur).toBe(1200)
 })
 
-test('PORT-F7: multiple properties with financial data — aggregated across all', () => {
+test('PORT-F7: multiple properties with operational data — aggregated across all', () => {
   const prop1 = makePropertyStatement({
     financial: makeFinancialStatement({
-      accountSections: [makeSection(1000, 300)],
+      accountSections: [makeSection(1000, 300, 'airbnb')],
     }),
   })
   const prop2 = makePropertyStatement({
     propertyName: 'Prop 2',
     financial: makeFinancialStatement({
-      accountSections: [makeSection(500, 100)],
+      accountSections: [makeSection(500, 100, 'rental')],
     }),
   })
   const portfolio = buildPortfolioSummary([prop1, prop2])
-  expect(portfolio.totalIncomeEur).toBe(1500)
-  expect(portfolio.totalExpensesEur).toBe(400)
-  expect(portfolio.netResultEur).toBe(1100)
+  expect(portfolio.operationalIncomeEur).toBe(1500)
+  expect(portfolio.operationalExpensesEur).toBe(400)
+  expect(portfolio.operationalNetResultEur).toBe(1100)
 })
 
 test('PORT-F8: decimal-cent precision — roundEur applied at aggregate boundary', () => {
   // 1085.919999999 is the motivating example from pre-code checks
   const props = [makePropertyStatement({
     financial: makeFinancialStatement({
-      accountSections: [makeSection(1085.919999999, 0)],
+      accountSections: [makeSection(1085.919999999, 0, 'airbnb')],
     }),
   })]
   const portfolio = buildPortfolioSummary(props)
-  expect(portfolio.totalIncomeEur).toBe(1085.92)
-  expect(portfolio.netResultEur).toBe(1085.92)
+  expect(portfolio.operationalIncomeEur).toBe(1085.92)
+  expect(portfolio.operationalNetResultEur).toBe(1085.92)
+})
+
+// PORT-F9..F12 — Renovation and Sale exclusion (semantic accuracy, approved 2026-07-21)
+
+test('PORT-F9: renovation section is excluded — null when only renovation data exists', () => {
+  // renovation total_expenses = client payments received (debt reduction) in client_debt convention.
+  // Including it in "Expenses" on an executive summary would misrepresent the partner's position.
+  const props = [makePropertyStatement({
+    financial: makeFinancialStatement({
+      accountSections: [makeSection(72199, 25000, 'renovation')],
+    }),
+  })]
+  const portfolio = buildPortfolioSummary(props)
+  expect(portfolio.operationalIncomeEur).toBeNull()
+  expect(portfolio.operationalExpensesEur).toBeNull()
+  expect(portfolio.operationalNetResultEur).toBeNull()
+})
+
+test('PORT-F10: sale section is excluded — null when only sale data exists', () => {
+  const props = [makePropertyStatement({
+    financial: makeFinancialStatement({
+      accountSections: [makeSection(100000, 80000, 'sale')],
+    }),
+  })]
+  const portfolio = buildPortfolioSummary(props)
+  expect(portfolio.operationalIncomeEur).toBeNull()
+  expect(portfolio.operationalExpensesEur).toBeNull()
+  expect(portfolio.operationalNetResultEur).toBeNull()
+})
+
+test('PORT-F11: mixed portfolio — only rental+airbnb count toward operational totals', () => {
+  // Represents Avi / Villa Mazotos: airbnb + rental operational, renovation excluded.
+  const props = [makePropertyStatement({
+    financial: makeFinancialStatement({
+      accountSections: [
+        makeSection(1360, 14348.29, 'airbnb'),    // operational: included
+        makeSection(0, 480, 'rental'),             // operational: included
+        makeSection(0, 25000, 'renovation'),       // client_debt: excluded
+      ],
+    }),
+  })]
+  const portfolio = buildPortfolioSummary(props)
+  expect(portfolio.operationalIncomeEur).toBe(1360)
+  expect(portfolio.operationalExpensesEur).toBe(14828.29)
+  expect(portfolio.operationalNetResultEur).toBe(-13468.29)
+})
+
+test('PORT-F12: only operational property counts — null even when non-operational has data', () => {
+  // One property has only renovation data, other has no data.
+  // Neither triggers hasOperational → all three fields must be null.
+  const prop1 = makePropertyStatement({
+    financial: makeFinancialStatement({
+      accountSections: [makeSection(50000, 30000, 'renovation')],
+    }),
+  })
+  const prop2 = makePropertyStatement({
+    propertyName: 'Prop 2',
+    financial: null,
+  })
+  const portfolio = buildPortfolioSummary([prop1, prop2])
+  expect(portfolio.operationalIncomeEur).toBeNull()
+  expect(portfolio.operationalExpensesEur).toBeNull()
+  expect(portfolio.operationalNetResultEur).toBeNull()
 })

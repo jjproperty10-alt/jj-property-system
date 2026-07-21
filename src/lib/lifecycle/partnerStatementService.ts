@@ -42,6 +42,7 @@
 import { createServiceClient } from '@/lib/supabase'
 import { loadInvestmentTimeline } from './timelineService'
 import { fetchRC3Report } from '@/lib/report/fetchReport'
+import { OPERATIONAL_ACCOUNT_TYPES } from '@/lib/report/executiveSummary'
 import type {
   PartnerStatementDTO,
   PartnerFacingStatementDTO,
@@ -146,9 +147,24 @@ export const roundEur = (value: number): number => {
  * Build cross-property portfolio summary from per-property statements.
  * P-ARCH-1: if ANY property has unknown capital, the total is null (not 0).
  *
- * v1.2: also aggregates RC3 financial totals (income, expenses, net result).
- * Financial totals are null when NO property has financial data (P-ARCH-1).
- * When financial data exists and the aggregate is zero, returns 0 (not null).
+ * v1.2: aggregates OPERATIONAL RC3 financial totals (rental + airbnb only).
+ *
+ * Operational scope — why rental + airbnb only:
+ *   RC3AccountSection.total_income / total_expenses are balance-effect buckets
+ *   whose semantics depend on balance_convention:
+ *
+ *   owner_credit (rental/airbnb): income = rent/platform receipts, expenses = property costs.
+ *   client_debt  (renovation/sale): income = extras billed, expenses = CLIENT PAYMENTS received.
+ *
+ *   Folding client payments (debt reduction) into "Expenses" on a partner-facing
+ *   Executive Summary would misrepresent the partner's financial position.
+ *   Renovation and Sale are presented in their own sections with contract/paid/remaining semantics.
+ *
+ * Canonical set: OPERATIONAL_ACCOUNT_TYPES = {'rental', 'airbnb'} imported from executiveSummary.ts.
+ * Do NOT duplicate this set here — import the single source of truth.
+ *
+ * Operational totals are null when NO property has operational financial data (P-ARCH-1).
+ * When operational data exists and the aggregate is zero, returns 0 (not null).
  * roundEur applied once at the aggregate boundary — never per-row.
  */
 export function buildPortfolioSummary(
@@ -158,8 +174,8 @@ export function buildPortfolioSummary(
   let totalCapitalPaid: number | null = 0
   let totalCapitalRemaining: number | null = 0
 
-  // Financial aggregation — null until at least one property has financial data
-  let hasFinancial = false
+  // Operational financial aggregation — null until at least one property has operational sections
+  let hasOperational = false
   let incomeAcc = 0
   let expensesAcc = 0
 
@@ -182,10 +198,13 @@ export function buildPortfolioSummary(
           : null
     }
 
-    // RC3 financial aggregation across all properties and sections
+    // Operational sections only: rental + airbnb (owner_credit convention).
+    // Renovation and Sale (client_debt) are excluded — their total_expenses field
+    // represents client payments received, not business expenses.
     if (prop.financial !== null) {
-      hasFinancial = true
       for (const section of prop.financial.accountSections) {
+        if (!OPERATIONAL_ACCOUNT_TYPES.has(section.account_type)) continue
+        hasOperational = true
         incomeAcc += section.total_income
         expensesAcc += section.total_expenses
       }
@@ -202,10 +221,10 @@ export function buildPortfolioSummary(
     totalPayableToJJ: 0,
     finalNetBalance: 0,
     direction: 'unknown',
-    // v1.2: pre-computed financial totals — roundEur applied once at aggregate boundary
-    totalIncomeEur:   hasFinancial ? roundEur(incomeAcc)                : null,
-    totalExpensesEur: hasFinancial ? roundEur(expensesAcc)              : null,
-    netResultEur:     hasFinancial ? roundEur(incomeAcc - expensesAcc)  : null,
+    // v1.2: operational financial totals (rental + airbnb) — roundEur at aggregate boundary
+    operationalIncomeEur:   hasOperational ? roundEur(incomeAcc)               : null,
+    operationalExpensesEur: hasOperational ? roundEur(expensesAcc)             : null,
+    operationalNetResultEur: hasOperational ? roundEur(incomeAcc - expensesAcc) : null,
   }
 }
 

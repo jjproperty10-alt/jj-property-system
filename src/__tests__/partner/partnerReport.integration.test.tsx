@@ -12,7 +12,7 @@
  * relatedAmountEur are each present in the fixture and reflected in humanLabel.
  *
  * v1.2 (RC3 Financial Presentation Layer): portfolio now includes pre-computed
- * financial totals (totalIncomeEur, totalExpensesEur, netResultEur).
+ * financial totals (operationalIncomeEur, operationalExpensesEur, operationalNetResultEur).
  * All integration test fixtures have financial: null → totals are null (P-ARCH-1).
  * ExecutiveSummary receives null for all three (correct — no financial data in tests).
  */
@@ -124,9 +124,9 @@ function makeDTO(overrides: Partial<PartnerPropertyStatement> = {}): PartnerFaci
       finalNetBalance:          0,
       direction:                'unknown',
       // v1.2: all null because financial: null in all test fixtures (P-ARCH-1)
-      totalIncomeEur:           null,
-      totalExpensesEur:         null,
-      netResultEur:             null,
+      operationalIncomeEur:           null,
+      operationalExpensesEur:         null,
+      operationalNetResultEur:             null,
     },
     actions: {
       canExportCsv:             false,
