@@ -7,7 +7,8 @@ import { SettlementCard } from './SettlementCard'
 import { WelcomeHeader } from '@/components/partner/WelcomeHeader'
 import { ExecutiveSummary } from '@/components/partner/ExecutiveSummary'
 import { NeedsAttentionItems } from '@/components/ds/NeedsAttentionItems'
-
+import { IncomeTable } from './IncomeTable'
+import { ExpenseTable } from './ExpenseTable'
 
 interface Props { dto: PartnerFacingStatementDTO }
 
@@ -56,13 +57,19 @@ function deriveAttentionItems(prop: PartnerPropertyStatement): string[] {
 }
 
 /**
- * PartnerReport — PR D: Modern Visual Polish
+ * PartnerReport — RC3 Financial Presentation Layer (DTO v1.2)
  *
  * R4 wiring (functional closure):
  * - F1: partnerStatementService uses direction='inflow' (DB constraint fix)
  * - F2: HighlightTimeline wired via PartnerTimelineSection (FR-001 compliant)
  * - F3: NeedsAttentionItems populated from real verification_tasks rows (per-task humanLabel)
  * - F4: SettlementCard outside {prop.financial && ...} guard — renders when financial===null
+ *
+ * RC3 Financial Presentation Layer (v1.2):
+ * - ExecutiveSummary receives pre-computed totals from dto.portfolio (never computed in UI)
+ * - IncomeTable + ExpenseTable render per-property financial breakdown
+ * - "Every number must answer: where did you come from?" — Yossi, 2026-07-21
+ * - UI only renders. Business Logic lives in the engine.
  *
  * P-ARCH-6: no jj_* fields. Discriminated union ensures PartnerFacingStatementDTO
  * is the only type accepted here.
@@ -83,130 +90,144 @@ export function PartnerReport({ dto }: Props) {
         period={formattedDate}
         className="mb-6 max-w-4xl mx-auto px-4 sm:px-6 pt-6"
       />
+      {/*
+        RC3 Financial Presentation Layer (v1.2):
+        ExecutiveSummary receives pre-computed totals from dto.portfolio.
+        No arithmetic here — buildPortfolioSummary owns this computation.
+        P-ARCH-1: null when no financial data (not 0).
+      */}
       <ExecutiveSummary
-        income={null}
-        expenses={null}
-        netResult={null}
+        income={portfolio.totalIncomeEur}
+        expenses={portfolio.totalExpensesEur}
+        netResult={portfolio.netResultEur}
         status={null}
         className="mb-6 max-w-4xl mx-auto px-4 sm:px-6"
       />
-      {/* End R1 story sections — real DTO wiring in subsequent PRs */}
+      {/* End R1 story sections */}
       <div className="min-h-screen bg-gray-50">
 
+        {/* ── Master header ── */}
+        <header style={{ background: 'linear-gradient(135deg, #071a3e 0%, #0f2d5e 50%, #1a3a6b 100%)' }}>
+          <div className="max-w-4xl mx-auto px-6 py-10 sm:py-12">
+            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-blue-300/70 mb-4">
+              JJ Property 10 · Partner Statement
+            </p>
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white leading-tight">
+              {investor.canonicalName}
+            </h1>
+            <p className="mt-2 text-sm text-blue-300/60">{formattedDate}</p>
+          </div>
+        </header>
 
-      {/* ── Master header ── */}
-      <header style={{ background: 'linear-gradient(135deg, #071a3e 0%, #0f2d5e 50%, #1a3a6b 100%)' }}>
-        <div className="max-w-4xl mx-auto px-6 py-10 sm:py-12">
-          <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-blue-300/70 mb-4">
-            JJ Property 10 · Partner Statement
-          </p>
-          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white leading-tight">
-            {investor.canonicalName}
-          </h1>
-          <p className="mt-2 text-sm text-blue-300/60">{formattedDate}</p>
-        </div>
-      </header>
+        {/* ── Properties ── */}
+        <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-8">
 
-      {/* ── Properties ── */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-8">
-
-        {properties.map((prop) => {
-          const attentionItems = deriveAttentionItems(prop)
-          return (
-            <article
-              key={prop.propertyName}
-              className="rounded-2xl overflow-hidden border border-gray-200/80 bg-white shadow-sm"
-            >
-              {/* Property gradient header */}
-              <div style={{ background: propertyAccent(prop.propertyName) }} className="px-6 py-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <h2 className="text-xl font-bold text-white leading-snug">{prop.propertyName}</h2>
-                    {prop.ownership.currentOwnershipPct !== null && (
-                      <p className="text-sm text-white/55 mt-1">
-                        {prop.ownership.currentOwnershipPct}% ownership
-                      </p>
-                    )}
+          {properties.map((prop) => {
+            const attentionItems = deriveAttentionItems(prop)
+            return (
+              <article
+                key={prop.propertyName}
+                className="rounded-2xl overflow-hidden border border-gray-200/80 bg-white shadow-sm"
+              >
+                {/* Property gradient header */}
+                <div style={{ background: propertyAccent(prop.propertyName) }} className="px-6 py-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <h2 className="text-xl font-bold text-white leading-snug">{prop.propertyName}</h2>
+                      {prop.ownership.currentOwnershipPct !== null && (
+                        <p className="text-sm text-white/55 mt-1">
+                          {prop.ownership.currentOwnershipPct}% ownership
+                        </p>
+                      )}
+                    </div>
+                    <OwnershipBadge status={prop.ownership.entryStatus} />
                   </div>
-                  <OwnershipBadge status={prop.ownership.entryStatus} />
+
+                  {/* Co-owner chips */}
+                  {prop.ownership.coOwners.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {prop.ownership.coOwners.map((co) => (
+                        <span
+                          key={co.name}
+                          className="text-[10px] font-semibold text-white/55 bg-white/[0.08] px-2 py-0.5 rounded-full border border-white/10"
+                        >
+                          {co.name} · {co.ownershipPct}%
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {/* Co-owner chips */}
-                {prop.ownership.coOwners.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {prop.ownership.coOwners.map((co) => (
-                      <span
-                        key={co.name}
-                        className="text-[10px] font-semibold text-white/55 bg-white/[0.08] px-2 py-0.5 rounded-full border border-white/10"
-                      >
-                        {co.name} · {co.ownershipPct}%
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
+                {/* Section stack — divide-y creates separators; null sections collapse cleanly */}
+                <div className="divide-y divide-gray-100">
+                  <PartnerCapitalSection capital={prop.capital} />
+                  {prop.financial && (
+                    <>
+                      <PartnerFinancialSection financial={prop.financial} />
+                      {/*
+                        RC3 Financial Presentation Layer (v1.2):
+                        IncomeTable + ExpenseTable read engine-computed section totals.
+                        No arithmetic in UI — components render only. FR-001: owned by PR #58.
+                      */}
+                      <IncomeTable sections={prop.financial.accountSections} />
+                      <ExpenseTable sections={prop.financial.accountSections} />
+                    </>
+                  )}
+                  <PartnerTimelineSection timeline={prop.timeline} />
+                  {/* F4: SettlementCard outside financial guard — renders when financial===null */}
+                  <SettlementCard settlement={prop.settlement} className="px-6 py-6" />
+                  {/* F3: NeedsAttentionItems from real per-task humanLabels (server-side) */}
+                  {attentionItems.length > 0 && (
+                    <NeedsAttentionItems items={attentionItems} className="px-6 py-6" />
+                  )}
+                </div>
+              </article>
+            )
+          })}
 
-              {/* Section stack — divide-y creates separators; null sections collapse cleanly */}
-              <div className="divide-y divide-gray-100">
-                <PartnerCapitalSection capital={prop.capital} />
-                {prop.financial && (
-                  <PartnerFinancialSection financial={prop.financial} />
-                )}
-                <PartnerTimelineSection timeline={prop.timeline} />
-                {/* F4: SettlementCard outside financial guard — renders when financial===null */}
-                <SettlementCard settlement={prop.settlement} className="px-6 py-6" />
-                {/* F3: NeedsAttentionItems from real per-task humanLabels (server-side) */}
-                {attentionItems.length > 0 && (
-                  <NeedsAttentionItems items={attentionItems} className="px-6 py-6" />
-                )}
-              </div>
-            </article>
-          )
-        })}
+          {/* Portfolio summary (2+ properties only) */}
+          {properties.length > 1 && <PartnerPortfolioSection portfolio={portfolio} />}
 
-        {/* Portfolio summary (2+ properties only) */}
-        {properties.length > 1 && <PartnerPortfolioSection portfolio={portfolio} />}
+          {/* Export controls — disabled until RC2 */}
+          {(actions.canExportCsv || actions.canGeneratePdf) && (
+            <div className="flex gap-3">
+              {actions.canGeneratePdf && (
+                <button
+                  disabled
+                  title="Available after Settlement Engine (RC2)"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-400 font-medium cursor-not-allowed shadow-sm"
+                >
+                  ↓ PDF
+                </button>
+              )}
+              {actions.canExportCsv && (
+                <button
+                  disabled
+                  title="Available after Settlement Engine (RC2)"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-400 font-medium cursor-not-allowed shadow-sm"
+                >
+                  ↓ CSV
+                </button>
+              )}
+            </div>
+          )}
 
-        {/* Export controls — disabled until RC2 */}
-        {(actions.canExportCsv || actions.canGeneratePdf) && (
-          <div className="flex gap-3">
-            {actions.canGeneratePdf && (
-              <button
-                disabled
-                title="Available after Settlement Engine (RC2)"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-400 font-medium cursor-not-allowed shadow-sm"
-              >
-                ↓ PDF
-              </button>
-            )}
-            {actions.canExportCsv && (
-              <button
-                disabled
-                title="Available after Settlement Engine (RC2)"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-400 font-medium cursor-not-allowed shadow-sm"
-              >
-                ↓ CSV
-              </button>
-            )}
-          </div>
-        )}
-
-        <footer className="pb-4 pt-6 border-t border-gray-100 text-xs text-center text-gray-500">
-          {localization.currency} · {formattedDate} · JJ Property 10
-        </footer>
-      </main>
-    </div>
+          <footer className="pb-4 pt-6 border-t border-gray-100 text-xs text-center text-gray-500">
+            {localization.currency} · {formattedDate} · JJ Property 10
+          </footer>
+        </main>
+      </div>
     </>
   )
 }
 
 function OwnershipBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; cls: string }> = {
-    fully_paid:       { label: 'Fully Paid',     cls: 'bg-emerald-400/20 text-emerald-200 border border-emerald-400/30' },
-    partially_paid:   { label: 'Partially Paid', cls: 'bg-amber-400/20 text-amber-200 border border-amber-400/30' },
-    capital_unknown:  { label: 'Pending',         cls: 'bg-white/10 text-white/65 border border-white/20' },
-    no_capital_event: { label: 'No Capital',      cls: 'bg-white/10 text-white/60 border border-white/20' },
-    not_applicable:   { label: 'N/A',             cls: 'bg-white/10 text-white/55 border border-white/20' },
+    fully_paid:      { label: 'Fully Paid',    cls: 'bg-emerald-400/20 text-emerald-200 border border-emerald-400/30' },
+    partially_paid:  { label: 'Partially Paid', cls: 'bg-amber-400/20 text-amber-200 border border-amber-400/30' },
+    capital_unknown: { label: 'Pending',        cls: 'bg-white/10 text-white/65 border border-white/20' },
+    no_capital_event:{ label: 'No Capital',     cls: 'bg-white/10 text-white/60 border border-white/20' },
+    not_applicable:  { label: 'N/A',            cls: 'bg-white/10 text-white/55 border border-white/20' },
   }
   const v = map[status] ?? { label: status, cls: 'bg-white/10 text-white/65 border border-white/20' }
   return (
