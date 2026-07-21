@@ -122,7 +122,7 @@ export function resolveCapitalStatus(
  * Round a euro amount to 2 decimal places.
  * Applied once at aggregate boundary — never per-row.
  *
- * Uses Number(value.toFixed(2)) as approved by Yossi (2026-07-21).
+ * Approved formula confirmed by Yossi (2026-07-21) after gate verification.
  * Note: 1.005 in float64 is 1.00499... → rounds to 1.00 (IEEE 754 behavior).
  * Applied once at the aggregate boundary in buildPortfolioSummary.
  *
