@@ -4,6 +4,8 @@ import { getHomeScreenState } from '@/lib/home/homeService'
 import { getAuthorizedExecutiveBrief } from '@/lib/executive/executiveBriefService'
 import { ExecutiveBrief } from '@/components/executive'
 
+export const dynamic = 'force-dynamic'
+
 export const metadata: Metadata = {
   title: 'JJ — Home',
 }
