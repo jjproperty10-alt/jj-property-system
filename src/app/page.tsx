@@ -1,26 +1,28 @@
 // ============================================================
 // JJ PROPERTY 10 — CEO Dashboard (Engine v1.0)
-// File: app/page.tsx  ← replace the existing file with this
+// File: app/page.tsx ← replace the existing file with this
 // ============================================================
 //
-// Section A — Cashboxes          → v_cashbox_audit
+// Section A — Cashboxes → v_cashbox_audit
 // Section B — Partner Settlement → v_settlement_verification
 // Section C — Anastasia Clearing → v_anastasia_clearing
-// Section D — Owner/Client Bal.  → v_ceo_summary
-// Section E — Profit Overview    → v_ceo_summary
-// Section F — Company P&L        → v_jj_company_pl
+// Section D — Owner/Client Bal. → v_ceo_summary
+// Section E — Profit Overview → v_ceo_summary
+// Section F — Company P&L → v_jj_company_pl
 //
 // Verified source values (10 Jun 2026):
-//   Yossi  balance: −36,671.82
-//   Jacob  balance: +74,079.54
-//   JJ     balance: +66,644.71
-//   Settlement:     €55,375.68  (Jacob → Yossi)
-//   Anastasia owes JJ: €7,082.69
-//   Total cash position profit: €293,321.90
-//   Net company P&L: €10,719.61
+// Yossi balance: −36,671.82
+// Jacob balance: +74,079.54
+// JJ balance: +66,644.71
+// Settlement: €55,375.68 (Jacob → Yossi)
+// Anastasia owes JJ: €7,082.69
+// Total cash position profit: €293,321.90
+// Net company P&L: €10,719.61
 // ============================================================
 
 import { createClient } from '@supabase/supabase-js'
+
+export const dynamic = 'force-dynamic'
 
 // ---- Numeric coercion ----
 // Supabase returns PostgreSQL NUMERIC columns as strings.
