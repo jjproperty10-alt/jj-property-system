@@ -32,8 +32,8 @@ export function DocumentsTab({ documents }: DocumentsTabProps) {
     return (
       <EmptyState
         icon="📋"
-        headline="No documents yet"
-        message="Contracts, statements, invoices and receipts will appear here as they are added."
+        title="No documents yet"
+        description="Contracts, statements, invoices and receipts will appear here as they are added."
       />
     )
   }
