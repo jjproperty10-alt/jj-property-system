@@ -558,14 +558,14 @@ function buildSummary(
   }
 
   const channelBreakdown: ChannelBreakdown[] = [];
-  for (const [channel, data] of channelMap) {
+  channelMap.forEach((data, channel) => {
     channelBreakdown.push({
       channel,
       reservationCount: data.count,
       totalRevenue: Math.round(data.revenue * 100) / 100,
       totalPayout: data.payout !== null ? Math.round(data.payout * 100) / 100 : null,
     });
-  }
+  });
 
   // Hostaway totals
   let hostawayTotalRevenue = 0;
