@@ -16,7 +16,7 @@
 
 // ─── Evidence layer ──────────────────────────────────────────────────────────
 
-export type EvidenceSourceType = 'bank' | 'invoice' | 'contract' | 'whatsapp' | 'manual'
+export type EvidenceSourceType = 'bank' | 'invoice' | 'contract' | 'whatsapp' | 'manual' | 'ledger'
 export type EvidenceStrength = 'primary' | 'secondary' | 'supporting' | 'attestation'
 export type EvidenceValidityStatus = 'active' | 'needs_renewal' | 'expired'
 
@@ -266,9 +266,9 @@ export interface PositionScoreDelta {
   readonly entityId: string
   readonly fromScore: number | null       // null for first entry
   readonly toScore: number
-  readonly deltaCoverage: number
-  readonly deltaConsistency: number
-  readonly deltaEvidence: number
+  readonly deltaCoverage: number | null   // null in PR #1 (no prior breakdown); RC2 will track axis deltas
+  readonly deltaConsistency: number | null
+  readonly deltaEvidence: number | null
   readonly triggerEvent: string           // e.g. 'decision_logged:approve_withdrawal'
   readonly triggeredBy: string            // jj_staff_config.id
   readonly occurredAt: string             // ISO timestamp, server-set
