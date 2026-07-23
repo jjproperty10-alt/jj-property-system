@@ -36,3 +36,13 @@ export { AllClearCard } from './AllClearCard'
 
 // R4 — NeedsAttentionItems (Section 9 action state)
 export { NeedsAttentionItems } from './NeedsAttentionItems'
+
+// PR #3 — Owner Workspace Navigation
+export { TabNav } from './TabNav'
+export type { TabDef, TabNavProps } from './TabNav'
+export { WorkspaceShell } from './WorkspaceShell'
+export type { WorkspaceShellProps } from './WorkspaceShell'
+export { TimelineZone } from './TimelineZone'
+export type { TimelineZoneProps } from './TimelineZone'
+export { DocumentCard } from './DocumentCard'
+export type { DocumentCardProps } from './DocumentCard'
