@@ -9,7 +9,7 @@
  */
 
 import type { ReactNode } from 'react'
-import { KpiCard, MoneyValue, UnknownValue, EmptyState, DataTable } from '@/components/ds'
+import { KpiCard, MoneyValue, UnknownValue, EmptyState, DataTable, AttentionBanner } from '@/components/ds'
 import type { DataTableColumn } from '@/components/ds'
 import type { OwnerFinancialDTO, OwnerFinancialRowDTO } from '@/lib/owners/ownerWorkspaceTypes'
 
@@ -20,6 +20,18 @@ export interface FinancialTabProps {
 export function FinancialTab({ dto }: FinancialTabProps) {
   const { position, sections, timeline } = dto
 
+  // When ALL position KPIs are null AND there are no sections, avoid rendering
+  // six simultaneous UnknownValue cards. Show a single explanatory banner instead.
+  const allPositionUnknown =
+    position.incomeEur == null &&
+    position.expensesEur == null &&
+    position.paidToOwnerEur == null &&
+    position.netEur == null &&
+    position.pendingEur == null &&
+    position.closingBalanceEur == null
+
+  const showPositionBanner = allPositionUnknown && sections.length === 0
+
   return (
     <div className="space-y-6">
 
@@ -28,21 +40,28 @@ export function FinancialTab({ dto }: FinancialTabProps) {
         <h2 id="fin-position-heading" className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
           Current Financial Position
         </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <MoneyKpi label="Money Received" value={position.incomeEur} />
-          <MoneyKpi label="Money Paid (Expenses)" value={position.expensesEur} />
-          <MoneyKpi label="Paid to Owner" value={position.paidToOwnerEur} />
-          <MoneyKpi label="Net" value={position.netEur} />
-          <MoneyKpi label="Pending" value={position.pendingEur} />
-          <KpiCard
-            label="Closing Balance"
-            value={
-              position.closingBalanceEur != null
-                ? <MoneyValue amount={parseFloat(position.closingBalanceEur)} size="lg" />
-                : <UnknownValue reason="Settlement Engine (RC2) — not yet computed" />
-            }
+        {showPositionBanner ? (
+          <AttentionBanner
+            type="info"
+            title="Financial detail will appear here once RC3 is connected to this owner's properties."
           />
-        </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <MoneyKpi label="Money Received" value={position.incomeEur} />
+            <MoneyKpi label="Money Paid (Expenses)" value={position.expensesEur} />
+            <MoneyKpi label="Paid to Owner" value={position.paidToOwnerEur} />
+            <MoneyKpi label="Net" value={position.netEur} />
+            <MoneyKpi label="Pending" value={position.pendingEur} />
+            <KpiCard
+              label="Closing Balance"
+              value={
+                position.closingBalanceEur != null
+                  ? <MoneyValue amount={parseFloat(position.closingBalanceEur)} size="lg" />
+                  : <UnknownValue reason="Settlement Engine (RC2) — not yet computed" />
+              }
+            />
+          </div>
+        )}
       </section>
 
       {/* Sections breakdown */}
@@ -59,7 +78,7 @@ export function FinancialTab({ dto }: FinancialTabProps) {
         </section>
       )}
 
-      {sections.length === 0 && (
+      {sections.length === 0 && !showPositionBanner && (
         <EmptyState
           icon="💶"
           title="No financial data available"
