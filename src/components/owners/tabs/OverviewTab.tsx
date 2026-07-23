@@ -103,11 +103,11 @@ export function OverviewTab({ dto, ownerName }: OverviewTabProps) {
 
       {/* Contract renewal alert */}
       {contractRenewalAlert && (
-        <AttentionBanner>
-          <span className="font-semibold">{contractRenewalAlert.propertyName}</span> contract renews in{' '}
-          <span className="font-semibold">{contractRenewalAlert.daysUntilRenewal} days</span>{' '}
-          ({formatDate(contractRenewalAlert.renewalDate)}).
-        </AttentionBanner>
+        <AttentionBanner
+          type="warning"
+          title={`${contractRenewalAlert.propertyName} contract renews in ${contractRenewalAlert.daysUntilRenewal} days`}
+          description={formatDate(contractRenewalAlert.renewalDate)}
+        />
       )}
 
       {/* Open items */}
