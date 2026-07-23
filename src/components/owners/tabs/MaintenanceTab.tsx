@@ -46,8 +46,8 @@ export function MaintenanceTab({ items }: MaintenanceTabProps) {
     return (
       <EmptyState
         icon="🔧"
-        headline="No maintenance items"
-        message="Open maintenance requests and scheduled work will appear here."
+        title="No maintenance items"
+        description="Open maintenance requests and scheduled work will appear here."
       />
     )
   }
