@@ -105,12 +105,15 @@ export async function getOwnersRoom(): Promise<OwnersRoomDTO> {
   const propertyMap = buildPropertyMap(txData ?? [])
 
   // Fetch statement_series for workflow status
-  const { data: seriesData } = await sb
-    .from('statement_series')
-    .select('*')
-    .schema('statements' as never)
-    .limit(100)
-    .catch(() => ({ data: null, error: null }))
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let seriesData: any[] | null = null
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const _sr = await (sb as any).schema('statements').from('statement_series').select('*').limit(100)
+    seriesData = _sr.data
+  } catch {
+    seriesData = null
+  }
 
   // Build room items
   const items: OwnerRoomItemDTO[] = buildRoomItems(propertyMap, seriesData ?? [])
@@ -157,8 +160,8 @@ function buildPropertyMap(rows: any[]): Map<string, Set<string>> {
 function buildRoomItems(propertyMap: Map<string, Set<string>>, _seriesData: any[]): OwnerRoomItemDTO[] {
   const items: OwnerRoomItemDTO[] = []
 
-  for (const [name, props] of propertyMap.entries()) {
-    const properties = Array.from(props).sort()
+  for (const [name, props] of Array.from(propertyMap.entries())) {
+    const properties = Array.from(props as Set<string>).sort()
     const slug = nameToSlug(name)
     const identity = buildOwnerIdentity(slug, name, properties)
 
@@ -281,13 +284,18 @@ export async function getOwnerFinancial(
   // RC3 views: attempt to read owner-scoped financial summary
   // The view name and exact columns depend on RC3 engine state.
   // Using a safe catch pattern to return empty DTO if not yet available.
-  const { data: rc3Data } = await sb
-    .rpc('get_owner_financial_summary', {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let rc3Data: any = null
+  try {
+    const _r = await sb.rpc('get_owner_financial_summary', {
       p_owner_slug: slug,
       p_start_date: startDate,
       p_end_date: endDate,
     })
-    .catch(() => ({ data: null, error: null }))
+    rc3Data = _r.data
+  } catch {
+    rc3Data = null
+  }
 
   if (rc3Data) {
     // When RC3 RPC is available, map its output to OwnerFinancialDTO
@@ -338,14 +346,19 @@ export async function getOwnerReservations(
   const sb = getServiceClient()
 
   // Source: pms.raw_reservations — joined to property mappings
-  const { data: resData } = await sb
-    .schema('pms' as never)
-    .from('raw_reservations')
-    .select('*')
-    .gte('arrivalDate' as never, startDate)
-    .lte('departureDate' as never, endDate)
-    .limit(200)
-    .catch(() => ({ data: null, error: null }))
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let resData: any[] | null = null
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const _r = await (sb as any).schema('pms').from('raw_reservations')
+      .select('*')
+      .gte('arrivalDate', startDate)
+      .lte('departureDate', endDate)
+      .limit(200)
+    resData = _r.data
+  } catch {
+    resData = null
+  }
 
   if (!resData || resData.length === 0) {
     return emptyReservationSummary(startDate, endDate)
@@ -505,22 +518,30 @@ export async function getOwnerAudit(slug: string): Promise<OwnerAuditDTO> {
   const sb = getServiceClient()
 
   // Evidence links from finance schema
-  const { data: evidenceData } = await sb
-    .schema('finance' as never)
-    .from('evidence_links')
-    .select('*')
-    .eq('entity_id' as never, slug)
-    .eq('validity_status' as never, 'active')
-    .limit(50)
-    .catch(() => ({ data: null, error: null }))
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let evidenceData: any[] | null = null
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const _r = await (sb as any).schema('finance').from('evidence_links')
+      .select('*')
+      .eq('entity_id', slug)
+      .eq('validity_status', 'active')
+      .limit(50)
+    evidenceData = _r.data
+  } catch {
+    evidenceData = null
+  }
 
   // Statement versions from statements schema
-  const { data: statementsData } = await sb
-    .schema('statements' as never)
-    .from('sent_statement_snapshots')
-    .select('*')
-    .limit(20)
-    .catch(() => ({ data: null, error: null }))
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let statementsData: any[] | null = null
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const _r = await (sb as any).schema('statements').from('sent_statement_snapshots').select('*').limit(20)
+    statementsData = _r.data
+  } catch {
+    statementsData = null
+  }
 
   return {
     evidenceItems: (evidenceData ?? []).map((e: Record<string, unknown>) => ({
@@ -558,12 +579,15 @@ export async function getOwnerTimeline(slug: string): Promise<TimelineEventDTO[]
 
   // Derive past events from statement events
   const sb = getServiceClient()
-  const { data: events } = await sb
-    .schema('statements' as never)
-    .from('statement_events')
-    .select('*')
-    .limit(50)
-    .catch(() => ({ data: null, error: null }))
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let events: any[] | null = null
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const _r = await (sb as any).schema('statements').from('statement_events').select('*').limit(50)
+    events = _r.data
+  } catch {
+    events = null
+  }
 
   const today = new Date().toISOString().slice(0, 10)
 
@@ -612,12 +636,15 @@ export async function getOwnerTimeline(slug: string): Promise<TimelineEventDTO[]
 export async function getUpcomingEvents(slug: string): Promise<UpcomingEventDTO[]> {
   const sb = getServiceClient()
 
-  const { data } = await sb
-    .schema('statements' as never)
-    .from('upcoming_events')
-    .select('*')
-    .limit(20)
-    .catch(() => ({ data: null, error: null }))
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let data: any[] | null = null
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const _r = await (sb as any).schema('statements').from('upcoming_events').select('*').limit(20)
+    data = _r.data
+  } catch {
+    data = null
+  }
 
   if (!data) return []
 
@@ -644,17 +671,25 @@ export async function getHostawayPortfolio(
 ): Promise<HostawayPortfolioSummaryDTO> {
   const sb = getServiceClient()
 
-  const { data: properties } = await sb
-    .schema('pms' as never)
-    .from('raw_properties')
-    .select('*')
-    .catch(() => ({ data: null, error: null }))
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let properties: any[] | null = null
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const _r = await (sb as any).schema('pms').from('raw_properties').select('*')
+    properties = _r.data
+  } catch {
+    properties = null
+  }
 
-  const { data: mappings } = await sb
-    .schema('pms' as never)
-    .from('pms_property_mappings' as never)
-    .select('*')
-    .catch(() => ({ data: null, error: null }))
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mappings: any[] | null = null
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const _r = await (sb as any).schema('pms').from('pms_property_mappings').select('*')
+    mappings = _r.data
+  } catch {
+    mappings = null
+  }
 
   const propList = (properties ?? []) as Record<string, unknown>[]
   const mappingList = (mappings ?? []) as Record<string, unknown>[]
