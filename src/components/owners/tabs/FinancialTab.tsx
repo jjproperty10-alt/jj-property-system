@@ -61,8 +61,8 @@ export function FinancialTab({ dto }: FinancialTabProps) {
       {sections.length === 0 && (
         <EmptyState
           icon="💶"
-          headline="No financial data available"
-          message="Financial data will appear here once RC3 views are connected to this owner."
+          title="No financial data available"
+          description="Financial data will appear here once RC3 views are connected to this owner."
         />
       )}
 
