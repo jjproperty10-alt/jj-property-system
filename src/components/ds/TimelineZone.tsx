@@ -170,9 +170,9 @@ interface ZoneHeaderProps {
 
 function ZoneHeader({ zone, count }: ZoneHeaderProps) {
   const config = {
-    upcoming: { label: 'Upcoming', icon: '→', color: 'text-blue-700 bg-blue-50 border-blue-200' },
-    now: { label: 'Now', icon: '●', color: 'text-amber-700 bg-amber-50 border-amber-200' },
-    past: { label: 'Past', icon: '○', color: 'text-gray-600 bg-gray-50 border-gray-200' },
+    upcoming: { label: 'UPCOMING', icon: '→', color: 'text-blue-700 bg-blue-50 border-blue-200' },
+    now: { label: 'NOW', icon: '●', color: 'text-amber-700 bg-amber-50 border-amber-200' },
+    past: { label: 'PAST', icon: '○', color: 'text-gray-600 bg-gray-50 border-gray-200' },
   }[zone]
 
   return (
@@ -208,7 +208,7 @@ export function TimelineZone({ events }: TimelineZoneProps) {
     return (
       <div className="text-center py-12 text-gray-400">
         <span className="text-3xl" aria-hidden>🕐</span>
-        <p className="mt-2 text-sm font-medium">No activity recorded yet</p>
+        <p className="mt-2 text-sm font-medium">No timeline events</p>
         <p className="text-xs mt-1">Events will appear here as they happen</p>
       </div>
     )
