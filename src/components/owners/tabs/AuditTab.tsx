@@ -54,8 +54,8 @@ export function AuditTab({ dto }: AuditTabProps) {
     return (
       <EmptyState
         icon="⚖"
-        headline="No audit records yet"
-        message="Evidence items, statement history, and decision records will appear here."
+        title="No audit records yet"
+        description="Evidence items, statement history, and decision records will appear here."
       />
     )
   }
