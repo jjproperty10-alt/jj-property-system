@@ -33,8 +33,8 @@ export function RelationshipTab({ events }: RelationshipTabProps) {
     return (
       <EmptyState
         icon="🤝"
-        headline="No relationship history yet"
-        message="Communications, promises, approvals and agreements will appear here."
+        title="No relationship history yet"
+        description="Communications, promises, approvals and agreements will appear here."
       />
     )
   }
