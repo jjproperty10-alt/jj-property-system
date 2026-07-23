@@ -141,8 +141,8 @@ export function ReservationsTab({ dto }: ReservationsTabProps) {
         {reservations.length === 0 ? (
           <EmptyState
             icon="🏠"
-            headline="No reservations in this period"
-            message="Reservations will appear here once synced from Hostaway."
+            title="No reservations in this period"
+            description="Reservations will appear here once synced from Hostaway."
           />
         ) : (
           <DataTable columns={columns} rows={reservations} getRowKey={r => r.id} />
