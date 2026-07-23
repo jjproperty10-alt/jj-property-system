@@ -116,7 +116,7 @@ export function OverviewTab({ dto, ownerName }: OverviewTabProps) {
           Open Items
         </h2>
         {openItems.length === 0 ? (
-          <EmptyState icon="✅" headline="Nothing open" message="No corrections, approvals or missing documents." />
+          <EmptyState icon="✅" title="Nothing open" description="No corrections, approvals or missing documents." />
         ) : (
           <ul className="space-y-2" role="list" aria-label="Open items requiring attention">
             {openItems.map(item => {
@@ -176,8 +176,8 @@ export function OverviewTab({ dto, ownerName }: OverviewTabProps) {
         {recentActivity.length === 0 ? (
           <EmptyState
             icon="🔔"
-            headline="Nothing new since your last visit"
-            message="Check back after your next activity"
+            title="Nothing new since your last visit"
+            description="Check back after your next activity"
           />
         ) : (
           <ul className="divide-y divide-gray-100" role="list">
