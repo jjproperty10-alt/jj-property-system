@@ -333,8 +333,8 @@ describe('Decision layer', () => {
     const claims = [makeClaim({ templateId: 'cashbox_sufficient', status: 'supported' })]
     const decision = makeDecisionEval(claims)
     // Decision evaluation has no id — that only appears in decision_log after logDecision()
-    expect((decision as Record<string, unknown>).id).toBeUndefined()
-    expect((decision as Record<string, unknown>).log_id).toBeUndefined()
+    expect((decision as unknown as Record<string, unknown>).id).toBeUndefined()
+    expect((decision as unknown as Record<string, unknown>).log_id).toBeUndefined()
   })
 })
 
@@ -685,7 +685,7 @@ describe('buildDecisionExplanation', () => {
       decision, position, entityLabel: 'Jacob', periodLabel: 'July 2026',
       decidedAt: '2026-07-15T10:00:00Z',
     })
-    expect((explanation as Record<string, unknown>).id).toBeUndefined()
-    expect((explanation as Record<string, unknown>).created_at).toBeUndefined()
+    expect((explanation as unknown as Record<string, unknown>).id).toBeUndefined()
+    expect((explanation as unknown as Record<string, unknown>).created_at).toBeUndefined()
   })
 })
