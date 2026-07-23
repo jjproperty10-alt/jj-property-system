@@ -316,24 +316,28 @@ describe('AuditTab — correction case visibility', () => {
 })
 
 // ─────────────────────────────────────────────────────────────
-// 5. Financial tab — closingBalance always shows UnknownValue
+// 5. Financial tab — position states
 // ─────────────────────────────────────────────────────────────
 
 describe('FinancialTab — closing balance', () => {
-  it('shows Settlement Engine / RC2 message when closingBalanceEur is null', () => {
+  it('shows explanatory banner when ALL position values are null and no sections', () => {
+    // When RC3 not yet connected: single banner replaces the 6 simultaneous UnknownValue cards
     const html = renderToStaticMarkup(<FinancialTab dto={EMPTY_FINANCIAL} />)
+    expect(html).toContain('RC3')
+  })
+
+  it('shows Settlement Engine / RC2 message when closingBalance is null but other values exist', () => {
+    // When some values are known but closing balance not yet computed → show RC2 unknown
+    const partialDto: OwnerFinancialDTO = {
+      ...EMPTY_FINANCIAL,
+      position: { ...EMPTY_FINANCIAL.position, incomeEur: '1000.00' },
+    }
+    const html = renderToStaticMarkup(<FinancialTab dto={partialDto} />)
     expect(html).toContain('RC2')
   })
 
-  it('shows unknown value indicator for null closing balance', () => {
+  it('renders Current Financial Position section heading', () => {
     const html = renderToStaticMarkup(<FinancialTab dto={EMPTY_FINANCIAL} />)
-    // UnknownValue renders a "—" or similar indicator
-    expect(html).toMatch(/—|unknown|Settlement Engine/i)
-  })
-
-  it('renders income/expenses KPIs as unknown when null', () => {
-    const html = renderToStaticMarkup(<FinancialTab dto={EMPTY_FINANCIAL} />)
-    // Position section renders
     expect(html).toContain('Current Financial Position')
   })
 })
