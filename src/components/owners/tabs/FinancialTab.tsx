@@ -8,6 +8,7 @@
  * - RC3 engine is source of truth for all amounts
  */
 
+import type { ReactNode } from 'react'
 import { KpiCard, MoneyValue, UnknownValue, EmptyState, DataTable } from '@/components/ds'
 import type { DataTableColumn } from '@/components/ds'
 import type { OwnerFinancialDTO, OwnerFinancialRowDTO } from '@/lib/owners/ownerWorkspaceTypes'
@@ -116,44 +117,31 @@ function MoneyKpi({ label, value }: { label: string; value: string | null }) {
 }
 
 function FinancialSection({ section }: { section: OwnerFinancialDTO['sections'][number] }) {
-  const columns: DataTableColumn<OwnerFinancialRowDTO>[] = [
-    {
-      key: 'date',
-      header: 'Date',
-      render: row => (
-        <time dateTime={row.date} dir="ltr" className="text-sm text-gray-600">
-          {formatDate(row.date)}
-        </time>
-      ),
-    },
-    {
-      key: 'description',
-      header: 'Description',
-      render: row => <span className="text-sm text-gray-900">{row.description}</span>,
-    },
-    {
-      key: 'amountEur',
-      header: 'Amount',
-      render: row =>
-        row.amountEur != null ? (
-          <MoneyValue amount={parseFloat(row.amountEur)} size="sm" />
-        ) : (
-          <UnknownValue reason="Amount unknown" />
-        ),
-    },
-    {
-      key: 'evidenceRef',
-      header: 'Evidence',
-      render: row =>
-        row.evidenceRef ? (
-          <a href={row.evidenceRef} className="text-xs text-blue-600 hover:underline">
-            View →
-          </a>
-        ) : (
-          <span className="text-xs text-gray-300">—</span>
-        ),
-    },
+  const columns: DataTableColumn[] = [
+    { key: 'date',        label: 'Date',        dir: 'ltr' },
+    { key: 'description', label: 'Description' },
+    { key: 'amountEur',   label: 'Amount',      align: 'right', dir: 'ltr' },
+    { key: 'evidenceRef', label: 'Evidence' },
   ]
+
+  const rows: Record<string, ReactNode>[] = section.rows.map((row: OwnerFinancialRowDTO) => ({
+    date: (
+      <time dateTime={row.date} dir="ltr" className="text-sm text-gray-600">
+        {formatDate(row.date)}
+      </time>
+    ),
+    description: <span className="text-sm text-gray-900">{row.description}</span>,
+    amountEur: row.amountEur != null ? (
+      <MoneyValue amount={parseFloat(row.amountEur)} size="sm" />
+    ) : (
+      <UnknownValue reason="Amount unknown" />
+    ),
+    evidenceRef: row.evidenceRef ? (
+      <a href={row.evidenceRef} className="text-xs text-blue-600 hover:underline">View →</a>
+    ) : (
+      <span className="text-xs text-gray-300">—</span>
+    ),
+  }))
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -171,11 +159,7 @@ function FinancialSection({ section }: { section: OwnerFinancialDTO['sections'][
 
       {/* Rows */}
       {section.rows.length > 0 ? (
-        <DataTable
-          columns={columns}
-          rows={section.rows}
-          getRowKey={r => r.id}
-        />
+        <DataTable columns={columns} rows={rows} />
       ) : (
         <div className="px-4 py-6 text-center text-sm text-gray-400">
           No transactions in this category
