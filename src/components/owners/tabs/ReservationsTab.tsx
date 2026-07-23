@@ -4,6 +4,7 @@
  * No financial calculation in UI. All values from DTO.
  */
 
+import type { ReactNode } from 'react'
 import { KpiCard, MoneyValue, UnknownValue, DataTable, EmptyState } from '@/components/ds'
 import type { DataTableColumn } from '@/components/ds'
 import type { OwnerReservationSummaryDTO, ReservationRowDTO } from '@/lib/owners/ownerWorkspaceTypes'
@@ -23,63 +24,30 @@ const STATUS_CONFIG = {
 export function ReservationsTab({ dto }: ReservationsTabProps) {
   const { portfolio, channelMix, reservations } = dto
 
-  const columns: DataTableColumn<ReservationRowDTO>[] = [
-    {
-      key: 'propertyName',
-      header: 'Property',
-      render: r => <span className="text-sm font-medium text-gray-900">{r.propertyName}</span>,
-    },
-    {
-      key: 'checkIn',
-      header: 'Check-in',
-      render: r => (
-        <time dateTime={r.checkIn} dir="ltr" className="text-sm text-gray-600">
-          {formatDate(r.checkIn)}
-        </time>
-      ),
-    },
-    {
-      key: 'checkOut',
-      header: 'Check-out',
-      render: r => (
-        <time dateTime={r.checkOut} dir="ltr" className="text-sm text-gray-600">
-          {formatDate(r.checkOut)}
-        </time>
-      ),
-    },
-    {
-      key: 'nights',
-      header: 'Nights',
-      render: r => <span className="text-sm text-gray-700" dir="ltr">{r.nights}</span>,
-    },
-    {
-      key: 'channel',
-      header: 'Channel',
-      render: r => <span className="text-xs bg-gray-100 text-gray-600 rounded px-2 py-0.5">{r.channel}</span>,
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      render: r => {
-        const cfg = STATUS_CONFIG[r.status]
-        return (
-          <span className={`text-xs border rounded px-2 py-0.5 font-medium ${cfg.className}`}>
-            {cfg.label}
-          </span>
-        )
-      },
-    },
-    {
-      key: 'revenueEur',
-      header: 'Revenue',
-      render: r =>
-        r.revenueEur != null ? (
-          <MoneyValue amount={parseFloat(r.revenueEur)} size="sm" />
-        ) : (
-          <UnknownValue reason="Revenue unknown" />
-        ),
-    },
+  const columns: DataTableColumn[] = [
+    { key: 'property',  label: 'Property' },
+    { key: 'checkIn',   label: 'Check-in',  dir: 'ltr' },
+    { key: 'checkOut',  label: 'Check-out', dir: 'ltr' },
+    { key: 'nights',    label: 'Nights',    align: 'right', dir: 'ltr' },
+    { key: 'channel',   label: 'Channel' },
+    { key: 'status',    label: 'Status' },
+    { key: 'revenue',   label: 'Revenue',   align: 'right', dir: 'ltr' },
   ]
+
+  const rows: Record<string, ReactNode>[] = reservations.map((r: ReservationRowDTO) => {
+    const cfg = STATUS_CONFIG[r.status]
+    return {
+      property: <span className="text-sm font-medium text-gray-900">{r.propertyName}</span>,
+      checkIn:  <time dateTime={r.checkIn}  dir="ltr" className="text-sm text-gray-600">{formatDate(r.checkIn)}</time>,
+      checkOut: <time dateTime={r.checkOut} dir="ltr" className="text-sm text-gray-600">{formatDate(r.checkOut)}</time>,
+      nights:   <span className="text-sm text-gray-700" dir="ltr">{r.nights}</span>,
+      channel:  <span className="text-xs bg-gray-100 text-gray-600 rounded px-2 py-0.5">{r.channel}</span>,
+      status:   <span className={`text-xs border rounded px-2 py-0.5 font-medium ${cfg.className}`}>{cfg.label}</span>,
+      revenue:  r.revenueEur != null
+        ? <MoneyValue amount={parseFloat(r.revenueEur)} size="sm" />
+        : <UnknownValue reason="Revenue unknown" />,
+    }
+  })
 
   return (
     <div className="space-y-6">
@@ -145,7 +113,7 @@ export function ReservationsTab({ dto }: ReservationsTabProps) {
             description="Reservations will appear here once synced from Hostaway."
           />
         ) : (
-          <DataTable columns={columns} rows={reservations} getRowKey={r => r.id} />
+          <DataTable columns={columns} rows={rows} />
         )}
       </section>
     </div>
