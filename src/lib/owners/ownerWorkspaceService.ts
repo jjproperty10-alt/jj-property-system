@@ -16,7 +16,7 @@
 
 import 'server-only'
 
-import { createClient } from '@supabase/supabase-js'
+import { createServiceClient } from '@/lib/supabase'
 import {
   FIXTURE_STATEMENT_STATUS,
   FIXTURE_OWNER_BALANCE_EUR,
@@ -49,17 +49,6 @@ import type {
   StatementStatus,
 } from './ownerWorkspaceTypes'
 
-// ─────────────────────────────────────────────────────────────
-// Supabase client (server-side only)
-// ─────────────────────────────────────────────────────────────
-
-function getServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY!
-  )
-}
-
 // nameToSlug, buildOwnerIdentity, isSystemActor imported from ownerWorkspaceUtils
 // (pure utilities — no server-only boundary, safe for client and test contexts)
 
@@ -78,8 +67,6 @@ function getServiceClient() {
  * Falls back gracefully when statements schema is empty.
  */
 export async function getOwnersRoom(): Promise<OwnersRoomDTO> {
-  const sb = getServiceClient()
-
   // Derive owner list from transactions — unique payer values that represent real owners.
   // Known owner names from historical data (payer column in public.transactions).
   const KNOWN_OWNERS = [
@@ -95,11 +82,19 @@ export async function getOwnersRoom(): Promise<OwnersRoomDTO> {
   ]
 
   // Fetch distinct property_name values per known payer groups.
-  const { data: txData } = await sb
-    .from('transactions')
-    .select('property_name, payer, payee, review_status')
-    .eq('review_status', 'active')
-    .not('property_name', 'is', null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let txData: any[] | null = null
+  try {
+    const sb = createServiceClient()
+    const { data } = await sb
+      .from('transactions')
+      .select('property_name, payer, payee, review_status')
+      .eq('review_status', 'active')
+      .not('property_name', 'is', null)
+    txData = data
+  } catch (err) {
+    console.error('[ownerWorkspaceService] getOwnersRoom: transactions.select failed', err instanceof Error ? err.message : String(err))
+  }
 
   // Build property maps by scanning payer/payee
   const propertyMap = buildPropertyMap(txData ?? [])
@@ -108,6 +103,7 @@ export async function getOwnersRoom(): Promise<OwnersRoomDTO> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let seriesData: any[] | null = null
   try {
+    const sb = createServiceClient()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const _sr = await (sb as any).schema('statements').from('statement_series').select('*').limit(100)
     seriesData = _sr.data
@@ -189,14 +185,21 @@ function buildRoomItems(propertyMap: Map<string, Set<string>>, _seriesData: any[
 // ─────────────────────────────────────────────────────────────
 
 export async function getOwnerWorkspace(slug: string): Promise<OwnerWorkspaceDTO | null> {
-  const sb = getServiceClient()
-
   // Resolve identity by slug: scan distinct payers/payees from transactions
-  const { data: txData } = await sb
-    .from('transactions')
-    .select('payer, payee, property_name, review_status')
-    .eq('review_status', 'active')
-    .not('property_name', 'is', null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let txData: any[] | null = null
+  try {
+    const sb = createServiceClient()
+    const { data } = await sb
+      .from('transactions')
+      .select('payer, payee, property_name, review_status')
+      .eq('review_status', 'active')
+      .not('property_name', 'is', null)
+    txData = data
+  } catch (err) {
+    console.error('[ownerWorkspaceService] getOwnerWorkspace: transactions.select failed', err instanceof Error ? err.message : String(err))
+    return null
+  }
 
   if (!txData) return null
 
@@ -279,14 +282,13 @@ export async function getOwnerFinancial(
   startDate: string,
   endDate: string
 ): Promise<OwnerFinancialDTO> {
-  const sb = getServiceClient()
-
   // RC3 views: attempt to read owner-scoped financial summary
   // The view name and exact columns depend on RC3 engine state.
   // Using a safe catch pattern to return empty DTO if not yet available.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let rc3Data: any = null
   try {
+    const sb = createServiceClient()
     const _r = await sb.rpc('get_owner_financial_summary', {
       p_owner_slug: slug,
       p_start_date: startDate,
@@ -343,12 +345,11 @@ export async function getOwnerReservations(
   startDate: string,
   endDate: string
 ): Promise<OwnerReservationSummaryDTO> {
-  const sb = getServiceClient()
-
   // Source: pms.raw_reservations — joined to property mappings
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let resData: any[] | null = null
   try {
+    const sb = createServiceClient()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const _r = await (sb as any).schema('pms').from('raw_reservations')
       .select('*')
@@ -466,24 +467,25 @@ export async function getOwnerDocuments(slug: string): Promise<OwnerDocumentDTO[
 export async function getOwnerMaintenance(slug: string): Promise<OwnerMaintenanceDTO[]> {
   // Source: public.transactions with category=Renovation / subcategory=Maintenance
   // Returns maintenance items for properties owned by this slug.
-  const sb = getServiceClient()
 
   // Find owner's properties first
   const workspace = await getOwnerWorkspace(slug)
   if (!workspace) return []
 
-  const { data } = await sb
-    .from('transactions')
-    .select('id, date, description, property_name, amount_eur, subcategory, notes')
-    .eq('review_status', 'active')
-    .eq('category', 'Renovation')
-    .in('property_name', workspace.identity.properties)
-    .order('date', { ascending: false })
-    .limit(50)
+  try {
+    const sb = createServiceClient()
+    const { data } = await sb
+      .from('transactions')
+      .select('id, date, description, property_name, amount_eur, subcategory, notes')
+      .eq('review_status', 'active')
+      .eq('category', 'Renovation')
+      .in('property_name', workspace.identity.properties)
+      .order('date', { ascending: false })
+      .limit(50)
 
-  if (!data) return []
+    if (!data) return []
 
-  return data.map(row => ({
+    return data.map(row => ({
     id: String(row.id),
     title: row.description ?? row.subcategory ?? 'Maintenance item',
     propertyName: row.property_name ?? '',
@@ -495,8 +497,12 @@ export async function getOwnerMaintenance(slug: string): Promise<OwnerMaintenanc
     resolvedAt: row.date ?? null,
     evidenceRefs: [],
     estimatedCostEur: null,
-    actualCostEur: row.amount_eur != null ? String(row.amount_eur) : null,
-  }))
+      actualCostEur: row.amount_eur != null ? String(row.amount_eur) : null,
+    }))
+  } catch (err) {
+    console.error('[ownerWorkspaceService] getOwnerMaintenance: transactions.renovation failed', err instanceof Error ? err.message : String(err))
+    return []
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -515,12 +521,11 @@ export async function getOwnerRelationship(slug: string): Promise<OwnerRelations
 // ─────────────────────────────────────────────────────────────
 
 export async function getOwnerAudit(slug: string): Promise<OwnerAuditDTO> {
-  const sb = getServiceClient()
-
   // Evidence links from finance schema
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let evidenceData: any[] | null = null
   try {
+    const sb = createServiceClient()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const _r = await (sb as any).schema('finance').from('evidence_links')
       .select('*')
@@ -536,6 +541,7 @@ export async function getOwnerAudit(slug: string): Promise<OwnerAuditDTO> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let statementsData: any[] | null = null
   try {
+    const sb = createServiceClient()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const _r = await (sb as any).schema('statements').from('sent_statement_snapshots').select('*').limit(20)
     statementsData = _r.data
@@ -578,10 +584,10 @@ export async function getOwnerTimeline(slug: string): Promise<TimelineEventDTO[]
   const upcoming = await getUpcomingEvents(slug)
 
   // Derive past events from statement events
-  const sb = getServiceClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let events: any[] | null = null
   try {
+    const sb = createServiceClient()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const _r = await (sb as any).schema('statements').from('statement_events').select('*').limit(50)
     events = _r.data
@@ -634,11 +640,10 @@ export async function getOwnerTimeline(slug: string): Promise<TimelineEventDTO[]
 // ─────────────────────────────────────────────────────────────
 
 export async function getUpcomingEvents(slug: string): Promise<UpcomingEventDTO[]> {
-  const sb = getServiceClient()
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let data: any[] | null = null
   try {
+    const sb = createServiceClient()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const _r = await (sb as any).schema('statements').from('upcoming_events').select('*').limit(20)
     data = _r.data
@@ -669,11 +674,10 @@ export async function getHostawayPortfolio(
   startDate: string,
   endDate: string
 ): Promise<HostawayPortfolioSummaryDTO> {
-  const sb = getServiceClient()
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let properties: any[] | null = null
   try {
+    const sb = createServiceClient()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const _r = await (sb as any).schema('pms').from('raw_properties').select('*')
     properties = _r.data
@@ -684,6 +688,7 @@ export async function getHostawayPortfolio(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mappings: any[] | null = null
   try {
+    const sb = createServiceClient()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const _r = await (sb as any).schema('pms').from('pms_property_mappings').select('*')
     mappings = _r.data
