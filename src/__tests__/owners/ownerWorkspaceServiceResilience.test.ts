@@ -63,25 +63,35 @@ function makeThrowingClient() {
   }
 }
 
+/**
+ * Build a Supabase-like query chain that is itself a thenable.
+ *
+ * Supabase v2 query builders implement `.then()` — the whole chain object is
+ * awaitable. `await sb.from().select().eq().not()` works because the chain
+ * object has a `.then()` that resolves to { data, error }.
+ *
+ * Without `.then()`, `await chain` returns the chain itself (non-thenable
+ * pass-through), leaving `data = undefined` and the service takes the null path.
+ */
+function makeThenableChain(rows: Record<string, unknown>[]) {
+  const resolved = Promise.resolve({ data: rows, error: null })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const chain: any = {
+    then: (resolve: any, reject: any) => resolved.then(resolve, reject),
+    catch: (reject: any) => resolved.catch(reject),
+  }
+  for (const m of ['select', 'eq', 'not', 'in', 'order', 'limit']) {
+    chain[m] = jest.fn().mockReturnValue(chain)
+  }
+  return chain
+}
+
 function makeSuccessClient(txRows: Record<string, unknown>[]) {
-  const chain = {
-    select: jest.fn().mockReturnThis(),
-    eq: jest.fn().mockReturnThis(),
-    not: jest.fn().mockReturnThis(),
-    in: jest.fn().mockReturnThis(),
-    order: jest.fn().mockReturnThis(),
-    limit: jest.fn().mockResolvedValue({ data: txRows, error: null }),
-  }
-  const schemaChain = {
-    from: jest.fn().mockReturnValue({
-      select: jest.fn().mockReturnThis(),
-      eq: jest.fn().mockReturnThis(),
-      limit: jest.fn().mockResolvedValue({ data: [], error: null }),
-    }),
-  }
   return {
-    from: jest.fn().mockReturnValue(chain),
-    schema: jest.fn().mockReturnValue(schemaChain),
+    from: jest.fn().mockReturnValue(makeThenableChain(txRows)),
+    schema: jest.fn().mockReturnValue({
+      from: jest.fn().mockReturnValue(makeThenableChain([])),
+    }),
     rpc: jest.fn().mockResolvedValue({ data: null, error: null }),
   }
 }
@@ -195,9 +205,12 @@ describe('getOwnerMaintenance', () => {
       id: 'uuid-1', date: '2026-05-01', description: 'Roof repair',
       property_name: 'Villa Mazotos', amount_eur: 1200, subcategory: 'Renovation', notes: null,
     }]
+    // Renovation query ends at .limit(50) — limit() can return a Promise directly
     const maintChain = {
-      select: jest.fn().mockReturnThis(), eq: jest.fn().mockReturnThis(),
-      not: jest.fn().mockReturnThis(),    in: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      not: jest.fn().mockReturnThis(),
+      in: jest.fn().mockReturnThis(),
       order: jest.fn().mockReturnThis(),
       limit: jest.fn().mockResolvedValue({ data: maintRows, error: null }),
     }
