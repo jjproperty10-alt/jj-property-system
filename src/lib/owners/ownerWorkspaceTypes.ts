@@ -146,6 +146,19 @@ export interface OwnerWorkspaceDTO {
   /** Tabs are rendered by the workspace shell; data arrives per-tab via separate fetches */
 }
 
+/**
+ * G1B: Typed resolution result for Owner Workspace.
+ * Preserves the full resolver outcome instead of collapsing to null.
+ * Legacy `getOwnerWorkspace()` returns null for backward compatibility;
+ * new consumers should use `resolveOwnerWorkspace()` and this type.
+ */
+export type OwnerWorkspaceResolutionResult =
+  | { readonly status: 'resolved'; readonly workspace: OwnerWorkspaceDTO }
+  | { readonly status: 'not_found'; readonly slug: string }
+  | { readonly status: 'ambiguous'; readonly slug: string; readonly candidates: readonly string[] }
+  | { readonly status: 'relationship_missing'; readonly entityId: string; readonly displayName: string }
+  | { readonly status: 'source_unavailable'; readonly error: string }
+
 // ─────────────────────────────────────────────────────────────
 // TAB 1 — OVERVIEW
 // ─────────────────────────────────────────────────────────────

@@ -11,6 +11,10 @@
  * - Partner Capital Rule: payer/payee identity preserved in all reads
  * - Placeholder/demo values must come from ownerWorkspaceFixtures.ts
  *
+ * G1B: Identity resolution moved from payer/payee scanning to
+ * canonical lifecycle schema (entity_identity + management_relationship).
+ * After G1B, no component may scan transactions to discover owners.
+ *
  * @see ownerWorkspaceFixtures.ts — explicit fixture boundary
  */
 
@@ -27,15 +31,18 @@ import {
   FIXTURE_CLOSING_BALANCE_EUR,
 } from './ownerWorkspaceFixtures'
 import {
-  nameToSlug,
   buildOwnerIdentity,
-  isSystemActor,
 } from './ownerWorkspaceUtils'
+import {
+  getAllVerifiedOwners,
+  resolveBySlug,
+} from '../identity'
+import type { ResolvedManagedIdentityDTO } from '../identity'
 import type {
   OwnersRoomDTO,
   OwnerRoomItemDTO,
-  OwnerIdentityDTO,
   OwnerWorkspaceDTO,
+  OwnerWorkspaceResolutionResult,
   OwnerOverviewDTO,
   OwnerFinancialDTO,
   OwnerReservationSummaryDTO,
@@ -46,11 +53,7 @@ import type {
   UpcomingEventDTO,
   TimelineEventDTO,
   HostawayPortfolioSummaryDTO,
-  StatementStatus,
 } from './ownerWorkspaceTypes'
-
-// nameToSlug, buildOwnerIdentity, isSystemActor imported from ownerWorkspaceUtils
-// (pure utilities — no server-only boundary, safe for client and test contexts)
 
 // ─────────────────────────────────────────────────────────────
 // Owners Room
@@ -59,45 +62,19 @@ import type {
 /**
  * Fetch the Owners Room listing.
  *
- * Data sources:
- * - Owner names / properties: `public.transactions` (distinct property_name, payer/payee)
+ * Data sources (G1B):
+ * - Owner names / properties: `lifecycle.entity_identity` + `lifecycle.management_relationship`
+ *   (canonical identity resolution — only verified relationships shown)
  * - Statement status: `statements.statement_series` (if populated)
- * - Upcoming events: `statements.upcoming_events`
  *
  * Falls back gracefully when statements schema is empty.
+ * If lifecycle schema is unavailable, returns empty list (fail-closed).
  */
 export async function getOwnersRoom(): Promise<OwnersRoomDTO> {
-  // Derive owner list from transactions — unique payer values that represent real owners.
-  // Known owner names from historical data (payer column in public.transactions).
-  const KNOWN_OWNERS = [
-    'Avi Cohen',
-    'Tamir Levi',
-    'Liron',
-    'Alon',
-    'Oshrit',
-    'Oren',
-    'Uriel',
-    'Neer',
-    'Efi',
-  ]
-
-  // Fetch distinct property_name values per known payer groups.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let txData: any[] | null = null
-  try {
-    const sb = createServiceClient()
-    const { data } = await sb
-      .from('transactions')
-      .select('property_name, payer, payee, review_status')
-      .eq('review_status', 'active')
-      .not('property_name', 'is', null)
-    txData = data
-  } catch (err) {
-    console.error('[ownerWorkspaceService] getOwnersRoom: transactions.select failed', err instanceof Error ? err.message : String(err))
-  }
-
-  // Build property maps by scanning payer/payee
-  const propertyMap = buildPropertyMap(txData ?? [])
+  // G1B: Identity resolution from lifecycle schema (canonical source).
+  // Only verified relationships appear in the Owner Room.
+  // Pending relationships are available separately but not listed as owners.
+  const { owners } = await getAllVerifiedOwners()
 
   // Fetch statement_series for workflow status
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -111,8 +88,8 @@ export async function getOwnersRoom(): Promise<OwnersRoomDTO> {
     seriesData = null
   }
 
-  // Build room items
-  const items: OwnerRoomItemDTO[] = buildRoomItems(propertyMap, seriesData ?? [])
+  // Build room items from resolved identities
+  const items: OwnerRoomItemDTO[] = buildRoomItemsFromIdentities(owners, seriesData ?? [])
 
   return {
     items,
@@ -125,41 +102,19 @@ export async function getOwnersRoom(): Promise<OwnersRoomDTO> {
   }
 }
 
+/**
+ * Build room items from canonical resolved identities.
+ * G1B: replaces buildPropertyMap + buildRoomItems (payer/payee scanning).
+ * Identity comes from lifecycle schema, not from transactions.
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildPropertyMap(rows: any[]): Map<string, Set<string>> {
-  const map = new Map<string, Set<string>>()
-
-  // Group by property to find primary owner via Owner → payer pattern
-  for (const row of rows) {
-    const prop = row.property_name as string
-    if (!prop) continue
-
-    // Payer = Owner means they paid something related to the property
-    const payer = row.payer as string
-    if (payer && payer !== 'JJ' && payer !== 'Airbnb' && payer !== 'Anastasia' && payer !== 'Tenant' && payer !== 'Client') {
-      if (!map.has(payer)) map.set(payer, new Set())
-      map.get(payer)!.add(prop)
-    }
-
-    // Payee = Owner means JJ paid them (BPO)
-    const payee = row.payee as string
-    if (payee && payee !== 'JJ' && payee !== 'Airbnb' && payee !== 'Anastasia' && payee !== 'Tenant' && payee !== 'Client' && payee !== 'Yossi' && payee !== 'Jacob') {
-      if (!map.has(payee)) map.set(payee, new Set())
-      map.get(payee)!.add(prop)
-    }
-  }
-
-  return map
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildRoomItems(propertyMap: Map<string, Set<string>>, _seriesData: any[]): OwnerRoomItemDTO[] {
+function buildRoomItemsFromIdentities(owners: readonly ResolvedManagedIdentityDTO[], _seriesData: any[]): OwnerRoomItemDTO[] {
   const items: OwnerRoomItemDTO[] = []
 
-  for (const [name, props] of Array.from(propertyMap.entries())) {
-    const properties = Array.from(props as Set<string>).sort()
-    const slug = nameToSlug(name)
-    const identity = buildOwnerIdentity(slug, name, properties)
+  for (const owner of owners) {
+    const name = owner.identity.displayName
+    const properties = owner.managedProperties.map(r => r.propertyName).sort()
+    const identity = buildOwnerIdentity(owner.identity.entityId, name, properties)
 
     items.push({
       identity,
@@ -184,45 +139,35 @@ function buildRoomItems(propertyMap: Map<string, Set<string>>, _seriesData: any[
 // Owner Workspace — shell
 // ─────────────────────────────────────────────────────────────
 
-export async function getOwnerWorkspace(slug: string): Promise<OwnerWorkspaceDTO | null> {
-  // Resolve identity by slug: scan distinct payers/payees from transactions
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let txData: any[] | null = null
-  try {
-    const sb = createServiceClient()
-    const { data } = await sb
-      .from('transactions')
-      .select('payer, payee, property_name, review_status')
-      .eq('review_status', 'active')
-      .not('property_name', 'is', null)
-    txData = data
-  } catch (err) {
-    console.error('[ownerWorkspaceService] getOwnerWorkspace: transactions.select failed', err instanceof Error ? err.message : String(err))
-    return null
+/**
+ * Resolve an owner workspace with full outcome preservation.
+ * G1B: canonical resolver with typed discriminated union result.
+ *
+ * New consumers should use this function to get explicit failure reasons.
+ */
+export async function resolveOwnerWorkspace(slug: string): Promise<OwnerWorkspaceResolutionResult> {
+  const result = await resolveBySlug(slug)
+
+  switch (result.status) {
+    case 'not_found':
+      return { status: 'not_found', slug: result.slug }
+    case 'ambiguous':
+      return { status: 'ambiguous', slug: result.slug, candidates: result.candidates }
+    case 'relationship_missing':
+      return { status: 'relationship_missing', entityId: result.entityId, displayName: result.displayName }
+    case 'source_unavailable':
+      return { status: 'source_unavailable', error: result.error }
+    case 'resolved':
+      break
   }
 
-  if (!txData) return null
-
-  // Find the matching owner by slug
-  const names = new Set<string>()
-  for (const row of txData) {
-    if (row.payer && !isSystemActor(row.payer)) names.add(row.payer)
-    if (row.payee && !isSystemActor(row.payee)) names.add(row.payee)
-  }
-
-  const matchedName = Array.from(names).find(n => nameToSlug(n) === slug)
-  if (!matchedName) return null
-
-  const properties = Array.from(
-    new Set(
-      txData
-        .filter(r => r.payer === matchedName || r.payee === matchedName)
-        .map(r => r.property_name)
-        .filter(Boolean)
-    )
-  ).sort() as string[]
-
-  const identity = buildOwnerIdentity(slug, matchedName, properties)
+  const { data: resolved } = result
+  const properties = resolved.managedProperties.map(r => r.propertyName).sort()
+  const identity = buildOwnerIdentity(
+    resolved.identity.entityId,
+    resolved.identity.displayName,
+    properties,
+  )
 
   const now = new Date()
   const year = now.getFullYear()
@@ -232,18 +177,31 @@ export async function getOwnerWorkspace(slug: string): Promise<OwnerWorkspaceDTO
   const monthLabel = now.toLocaleString('en-US', { month: 'long', year: 'numeric' })
 
   return {
-    identity,
-    currentPeriod: {
-      label: monthLabel,
-      startDate,
-      endDate,
+    status: 'resolved',
+    workspace: {
+      identity,
+      currentPeriod: {
+        label: monthLabel,
+        startDate,
+        endDate,
+      },
+      statementStatus: FIXTURE_STATEMENT_STATUS,
+      openCorrectionCount: FIXTURE_OPEN_CORRECTIONS,
     },
-    statementStatus: FIXTURE_STATEMENT_STATUS,
-    openCorrectionCount: FIXTURE_OPEN_CORRECTIONS,
   }
 }
 
-// isSystemActor imported from ownerWorkspaceUtils
+/**
+ * Legacy wrapper — returns null for any non-resolved outcome.
+ * Preserved for backward compatibility with existing tab functions
+ * (getOwnerMaintenance, etc.) that call this and check for null.
+ *
+ * New consumers should use resolveOwnerWorkspace() instead.
+ */
+export async function getOwnerWorkspace(slug: string): Promise<OwnerWorkspaceDTO | null> {
+  const result = await resolveOwnerWorkspace(slug)
+  return result.status === 'resolved' ? result.workspace : null
+}
 
 // ─────────────────────────────────────────────────────────────
 // Tab 1 — Overview
