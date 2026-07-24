@@ -16,7 +16,7 @@
  *   S3 — success path: correct DTO returned, behaviour unchanged
  */
 
-jest.mock('server-only', () => ({}))
+jest.mock('server-only', () => ({}), { virtual: true })
 
 jest.mock('@/lib/owners/ownerWorkspaceFixtures', () => ({
   FIXTURE_STATEMENT_STATUS: 'draft',
