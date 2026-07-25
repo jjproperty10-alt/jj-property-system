@@ -290,8 +290,10 @@ describe('getOwnerMaintenance', () => {
 
     const result = await getOwnerMaintenance('avi')
     expect(result).toHaveLength(1)
-    expect(result[0].title).toBe('Roof repair')       // ← mandatory preservation
-    expect(result[0].amountEur).toBe('1200')          // ← G3-A: amountEur (not actualCostEur)
+    expect(result[0].title).toBe('Roof repair')                          // ← mandatory preservation
+    expect(result[0].amountEur).toBe('1200')                             // ← G3-A: amountEur (RC3 client_amount)
+    expect(result[0].status).toBe('unknown')                             // ← G3-A: honest RC3 status
+    expect(result[0].statusReason).toBe('rc3_has_no_lifecycle_status')  // ← G3-A: explicit limitation
   })
 
   it('S3b: returns [] when workspace not found', async () => {
