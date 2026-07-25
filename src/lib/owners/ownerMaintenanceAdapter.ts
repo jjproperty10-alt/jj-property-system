@@ -44,7 +44,7 @@ function mapRowToItem(
     propertyName,
     date:         row.date,
     // description → title: preserved for test assertion compatibility
-    title:        row.description ?? row.display_label ?? row.subcategory ?? 'Maintenance item',
+    title:        row.description || row.display_label || row.subcategory || 'Maintenance item',
     subcategory:  row.subcategory ?? null,
     status:       'unknown',
     statusReason: 'rc3_has_no_lifecycle_status',
