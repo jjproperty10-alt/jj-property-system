@@ -14,6 +14,9 @@
  *   S1 — createServiceClient() throws (missing env var / auth init failure)
  *   S2 — Supabase query throws (network error / permission error)
  *   S3 — success path: correct DTO returned, behaviour unchanged
+ *
+ * G1B update: S3 success paths mock at the identity resolver boundary
+ * (getAllVerifiedOwners / resolveBySlug) instead of transaction scanning.
  */
 
 jest.mock('server-only', () => ({}), { virtual: true })
@@ -36,7 +39,7 @@ jest.mock('@/lib/owners/ownerWorkspaceUtils', () => ({
     slug: name.toLowerCase().replace(/\s+/g, '-'),
     name,
     preferredLanguage: 'en' as const,
-    flag: '🌍',
+    flag: '\u{1F30D}',
     initials: name.slice(0, 2).toUpperCase(),
     avatarColor: '#64748b',
     since: null,
@@ -50,6 +53,15 @@ jest.mock('@/lib/owners/ownerWorkspaceUtils', () => ({
 const mockCreateServiceClient = jest.fn()
 jest.mock('@/lib/supabase', () => ({
   createServiceClient: (...args: unknown[]) => mockCreateServiceClient(...args),
+}))
+
+// ── G1B: Identity resolver mock ───────────────────────────────────────────
+
+const mockGetAllVerifiedOwners = jest.fn()
+const mockResolveBySlug = jest.fn()
+jest.mock('@/lib/identity', () => ({
+  getAllVerifiedOwners: (...args: unknown[]) => mockGetAllVerifiedOwners(...args),
+  resolveBySlug: (...args: unknown[]) => mockResolveBySlug(...args),
 }))
 
 // ── Client factories ──────────────────────────────────────────────────────
@@ -104,6 +116,30 @@ const TX_WORKSPACE = [
   { payer: 'Avi', payee: 'JJ', property_name: 'Villa Mazotos', review_status: 'active' },
 ]
 
+// ── G1B: Identity fixture for S3 success paths ────────────────────────────
+
+const IDENTITY_AVI_RESOLVED = {
+  identity: {
+    entityId: 'avi-uuid',
+    displayName: 'Avi',
+    canonicalSlug: 'avi',
+    entityKind: 'individual',
+    aliases: Object.freeze([]),
+    status: 'active',
+    source: 'lifecycle.entity_identity',
+  },
+  managedProperties: [{
+    relationshipId: 'rel-1',
+    entityId: 'avi-uuid',
+    propertyName: 'Villa Mazotos',
+    relationshipType: 'managed_owner',
+    validFrom: null,
+    validTo: null,
+    verificationStatus: 'verified',
+  }],
+  primaryProperty: 'Villa Mazotos',
+}
+
 // ── Subject under test ────────────────────────────────────────────────────
 
 let getOwnersRoom: typeof import('@/lib/owners/ownerWorkspaceService').getOwnersRoom
@@ -117,7 +153,18 @@ beforeAll(async () => {
   getOwnerMaintenance = mod.getOwnerMaintenance
 })
 
-afterEach(() => jest.clearAllMocks())
+// G1B: Set default identity responses before each test.
+// S3 tests override these; S1/S2/crash tests use defaults.
+beforeEach(() => {
+  mockGetAllVerifiedOwners.mockResolvedValue({
+    owners: [],
+    pendingRelationships: [],
+    counts: { verifiedRelationships: 0, distinctVerifiedEntities: 0, distinctVerifiedProperties: 0, pendingRelationships: 0 },
+  })
+  mockResolveBySlug.mockResolvedValue({ status: 'not_found', slug: '' })
+})
+
+afterEach(() => jest.resetAllMocks())
 
 // ── getOwnersRoom ─────────────────────────────────────────────────────────
 
@@ -142,9 +189,15 @@ describe('getOwnersRoom', () => {
   })
 
   it('S3: returns room items when query succeeds', async () => {
-    mockCreateServiceClient
-      .mockImplementationOnce(() => makeSuccessClient(TX_ROOM))
-      .mockImplementationOnce(() => makeSuccessClient([]))  // statements try
+    // G1B: identity resolver provides owners, not transaction scanning
+    mockGetAllVerifiedOwners.mockResolvedValue({
+      owners: [IDENTITY_AVI_RESOLVED],
+      pendingRelationships: [],
+      counts: { verifiedRelationships: 1, distinctVerifiedEntities: 1, distinctVerifiedProperties: 1, pendingRelationships: 0 },
+    })
+    // Statements query — return empty (not the focus of this test)
+    mockCreateServiceClient.mockImplementation(() => makeSuccessClient([]))
+
     const result = await getOwnersRoom()
     expect(result.items.length).toBeGreaterThanOrEqual(1)
     const names = result.items.map(i => i.identity.name)
@@ -169,7 +222,12 @@ describe('getOwnerWorkspace', () => {
   })
 
   it('S3: returns workspace DTO when owner found', async () => {
-    mockCreateServiceClient.mockImplementation(() => makeSuccessClient(TX_WORKSPACE))
+    // G1B: identity resolver provides owner resolution
+    mockResolveBySlug.mockResolvedValue({
+      status: 'resolved',
+      data: IDENTITY_AVI_RESOLVED,
+    })
+
     const result = await getOwnerWorkspace('avi')
     expect(result).not.toBeNull()
     expect(result!.identity.name).toBe('Avi')
@@ -201,24 +259,21 @@ describe('getOwnerMaintenance', () => {
   })
 
   it('S3: returns items when queries succeed', async () => {
+    // G1B: identity resolver provides owner resolution for workspace lookup
+    mockResolveBySlug.mockResolvedValue({
+      status: 'resolved',
+      data: IDENTITY_AVI_RESOLVED,
+    })
+
     const maintRows = [{
       id: 'uuid-1', date: '2026-05-01', description: 'Roof repair',
       property_name: 'Villa Mazotos', amount_eur: 1200, subcategory: 'Renovation', notes: null,
     }]
-    // Renovation query ends at .limit(50) — limit() can return a Promise directly
-    const maintChain = {
-      select: jest.fn().mockReturnThis(),
-      eq: jest.fn().mockReturnThis(),
-      not: jest.fn().mockReturnThis(),
-      in: jest.fn().mockReturnThis(),
-      order: jest.fn().mockReturnThis(),
-      limit: jest.fn().mockResolvedValue({ data: maintRows, error: null }),
-    }
-    const maintClient = { from: jest.fn().mockReturnValue(maintChain), schema: jest.fn(), rpc: jest.fn() }
-
-    mockCreateServiceClient
-      .mockImplementationOnce(() => makeSuccessClient(TX_WORKSPACE))
-      .mockImplementationOnce(() => maintClient)
+    // Use thenable chain pattern (makeSuccessClient) — proven compatible
+    // with Supabase query builder's .then() resolution.
+    // Only one createServiceClient call now — renovation query
+    // (workspace lookup uses identity resolver, not createServiceClient)
+    mockCreateServiceClient.mockImplementationOnce(() => makeSuccessClient(maintRows))
 
     const result = await getOwnerMaintenance('avi')
     expect(result).toHaveLength(1)
