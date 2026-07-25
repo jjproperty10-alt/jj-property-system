@@ -1,44 +1,22 @@
 /**
  * Maintenance Tab — "What operational work remains?"
  *
- * Shows open maintenance items grouped by status.
+ * G3-A: Updated to consume OwnerMaintenanceItemDTO (RC3 renovation records).
+ *
+ * Contract change (2026-07-25): items typed as OwnerMaintenanceItemDTO[] instead of
+ * OwnerMaintenanceDTO[]. RC3 provides financial renovation records only — lifecycle
+ * status (open/in_progress/waiting/completed/verified) is not available at this layer.
+ * Lifecycle status classification is deferred to RC2 scope.
+ *
+ * Rendered fields: title, propertyName, date, amountEur, subcategory.
+ * Not rendered: supplier, ownerImpact, nextAction, resolvedAt, estimatedCostEur, evidenceRefs.
  */
 
 import { EmptyState } from '@/components/ds'
-import type { OwnerMaintenanceDTO, MaintenanceStatus } from '@/lib/owners/ownerWorkspaceTypes'
+import type { OwnerMaintenanceItemDTO } from '@/lib/owners/ownerWorkspaceTypes'
 
 export interface MaintenanceTabProps {
-  items: OwnerMaintenanceDTO[]
-}
-
-const STATUS_ORDER: MaintenanceStatus[] = ['open', 'in_progress', 'waiting', 'completed', 'verified']
-
-const STATUS_CONFIG: Record<MaintenanceStatus, { label: string; dotClass: string; cardClass: string }> = {
-  open: {
-    label: 'Open',
-    dotClass: 'bg-red-500',
-    cardClass: 'border-red-200 bg-red-50',
-  },
-  in_progress: {
-    label: 'In Progress',
-    dotClass: 'bg-blue-500',
-    cardClass: 'border-blue-200 bg-blue-50',
-  },
-  waiting: {
-    label: 'Waiting',
-    dotClass: 'bg-amber-400',
-    cardClass: 'border-amber-200 bg-amber-50',
-  },
-  completed: {
-    label: 'Completed',
-    dotClass: 'bg-green-400',
-    cardClass: 'border-gray-100 bg-white',
-  },
-  verified: {
-    label: 'Verified',
-    dotClass: 'bg-emerald-500',
-    cardClass: 'border-emerald-100 bg-white',
-  },
+  items: OwnerMaintenanceItemDTO[]
 }
 
 export function MaintenanceTab({ items }: MaintenanceTabProps) {
@@ -52,108 +30,50 @@ export function MaintenanceTab({ items }: MaintenanceTabProps) {
     )
   }
 
-  const byStatus = new Map<MaintenanceStatus, OwnerMaintenanceDTO[]>()
-  for (const item of items) {
-    const existing = byStatus.get(item.status) ?? []
-    byStatus.set(item.status, [...existing, item])
-  }
-
-  const openCount = byStatus.get('open')?.length ?? 0
-  const inProgressCount = byStatus.get('in_progress')?.length ?? 0
-
   return (
     <div className="space-y-6">
 
-      {/* Summary bar */}
-      {(openCount > 0 || inProgressCount > 0) && (
-        <div className="flex gap-3">
-          {openCount > 0 && (
-            <div className="flex-1 border border-red-200 bg-red-50 rounded-lg px-4 py-3 text-sm text-red-700 font-medium">
-              ⚠ {openCount} open item{openCount !== 1 ? 's' : ''}
-            </div>
-          )}
-          {inProgressCount > 0 && (
-            <div className="flex-1 border border-blue-200 bg-blue-50 rounded-lg px-4 py-3 text-sm text-blue-700 font-medium">
-              ⚡ {inProgressCount} in progress
-            </div>
-          )}
-        </div>
-      )}
+      {/* Status notice — lifecycle tracking not available at RC3 layer */}
+      <div className="border border-gray-200 bg-gray-50 rounded-lg px-4 py-3 text-sm text-gray-600">
+        Renovation records from accounting. Lifecycle status tracking requires RC2.
+      </div>
 
-      {/* Items by status group */}
-      {STATUS_ORDER.filter(s => byStatus.has(s)).map(status => {
-        const cfg = STATUS_CONFIG[status]
-        const groupItems = byStatus.get(status)!
-
-        return (
-          <section key={status} aria-labelledby={`maint-${status}-heading`}>
-            <h2
-              id={`maint-${status}-heading`}
-              className="flex items-center gap-2 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3"
-            >
-              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cfg.dotClass}`} aria-hidden />
-              {cfg.label} ({groupItems.length})
-            </h2>
-
-            <ul className="space-y-2" role="list">
-              {groupItems.map(item => (
-                <li
-                  key={item.id}
-                  className={`border rounded-lg px-4 py-3 ${cfg.cardClass}`}
+      {/* Items list — sorted by date desc (adapter guarantee) */}
+      <ul className="space-y-2" role="list">
+        {items.map(item => (
+          <li
+            key={item.id}
+            className="border border-gray-100 bg-white rounded-lg px-4 py-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900">{item.title}</p>
+                <div className="flex flex-wrap items-center gap-3 mt-1.5">
+                  <span className="text-xs text-gray-500">{item.propertyName}</span>
+                  {item.subcategory && (
+                    <span className="text-xs text-gray-400">{item.subcategory}</span>
+                  )}
+                  {item.amountEur != null && (
+                    <span className="text-xs font-medium text-gray-700" dir="ltr">
+                      €{parseFloat(item.amountEur).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Status not tracked</p>
+              </div>
+              <div className="flex-shrink-0 text-right">
+                <time
+                  className="text-xs text-gray-400 block"
+                  dateTime={item.date}
+                  dir="ltr"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900">{item.title}</p>
-                      {item.ownerImpact && (
-                        <p className="text-xs text-gray-600 mt-0.5">{item.ownerImpact}</p>
-                      )}
-                      <div className="flex flex-wrap items-center gap-3 mt-1.5">
-                        <span className="text-xs text-gray-500">{item.propertyName}</span>
-                        {item.supplier && (
-                          <span className="text-xs text-gray-400">Supplier: {item.supplier}</span>
-                        )}
-                        {item.estimatedCostEur != null && (
-                          <span className="text-xs text-gray-400" dir="ltr">
-                            Est: €{parseFloat(item.estimatedCostEur).toLocaleString()}
-                          </span>
-                        )}
-                        {item.actualCostEur != null && (
-                          <span className="text-xs font-medium text-gray-700" dir="ltr">
-                            Actual: €{parseFloat(item.actualCostEur).toLocaleString()}
-                          </span>
-                        )}
-                      </div>
-                      {item.nextAction && (
-                        <p className="text-xs text-blue-600 mt-1 font-medium">
-                          Next: {item.nextAction}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex-shrink-0 text-right">
-                      <time
-                        className="text-xs text-gray-400 block"
-                        dateTime={item.openedAt}
-                        dir="ltr"
-                      >
-                        {formatDate(item.openedAt)}
-                      </time>
-                      {item.resolvedAt && (
-                        <time
-                          className="text-xs text-green-600 block"
-                          dateTime={item.resolvedAt}
-                          dir="ltr"
-                        >
-                          Done: {formatDate(item.resolvedAt)}
-                        </time>
-                      )}
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )
-      })}
+                  {formatDate(item.date)}
+                </time>
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
