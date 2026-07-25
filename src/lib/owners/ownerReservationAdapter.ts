@@ -99,7 +99,6 @@ function mapStatus(status: ReservationStatus): OwnerResStatus {
     case 'cancelled':  return 'cancelled'
     case 'inquiry':    return 'confirmed'
     case 'owner_stay': return 'confirmed'
-    case 'unknown':    return 'confirmed'
     default:           return 'confirmed'
   }
 }
