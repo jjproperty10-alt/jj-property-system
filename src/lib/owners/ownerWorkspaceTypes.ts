@@ -356,6 +356,33 @@ export interface OwnerMaintenanceDTO {
   actualCostEur: EuroAmount
 }
 
+/**
+ * G3-A: RC3-backed maintenance item (2026-07-25).
+ * Returned by getOwnerMaintenance after G3-A alignment.
+ *
+ * Replaces direct public.transactions read with RC3 renovation account data.
+ * Preserves description → title mapping (test-contract-stable).
+ *
+ * status / statusReason explicitly declare RC3-stage limitation:
+ * lifecycle status is not available at RC3 layer — deferred to RC2 scope.
+ */
+export interface OwnerMaintenanceItemDTO {
+  readonly id: string
+  readonly propertyName: string
+  readonly date: ISODate
+  /** Transaction description, display_label, or subcategory — in that order of preference */
+  readonly title: string
+  readonly subcategory: string | null
+  /** Always 'unknown' — RC3 has no lifecycle status field */
+  readonly status: 'unknown'
+  /** Explicit declaration of why status is unknown */
+  readonly statusReason: 'rc3_has_no_lifecycle_status'
+  /** client_amount from RC3 engine (COALESCE of client_charge and amount_eur) */
+  readonly amountEur: EuroAmount
+  /** Always 'rc3' — source declaration for audit trail */
+  readonly source: 'rc3'
+}
+
 // ─────────────────────────────────────────────────────────────
 // TAB 6 — RELATIONSHIP
 // ─────────────────────────────────────────────────────────────

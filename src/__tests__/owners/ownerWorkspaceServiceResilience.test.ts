@@ -17,6 +17,10 @@
  *
  * G1B update: S3 success paths mock at the identity resolver boundary
  * (getAllVerifiedOwners / resolveBySlug) instead of transaction scanning.
+ *
+ * G3-A update: getOwnerMaintenance now delegates to ownerMaintenanceService.
+ * S2/S3 for maintenance mock at the service boundary (mockGetMaintenanceItems),
+ * not at createServiceClient. S1/crash tests remain unchanged (workspace null).
  */
 
 jest.mock('server-only', () => ({}), { virtual: true })
@@ -64,6 +68,13 @@ jest.mock('@/lib/identity', () => ({
   resolveBySlug: (...args: unknown[]) => mockResolveBySlug(...args),
 }))
 
+// ── G3-A: Maintenance service mock ────────────────────────────────────────
+
+const mockGetMaintenanceItems = jest.fn()
+jest.mock('@/lib/owners/ownerMaintenanceService', () => ({
+  getMaintenanceItems: (...args: unknown[]) => mockGetMaintenanceItems(...args),
+}))
+
 // ── Client factories ──────────────────────────────────────────────────────
 
 function makeThrowingClient() {
@@ -108,10 +119,6 @@ function makeSuccessClient(txRows: Record<string, unknown>[]) {
   }
 }
 
-const TX_ROOM = [
-  { property_name: 'Villa Mazotos', payer: 'Avi', payee: 'JJ', review_status: 'active' },
-  { property_name: 'Villa Mazotos', payer: 'JJ', payee: 'Avi', review_status: 'active' },
-]
 const TX_WORKSPACE = [
   { payer: 'Avi', payee: 'JJ', property_name: 'Villa Mazotos', review_status: 'active' },
 ]
@@ -153,7 +160,7 @@ beforeAll(async () => {
   getOwnerMaintenance = mod.getOwnerMaintenance
 })
 
-// G1B: Set default identity responses before each test.
+// G1B + G3-A: Set default identity and service responses before each test.
 // S3 tests override these; S1/S2/crash tests use defaults.
 beforeEach(() => {
   mockGetAllVerifiedOwners.mockResolvedValue({
@@ -162,6 +169,7 @@ beforeEach(() => {
     counts: { verifiedRelationships: 0, distinctVerifiedEntities: 0, distinctVerifiedProperties: 0, pendingRelationships: 0 },
   })
   mockResolveBySlug.mockResolvedValue({ status: 'not_found', slug: '' })
+  mockGetMaintenanceItems.mockResolvedValue([])
 })
 
 afterEach(() => jest.resetAllMocks())
@@ -245,6 +253,9 @@ describe('getOwnerWorkspace', () => {
 
 describe('getOwnerMaintenance', () => {
   it('S1: returns [] when createServiceClient() throws on workspace lookup', async () => {
+    // G3-A: workspace lookup uses identity resolver (mockResolveBySlug = not_found → workspace null → [])
+    // createServiceClient throwing is irrelevant to the maintenance path after G3-A
+    // but the default not_found mock already guarantees []
     mockCreateServiceClient.mockImplementation(() => {
       throw new Error('[TEST] SUPABASE_SERVICE_KEY undefined')
     })
@@ -252,9 +263,9 @@ describe('getOwnerMaintenance', () => {
   })
 
   it('S2: returns [] when renovation query throws', async () => {
-    mockCreateServiceClient
-      .mockImplementationOnce(() => makeSuccessClient(TX_WORKSPACE))  // workspace lookup
-      .mockImplementationOnce(() => makeThrowingClient())              // renovation query
+    // G3-A: workspace lookup resolves, maintenance service throws
+    mockResolveBySlug.mockResolvedValue({ status: 'resolved', data: IDENTITY_AVI_RESOLVED })
+    mockGetMaintenanceItems.mockRejectedValueOnce(new Error('[TEST] maintenance service error'))
     expect(await getOwnerMaintenance('avi')).toEqual([])
   })
 
@@ -264,24 +275,29 @@ describe('getOwnerMaintenance', () => {
       status: 'resolved',
       data: IDENTITY_AVI_RESOLVED,
     })
-
-    const maintRows = [{
-      id: 'uuid-1', date: '2026-05-01', description: 'Roof repair',
-      property_name: 'Villa Mazotos', amount_eur: 1200, subcategory: 'Renovation', notes: null,
-    }]
-    // Use thenable chain pattern (makeSuccessClient) — proven compatible
-    // with Supabase query builder's .then() resolution.
-    // Only one createServiceClient call now — renovation query
-    // (workspace lookup uses identity resolver, not createServiceClient)
-    mockCreateServiceClient.mockImplementationOnce(() => makeSuccessClient(maintRows))
+    // G3-A: maintenance service returns OwnerMaintenanceItemDTO items
+    mockGetMaintenanceItems.mockResolvedValueOnce([{
+      id: 'uuid-1',
+      propertyName: 'Villa Mazotos',
+      date: '2026-05-01',
+      title: 'Roof repair',                           // ← preserved (critical assertion)
+      subcategory: 'Renovation',
+      status: 'unknown' as const,
+      statusReason: 'rc3_has_no_lifecycle_status' as const,
+      amountEur: '1200',                              // ← G3-A field (was actualCostEur)
+      source: 'rc3' as const,
+    }])
 
     const result = await getOwnerMaintenance('avi')
     expect(result).toHaveLength(1)
-    expect(result[0].title).toBe('Roof repair')
-    expect(result[0].actualCostEur).toBe('1200')
+    expect(result[0].title).toBe('Roof repair')                          // ← mandatory preservation
+    expect(result[0].amountEur).toBe('1200')                             // ← G3-A: amountEur (RC3 client_amount)
+    expect(result[0].status).toBe('unknown')                             // ← G3-A: honest RC3 status
+    expect(result[0].statusReason).toBe('rc3_has_no_lifecycle_status')  // ← G3-A: explicit limitation
   })
 
   it('S3b: returns [] when workspace not found', async () => {
+    // default mockResolveBySlug = not_found → workspace null → []
     mockCreateServiceClient.mockImplementation(() => makeSuccessClient([]))
     expect(await getOwnerMaintenance('unknown')).toEqual([])
   })
@@ -294,6 +310,8 @@ describe('crash regression — no unhandled throw propagates to SSR', () => {
     mockCreateServiceClient.mockImplementation(() => {
       throw new Error('[TEST] simulated infrastructure failure')
     })
+    // G3-A: identity resolver default = not_found → workspace null → []
+    // createServiceClient throwing is irrelevant to identity resolution path
   })
   it('getOwnersRoom resolves (never throws)', () =>
     expect(getOwnersRoom()).resolves.toBeDefined())

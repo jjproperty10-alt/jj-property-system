@@ -5,7 +5,6 @@
  *
  * Rules:
  * - Server-only: must never be imported into Client Components
- * - Reads `public.transactions` directly (RC3 view wiring is a future PR)
  * - Falls back to empty DTOs gracefully when schemas are absent
  * - Never computes owner-due or financial totals — those belong to RC3 engine
  * - Partner Capital Rule: payer/payee identity preserved in all reads
@@ -14,6 +13,11 @@
  * G1B: Identity resolution moved from payer/payee scanning to
  * canonical lifecycle schema (entity_identity + management_relationship).
  * After G1B, no component may scan transactions to discover owners.
+ *
+ * G3-A: Financial and Maintenance data now sourced via service/adapter layers:
+ * - getOwnerFinancial → ownerFinancialService → ownerFinancialAdapter → RC3
+ * - getOwnerMaintenance → ownerMaintenanceService → ownerMaintenanceAdapter → RC3
+ * Neither function reads public.transactions directly (G3-1, G3-3, G3-5 resolved).
  *
  * @see ownerWorkspaceFixtures.ts — explicit fixture boundary
  */
@@ -28,7 +32,6 @@ import {
   FIXTURE_OPEN_CORRECTIONS,
   FIXTURE_UPCOMING_COUNT,
   FIXTURE_PRIORITY_GROUP,
-  FIXTURE_CLOSING_BALANCE_EUR,
 } from './ownerWorkspaceFixtures'
 import {
   buildOwnerIdentity,
@@ -38,6 +41,8 @@ import {
   resolveBySlug,
 } from '../identity'
 import type { ResolvedManagedIdentityDTO } from '../identity'
+import { getFinancial } from './ownerFinancialService'
+import { getMaintenanceItems } from './ownerMaintenanceService'
 import type {
   OwnersRoomDTO,
   OwnerRoomItemDTO,
@@ -47,7 +52,7 @@ import type {
   OwnerFinancialDTO,
   OwnerReservationSummaryDTO,
   OwnerDocumentDTO,
-  OwnerMaintenanceDTO,
+  OwnerMaintenanceItemDTO,
   OwnerRelationshipEventDTO,
   OwnerAuditDTO,
   UpcomingEventDTO,
@@ -194,7 +199,7 @@ export async function resolveOwnerWorkspace(slug: string): Promise<OwnerWorkspac
 /**
  * Legacy wrapper — returns null for any non-resolved outcome.
  * Preserved for backward compatibility with existing tab functions
- * (getOwnerMaintenance, etc.) that call this and check for null.
+ * (getOwnerFinancial, getOwnerMaintenance) that call this and check for null.
  *
  * New consumers should use resolveOwnerWorkspace() instead.
  */
@@ -231,66 +236,59 @@ export async function getOwnerOverview(slug: string): Promise<OwnerOverviewDTO> 
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Fetch owner financial data from RC3 views.
- * RC3 views are named `v_rc3_*` in the public schema.
- * Falls back to empty DTO if views don't exist yet.
+ * Fetch owner financial data from RC3 engine via service/adapter layer.
+ *
+ * G3-A: Replaces direct sb.rpc('get_owner_financial_summary', ...) call
+ * (non-existent RPC — G3-1 violation resolved).
+ *
+ * Architecture: getOwnerFinancial → ownerFinancialService → ownerFinancialAdapter → fetchRC3Report
+ * Workspace resolves owner properties via getOwnerWorkspace (identity resolver).
+ * Service call is wrapped in try/catch — returns empty DTO on failure.
  */
 export async function getOwnerFinancial(
   slug: string,
   startDate: string,
   endDate: string
 ): Promise<OwnerFinancialDTO> {
-  // RC3 views: attempt to read owner-scoped financial summary
-  // The view name and exact columns depend on RC3 engine state.
-  // Using a safe catch pattern to return empty DTO if not yet available.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let rc3Data: any = null
+  const workspace = await getOwnerWorkspace(slug)
+  if (!workspace) {
+    return {
+      position: {
+        incomeEur: null,
+        expensesEur: null,
+        netEur: null,
+        paidToOwnerEur: null,
+        pendingEur: null,
+        closingBalanceEur: null,
+      },
+      sections: [],
+      timeline: [],
+    }
+  }
+
   try {
-    const sb = createServiceClient()
-    const _r = await sb.rpc('get_owner_financial_summary', {
-      p_owner_slug: slug,
-      p_start_date: startDate,
-      p_end_date: endDate,
+    return await getFinancial({
+      properties: workspace.identity.properties,
+      fromDate: startDate,
+      toDate: endDate,
     })
-    rc3Data = _r.data
-  } catch {
-    rc3Data = null
-  }
-
-  if (rc3Data) {
-    // When RC3 RPC is available, map its output to OwnerFinancialDTO
-    return mapRc3ToOwnerFinancial(rc3Data)
-  }
-
-  // Fallback: read active transactions for owner's properties directly
-  // This is a degraded mode — values are informational, not engine-authoritative.
-  return {
-    position: {
-      incomeEur: null,
-      expensesEur: null,
-      netEur: null,
-      paidToOwnerEur: null,
-      pendingEur: null,
-      closingBalanceEur: null,
-    },
-    sections: [],
-    timeline: [],
-  }
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapRc3ToOwnerFinancial(data: any): OwnerFinancialDTO {
-  return {
-    position: {
-      incomeEur: data.income_eur ?? null,
-      expensesEur: data.expenses_eur ?? null,
-      netEur: data.net_eur ?? null,
-      paidToOwnerEur: data.paid_to_owner_eur ?? null,
-      pendingEur: data.pending_eur ?? null,
-      closingBalanceEur: FIXTURE_CLOSING_BALANCE_EUR, // RC2 scope — explicit fixture
-    },
-    sections: [],
-    timeline: [],
+  } catch (err) {
+    console.error(
+      '[ownerWorkspaceService] getOwnerFinancial: service failed',
+      err instanceof Error ? err.message : String(err),
+    )
+    return {
+      position: {
+        incomeEur: null,
+        expensesEur: null,
+        netEur: null,
+        paidToOwnerEur: null,
+        pendingEur: null,
+        closingBalanceEur: null,
+      },
+      sections: [],
+      timeline: [],
+    }
   }
 }
 
@@ -422,43 +420,32 @@ export async function getOwnerDocuments(slug: string): Promise<OwnerDocumentDTO[
 // Tab 5 — Maintenance
 // ─────────────────────────────────────────────────────────────
 
-export async function getOwnerMaintenance(slug: string): Promise<OwnerMaintenanceDTO[]> {
-  // Source: public.transactions with category=Renovation / subcategory=Maintenance
-  // Returns maintenance items for properties owned by this slug.
-
-  // Find owner's properties first
+/**
+ * Fetch maintenance items for an owner's properties.
+ *
+ * G3-A: Replaces direct public.transactions read (G3-3 violation resolved).
+ * Also removes hardcoded `status: 'completed' as const` (G3-5 violation resolved).
+ * Data now sourced from RC3 renovation account via service/adapter layer.
+ *
+ * Architecture: getOwnerMaintenance → ownerMaintenanceService → ownerMaintenanceAdapter → fetchRC3Report
+ * Property resolution: getOwnerWorkspace (identity resolver, PR #75 guard preserved).
+ * Service call is wrapped in try/catch — returns [] on failure.
+ */
+export async function getOwnerMaintenance(slug: string): Promise<OwnerMaintenanceItemDTO[]> {
+  // Property resolution: getOwnerWorkspace preserves PR #75 SSR guard.
+  // Returns null when identity resolver fails → function returns [] safely.
   const workspace = await getOwnerWorkspace(slug)
   if (!workspace) return []
 
   try {
-    const sb = createServiceClient()
-    const { data } = await sb
-      .from('transactions')
-      .select('id, date, description, property_name, amount_eur, subcategory, notes')
-      .eq('review_status', 'active')
-      .eq('category', 'Renovation')
-      .in('property_name', workspace.identity.properties)
-      .order('date', { ascending: false })
-      .limit(50)
-
-    if (!data) return []
-
-    return data.map(row => ({
-    id: String(row.id),
-    title: row.description ?? row.subcategory ?? 'Maintenance item',
-    propertyName: row.property_name ?? '',
-    supplier: null,
-    ownerImpact: null,
-    status: 'completed' as const,
-    nextAction: null,
-    openedAt: row.date ?? '',
-    resolvedAt: row.date ?? null,
-    evidenceRefs: [],
-    estimatedCostEur: null,
-      actualCostEur: row.amount_eur != null ? String(row.amount_eur) : null,
-    }))
+    return await getMaintenanceItems({
+      properties: workspace.identity.properties,
+    })
   } catch (err) {
-    console.error('[ownerWorkspaceService] getOwnerMaintenance: transactions.renovation failed', err instanceof Error ? err.message : String(err))
+    console.error(
+      '[ownerWorkspaceService] getOwnerMaintenance: service failed',
+      err instanceof Error ? err.message : String(err),
+    )
     return []
   }
 }
