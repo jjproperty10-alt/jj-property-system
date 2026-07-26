@@ -202,10 +202,9 @@ describe('maskGuestName', () => {
 
 // ─── fetchOwnerReservations ───────────────────────────────────────────────────
 
+afterEach(() => jest.clearAllMocks())
+
 describe('fetchOwnerReservations', () => {
-  beforeEach(() => {
-    jest.resetAllMocks()
-  })
 
   it('returns empty summary when properties array is empty', async () => {
     const result = await fetchOwnerReservations({
