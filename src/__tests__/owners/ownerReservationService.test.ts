@@ -58,10 +58,9 @@ function makeFilledSummary() {
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
+afterEach(() => jest.clearAllMocks())
+
 describe('ownerReservationService.getReservations', () => {
-  beforeEach(() => {
-    jest.resetAllMocks()
-  })
 
   it('delegates to fetchOwnerReservations and returns the result', async () => {
     const filled = makeFilledSummary()
