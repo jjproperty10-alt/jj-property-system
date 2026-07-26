@@ -19,6 +19,12 @@
  * - getOwnerMaintenance → ownerMaintenanceService → ownerMaintenanceAdapter → RC3
  * Neither function reads public.transactions directly (G3-1, G3-3, G3-5 resolved).
  *
+ * G3-B: Reservations and Portfolio Hostaway Alignment (2026-07-25):
+ * - getOwnerReservations → ownerReservationService → ownerReservationAdapter → Hostaway Audit
+ * - getHostawayPortfolio → ownerPortfolioAdapter → Hostaway Audit
+ * Neither function reads pms.* schemas directly (G3-2 resolved).
+ * Guest masking applied to historical reservations (G3-19).
+ *
  * @see ownerWorkspaceFixtures.ts — explicit fixture boundary
  */
 
@@ -43,6 +49,8 @@ import {
 import type { ResolvedManagedIdentityDTO } from '../identity'
 import { getFinancial } from './ownerFinancialService'
 import { getMaintenanceItems } from './ownerMaintenanceService'
+import { getReservations } from './ownerReservationService'
+import { getPortfolio } from './ownerPortfolioAdapter'
 import type {
   OwnersRoomDTO,
   OwnerRoomItemDTO,
@@ -296,113 +304,44 @@ export async function getOwnerFinancial(
 // Tab 3 — Reservations
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Fetch reservation summary for owner's properties from Hostaway Audit.
+ *
+ * G3-B: Replaces direct pms.raw_reservations read (G3-2 violation resolved).
+ * Also removes local revenue arithmetic (G3-5 resolved) and unmasked guest
+ * names in historical reservations (G3-19 resolved).
+ *
+ * Architecture: getOwnerReservations → ownerReservationService → ownerReservationAdapter → Hostaway Audit
+ * Property resolution: getOwnerWorkspace (identity resolver, PR #75 guard preserved).
+ * Service call is wrapped in try/catch — returns empty DTO on failure.
+ */
 export async function getOwnerReservations(
   slug: string,
   startDate: string,
   endDate: string
 ): Promise<OwnerReservationSummaryDTO> {
-  // Source: pms.raw_reservations — joined to property mappings
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let resData: any[] | null = null
-  try {
-    const sb = createServiceClient()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const _r = await (sb as any).schema('pms').from('raw_reservations')
-      .select('*')
-      .gte('arrivalDate', startDate)
-      .lte('departureDate', endDate)
-      .limit(200)
-    resData = _r.data
-  } catch {
-    resData = null
+  const workspace = await getOwnerWorkspace(slug)
+  if (!workspace) {
+    return {
+      period: { startDate, endDate },
+      portfolio: {
+        totalReservations: 0,
+        occupancyPct:      null,
+        revenueEur:        null,
+        adr:               null,
+        revPar:            null,
+        cancellations:     0,
+      },
+      channelMix:   [],
+      reservations: [],
+    }
   }
 
-  if (!resData || resData.length === 0) {
-    return emptyReservationSummary(startDate, endDate)
-  }
-
-  return mapReservations(resData, startDate, endDate)
-}
-
-function emptyReservationSummary(startDate: string, endDate: string): OwnerReservationSummaryDTO {
-  return {
-    period: { startDate, endDate },
-    portfolio: {
-      totalReservations: 0,
-      occupancyPct: null,
-      revenueEur: null,
-      adr: null,
-      revPar: null,
-      cancellations: 0,
-    },
-    channelMix: [],
-    reservations: [],
-  }
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapReservations(rows: any[], startDate: string, endDate: string): OwnerReservationSummaryDTO {
-  const reservations = rows.map(r => ({
-    id: String(r.id ?? r.reservation_id ?? Math.random()),
-    guestName: r.guestName ?? r.guest_name ?? null,
-    propertyName: r.propertyName ?? r.property_name ?? 'Unknown',
-    channel: r.channelName ?? r.channel ?? 'Unknown',
-    checkIn: r.arrivalDate ?? r.arrival_date ?? '',
-    checkOut: r.departureDate ?? r.departure_date ?? '',
-    nights: Number(r.nightsCount ?? r.nights ?? 0),
-    revenueEur: r.totalPrice != null ? String(r.totalPrice) : null,
-    status: mapReservationStatus(r.status),
-    source: 'hostaway' as const,
-    evidenceRef: null,
-  }))
-
-  const totalRevenue = reservations.reduce((s, r) => s + (r.revenueEur ? parseFloat(r.revenueEur) : 0), 0)
-
-  return {
-    period: { startDate, endDate },
-    portfolio: {
-      totalReservations: reservations.length,
-      occupancyPct: null,
-      revenueEur: totalRevenue > 0 ? String(totalRevenue.toFixed(2)) : null,
-      adr: null,
-      revPar: null,
-      cancellations: reservations.filter(r => r.status === 'cancelled').length,
-    },
-    channelMix: buildChannelMix(reservations),
-    reservations,
-  }
-}
-
-function mapReservationStatus(raw: string): 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled' | 'no_show' {
-  const map: Record<string, 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled' | 'no_show'> = {
-    confirmed: 'confirmed',
-    checked_in: 'checked_in',
-    checked_out: 'checked_out',
-    cancelled: 'cancelled',
-    canceled: 'cancelled',
-    no_show: 'no_show',
-  }
-  return map[String(raw).toLowerCase()] ?? 'confirmed'
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildChannelMix(reservations: any[]) {
-  const byChannel = new Map<string, { count: number; revenue: number }>()
-  for (const r of reservations) {
-    const ch = r.channel || 'Unknown'
-    const existing = byChannel.get(ch) ?? { count: 0, revenue: 0 }
-    byChannel.set(ch, {
-      count: existing.count + 1,
-      revenue: existing.revenue + (r.revenueEur ? parseFloat(r.revenueEur) : 0),
-    })
-  }
-  const total = reservations.length || 1
-  return Array.from(byChannel.entries()).map(([channel, { count, revenue }]) => ({
-    channel,
-    count,
-    revenueEur: revenue > 0 ? String(revenue.toFixed(2)) : null,
-    pct: Math.round((count / total) * 100),
-  }))
+  return getReservations({
+    properties: workspace.identity.properties,
+    startDate,
+    endDate,
+  })
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -615,74 +554,18 @@ export async function getUpcomingEvents(slug: string): Promise<UpcomingEventDTO[
 // Hostaway Portfolio
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Fetch Hostaway portfolio summary from approved property mappings.
+ *
+ * G3-B: Replaces direct pms.raw_properties + pms.pms_property_mappings reads
+ * (G3-2 violation resolved). Data now sourced via ownerPortfolioAdapter → Hostaway Audit.
+ *
+ * Architecture: getHostawayPortfolio → ownerPortfolioAdapter → listAuditableProperties()
+ * Financial aggregates are null in V1 — per-property audit runs required (RC2 scope).
+ */
 export async function getHostawayPortfolio(
   startDate: string,
   endDate: string
 ): Promise<HostawayPortfolioSummaryDTO> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let properties: any[] | null = null
-  try {
-    const sb = createServiceClient()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const _r = await (sb as any).schema('pms').from('raw_properties').select('*')
-    properties = _r.data
-  } catch {
-    properties = null
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let mappings: any[] | null = null
-  try {
-    const sb = createServiceClient()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const _r = await (sb as any).schema('pms').from('pms_property_mappings').select('*')
-    mappings = _r.data
-  } catch {
-    mappings = null
-  }
-
-  const propList = (properties ?? []) as Record<string, unknown>[]
-  const mappingList = (mappings ?? []) as Record<string, unknown>[]
-
-  const mappingByHostawayId = new Map(
-    mappingList.map(m => [String(m.hostaway_property_id ?? ''), m])
-  )
-
-  return {
-    period: { startDate, endDate },
-    sourceMode: 'jj',
-    properties: propList.map(p => {
-      const hostawayId = String(p.hostaway_id ?? p.id ?? '')
-      const mapping = mappingByHostawayId.get(hostawayId)
-      return {
-        propertyName: String(p.name ?? p.property_name ?? hostawayId),
-        canonicalName: mapping ? String(mapping.canonical_property_name ?? '') : null,
-        mappingStatus: mapping ? 'mapped' as const : 'unmapped' as const,
-        reservations: 0,
-        platformIncomeEur: null,
-        platformFeesEur: null,
-        cleaningIncomeEur: null,
-        cleaningExpenseEur: null,
-        operationalExpensesEur: null,
-        managementFeeEur: null,
-        ownerDueEur: null,
-        reconciliationStatus: 'missing_jj' as const,
-      }
-    }),
-    totals: {
-      reservations: 0,
-      revenueEur: null,
-      feesEur: null,
-      cleaningEur: null,
-      ownerDueEur: null,
-    },
-    reconciliation: {
-      matchedCount: 0,
-      missingInJJ: 0,
-      missingInHostaway: 0,
-      amountDifferenceEur: null,
-      hasDifferences: false,
-    },
-    propertiesNeedingAttention: [],
-  }
+  return getPortfolio({ startDate, endDate })
 }
