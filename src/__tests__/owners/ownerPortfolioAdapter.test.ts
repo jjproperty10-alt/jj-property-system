@@ -51,10 +51,9 @@ const BASE_INPUT = {
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
+afterEach(() => jest.clearAllMocks())
+
 describe('ownerPortfolioAdapter.getPortfolio', () => {
-  beforeEach(() => {
-    jest.resetAllMocks()
-  })
 
   it('returns empty portfolio when listAuditableProperties returns empty array', async () => {
     mockListAuditableProperties.mockResolvedValueOnce([])
