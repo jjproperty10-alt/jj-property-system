@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { DailyGreeting, HealthSignal, AllClearCard, PageShell } from '@/components/ds'
+import { DailyGreeting, HealthSignal, AllClearCard, PageShell, WorkspaceHeader } from '@/components/ds'
 import { getHomeScreenState } from '@/lib/home/homeService'
 import { getAuthorizedExecutiveBrief } from '@/lib/executive/executiveBriefService'
 import { ExecutiveBrief } from '@/components/executive'
@@ -31,7 +31,14 @@ export const metadata: Metadata = {
  * - Authenticated non-superadmin → brief section omitted (no data leak)
  * - Unauthenticated → handled by middleware redirect before this runs
  *
+ * NAV-1 Composition (Tree B — Single-Section Page):
+ *   OperatingFrame → PageShell → <main> → WorkspaceHeader → content
+ *
+ * <main> landmark is rendered here (not in OperatingFrame) to avoid
+ * nested <main> with WorkspaceShell on other routes.
+ *
  * @see ADR-003_DECISION_ACCESS_LAYER.md — DAL v0.1
+ * @see NAV-1_PHASE4_COMPOSITION_RULES.md — Tree B
  */
 export default async function HomePage() {
   const [state, briefResult] = await Promise.all([
@@ -41,7 +48,8 @@ export default async function HomePage() {
 
   return (
     <PageShell>
-      <div className="mx-auto max-w-2xl space-y-6 px-4 py-6">
+      <main className="mx-auto max-w-2xl space-y-6 px-4 py-6">
+        <WorkspaceHeader title="Home" />
 
         {/* Position 1 — Am I okay? */}
         <DailyGreeting
@@ -92,7 +100,7 @@ export default async function HomePage() {
          * Position 6 — Recent Activity: E3-A4
          */}
 
-      </div>
+      </main>
     </PageShell>
   )
 }
