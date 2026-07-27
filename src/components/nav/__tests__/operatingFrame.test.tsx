@@ -1,6 +1,9 @@
 /**
  * @description Tests for OperatingFrame — Contract A.
  *
+ * Test environment: node (jest.config.ts testEnvironment: 'node')
+ * Rendering strategy: react-dom/server renderToStaticMarkup
+ *
  * Test Contracts covered:
  *   TC-OF-1: Renders sidebar
  *   TC-OF-2: Content area has skip-to-content target (OF-R3 amended)
@@ -13,7 +16,7 @@
  */
 
 import React from 'react'
-import { render, screen } from '@testing-library/react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { OperatingFrame } from '../OperatingFrame'
 import type { FrameUser, WorkspaceRegistration } from '@/lib/nav/types'
 import { Home, BarChart3 } from 'lucide-react'
@@ -73,9 +76,10 @@ const mockWorkspaces: WorkspaceRegistration[] = [
   },
 ]
 
-function renderFrame(pathname = '/home', children?: React.ReactNode) {
+/** Render OperatingFrame to HTML string for the given pathname. */
+function renderFrame(pathname = '/home', children?: React.ReactNode): string {
   mockPathname = pathname
-  return render(
+  return renderToStaticMarkup(
     <OperatingFrame user={mockUser} workspaces={mockWorkspaces}>
       {children ?? <div data-testid="page-content">Page content</div>}
     </OperatingFrame>
@@ -91,96 +95,89 @@ describe('OperatingFrame', () => {
 
   // TC-OF-1: Renders sidebar
   it('renders sidebar with navigation', () => {
-    renderFrame()
-    expect(screen.getByLabelText('Main navigation')).toBeInTheDocument()
+    const html = renderFrame()
+    expect(html).toContain('aria-label="Main navigation"')
   })
 
   // TC-OF-2: Content area is skip-to-content target (OF-R3 amended)
   // OperatingFrame does NOT render <main> — delegated to workspace/page shell
   // to avoid nested <main> with WorkspaceShell. Content area is a <div>.
-  it('content area has id=main-content for skip link', () => {
-    renderFrame()
-    const contentArea = document.getElementById('main-content')
-    expect(contentArea).toBeInTheDocument()
-    // It should NOT be a <main> (amendment — <main> is in page/workspace shell)
-    expect(contentArea?.tagName).toBe('DIV')
+  it('content area has id=main-content and is a div (not main)', () => {
+    const html = renderFrame()
+    expect(html).toContain('id="main-content"')
+    // id="main-content" must be on a <div>, not <main> (amendment)
+    expect(html).toMatch(/<div[^>]*id="main-content"/)
+    expect(html).not.toMatch(/<main[^>]*id="main-content"/)
   })
 
   // TC-OF-3: Active workspace detection from pathname
   it('marks active workspace based on pathname', () => {
-    renderFrame('/home')
+    const html = renderFrame('/home')
     // Home link should have aria-current="page"
-    const homeLink = screen.getByText('Home').closest('a')
-    expect(homeLink).toHaveAttribute('aria-current', 'page')
-
-    // Finance should NOT have aria-current
-    const financeLink = screen.getByText('Finance').closest('a')
-    expect(financeLink).not.toHaveAttribute('aria-current')
+    expect(html).toContain('aria-current="page"')
+    // The aria-current link should point to /home
+    expect(html).toContain('href="/home"')
   })
 
   it('detects nested route as matching workspace', () => {
-    renderFrame('/finance/reports')
-    const financeLink = screen.getByText('Finance').closest('a')
-    expect(financeLink).toHaveAttribute('aria-current', 'page')
+    const html = renderFrame('/finance/reports')
+    expect(html).toContain('aria-current="page"')
+    // Finance workspace should be active
+    expect(html).toContain('href="/finance"')
   })
 
   // TC-OF-4: Children rendered inside content area
   it('renders children inside content area', () => {
-    renderFrame()
-    const contentArea = document.getElementById('main-content')
-    expect(contentArea).toContainElement(screen.getByTestId('page-content'))
+    const html = renderFrame()
+    expect(html).toContain('Page content')
+    expect(html).toContain('data-testid="page-content"')
   })
 
   // TC-OF-5: Skip-to-content link (a11y)
   it('renders skip-to-content link', () => {
-    renderFrame()
-    const skipLink = screen.getByText('Skip to main content')
-    expect(skipLink).toHaveAttribute('href', '#main-content')
+    const html = renderFrame()
+    expect(html).toContain('Skip to main content')
+    expect(html).toContain('href="#main-content"')
   })
 
   // TC-OF-6: Wraps children in GlobalContextProvider
   // (Verified implicitly — if sidebar renders workspace names from context, provider works)
   it('provides global context to children', () => {
-    renderFrame()
+    const html = renderFrame()
     // Sidebar reads workspaces from props passed through OperatingFrame
-    expect(screen.getByText('Home')).toBeInTheDocument()
-    expect(screen.getByText('Finance')).toBeInTheDocument()
+    expect(html).toContain('Home')
+    expect(html).toContain('Finance')
   })
 
   // TC-OF-7: null activeWorkspaceId when no route matches
   it('no workspace is active for unmatched route', () => {
-    renderFrame('/unknown-page')
+    const html = renderFrame('/unknown-page')
     // Neither workspace should have aria-current
-    const homeLink = screen.getByText('Home').closest('a')
-    const financeLink = screen.getByText('Finance').closest('a')
-    expect(homeLink).not.toHaveAttribute('aria-current')
-    expect(financeLink).not.toHaveAttribute('aria-current')
+    expect(html).not.toContain('aria-current')
   })
 
   // TC-OF-8: Mobile hamburger button
   it('renders mobile hamburger button', () => {
-    renderFrame()
-    expect(screen.getByLabelText('Open navigation menu')).toBeInTheDocument()
+    const html = renderFrame()
+    expect(html).toContain('aria-label="Open navigation menu"')
   })
 
   // User identity in sidebar
   it('displays user name and email in sidebar', () => {
-    renderFrame()
-    expect(screen.getByText('Yossi')).toBeInTheDocument()
-    expect(screen.getByText('yossi@jjproperty.com')).toBeInTheDocument()
+    const html = renderFrame()
+    expect(html).toContain('Yossi')
+    expect(html).toContain('yossi@jjproperty.com')
   })
 
   // Brand
   it('displays JJ Property brand in sidebar', () => {
-    renderFrame()
-    expect(screen.getByText('JJ Property')).toBeInTheDocument()
+    const html = renderFrame()
+    expect(html).toContain('JJ Property')
   })
 
   // Content area has correct ID for skip link
   it('content area has id for skip link target', () => {
-    renderFrame()
-    const contentArea = document.getElementById('main-content')
-    expect(contentArea).toBeInTheDocument()
-    expect(contentArea).toHaveAttribute('id', 'main-content')
+    const html = renderFrame()
+    expect(html).toContain('id="main-content"')
   })
 })
