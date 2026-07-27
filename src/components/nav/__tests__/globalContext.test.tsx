@@ -1,18 +1,24 @@
 /**
  * @description Tests for GlobalContextProvider — Contract D.
  *
+ * Test environment: node (jest.config.ts testEnvironment: 'node')
+ * Rendering strategies:
+ *   - react-test-renderer (create + act + update) for behavioral/state-mutation tests
+ *   - react-dom/server renderToStaticMarkup for structural/throw tests
+ *
  * Test Contracts covered:
- *   TC-GC-1: useGlobalContext returns full shape
- *   TC-GC-2: useUpdateEntityContext sets entity
- *   TC-GC-3: entityContext clears on workspace change
- *   TC-GC-4: useUpdateAttention updates one workspace
- *   TC-GC-5: null attention preserved (P-ARCH-1)
- *   TC-GC-6: frameReady true after mount
- *   TC-GC-7: hooks throw descriptive error outside provider
+ *   TC-GC-1: useGlobalContext returns full shape (react-test-renderer)
+ *   TC-GC-2: useUpdateEntityContext sets entity (react-test-renderer + act)
+ *   TC-GC-3: entityContext clears on workspace change (react-test-renderer + act + update)
+ *   TC-GC-4: useUpdateAttention updates one workspace (react-test-renderer + act)
+ *   TC-GC-5: null attention preserved (P-ARCH-1) (react-test-renderer + act)
+ *   TC-GC-6: frameReady true after mount (react-test-renderer)
+ *   TC-GC-7: hooks throw descriptive error outside provider (renderToStaticMarkup)
  */
 
 import React from 'react'
-import { renderHook, act } from '@testing-library/react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import TestRenderer, { act } from 'react-test-renderer'
 import {
   GlobalContextProvider,
   useGlobalContext,
@@ -20,7 +26,12 @@ import {
   useUpdateAttention,
   useSetMobileMenu,
 } from '../GlobalContextProvider'
-import type { FrameUser, WorkspaceRegistration, EntityContext } from '@/lib/nav/types'
+import type {
+  FrameUser,
+  WorkspaceRegistration,
+  EntityContext,
+  GlobalContextShape,
+} from '@/lib/nav/types'
 import { Home } from 'lucide-react'
 
 // ─── Fixtures ────────────────────────────────────────────────────────────
@@ -51,20 +62,28 @@ const mockWorkspaces: WorkspaceRegistration[] = [
   },
 ]
 
-function wrapper(
-  activeWorkspaceId: string | null = 'home'
-): React.FC<{ children: React.ReactNode }> {
-  return function Wrapper({ children }: { children: React.ReactNode }) {
-    return (
-      <GlobalContextProvider
-        user={mockUser}
-        workspaces={mockWorkspaces}
-        activeWorkspaceId={activeWorkspaceId}
-      >
-        {children}
-      </GlobalContextProvider>
-    )
-  }
+// ─── Context Capture (for behavioral tests with react-test-renderer) ────
+
+interface CapturedContext {
+  ctx: GlobalContextShape
+  updateEntity: (entity: EntityContext | null) => void
+  updateAttention: (workspaceId: string, count: number | null) => void
+  setMobile: (open: boolean) => void
+}
+
+let captured: CapturedContext
+
+/**
+ * Consumer component that captures all context values and updater functions.
+ * Used with react-test-renderer to test state mutations via act().
+ */
+function ContextCapture() {
+  const ctx = useGlobalContext()
+  const updateEntity = useUpdateEntityContext()
+  const updateAttention = useUpdateAttention()
+  const setMobile = useSetMobileMenu()
+  captured = { ctx, updateEntity, updateAttention, setMobile }
+  return null
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────
@@ -72,37 +91,57 @@ function wrapper(
 describe('GlobalContextProvider', () => {
   // TC-GC-1: useGlobalContext returns full shape
   it('provides full GlobalContextShape', () => {
-    const { result } = renderHook(() => useGlobalContext(), {
-      wrapper: wrapper('home'),
+    act(() => {
+      TestRenderer.create(
+        <GlobalContextProvider
+          user={mockUser}
+          workspaces={mockWorkspaces}
+          activeWorkspaceId="home"
+        >
+          <ContextCapture />
+        </GlobalContextProvider>
+      )
     })
 
-    const ctx = result.current
-    expect(ctx.user).toEqual(mockUser)
-    expect(ctx.activeWorkspaceId).toBe('home')
-    expect(ctx.activeWorkspaceLabel).toBe('Home')
-    expect(ctx.entityContext).toBeNull()
-    expect(ctx.attention).toBeInstanceOf(Map)
-    expect(ctx.frameReady).toBe(true)
-    expect(ctx.mobileMenuOpen).toBe(false)
+    expect(captured.ctx.user).toEqual(mockUser)
+    expect(captured.ctx.activeWorkspaceId).toBe('home')
+    expect(captured.ctx.activeWorkspaceLabel).toBe('Home')
+    expect(captured.ctx.entityContext).toBeNull()
+    expect(captured.ctx.attention).toBeInstanceOf(Map)
+    expect(captured.ctx.frameReady).toBe(true)
+    expect(captured.ctx.mobileMenuOpen).toBe(false)
   })
 
   // TC-GC-6: frameReady true after mount
   it('frameReady is true immediately', () => {
-    const { result } = renderHook(() => useGlobalContext(), {
-      wrapper: wrapper(),
+    act(() => {
+      TestRenderer.create(
+        <GlobalContextProvider
+          user={mockUser}
+          workspaces={mockWorkspaces}
+          activeWorkspaceId="home"
+        >
+          <ContextCapture />
+        </GlobalContextProvider>
+      )
     })
-    expect(result.current.frameReady).toBe(true)
+
+    expect(captured.ctx.frameReady).toBe(true)
   })
 
   // TC-GC-2: useUpdateEntityContext sets entity
   it('updates entity context', () => {
-    const { result: ctxResult } = renderHook(
-      () => ({
-        ctx: useGlobalContext(),
-        update: useUpdateEntityContext(),
-      }),
-      { wrapper: wrapper() }
-    )
+    act(() => {
+      TestRenderer.create(
+        <GlobalContextProvider
+          user={mockUser}
+          workspaces={mockWorkspaces}
+          activeWorkspaceId="home"
+        >
+          <ContextCapture />
+        </GlobalContextProvider>
+      )
+    })
 
     const entity: EntityContext = {
       label: 'Villa Mazotos',
@@ -110,145 +149,202 @@ describe('GlobalContextProvider', () => {
     }
 
     act(() => {
-      ctxResult.current.update(entity)
+      captured.updateEntity(entity)
     })
 
-    expect(ctxResult.current.ctx.entityContext).toEqual(entity)
+    expect(captured.ctx.entityContext).toEqual(entity)
   })
 
-  // TC-GC-3: entityContext clears on workspace change
+  // TC-GC-3: entityContext clears on workspace change (Guarantee G3)
   it('clears entity context on workspace change', () => {
-    let activeWs = 'home'
+    let renderer!: TestRenderer.ReactTestRenderer
 
-    const Wrapper = ({ children }: { children: React.ReactNode }) => (
-      <GlobalContextProvider
-        user={mockUser}
-        workspaces={mockWorkspaces}
-        activeWorkspaceId={activeWs}
-      >
-        {children}
-      </GlobalContextProvider>
-    )
-
-    const { result, rerender } = renderHook(
-      () => ({
-        ctx: useGlobalContext(),
-        update: useUpdateEntityContext(),
-      }),
-      { wrapper: Wrapper }
-    )
-
-    // Set entity
     act(() => {
-      result.current.update({ label: 'Test', type: 'property' })
+      renderer = TestRenderer.create(
+        <GlobalContextProvider
+          user={mockUser}
+          workspaces={mockWorkspaces}
+          activeWorkspaceId="home"
+        >
+          <ContextCapture />
+        </GlobalContextProvider>
+      )
     })
-    expect(result.current.ctx.entityContext).not.toBeNull()
 
-    // Change workspace
-    activeWs = 'finance'
-    rerender()
+    // Set entity in current workspace
+    act(() => {
+      captured.updateEntity({ label: 'Test Property', type: 'property' })
+    })
+    expect(captured.ctx.entityContext).not.toBeNull()
 
-    expect(result.current.ctx.entityContext).toBeNull()
+    // Change workspace — entity must clear (G3)
+    act(() => {
+      renderer.update(
+        <GlobalContextProvider
+          user={mockUser}
+          workspaces={mockWorkspaces}
+          activeWorkspaceId="finance"
+        >
+          <ContextCapture />
+        </GlobalContextProvider>
+      )
+    })
+
+    expect(captured.ctx.entityContext).toBeNull()
   })
 
   // TC-GC-4: useUpdateAttention updates one workspace
   it('updates attention for a single workspace', () => {
-    const { result } = renderHook(
-      () => ({
-        ctx: useGlobalContext(),
-        updateAttention: useUpdateAttention(),
-      }),
-      { wrapper: wrapper() }
-    )
-
     act(() => {
-      result.current.updateAttention('finance', 5)
+      TestRenderer.create(
+        <GlobalContextProvider
+          user={mockUser}
+          workspaces={mockWorkspaces}
+          activeWorkspaceId="home"
+        >
+          <ContextCapture />
+        </GlobalContextProvider>
+      )
     })
 
-    const financeAttention = result.current.ctx.attention.get('finance')
+    act(() => {
+      captured.updateAttention('finance', 5)
+    })
+
+    const financeAttention = captured.ctx.attention.get('finance')
     expect(financeAttention?.count).toBe(5)
 
     // Home should still be null (not affected)
-    const homeAttention = result.current.ctx.attention.get('home')
+    const homeAttention = captured.ctx.attention.get('home')
     expect(homeAttention?.count).toBeNull()
   })
 
   // TC-GC-5: null attention preserved (P-ARCH-1)
   it('preserves null attention count (P-ARCH-1)', () => {
-    const { result } = renderHook(
-      () => ({
-        ctx: useGlobalContext(),
-        updateAttention: useUpdateAttention(),
-      }),
-      { wrapper: wrapper() }
-    )
+    act(() => {
+      TestRenderer.create(
+        <GlobalContextProvider
+          user={mockUser}
+          workspaces={mockWorkspaces}
+          activeWorkspaceId="home"
+        >
+          <ContextCapture />
+        </GlobalContextProvider>
+      )
+    })
+
+    // Initial state — null
+    expect(captured.ctx.attention.get('home')?.count).toBeNull()
 
     // Set to a number first
     act(() => {
-      result.current.updateAttention('home', 3)
+      captured.updateAttention('home', 3)
     })
-    expect(result.current.ctx.attention.get('home')?.count).toBe(3)
+    expect(captured.ctx.attention.get('home')?.count).toBe(3)
 
-    // Set back to null
+    // Set back to null — must not coerce to 0
     act(() => {
-      result.current.updateAttention('home', null)
+      captured.updateAttention('home', null)
     })
-    expect(result.current.ctx.attention.get('home')?.count).toBeNull()
+    expect(captured.ctx.attention.get('home')?.count).toBeNull()
   })
 
-  // Mobile menu toggle
+  // Mobile menu toggle (bonus behavioral test)
   it('toggles mobile menu', () => {
-    const { result } = renderHook(
-      () => ({
-        ctx: useGlobalContext(),
-        setMobile: useSetMobileMenu(),
-      }),
-      { wrapper: wrapper() }
-    )
+    act(() => {
+      TestRenderer.create(
+        <GlobalContextProvider
+          user={mockUser}
+          workspaces={mockWorkspaces}
+          activeWorkspaceId="home"
+        >
+          <ContextCapture />
+        </GlobalContextProvider>
+      )
+    })
 
-    expect(result.current.ctx.mobileMenuOpen).toBe(false)
+    expect(captured.ctx.mobileMenuOpen).toBe(false)
 
     act(() => {
-      result.current.setMobile(true)
+      captured.setMobile(true)
     })
-    expect(result.current.ctx.mobileMenuOpen).toBe(true)
+    expect(captured.ctx.mobileMenuOpen).toBe(true)
 
     act(() => {
-      result.current.setMobile(false)
+      captured.setMobile(false)
     })
-    expect(result.current.ctx.mobileMenuOpen).toBe(false)
+    expect(captured.ctx.mobileMenuOpen).toBe(false)
   })
 
   // activeWorkspaceLabel is null when no match
   it('returns null activeWorkspaceLabel when no workspace matches', () => {
-    const { result } = renderHook(() => useGlobalContext(), {
-      wrapper: wrapper(null),
+    act(() => {
+      TestRenderer.create(
+        <GlobalContextProvider
+          user={mockUser}
+          workspaces={mockWorkspaces}
+          activeWorkspaceId={null}
+        >
+          <ContextCapture />
+        </GlobalContextProvider>
+      )
     })
-    expect(result.current.activeWorkspaceLabel).toBeNull()
+
+    expect(captured.ctx.activeWorkspaceLabel).toBeNull()
+  })
+
+  // Provider renders children (structural — renderToStaticMarkup)
+  it('renders children inside provider', () => {
+    const html = renderToStaticMarkup(
+      <GlobalContextProvider
+        user={mockUser}
+        workspaces={mockWorkspaces}
+        activeWorkspaceId="home"
+      >
+        <div>Hello from child</div>
+      </GlobalContextProvider>
+    )
+    expect(html).toContain('Hello from child')
   })
 
   // TC-GC-7: hooks throw descriptive error outside provider
   it('useGlobalContext throws outside provider', () => {
-    expect(() => {
-      renderHook(() => useGlobalContext())
-    }).toThrow('useGlobalContext must be used within <GlobalContextProvider>')
+    function Orphan() {
+      useGlobalContext()
+      return <div />
+    }
+    expect(() => renderToStaticMarkup(<Orphan />)).toThrow(
+      'useGlobalContext must be used within <GlobalContextProvider>'
+    )
   })
 
   it('useUpdateEntityContext throws outside provider', () => {
-    expect(() => {
-      renderHook(() => useUpdateEntityContext())
-    }).toThrow('useUpdateEntityContext must be used within <GlobalContextProvider>')
+    function Orphan() {
+      useUpdateEntityContext()
+      return <div />
+    }
+    expect(() => renderToStaticMarkup(<Orphan />)).toThrow(
+      'useUpdateEntityContext must be used within <GlobalContextProvider>'
+    )
   })
 
   it('useUpdateAttention throws outside provider', () => {
-    expect(() => {
-      renderHook(() => useUpdateAttention())
-    }).toThrow('useUpdateAttention must be used within <GlobalContextProvider>')
+    function Orphan() {
+      useUpdateAttention()
+      return <div />
+    }
+    expect(() => renderToStaticMarkup(<Orphan />)).toThrow(
+      'useUpdateAttention must be used within <GlobalContextProvider>'
+    )
   })
 
   it('useSetMobileMenu throws outside provider', () => {
-    expect(() => {
-      renderHook(() => useSetMobileMenu())
-    }).toThrow('useSetMobileMenu must be used within <GlobalContextProvider>')
+    function Orphan() {
+      useSetMobileMenu()
+      return <div />
+    }
+    expect(() => renderToStaticMarkup(<Orphan />)).toThrow(
+      'useSetMobileMenu must be used within <GlobalContextProvider>'
+    )
   })
 })
