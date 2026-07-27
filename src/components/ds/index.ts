@@ -46,3 +46,6 @@ export { TimelineZone } from './TimelineZone'
 export type { TimelineZoneProps } from './TimelineZone'
 export { DocumentCard } from './DocumentCard'
 export type { DocumentCardProps } from './DocumentCard'
+
+// NAV-1 — WorkspaceHeader (contextual page/workspace header)
+export { WorkspaceHeader } from './WorkspaceHeader'
