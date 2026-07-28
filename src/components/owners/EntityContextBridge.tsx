@@ -22,7 +22,7 @@
  *   G5: No identity resolution — receives resolved identity only.
  *
  * Forbidden:
- *   ECB-F1: No Supabase imports.
+ *   ECB-F1: No database client imports.
  *   ECB-F2: No fetch / data access.
  *   ECB-F3: No DB access.
  *   ECB-F4: No route ownership / navigation.
