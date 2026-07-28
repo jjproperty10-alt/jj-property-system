@@ -20,7 +20,7 @@
  *
  * 3. PROVIDER ISOLATION
  *    Adding a Provider never requires changing this function.
- *    Reads only ExecutiveBriefDTO.summary and .sections — never providerId.
+ *    Reads only ExecutiveBriefDTO.summary and .sections — never individual provider IDs.
  *
  * @see PR79_GATE0_AND_DESIGN_PACKAGE.md — Contract Hardening §3.1–3.3
  * @see P-ARCH-1: Unknown = NULL. Never 0 or placeholder.
