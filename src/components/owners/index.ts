@@ -10,6 +10,10 @@ export type { OwnerIdentityHeaderProps } from './OwnerIdentityHeader'
 export { OwnerTabNavClient } from './OwnerTabNavClient'
 export type { OwnerTabNavClientProps } from './OwnerTabNavClient'
 
+// RC-003 — Entity Context Bridge (workspace-to-frame communication)
+export { EntityContextBridge } from './EntityContextBridge'
+export type { EntityContextBridgeProps } from './EntityContextBridge'
+
 // Tab components
 export { OverviewTab } from './tabs/OverviewTab'
 export type { OverviewTabProps } from './tabs/OverviewTab'
