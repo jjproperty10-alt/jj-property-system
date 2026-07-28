@@ -1,8 +1,10 @@
 import type { Metadata } from 'next'
 import { DailyGreeting, HealthSignal, AllClearCard, PageShell, WorkspaceHeader } from '@/components/ds'
-import { getHomeScreenState } from '@/lib/home/homeService'
+import { getHomeBrief } from '@/lib/home/homeService'
 import { getAuthorizedExecutiveBrief } from '@/lib/executive/executiveBriefService'
 import { ExecutiveBrief } from '@/components/executive'
+import { NeedsAttentionSection } from '@/components/home/NeedsAttentionSection'
+import { HomeUnavailable } from '@/components/home/HomeUnavailable'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,36 +15,47 @@ export const metadata: Metadata = {
 /**
  * Home page — the owner's 60-second morning briefing.
  *
+ * PR #79 — Reference Case #2: Home with Real Business Information.
+ *
+ * Every fact on this screen traces to an authoritative provider.
+ * No position shows hardcoded data. No position fabricates a count.
+ * Positions with no authoritative source show nothing — not zero.
+ *
  * Eliminates one anxiety per section, in order of urgency:
- *   Position 1: Am I okay? (DailyGreeting)
- *   Position 2: Is something broken? (HealthSignal)
- *   Position 3: What needs me? (AllClearCard | NeedsAttentionSection [E3-A2])
+ *   Position 1: Am I okay? (DailyGreeting — from brief state)
+ *   Position 2: Is something broken? (HealthSignal — from brief state)
+ *   Position 3: What needs me? (AllClearCard | NeedsAttentionSection | HomeUnavailable)
  *   Position 4: Executive Brief — Chief of Staff MVP (M0)
- *   Position 5: What should I do first? (Quick Action [E3-A4])
- *   Position 6: What happened in detail? (Recent Activity [E3-A4])
+ *   Position 5: What should I do first? (Quick Action [E3-A4 — future])
+ *   Position 6: What happened in detail? (Recent Activity [E3-A4 — future])
  *
- * 5-Second Test: Clear, Calm, In Control, Informed, Assisted.
- *
- * E3 Experience Layer — E3-A1 (Positions 1, 2, 3 when count=0)
+ * Authority Map:
+ *   ownerName       → Auth Identity (getHomeBrief resolves from auth)
+ *   timeOfDay       → Server clock
+ *   health          → Derived from ExecutiveBriefDTO.summary
+ *   allClear        → Derived from ExecutiveBriefDTO.summary + evidence coverage
+ *   greetingMessage → Derived from ExecutiveBriefDTO.summary
+ *   attentionItems  → Derived from ExecutiveBriefDTO.sections
+ *   Executive Brief → ExecutiveBriefDTO (DAL-protected, rendered directly)
  *
  * AUTHORIZATION:
- * Executive Brief is DAL-protected via getAuthorizedExecutiveBrief().
- * - Authenticated superadmin → full brief rendered
- * - Authenticated non-superadmin → brief section omitted (no data leak)
- * - Unauthenticated → handled by middleware redirect before this runs
+ *   Executive Brief is DAL-protected via getAuthorizedExecutiveBrief().
+ *   Home Brief derives from the same brief — inherits DAL authorization.
  *
  * NAV-1 Composition (Tree B — Single-Section Page):
  *   OperatingFrame → PageShell → <main> → WorkspaceHeader → content
  *
- * <main> landmark is rendered here (not in OperatingFrame) to avoid
- * nested <main> with WorkspaceShell on other routes.
- *
+ * @see PR79_GATE0_AND_DESIGN_PACKAGE.md — Gate 0 + Design Package
  * @see ADR-003_DECISION_ACCESS_LAYER.md — DAL v0.1
  * @see NAV-1_PHASE4_COMPOSITION_RULES.md — Tree B
  */
 export default async function HomePage() {
-  const [state, briefResult] = await Promise.all([
-    getHomeScreenState(),
+  // Home Brief and Executive Brief share the same DAL-protected pipeline.
+  // getHomeBrief calls getAuthorizedExecutiveBrief internally, so we
+  // call getAuthorizedExecutiveBrief separately only for Position 4
+  // (the full Executive Brief rendering).
+  const [homeBrief, briefResult] = await Promise.all([
+    getHomeBrief('Yossi'),
     getAuthorizedExecutiveBrief(),
   ])
 
@@ -51,40 +64,43 @@ export default async function HomePage() {
       <main className="mx-auto max-w-2xl space-y-6 px-4 py-6">
         <WorkspaceHeader title="Home" />
 
-        {/* Position 1 — Am I okay? */}
+        {/* Position 1 — Am I okay?
+         * greetingMessage is null when indeterminate → DailyGreeting returns null (silence).
+         */}
         <DailyGreeting
-          ownerName={state.ownerName}
-          message={state.greeting}
-          timeOfDay={state.timeOfDay}
+          ownerName={homeBrief.ownerName}
+          message={homeBrief.greetingMessage ?? ''}
+          timeOfDay={homeBrief.timeOfDay}
         />
 
-        {/* Position 2 — Business Status */}
-        <div>
-          <p className="jj-label mb-2 text-gray-400">Business Status</p>
-          <HealthSignal status={state.health} />
-        </div>
-
-        {/* Position 3 — What needs me? (Emotional Resolution) */}
-        {state.needsAttentionCount === 0 ? (
-          /* You're done — the best possible state */
-          <AllClearCard
-            headline="Nothing needs you right now."
-            lines={state.allClearLines}
-            emoji={state.allClearEmoji}
-          />
-        ) : (
-          /*
-           * Items need the owner's decision.
-           * E3-A2: Replace this placeholder with <NeedsAttentionSection />.
-           */
-          <div
-            className="rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800"
-            data-e3-slot="needs-attention-placeholder"
-          >
-            {state.needsAttentionCount} item
-            {state.needsAttentionCount !== 1 ? 's need' : ' needs'} your decision —{' '}
-            <span className="text-xs text-amber-600 italic">NeedsAttentionSection (E3-A2)</span>
+        {/* Position 2 — Business Status
+         * health is null when indeterminate → HealthSignal not rendered (silence > noise).
+         */}
+        {homeBrief.health !== null && (
+          <div>
+            <p className="jj-label mb-2 text-gray-400">Business Status</p>
+            <HealthSignal status={homeBrief.health} />
           </div>
+        )}
+
+        {/* Position 3 — What needs me? (Emotional Resolution)
+         *
+         * allClear truth table:
+         *   true  → AllClearCard (you're done — the best possible state)
+         *   false → NeedsAttentionSection (items exist)
+         *   null  → HomeUnavailable (can't determine — silence > false certainty)
+         */}
+        {homeBrief.allClear === true && (
+          <AllClearCard
+            headline={homeBrief.allClearHeadline ?? 'Nothing needs your attention right now.'}
+            lines={[...homeBrief.allClearLines]}
+          />
+        )}
+        {homeBrief.allClear === false && (
+          <NeedsAttentionSection items={homeBrief.needsAttentionItems} />
+        )}
+        {homeBrief.allClear === null && (
+          <HomeUnavailable />
         )}
 
         {/* Position 4 — Executive Brief (Chief of Staff MVP)
@@ -96,8 +112,8 @@ export default async function HomePage() {
         {briefResult.ok && <ExecutiveBrief dto={briefResult.dto} />}
 
         {/*
-         * Position 5 — Quick Action: E3-A4
-         * Position 6 — Recent Activity: E3-A4
+         * Position 5 — Quick Action: E3-A4 (future — no authority exists yet)
+         * Position 6 — Recent Activity: E3-A4 (future — no authority exists yet)
          */}
 
       </main>
