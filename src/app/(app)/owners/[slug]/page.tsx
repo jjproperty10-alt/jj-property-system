@@ -8,15 +8,24 @@
  * - Server component owns data fetching and tab routing
  * - WorkspaceShell provides sticky header + tabpanel ARIA structure
  * - OwnerIdentityHeader renders identity + status (contains client TabNav)
+ * - EntityContextBridge sets GlobalContext.entityContext for frame-level display
  * - Each tab component receives a DTO — no accounting logic in UI
  *
+ * Entity Context (RC-003):
+ *   Server resolves canonical owner identity from the identity authority.
+ *   EntityContextBridge (client) sets entityContext in GlobalContext on mount,
+ *   clears it on unmount. OperatingFrame reads entityContext exclusively
+ *   through GlobalContext — no prop drilling.
+ *
  * PR #3 — JJ Workspace Navigation + Owner Workspace Design System
+ * RC-003 — Owner Entity Context bridge
  */
 
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { WorkspaceShell } from '@/components/ds'
 import { OwnerIdentityHeader } from '@/components/owners/OwnerIdentityHeader'
+import { EntityContextBridge } from '@/components/owners/EntityContextBridge'
 import { OverviewTab } from '@/components/owners/tabs/OverviewTab'
 import { FinancialTab } from '@/components/owners/tabs/FinancialTab'
 import { ReservationsTab } from '@/components/owners/tabs/ReservationsTab'
@@ -133,6 +142,16 @@ export default async function OwnerWorkspacePage({
       tabs={tabs}
       activeTab={activeTab}
     >
+      {/* RC-003: Bridge server-resolved owner identity into GlobalContext.
+       * EntityContextBridge sets entityContext on mount, clears on unmount.
+       * The Frame reads entity identity exclusively through GlobalContext. */}
+      <EntityContextBridge
+        entityContext={{
+          label: workspace.identity.name,
+          type: 'owner',
+        }}
+      />
+
       {/* Tab 1 — Overview */}
       {activeTab === 'overview' && (
         <OverviewTab dto={overview} ownerName={workspace.identity.name} />
