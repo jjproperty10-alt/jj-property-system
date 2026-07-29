@@ -44,11 +44,10 @@ import {
 import { EntityContextBridge } from '@/components/owners/EntityContextBridge'
 import type {
   FrameUser,
-  WorkspaceRegistration,
+  WorkspaceNavItem,
   EntityContext,
   GlobalContextShape,
 } from '@/lib/nav/types'
-import { Home, Users } from 'lucide-react'
 
 // ─── Fixtures ────────────────────────────────────────────────────────────
 
@@ -59,22 +58,20 @@ const mockUser: FrameUser = {
   role: 'ceo',
 }
 
-const mockWorkspaces: WorkspaceRegistration[] = [
+const mockWorkspaces: WorkspaceNavItem[] = [
   {
     id: 'home',
     label: 'Home',
-    icon: Home,
+    iconId: 'home',
     landingRoute: '/home',
     routePrefix: '/home',
-    attentionProvider: async () => null,
   },
   {
     id: 'owners',
     label: 'Owners',
-    icon: Users,
+    iconId: 'owners',
     landingRoute: '/owners',
     routePrefix: '/owners',
-    attentionProvider: async () => null,
   },
 ]
 
