@@ -17,6 +17,9 @@
  *
  * ADR-005: evaluateDecision() produces NO log entry.
  *          logDecision() is called only on Server Action execution.
+ *
+ * Finance Alignment PR: Wrapped in PageShell + WorkspaceHeader (DS v1.0).
+ * Classification: Mechanical Refactor — no logic changes.
  */
 
 import { redirect } from 'next/navigation'
@@ -28,6 +31,7 @@ import { logDecision } from '@/lib/finance/logDecision'
 import { FinancialPositionCard } from '@/components/finance/FinancialPositionCard'
 import { ClaimBreakdown } from '@/components/finance/ClaimBreakdown'
 import { DecisionCard } from '@/components/finance/DecisionCard'
+import { PageShell, WorkspaceHeader } from '@/components/ds'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -180,24 +184,13 @@ export default async function FinanceDecisionPage({ params }: PageProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Page header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-5">
-        <div className="max-w-3xl mx-auto">
-          <nav className="text-xs text-gray-400 mb-2">
-            Finance / Decision
-          </nav>
-          <h1 className="text-xl font-bold text-gray-900">
-            {entityId} — {periodLabel}
-          </h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Decision: {decisionType.replace(/_/g, ' ')}
-          </p>
-        </div>
-      </div>
+    <PageShell maxWidth="md">
+      <WorkspaceHeader
+        title={`${entityId} — ${periodLabel}`}
+        subtitle={`Decision: ${decisionType.replace(/_/g, ' ')}`}
+      />
 
-      {/* Main content */}
-      <div className="max-w-3xl mx-auto px-6 py-8 flex flex-col gap-6">
+      <div className="flex flex-col gap-6">
 
         {/* 1. Decision outcome — top of page (most actionable) */}
         <DecisionCard
@@ -219,6 +212,6 @@ export default async function FinanceDecisionPage({ params }: PageProps) {
           Decision evaluations are not stored — only Executed decisions create an audit log entry.
         </p>
       </div>
-    </div>
+    </PageShell>
   )
 }
