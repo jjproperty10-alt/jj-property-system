@@ -13,6 +13,10 @@
  *   - Attention badges: null → nothing, 0 → nothing, >0 → count (G5, G6, EX-2)
  *   - Role filtering already applied by workspaceRegistry (G7)
  *
+ * RSC boundary:
+ *   Receives WorkspaceNavItem[] (serializable DTO) — no React components in props.
+ *   Icon resolution: iconId string → Lucide component via WORKSPACE_ICONS map.
+ *
  * DS v1.0 compliance:
  *   - Navy background: JJ_COLORS.navy.DEFAULT (#0f172a)
  *   - Typography: jj-body-sm (14px/1.5) for nav items
@@ -27,14 +31,32 @@
 
 import Link from 'next/link'
 import { useEffect, useRef } from 'react'
-import { Menu, X, LogOut } from 'lucide-react'
-import type { FrameUser, WorkspaceRegistration, WorkspaceAttention } from '@/lib/nav/types'
+import type { ComponentType } from 'react'
+import { Menu, X, LogOut, Home, Users, BarChart3, Building2 } from 'lucide-react'
+import type { FrameUser, WorkspaceNavItem, WorkspaceIconId, WorkspaceAttention } from '@/lib/nav/types'
 import { useGlobalContext, useSetMobileMenu } from './GlobalContextProvider'
+
+// ─── Icon Resolution ────────────────────────────────────────────────────
+
+/**
+ * Maps WorkspaceIconId to Lucide icon components.
+ * This is the client-side resolution point for the RSC serialization boundary.
+ * WorkspaceNavItem carries iconId (closed union); this map resolves to the actual component.
+ *
+ * Both the key type (WorkspaceIconId) and the map in workspaceRegistry.ts
+ * (WORKSPACE_ICON_IDS) must stay in sync. TypeScript enforces completeness.
+ */
+const WORKSPACE_ICONS: Record<WorkspaceIconId, ComponentType<{ className?: string }>> = {
+  home: Home,
+  ceo: Building2,
+  owners: Users,
+  finance: BarChart3,
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
 interface SidebarProps {
-  workspaces: readonly WorkspaceRegistration[]
+  workspaces: readonly WorkspaceNavItem[]
   activeWorkspaceId: string | null
   user: FrameUser
 }
@@ -159,13 +181,13 @@ export function Sidebar({ workspaces, activeWorkspaceId, user }: SidebarProps) {
 // ─── NavItem ────────────────────────────────────────────────────────────
 
 interface NavItemProps {
-  workspace: WorkspaceRegistration
+  workspace: WorkspaceNavItem
   isActive: boolean
   attention: WorkspaceAttention | null
 }
 
 function NavItem({ workspace, isActive, attention }: NavItemProps) {
-  const Icon = workspace.icon
+  const Icon = WORKSPACE_ICONS[workspace.iconId]
   const count = attention?.count ?? null
 
   // G6: null attention → no badge (P-ARCH-1)
