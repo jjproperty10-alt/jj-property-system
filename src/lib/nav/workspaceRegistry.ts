@@ -13,11 +13,22 @@
  *   - Changing an id is FORBIDDEN (immutable)
  *   - Changing canonicalLabel requires Yossi approval
  *
+ * RSC boundary:
+ *   WorkspaceRegistration contains non-serializable values (icon components, async functions).
+ *   getRegisteredWorkspaces() returns WorkspaceNavItem — a serializable projection.
+ *   getAllWorkspaces() returns WorkspaceRegistration — server/test use only, never crosses RSC.
+ *
  * @see NAV-1_PHASE2_NAVIGATION_CONTRACT.md — Contract B, Contract E, Appendix
  */
 
 import { Home, Users, BarChart3, Building2 } from 'lucide-react'
-import type { WorkspaceRegistration, FrameUser } from './types'
+import type {
+  WorkspaceRegistration,
+  WorkspaceNavItem,
+  RegisteredWorkspaceId,
+  WorkspaceIconId,
+  FrameUser,
+} from './types'
 
 // ─── Workspace Definitions ──────────────────────────────────────────────
 
@@ -71,6 +82,22 @@ const WORKSPACES: readonly WorkspaceRegistration[] = [
   },
 ]
 
+// ─── Icon ID Map ────────────────────────────────────────────────────────
+
+/**
+ * Maps workspace id to the closed icon identifier used in WorkspaceNavItem.
+ * Resolved to actual Lucide components client-side in Sidebar (WORKSPACE_ICONS map).
+ *
+ * Both keys (RegisteredWorkspaceId) and values (WorkspaceIconId) are closed unions.
+ * TypeScript will error if a workspace is added to either union but not to this map.
+ */
+const WORKSPACE_ICON_IDS: Record<RegisteredWorkspaceId, WorkspaceIconId> = {
+  home: 'home',
+  ceo: 'ceo',
+  owners: 'owners',
+  finance: 'finance',
+}
+
 // ─── Role Visibility (Contract E.1) ─────────────────────────────────────
 
 /**
@@ -111,24 +138,45 @@ const ROLE_VISIBILITY: Record<string, Record<FrameUser['role'], 'visible' | 'rea
 // ─── Public API ─────────────────────────────────────────────────────────
 
 /**
- * Returns workspaces visible to the given role.
+ * Returns serializable workspace nav items visible to the given role.
+ * Projects WorkspaceRegistration → WorkspaceNavItem (serializable DTO).
  * Omits unauthorized workspaces entirely (G7, E-R1).
  * Returns empty array if role is undefined (fail-closed).
+ *
+ * This function intentionally projects only serializable fields for crossing
+ * the React Server Component boundary. Do NOT spread the full workspace object
+ * or add non-serializable fields (React components, functions, Symbols) to the
+ * returned DTO — doing so will crash every authenticated route at runtime.
+ *
+ * This is the ONLY function that should provide workspace data across
+ * the RSC boundary (Server Component → Client Component).
  */
 export function getRegisteredWorkspaces(
   role: FrameUser['role'] | undefined
-): WorkspaceRegistration[] {
+): WorkspaceNavItem[] {
   if (!role) return []
 
-  return WORKSPACES.filter((ws) => {
-    const visibility = ROLE_VISIBILITY[ws.id]?.[role]
-    return visibility === 'visible' || visibility === 'readonly'
-  })
+  return WORKSPACES
+    .filter((ws) => {
+      const visibility = ROLE_VISIBILITY[ws.id]?.[role]
+      return visibility === 'visible' || visibility === 'readonly'
+    })
+    .map((ws): WorkspaceNavItem => {
+      const id = ws.id as RegisteredWorkspaceId
+      return {
+        id,
+        label: ws.label,
+        iconId: WORKSPACE_ICON_IDS[id],
+        landingRoute: ws.landingRoute,
+        routePrefix: ws.routePrefix,
+      }
+    })
 }
 
 /**
  * Returns ALL registered workspaces regardless of role.
  * Used only for testing and registry validation — never for navigation rendering.
+ * Returns full WorkspaceRegistration (non-serializable) — must NOT cross RSC boundary.
  */
 export function getAllWorkspaces(): readonly WorkspaceRegistration[] {
   return WORKSPACES
