@@ -18,8 +18,7 @@
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { OperatingFrame } from '../OperatingFrame'
-import type { FrameUser, WorkspaceRegistration } from '@/lib/nav/types'
-import { Home, BarChart3 } from 'lucide-react'
+import type { FrameUser, WorkspaceNavItem } from '@/lib/nav/types'
 
 // ─── Mocks ───────────────────────────────────────────────────────────────
 
@@ -57,22 +56,20 @@ const mockUser: FrameUser = {
   role: 'ceo',
 }
 
-const mockWorkspaces: WorkspaceRegistration[] = [
+const mockWorkspaces: WorkspaceNavItem[] = [
   {
     id: 'home',
     label: 'Home',
-    icon: Home,
+    iconId: 'home',
     landingRoute: '/home',
     routePrefix: '/home',
-    attentionProvider: async () => null,
   },
   {
     id: 'finance',
     label: 'Finance',
-    icon: BarChart3,
+    iconId: 'finance',
     landingRoute: '/finance',
     routePrefix: '/finance',
-    attentionProvider: async () => null,
   },
 ]
 
