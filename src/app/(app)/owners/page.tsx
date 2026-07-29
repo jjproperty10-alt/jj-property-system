@@ -5,11 +5,12 @@
  * ordered by priority: who needs attention first?
  *
  * PR #3 — JJ Workspace Navigation + Owner Workspace Design System
+ * F-001/F-002: WorkspaceHeader added, stale Home link removed (Design Audit Gate)
  */
 
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { PageShell } from '@/components/ds'
+import { PageShell, WorkspaceHeader } from '@/components/ds'
 import { getOwnersRoom } from '@/lib/owners/ownerWorkspaceService'
 import type { OwnerRoomItemDTO } from '@/lib/owners/ownerWorkspaceTypes'
 
@@ -45,34 +46,24 @@ export default async function OwnersRoomPage() {
 
   return (
     <PageShell>
+      <WorkspaceHeader title="Owners Room" />
       <div className="mx-auto max-w-4xl px-4 py-6 space-y-6">
 
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Owners Room</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              {room.summary.totalOwners} owners ·{' '}
-              {room.summary.actionRequired > 0 && (
-                <span className="text-amber-600 font-medium">
-                  {room.summary.actionRequired} need action ·{' '}
-                </span>
-              )}
-              {room.summary.openCorrections > 0 && (
-                <span className="text-red-600 font-medium">
-                  {room.summary.openCorrections} open corrections ·{' '}
-                </span>
-              )}
-              {room.summary.readyToSend} ready to send
-            </p>
-          </div>
-          <Link
-            href="/"
-            className="text-sm text-gray-400 hover:text-gray-700 transition-colors"
-          >
-            ← Home
-          </Link>
-        </div>
+        {/* Summary */}
+        <p className="text-sm text-gray-500">
+          {room.summary.totalOwners} owners
+          {room.summary.actionRequired > 0 && (
+            <span className="text-amber-600 font-medium">
+              {' '}&middot; {room.summary.actionRequired} need action
+            </span>
+          )}
+          {room.summary.openCorrections > 0 && (
+            <span className="text-red-600 font-medium">
+              {' '}&middot; {room.summary.openCorrections} open corrections
+            </span>
+          )}
+          {' '}&middot; {room.summary.readyToSend} ready to send
+        </p>
 
         {/* Today */}
         {groups.today.length > 0 && (
