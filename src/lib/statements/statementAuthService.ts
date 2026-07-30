@@ -75,7 +75,10 @@ export async function authenticateStatementUser(): Promise<
     const { data: staffRecord, error: staffError } = await db
       .from('jj_staff_config')
       .select('staff_role, is_active')
-      .eq('auth_user_id', user.id)
+      // FIX(VS1B): Column is 'user_id', not 'auth_user_id'.
+      // The previous name caused every staff lookup to return null,
+      // making the statement page inaccessible to all users.
+      .eq('user_id', user.id)
       .maybeSingle()
 
     if (staffError || !staffRecord) {
