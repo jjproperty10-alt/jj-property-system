@@ -13,6 +13,9 @@
 export type {
   FrameUser,
   WorkspaceRegistration,
+  WorkspaceNavItem,
+  RegisteredWorkspaceId,
+  WorkspaceIconId,
   EntityContext,
   AttentionItem,
   WorkspaceAttention,

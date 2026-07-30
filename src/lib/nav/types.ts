@@ -36,6 +36,10 @@ export interface FrameUser {
  * A registered workspace in the Operating Frame.
  * Every workspace MUST provide all required slots (Contract B.1).
  *
+ * This is the canonical server-side model. Contains non-serializable values
+ * (icon components, async functions) that MUST NOT cross the RSC boundary.
+ *
+ * @see WorkspaceNavItem — serializable projection for Client Components
  * @see NAV-1_PHASE2_NAVIGATION_CONTRACT.md — Contract B
  */
 export interface WorkspaceRegistration {
@@ -51,6 +55,44 @@ export interface WorkspaceRegistration {
   readonly routePrefix: string
   /** Returns current attention count. null = unknown (P-ARCH-1). */
   readonly attentionProvider: () => Promise<number | null>
+}
+
+// ─── Workspace Nav Item (Serializable DTO) ──────────────────────────────
+
+/**
+ * Closed set of registered workspace identifiers.
+ * TypeScript enforces completeness of WORKSPACE_ICON_IDS and WORKSPACE_ICONS maps.
+ * Update when adding a workspace to the registry.
+ */
+export type RegisteredWorkspaceId = 'home' | 'ceo' | 'owners' | 'finance'
+
+/**
+ * Closed set of icon identifiers for workspace navigation.
+ * Each value maps to a Lucide component in Sidebar's WORKSPACE_ICONS.
+ * Update when adding a workspace to the registry.
+ */
+export type WorkspaceIconId = 'home' | 'ceo' | 'owners' | 'finance'
+
+/**
+ * Serializable projection of WorkspaceRegistration for the RSC boundary.
+ * Contains only JSON-safe values — no React components, no functions.
+ *
+ * Passed from Server Components to Client Components (OperatingFrame, Sidebar).
+ * Icon resolution (iconId → Lucide component) happens client-side in Sidebar.
+ *
+ * @see WorkspaceRegistration — canonical server-side model (preserved intact)
+ */
+export interface WorkspaceNavItem {
+  /** Immutable identifier. Matches WorkspaceRegistration.id. */
+  readonly id: RegisteredWorkspaceId
+  /** User-facing name. Matches WorkspaceRegistration.label. */
+  readonly label: string
+  /** Closed icon key resolved to a Lucide icon component client-side. */
+  readonly iconId: WorkspaceIconId
+  /** Route loaded when nav item is clicked. */
+  readonly landingRoute: string
+  /** URL prefix for active-workspace detection. */
+  readonly routePrefix: string
 }
 
 // ─── Entity Context (Contract C.2) ──────────────────────────────────────
