@@ -191,7 +191,7 @@ async function gatherCashboxPositions(): Promise<ExecutiveBriefCandidate[]> {
   if (error || !data) return []
 
   type CashboxRow = {
-    cashbox: string
+    cash_box_name: string
     total_received: number
     total_paid: number
     balance: number
@@ -211,7 +211,7 @@ async function gatherCashboxPositions(): Promise<ExecutiveBriefCandidate[]> {
       explanation: rows
         .map(
           r =>
-            `${r.cashbox}: €${r.balance.toLocaleString('en', { minimumFractionDigits: 2 })}`,
+            `${r.cash_box_name}: €${r.balance.toLocaleString('en', { minimumFractionDigits: 2 })}`,
         )
         .join(' · '),
       rawPriority: 10, // monitor — no approved business meaning for this data
@@ -225,7 +225,7 @@ async function gatherCashboxPositions(): Promise<ExecutiveBriefCandidate[]> {
         evidence(
           'v_cashbox_audit',
           'public_view',
-          `${rows.length} cashboxes: ${rows.map(r => `${r.cashbox}=${r.balance}`).join(', ')}`,
+          `${rows.length} cashboxes: ${rows.map(r => `${r.cash_box_name}=${r.balance}`).join(', ')}`,
         ),
       ],
       sourceFreshness: 'live',
