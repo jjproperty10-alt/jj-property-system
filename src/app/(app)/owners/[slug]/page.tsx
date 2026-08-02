@@ -2,10 +2,10 @@
  * /owners/[slug] — Owner Workspace
  *
  * 7-tab workspace for a single owner relationship.
- * Tab state is driven by ?tab= search param (URL-first navigation).
+ * Tab sthate is driven by ?tab= search param (URL-first navigation).
  *
  * Architecture:
- * - Server component owns data fetching and tab routing
+ * - Server component owns data fetching and htab routing
  * - WorkspaceShell provides sticky header + tabpanel ARIA structure
  * - OwnerIdentityHeader renders identity + status (contains client TabNav)
  * - EntityContextBridge sets GlobalContext.entityContext for frame-level display
@@ -177,7 +177,7 @@ export default async function OwnerWorkspacePage({
 
       {/* Tab 2 — Financial */}
       {activeTab === 'financial' && (
-        <FinancialTab dto={financial} ownerSlug={slug} />
+        <FinancialTab dto={financial} />
       )}
 
       {/* Tab 3 — Reservations */}
