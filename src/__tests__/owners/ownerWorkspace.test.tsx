@@ -32,6 +32,7 @@ import type {
   OwnerMaintenanceDTO,
   OwnerRelationshipEventDTO,
   OwnerAuditDTO,
+  AuditResolutionResult,
   TimelineEventDTO,
 } from '@/lib/owners/ownerWorkspaceTypes'
 
@@ -117,6 +118,20 @@ const EMPTY_AUDIT: OwnerAuditDTO = {
   verificationHistory: [],
 }
 
+/** Helper: wrap OwnerAuditDTO in a resolved AuditResolutionResult */
+function resolvedAudit(dto: OwnerAuditDTO): AuditResolutionResult {
+  return {
+    status: 'resolved',
+    data: dto,
+    resolution: {
+      entityIdentityId: 'test-entity-id',
+      partyId: 'test-party-id',
+      snapshotOwnerId: 'test-party-id',
+      evidenceSourceContract: 'unsupported',
+    },
+  }
+}
+
 // ─────────────────────────────────────────────────────────────
 // 2. Tab visibility matrix — all 7 tabs render
 // ─────────────────────────────────────────────────────────────
@@ -166,11 +181,14 @@ describe('Tab visibility matrix — all 7 tabs render without crash', () => {
     expect(html).toContain('No relationship history yet')
   })
 
-  it('AuditTab renders empty state', () => {
+  it('AuditTab renders evidence unsupported state when empty + unsupported', () => {
     const html = renderToStaticMarkup(
-      <AuditTab dto={EMPTY_AUDIT} />,
+      <AuditTab result={resolvedAudit(EMPTY_AUDIT)} />,
     )
-    expect(html).toContain('No audit records yet')
+    // With evidenceSourceContract='unsupported', we show the unsupported message
+    // instead of the generic "No audit records" empty state (P-ARCH-1)
+    expect(html).toContain('Evidence source not yet connected')
+    expect(html).toContain('evidence-unsupported')
   })
 })
 
@@ -298,19 +316,19 @@ describe('AuditTab — correction case visibility', () => {
   }
 
   it('renders public_reason', () => {
-    const html = renderToStaticMarkup(<AuditTab dto={auditWithCorrection} />)
+    const html = renderToStaticMarkup(<AuditTab result={resolvedAudit(auditWithCorrection)} />)
     expect(html).toContain('Invoice amount does not match')
   })
 
   it('NEVER renders internal_note content', () => {
-    const html = renderToStaticMarkup(<AuditTab dto={auditWithCorrection} />)
+    const html = renderToStaticMarkup(<AuditTab result={resolvedAudit(auditWithCorrection)} />)
     // The internal note should never appear in rendered output
     expect(html).not.toContain('INTERNAL: This is JJ-only context')
     expect(html).not.toContain('should NEVER appear')
   })
 
   it('shows human approval required indicator', () => {
-    const html = renderToStaticMarkup(<AuditTab dto={auditWithCorrection} />)
+    const html = renderToStaticMarkup(<AuditTab result={resolvedAudit(auditWithCorrection)} />)
     expect(html).toContain('human approval')
   })
 })
