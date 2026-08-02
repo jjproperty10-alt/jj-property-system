@@ -2,7 +2,7 @@
  * ownerAuditAdapter — Identity-resolved audit data access for Owner Workspace.
  *
  * Architecture: slug → identityResolverService → entity_identity.id
- *               → registry.external_identities → party_id → scoped queries
+ *               → resolve_party_id RPC → party_id → scoped queries
  *
  * Resolution chain:
  *   1. Resolve slug → entity_identity via identityResolverService (G1 canonical)
@@ -100,7 +100,10 @@ export async function resolveOwnerAudit(slug: string): Promise<AuditResolutionRe
     canonicalName = identity.displayName
   }
 
-  // ── Step 2: Bridge to registry.parties via external_identities ───────────
+  // ── Step 2: Bridge to registry.parties via RPC ──────────────────────────
+  // Uses public.resolve_party_id() — SECURITY DEFINER RPC that reads
+  // registry.external_identities internally. Avoids exposing the registry
+  // schema to PostgREST. Grants: postgres + service_role only.
   let sb
   try {
     sb = createServiceClient()
@@ -114,23 +117,17 @@ export async function resolveOwnerAudit(slug: string): Promise<AuditResolutionRe
 
   let bridgeRows: ExternalIdentityRow[]
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (sb as any)
-      .schema('registry')
-      .from('external_identities')
-      .select('canonical_id, mapping_status')
-      .eq('source_system', 'lifecycle.entity_identity')
-      .eq('external_entity_type', 'entity')
-      .eq('external_id', entityIdentityId)
-      .eq('company_id', JJ_COMPANY_ID)
-      .eq('mapping_status', 'approved')
+    const { data, error } = await sb.rpc('resolve_party_id', {
+      p_entity_identity_id: entityIdentityId,
+      p_company_id: JJ_COMPANY_ID,
+    })
 
     if (error) throw error
     bridgeRows = (data ?? []) as ExternalIdentityRow[]
   } catch (err) {
     return {
       status: 'source_unavailable',
-      error: `external_identities query failed: ${err instanceof Error ? err.message : String(err)}`,
+      error: `resolve_party_id RPC failed: ${err instanceof Error ? err.message : String(err)}`,
       failedSource: 'party_bridge',
     }
   }
