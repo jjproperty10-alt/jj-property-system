@@ -1,7 +1,7 @@
 -- Migration: 20260802_identity_bridge_seed
 -- Purpose: Seed registry.external_identities with lifecycle.entity_identity → registry.parties bridge mappings
 --
--- Context: Gate A–E investigation (2 Aug 2026) proved NO bridge exists between
+-- Context: Gate A-E investigation (2 Aug 2026) proved NO bridge exists between
 -- lifecycle.entity_identity (24 rows) and registry.parties (21 rows).
 -- This migration seeds 18 proven 1:1 UUID-to-UUID mappings.
 --
@@ -15,52 +15,50 @@
 --   - Ben Zvi (no party match)
 --   - Fabi (no party match — employee, not owner)
 --   - JJ (no party match — company entity)
---   - Liron (no party match — combined as "Liron and Alon" in registry)
---   - Neer (no party match)
---   - Airbnb (no entity_identity match — platform, not person)
---   - "Liron and Alon" (no entity_identity match — combined identity)
---   - Yogev (no entity_identity match)
+--   - Liron (no party match)
+--   - "Liron and Alon" (combined entity — no single party match)
+--   - Neer (no party match — property name, not person)
+--   - Airbnb (no party match — platform, not person)
+--   - Yogev (no party match)
 --
--- Rollback: DELETE FROM registry.external_identities WHERE source_system = 'lifecycle.entity_identity';
--- Idempotent: ON CONFLICT DO NOTHING (unique on source_system + external_entity_type + external_id)
+-- Rollback: DELETE FROM registry.external_identities WHERE source_system = 'lifecycle_entity_identity';
 
-INSERT INTO registry.external_identities
-  (company_id, source_system, external_entity_type, external_id, canonical_type, canonical_id, mapping_status, confidence, audit)
+INSERT INTO registry.external_identities (source_system, external_id, canonical_id)
 VALUES
   -- Anastasia
-  ('10f6e9b3-c5b9-4d95-a318-48f20f89477f', 'lifecycle.entity_identity', 'entity', 'c289ce42-c54f-45f5-8bc3-ae5c429bfaca', 'party', 'ffc96877-8fef-46ba-aa3b-2f8e05b3e6e3', 'approved', 1.0, '{"method": "exact_name_match", "migration": "20260802_identity_bridge_seed"}'),
+  ('lifecycle_entity_identity', 'c289ce42-697e-4814-9ef0-801ff5be85b3', 'ffc96877-e584-45ab-bb3b-912b0a165d06'),
   -- Avi
-  ('10f6e9b3-c5b9-4d95-a318-48f20f89477f', 'lifecycle.entity_identity', 'entity', 'ad7595a0-3b38-40a1-81c0-ad3b06fa95a5', 'party', 'f2a49290-7268-4eff-a5e5-70eba3218c62', 'approved', 1.0, '{"method": "exact_name_match", "migration": "20260802_identity_bridge_seed"}'),
+  ('lifecycle_entity_identity', 'ad7595a0-50c3-46a2-8d9a-7f36655ff239', 'f2a49290-7caa-465d-8f70-d52b16310107'),
   -- Efi
-  ('10f6e9b3-c5b9-4d95-a318-48f20f89477f', 'lifecycle.entity_identity', 'entity', '799453a1-fb53-4f62-969c-cff1e3ecd59e', 'party', 'e6c8fc24-af7e-4b19-ab2f-19d6f55a2ef3', 'approved', 1.0, '{"method": "exact_name_match", "migration": "20260802_identity_bridge_seed"}'),
+  ('lifecycle_entity_identity', '799453a1-bcf8-4fb0-bb79-d6dda8a1f192', 'e6c8fc24-f96c-49c9-a19d-d2bc05cf0266'),
   -- Ilan & Ilana
-  ('10f6e9b3-c5b9-4d95-a318-48f20f89477f', 'lifecycle.entity_identity', 'entity', '4432b4b9-c3df-45bf-b3a7-ed2f6c9fbd0e', 'party', '739ee08d-64f6-45ce-8cc9-d3435be1f51e', 'approved', 1.0, '{"method": "exact_name_match", "migration": "20260802_identity_bridge_seed"}'),
+  ('lifecycle_entity_identity', '4432b4b9-4fe6-44a0-a649-af0667aacd0a', '739ee08d-d5cc-4a14-a286-8334e6027e32'),
   -- Jacob
-  ('10f6e9b3-c5b9-4d95-a318-48f20f89477f', 'lifecycle.entity_identity', 'entity', 'fbca83e3-ff3b-45a1-8b5d-6247a92b1967', 'party', 'da9913ea-85a1-4e11-bae2-c46db2e3b2c4', 'approved', 1.0, '{"method": "exact_name_match", "migration": "20260802_identity_bridge_seed"}'),
+  ('lifecycle_entity_identity', 'fbca83e3-ddde-4609-8c70-9e094f671808', 'da9913ea-7f56-4ed0-a3e0-92fbef51cf12'),
   -- Liora
-  ('10f6e9b3-c5b9-4d95-a318-48f20f89477f', 'lifecycle.entity_identity', 'entity', '41a6e6ab-8073-4741-bb3d-15f16e05e6a7', 'party', 'cb296bca-38ca-4b3e-b8c7-6c2ee2f72a45', 'approved', 1.0, '{"method": "exact_name_match", "migration": "20260802_identity_bridge_seed"}'),
+  ('lifecycle_entity_identity', '41a6e6ab-47d2-472a-a0b9-f6326da03184', 'cb296bca-629c-4b64-8e36-72bb3684b912'),
   -- Miranta
-  ('10f6e9b3-c5b9-4d95-a318-48f20f89477f', 'lifecycle.entity_identity', 'entity', '5c1a93d3-7bc0-4e63-b45e-c3e5b9d0f8a1', 'party', 'c58aa01d-4e2a-4f31-9d73-1b8e6a543c27', 'approved', 1.0, '{"method": "exact_name_match", "migration": "20260802_identity_bridge_seed"}'),
+  ('lifecycle_entity_identity', '5c1a93d3-428a-42d1-bd6e-39e5beb79455', 'c58aa01d-c9e5-471e-a11c-4d4d2089160e'),
   -- Ofri
-  ('10f6e9b3-c5b9-4d95-a318-48f20f89477f', 'lifecycle.entity_identity', 'entity', 'b4eb805d-2f9e-4a73-9c81-d7e3f4a60b12', 'party', 'f2a80fbe-6d14-4a5e-b923-8c7d1e3f9a46', 'approved', 1.0, '{"method": "exact_name_match", "migration": "20260802_identity_bridge_seed"}'),
+  ('lifecycle_entity_identity', 'b4eb805d-f968-4caa-8736-05cf3bfb6fd7', 'f2a80fbe-bc20-4da3-868b-b092cdf2bf54'),
   -- Oren
-  ('10f6e9b3-c5b9-4d95-a318-48f20f89477f', 'lifecycle.entity_identity', 'entity', '4bd5fae5-1c87-4d92-a6e3-f8b2c4d7e901', 'party', '17272f6b-8e43-4a1d-b5c9-2f6d3e8a7b10', 'approved', 1.0, '{"method": "exact_name_match", "migration": "20260802_identity_bridge_seed"}'),
+  ('lifecycle_entity_identity', '4bd5fae5-dfd2-4e0b-a96e-66d05e990533', '17272f6b-c092-4584-85aa-aab7caeb70ad'),
   -- Orit Rob
-  ('10f6e9b3-c5b9-4d95-a318-48f20f89477f', 'lifecycle.entity_identity', 'entity', '92ed1f7e-3a54-4b86-c9d1-e7f2a8b3c460', 'party', '1657fb99-5c2e-4d73-a8b1-9e3f4a6c7d82', 'approved', 1.0, '{"method": "exact_name_match", "migration": "20260802_identity_bridge_seed"}'),
+  ('lifecycle_entity_identity', '92ed1f7e-f7df-4529-b118-4aa63b2b15b2', '1657fb99-8007-4b1e-8859-d3771497c5e8'),
   -- Oshrit
-  ('10f6e9b3-c5b9-4d95-a318-48f20f89477f', 'lifecycle.entity_identity', 'entity', '32a6f2d3-4b78-4c91-d2e3-f5a6b7c8d901', 'party', 'd16926c1-7e34-4a85-b9c2-3f1d6e8a4b57', 'approved', 1.0, '{"method": "exact_name_match", "migration": "20260802_identity_bridge_seed"}'),
+  ('lifecycle_entity_identity', '32a6f2d3-4544-4706-89ae-a27dd889bc99', 'd16926c1-e7ec-4d7e-9aff-4c44383dda20'),
   -- Roni
-  ('10f6e9b3-c5b9-4d95-a318-48f20f89477f', 'lifecycle.entity_identity', 'entity', 'be74a517-6c29-4d83-e1f2-a3b4c5d6e789', 'party', 'e31c649c-8f45-4b96-c0d1-2e3f5a7b8c94', 'approved', 1.0, '{"method": "exact_name_match", "migration": "20260802_identity_bridge_seed"}'),
+  ('lifecycle_entity_identity', 'be74a517-dfe0-4b5a-93dc-c6eb05e05640', 'e31c649c-94c8-40e8-bcd1-0f8fb959bb3a'),
   -- Sharon
-  ('10f6e9b3-c5b9-4d95-a318-48f20f89477f', 'lifecycle.entity_identity', 'entity', '27546e91-7d3a-4e94-f2a3-b4c5d6e7f801', 'party', '4bdcd157-9a56-4c07-d1e2-3f4a5b6c7d08', 'approved', 1.0, '{"method": "exact_name_match", "migration": "20260802_identity_bridge_seed"}'),
+  ('lifecycle_entity_identity', '27546e91-378b-4f6a-a010-7eecadf41d0f', '4bdcd157-bd8f-47d1-869b-55d6c6342e0a'),
   -- Tamir
-  ('10f6e9b3-c5b9-4d95-a318-48f20f89477f', 'lifecycle.entity_identity', 'entity', '0f352012-8e4b-4fa5-a3b4-c5d6e7f80912', 'party', '9a392adb-0b67-4d18-e2f3-4a5b6c7d8e01', 'approved', 1.0, '{"method": "exact_name_match", "migration": "20260802_identity_bridge_seed"}'),
+  ('lifecycle_entity_identity', '0f352012-1403-4e3b-982a-7c019ee89f1b', '9a392adb-4f42-46a0-9c1d-672d44e94882'),
   -- Tom
-  ('10f6e9b3-c5b9-4d95-a318-48f20f89477f', 'lifecycle.entity_identity', 'entity', '435c0dbe-9f5c-4ab6-b4c5-d6e7f8a01234', 'party', 'd1dda545-1c78-4e29-f3a4-5b6c7d8e9f12', 'approved', 1.0, '{"method": "exact_name_match", "migration": "20260802_identity_bridge_seed"}'),
+  ('lifecycle_entity_identity', '435c0dbe-24c8-414b-8bed-046ae36dbae4', 'd1dda545-d88d-485d-9534-97312381e4fd'),
   -- Uriel
-  ('10f6e9b3-c5b9-4d95-a318-48f20f89477f', 'lifecycle.entity_identity', 'entity', '2944e9ad-0a6d-4bc7-c5d6-e7f8a9b01234', 'party', '91f98ba2-2d89-4f3a-a4b5-6c7d8e9f0a23', 'approved', 1.0, '{"method": "exact_name_match", "migration": "20260802_identity_bridge_seed"}'),
+  ('lifecycle_entity_identity', '2944e9ad-c298-4dbf-b666-26561d934b61', '91f98ba2-77e6-4310-a518-c690647ad014'),
   -- Vard
-  ('10f6e9b3-c5b9-4d95-a318-48f20f89477f', 'lifecycle.entity_identity', 'entity', '10812b97-1b7e-4cd8-d6e7-f8a9b0c12345', 'party', '9999f532-3e9a-4a4b-b5c6-7d8e9f0a1b34', 'approved', 1.0, '{"method": "exact_name_match", "migration": "20260802_identity_bridge_seed"}'),
+  ('lifecycle_entity_identity', '10812b97-4af9-46c5-8557-bb1ad4c28b08', '9999f532-0e90-41de-929a-ca29ec6e3ded'),
   -- Yossi
-  ('10f6e9b3-c5b9-4d95-a318-48f20f89477f', 'lifecycle.entity_identity', 'entity', '4de83e15-2c8f-4de9-e7f8-a9b0c1d23456', 'party', '66687017-4f0b-4b5c-c6d7-8e9f0a1b2c45', 'approved', 1.0, '{"method": "exact_name_match", "migration": "20260802_identity_bridge_seed"}')
-ON CONFLICT (source_system, external_entity_type, external_id) DO NOTHING;
+  ('lifecycle_entity_identity', '4de83e15-e8cd-4abc-a104-5ddf8a2a3a4d', '66687017-422f-4fc2-99f0-0bc3701985b1')
+ON CONFLICT (source_system, external_id) DO NOTHING;
