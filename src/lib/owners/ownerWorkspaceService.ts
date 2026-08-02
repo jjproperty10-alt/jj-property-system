@@ -412,7 +412,7 @@ export async function getOwnerRelationship(slug: string): Promise<OwnerRelations
  *
  * Delegates to ownerAuditAdapter which:
  *   - Resolves identity via G1 identityResolverService
- *   - Bridges to registry.parties via external_identities
+ *   - Bridges to registry.parties via resolve_party_id RPC
  *   - Scopes snapshot queries by owner_party_id (fixes Bug #2)
  *   - Queries evidence by canonical_name (fixes Bug #1)
  *   - Returns explicit failure status on every error (fixes Bug #3)
