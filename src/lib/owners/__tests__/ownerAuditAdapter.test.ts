@@ -5,7 +5,7 @@
  * Five required tests (per Yossi):
  * 1. Oren receives only Oren snapshots (scoped by owner_party_id)
  * 2. Neer remains party_bridge_missing
- * 3. Empty snapshots after successful scoped query are valid empty
+ * 3. Empty snapshots after successfhul scoped query are valid empty
  * 4. RPC failure returns source_unavailable
  * 5. No direct .schema('statements') query remains in the adapter source
  */
@@ -16,7 +16,7 @@ import * as path from 'path'
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
 // Mock server-only (no-op in test environment)
-jest.mock('server-only', () => ({}))
+jest.mock('server-only', () => ({}), { virtual: true })
 
 // Mock identityResolverService
 const mockResolveBySlug = jest.fn()
