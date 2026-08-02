@@ -24,6 +24,9 @@
  *   GC-F3: No cross-session persistence.
  *   GC-F4: No null coercion (P-ARCH-1).
  *
+ * RSC boundary:
+ *   Receives WorkspaceNavItem[] (serializable DTO). Uses only id and label.
+ *
  * @see NAV-1_PHASE2_NAVIGATION_CONTRACT.md — Contract D
  * @see NAV-1_PHASE3_COMPONENT_CONTRACTS.md — GlobalContextProvider contract
  */
@@ -43,7 +46,7 @@ import {
 import type {
   GlobalContextShape,
   FrameUser,
-  WorkspaceRegistration,
+  WorkspaceNavItem,
   EntityContext,
   WorkspaceAttention,
 } from '@/lib/nav/types'
@@ -119,7 +122,7 @@ export function useSetMobileMenu(): (open: boolean) => void {
 
 interface GlobalContextProviderProps {
   user: FrameUser
-  workspaces: readonly WorkspaceRegistration[]
+  workspaces: readonly WorkspaceNavItem[]
   activeWorkspaceId: string | null
   children: ReactNode
 }
