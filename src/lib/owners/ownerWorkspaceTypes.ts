@@ -494,6 +494,71 @@ export interface VerificationHistoryItemDTO {
   evidenceSource: string | null
 }
 
+/**
+ * Audit Tab resolution result — fail-closed discriminated union.
+ *
+ * Every failure mode is explicitly named. Empty arrays inside 'resolved'
+ * are the ONLY legitimate "no data" state.
+ *
+ * Gate D design (2 Aug 2026). Yossi correction: when status='resolved',
+ * partyId and snapshotOwnerId must be non-null. When no bridge exists,
+ * return 'party_bridge_missing' — not 'resolved' with null IDs.
+ *
+ * Constitutional basis:
+ *   P-ARCH-1: Unknown = NULL, never empty-that-looks-like-resolved
+ *   EX-4: Unknown ≠ Zero (Design System v1.0)
+ *   DAL-7: Every access decision must be explainable and auditable
+ */
+export type AuditResolutionResult =
+  // ── Success ──────────────────────────────────────────────
+  | {
+      readonly status: 'resolved'
+      readonly data: OwnerAuditDTO
+      /** Which identity keys were used for each source query (audit trail) */
+      readonly resolution: {
+        readonly entityIdentityId: string
+        readonly partyId: string
+        readonly snapshotOwnerId: string
+        /**
+         * Evidence source contract status.
+         * 'unsupported': evidence_links.entity_id is freeform text — no UUID bridge exists.
+         * Evidence cannot be queried safely until a UUID-based contract is established.
+         */
+        readonly evidenceSourceContract: 'unsupported'
+      }
+    }
+
+  // ── Identity failures ────────────────────────────────────
+  | {
+      readonly status: 'entity_not_found'
+      readonly slug: string
+    }
+  | {
+      readonly status: 'ambiguous_identity'
+      readonly slug: string
+      readonly candidates: readonly string[]
+    }
+
+  // ── Bridge failures ──────────────────────────────────────
+  | {
+      readonly status: 'party_bridge_missing'
+      readonly entityIdentityId: string
+      readonly canonicalName: string
+    }
+  | {
+      readonly status: 'ambiguous_party_mapping'
+      readonly entityIdentityId: string
+      readonly canonicalName: string
+      readonly candidatePartyIds: readonly string[]
+    }
+
+  // ── Source failures ──────────────────────────────────────
+  | {
+      readonly status: 'source_unavailable'
+      readonly error: string
+      readonly failedSource: 'finance_schema' | 'statements_schema' | 'identity_resolver' | 'party_bridge'
+    }
+
 // ─────────────────────────────────────────────────────────────
 // TIMELINE
 // ─────────────────────────────────────────────────────────────
