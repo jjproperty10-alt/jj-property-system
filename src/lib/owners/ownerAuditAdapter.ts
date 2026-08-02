@@ -47,6 +47,41 @@ interface ExternalIdentityRow {
   mapping_status: string
 }
 
+/** Matches the RETURNS TABLE of public.get_owner_statement_snapshots() */
+interface StatementSnapshotRow {
+  snapshot_id: string
+  version_number: number
+  period_start: string
+  period_end: string
+  created_at: string
+  delivery_channels: unknown // JSONB — array or null
+  is_voided: boolean
+  is_current_in_series: boolean
+  parent_snapshot_id: string | null
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Safely format delivery_channels JSONB into a display string.
+ * JSONB can be: string[], null, or an unexpected object shape.
+ */
+function formatDeliveryChannels(value: unknown): string | null {
+  if (Array.isArray(value)) {
+    const channels = value.filter(
+      (item): item is string => typeof item === 'string',
+    )
+    return channels.length > 0 ? channels.join(', ') : null
+  }
+  if (typeof value === 'string') {
+    return value
+  }
+  if (value && typeof value === 'object') {
+    return JSON.stringify(value)
+  }
+  return null
+}
+
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 /**
@@ -161,33 +196,44 @@ export async function resolveOwnerAudit(slug: string): Promise<AuditResolutionRe
   // distinguishing this from "queried and found nothing" (P-ARCH-1).
 
   // 3b. Statement snapshots — scoped by owner_party_id (fixes Bug #2)
+  // Uses public.get_owner_statement_snapshots() — SECURITY DEFINER RPC that reads
+  // statements.sent_statement_snapshots internally. Avoids exposing the statements
+  // schema to PostgREST (same pattern as resolve_party_id for registry schema).
   let statementVersions: StatementVersionDTO[] = []
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (sb as any)
-      .schema('statements')
-      .from('sent_statement_snapshots')
-      .select('*')
-      .eq('owner_party_id', partyId)
-      .order('version', { ascending: false })
-      .limit(20)
+    const { data, error } = await sb.rpc('get_owner_statement_snapshots', {
+      p_owner_party_id: partyId,
+      p_limit: 20,
+    })
 
     if (error) throw error
 
-    statementVersions = ((data ?? []) as Record<string, unknown>[]).map(s => ({
-      id: String(s.id),
-      version: Number(s.version ?? 1),
-      period: String(s.period_label ?? ''),
-      sentAt: s.sent_at ? String(s.sent_at) : null,
-      status: 'sent' as const,
-      channel: s.delivery_channel ? String(s.delivery_channel) : null,
-      replacedBy: null,
-      replacedFrom: null,
-    }))
+    statementVersions = ((data ?? []) as StatementSnapshotRow[]).map(s => {
+      // Map real DB columns to StatementVersionDTO contract
+      const period = `${s.period_start} – ${s.period_end}`
+
+      // Note: StatementStatus does not include 'replaced'. Non-current,
+      // non-voided versions are mapped to 'sent' (they were sent at some
+      // point). The replacement chain is expressed via replacedFrom/replacedBy.
+      const status: StatementVersionDTO['status'] = s.is_voided
+        ? 'void'
+        : 'sent'
+
+      return {
+        id: s.snapshot_id,
+        version: s.version_number,
+        period,
+        sentAt: s.created_at ?? null,
+        status,
+        channel: formatDeliveryChannels(s.delivery_channels),
+        replacedBy: null, // Requires reverse lookup — deferred
+        replacedFrom: s.parent_snapshot_id,
+      }
+    })
   } catch (err) {
     return {
       status: 'source_unavailable',
-      error: `sent_statement_snapshots query failed: ${err instanceof Error ? err.message : String(err)}`,
+      error: `get_owner_statement_snapshots RPC failed: ${err instanceof Error ? err.message : String(err)}`,
       failedSource: 'statements_schema',
     }
   }
