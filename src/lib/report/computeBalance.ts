@@ -110,8 +110,8 @@ const TRUST_SUBS = new Set(['Deposit', 'Deposit refund'])
  * owner reduce the owner's settlement balance. Management Fee is always a real deduction
  * in this context — it is JJ's monthly management fee deducted from the rent collected.
  *
- * NOTE: Staff Accommodation Rent (payer=JJ, payee=JJ) is intentionally excluded —
- * it is an internal JJ entry requiring manual review.
+ * NOTE: Staff Accommodation Rent is NOT in this set — it is classified separately
+ * as income (owner entitlement) per DS-009B decision (2026-07-20).
  */
 const RENTAL_EXPENSE_SUBS = new Set([
   // JJ management fee — deducted from rent
@@ -234,6 +234,16 @@ function classifyRentalRow(row: RC3Row): RowClassification {
       is_balance_affecting: true,
       display_group:        'expense',
       display_label:        sub,
+    }
+  }
+
+  // DS-009B: Staff Accommodation Rent = owner entitlement (income, not expense)
+  if (sub === 'Staff Accommodation Rent') {
+    return {
+      balance_effect:       row.client_amount,
+      is_balance_affecting: true,
+      display_group:        'income',
+      display_label:        'Staff Accommodation Rent',
     }
   }
 
@@ -455,6 +465,60 @@ function classifyRenovationRow(row: RC3Row): RowClassification {
   }
 }
 
+/**
+ * PURCHASE row classifier.
+ * Convention: positive = client owes JJ (client_debt)
+ *
+ * NOTE: The contract value (Purchase Contract) is NOT in the balance_effect here.
+ * It is extracted separately as contract_baseline in buildAccountSection.
+ *
+ * Deposit, Purchase Payment: settle the purchase debt (negative balance_effect)
+ * Purchase Expenses, Purchase Tax, Purchase Lawyer, Brokerage: additional costs (positive balance_effect)
+ * Purchase Contract: is_contract_value = TRUE — balance_effect = 0 (baseline handled separately)
+ * Unknown: info-only, balance_effect = 0
+ */
+function classifyPurchaseRow(row: RC3Row): RowClassification {
+  const sub = row.subcategory ?? ''
+
+  // Contract reference — shown in Section A; value used as contract_baseline (see buildAccountSection)
+  if (row.is_contract_value) {
+    return {
+      balance_effect:       0,
+      is_balance_affecting: false,
+      display_group:        'reference',
+      display_label:        'Purchase Contract (Reference)',
+    }
+  }
+
+  // Deposits and purchase payments — settle the purchase debt
+  if (sub === 'Deposit' || sub === 'Purchase Payment') {
+    return {
+      balance_effect:       -row.client_amount,
+      is_balance_affecting: true,
+      display_group:        'income',
+      display_label:        sub === 'Deposit' ? 'Deposit' : 'Purchase Payment',
+    }
+  }
+
+  // Purchase-related expenses — increase what client owes
+  if (sub === 'Purchase Expenses' || sub === 'Purchase Tax' || sub === 'Purchase Lawyer' || sub === 'Brokerage') {
+    return {
+      balance_effect:       row.client_amount,
+      is_balance_affecting: true,
+      display_group:        'expense',
+      display_label:        sub,
+    }
+  }
+
+  // Unknown subcategory — do not affect balance; flag for review.
+  return {
+    balance_effect:       0,
+    is_balance_affecting: false,
+    display_group:        'info',
+    display_label:        `${sub || 'Unknown'} (Needs Review)`,
+  }
+}
+
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
 
 function classifyRow(row: RC3Row, accountType: RC3AccountType): RowClassification {
@@ -463,6 +527,7 @@ function classifyRow(row: RC3Row, accountType: RC3AccountType): RowClassificatio
     case 'airbnb':     return classifyAirbnbRow(row)
     case 'sale':       return classifySaleRow(row)
     case 'renovation': return classifyRenovationRow(row)
+    case 'purchase':   return classifyPurchaseRow(row)
   }
 }
 
@@ -473,7 +538,8 @@ const ACCOUNT_META: Record<RC3AccountType, {
   he: string
   convention: BalanceConvention
 }> = {
-  sale:       { en: 'Property Purchase', he: 'רכישת נכס',   convention: 'client_debt'  },
+  purchase:   { en: 'Property Purchase', he: 'רכישת נכס',   convention: 'client_debt'  },
+  sale:       { en: 'Property Sale',     he: 'מכירת נכס',   convention: 'client_debt'  },
   renovation: { en: 'Renovation',        he: 'שיפוץ',        convention: 'client_debt'  },
   rental:     { en: 'Rental Management', he: 'ניהול השכרה', convention: 'owner_credit' },
   airbnb:     { en: 'Short-Term Rental', he: 'אירבנב / STR', convention: 'owner_credit' },
@@ -524,7 +590,7 @@ export function buildAccountSection(
   // Applied to sale and renovation only — the contract value is what the client owes.
   // For rental / airbnb this is always 0.
   const contract_baseline =
-    accountType === 'sale' || accountType === 'renovation'
+    accountType === 'purchase' || accountType === 'sale' || accountType === 'renovation'
       ? rows
           .filter(r => r.is_contract_value)
           .reduce((sum, r) => sum + r.client_amount, 0)

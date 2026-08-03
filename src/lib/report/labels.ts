@@ -75,6 +75,7 @@ const L = {
   confidential:         { en: 'Confidential',                  he: 'סודי'                        },
 
   /* ── Module names ────────────────────────────────────────────────────────── */
+  accountPurchase:      { en: 'Property Acquisition', he: 'רכישת נכס'          },
   accountSale:          { en: 'Property Purchase',    he: 'רכישת נכס'          },
   accountRenovation:    { en: 'Renovation',           he: 'שיפוץ'              },
   // M6: renamed from "Rental" → "Property Management"
@@ -95,6 +96,12 @@ const L = {
   execProperty:         { en: 'Property',            he: 'נכס'                },
   execPeriod:           { en: 'Period',              he: 'תקופה'              },
   execAllDates:         { en: 'All dates',           he: 'כל התאריכים'        },
+
+  /* ── Summary cards — Purchase ──────────────────────────────────────────── */
+  cardPurchaseContract:  { en: 'Purchase Price',       he: 'מחיר רכישה'        },
+  cardPurchaseExpenses:  { en: 'Purchase Expenses',    he: 'הוצאות רכישה'      },
+  cardPurchasePayments:  { en: 'Payments Made',        he: 'תשלומים שבוצעו'    },
+  cardPurchaseBalance:   { en: 'Current Balance',      he: 'יתרה נוכחית'       },
 
   /* ── Summary cards — Sale ────────────────────────────────────────────────── */
   cardSaleContract:     { en: 'Contract Value',      he: 'ערך חוזה'          },
@@ -179,6 +186,8 @@ const L = {
   total:                { en: 'Total',         he: 'סה"כ'    },
 
   /* ── Income / expense group headers inside each account ─────────────────── */
+  incomePurchase:       { en: 'Purchase Costs',                  he: 'עלויות רכישה'         },
+  expensesPurchase:     { en: 'Purchase Payments',               he: 'תשלומי רכישה'         },
   incomeSale:           { en: 'Charges & Expenses',              he: 'חיובים והוצאות'       },
   expensesSale:         { en: 'Payments Received',               he: 'תשלומים שהתקבלו'      },
   incomeRenov:          { en: 'Additional Approved Charges',     he: 'חיובים נוספים מאושרים' },

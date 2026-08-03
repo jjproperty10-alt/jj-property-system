@@ -310,6 +310,25 @@ function ModuleSummaryCards({ section, lang }: { section: RC3AccountSection; lan
     lang
   )
 
+  if (section.account_type === 'purchase') {
+    return (
+      <div className="flex gap-3 px-4 py-3 flex-wrap">
+        <MetricCard label={t('cardPurchaseContract', lang)} value={section.contract_baseline} />
+        <MetricCard label={t('cardPurchaseExpenses', lang)} value={section.total_income} />
+        <MetricCard label={t('cardPurchasePayments', lang)} value={section.total_expenses} />
+        <div className="flex-1 min-w-0 bg-white rounded-xl border-2 border-gray-300 px-4 py-3 shadow-sm">
+          <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+            {t('cardPurchaseBalance', lang)}
+          </div>
+          <div className={`text-lg font-bold font-mono ${balColor}`}>
+            {eur(Math.abs(section.closing_balance))}
+          </div>
+          <div className={`text-[10px] mt-0.5 ${balColor}`}>{balLabel}</div>
+        </div>
+      </div>
+    )
+  }
+
   if (section.account_type === 'sale') {
     return (
       <div className="flex gap-3 px-4 py-3 flex-wrap">
@@ -416,6 +435,7 @@ function computeDashboard(accounts: RC3AccountSection[]) {
 
 /* M6: module colours aligned with ACCOUNT_COLOURS */
 const M2_MODULE_COLORS: Record<string, string> = {
+  purchase: 'bg-slate-800',
   sale: 'bg-slate-800',
   renovation: 'bg-purple-700',
   rental: 'bg-blue-700',
@@ -428,6 +448,11 @@ function M2ModuleCard({ section, lang }: { section: RC3AccountSection; lang: Lan
   const absBalance = Math.abs(section.closing_balance)
   const ModIcon = ACCOUNT_ICONS[section.account_type]
   const metrics: { label: string; value: number }[] = (() => {
+    if (section.account_type === 'purchase') return [
+      { label: t('cardPurchaseContract', lang), value: section.contract_baseline },
+      { label: t('cardPurchaseExpenses', lang), value: section.total_income },
+      { label: t('cardPurchasePayments', lang), value: section.total_expenses },
+    ]
     if (section.account_type === 'sale') return [
       { label: t('cardSaleContract', lang), value: section.contract_baseline },
       { label: t('cardSaleExpenses', lang), value: section.total_income },

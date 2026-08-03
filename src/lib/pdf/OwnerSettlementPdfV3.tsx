@@ -79,6 +79,7 @@ const C = {
 }
 
 const ACCOUNT_COLOURS = {
+  purchase: C.navy,
   sale: C.navy,
   renovation: C.purple,
   rental: C.blue,
@@ -87,7 +88,7 @@ const ACCOUNT_COLOURS = {
 
 /* M6: monolingual label keys per account type */
 const ACCOUNT_LABEL_KEYS_PDF: Record<string, LabelKey> = {
-  sale: 'accountSale', renovation: 'accountRenovation',
+  purchase: 'accountPurchase', sale: 'accountSale', renovation: 'accountRenovation',
   rental: 'accountRental', airbnb: 'accountAirbnb',
 }
 
@@ -544,7 +545,7 @@ function computeDashboard(accounts: RC3AccountSection[]) {
 }
 
 const M2_PDF_COLORS: Record<string, string> = {
-  sale: C.navy, renovation: C.purple, rental: C.blue, airbnb: C.orange,
+  purchase: C.navy, sale: C.navy, renovation: C.purple, rental: C.blue, airbnb: C.orange,
 }
 
 function PremiumSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
@@ -559,7 +560,7 @@ function PremiumSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: 
     ? `${report.from_date ? fmtDate(report.from_date) : '—'} – ${report.to_date ? fmtDate(report.to_date) : '—'}`
     : t('execAllDates', lang)
   const accLabelKeys: Record<string, LabelKey> = {
-    sale: 'accountSale', renovation: 'accountRenovation', rental: 'accountRental', airbnb: 'accountAirbnb',
+    purchase: 'accountPurchase', sale: 'accountSale', renovation: 'accountRenovation', rental: 'accountRental', airbnb: 'accountAirbnb',
   }
   return (
     <View style={{ backgroundColor: '#0d1f36', borderRadius: 8, padding: 20, marginBottom: 16 }}>
@@ -606,6 +607,11 @@ function PremiumSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: 
           const absBalance = Math.abs(acc.closing_balance)
           const lkKey = accLabelKeys[acc.account_type]
           const metrics: { label: string; value: number }[] = (() => {
+            if (acc.account_type === 'purchase') return [
+              { label: t('cardPurchaseContract', lang), value: acc.contract_baseline },
+              { label: t('cardPurchaseExpenses', lang), value: acc.total_income },
+              { label: t('cardPurchasePayments', lang), value: acc.total_expenses },
+            ]
             if (acc.account_type === 'sale') return [
               { label: t('cardSaleContract', lang), value: acc.contract_baseline },
               { label: t('cardSaleExpenses', lang), value: acc.total_income },
@@ -656,7 +662,14 @@ function ModuleMetrics({ section, lang }: { section: RC3AccountSection; lang: La
   type MetricItem = { label: string; value: number; highlight?: boolean }
   let metrics: MetricItem[]
 
-  if (section.account_type === 'sale') {
+  if (section.account_type === 'purchase') {
+    metrics = [
+      { label: t('cardPurchaseContract', lang), value: section.contract_baseline },
+      { label: t('cardPurchaseExpenses', lang), value: section.total_income },
+      { label: t('cardPurchasePayments', lang), value: section.total_expenses },
+      { label: t('cardPurchaseBalance', lang), value: Math.abs(section.closing_balance), highlight: true },
+    ]
+  } else if (section.account_type === 'sale') {
     metrics = [
       { label: t('cardSaleContract', lang), value: section.contract_baseline },
       { label: t('cardSaleExpenses', lang), value: section.total_income },
@@ -836,14 +849,16 @@ function AccountBlock({ section, lang }: { section: RC3AccountSection; lang: Lan
   const expenseRows = section.rows.filter(r => r.display_group === 'expense').map(toClientRow)
   const payoutRows = section.rows.filter(r => r.display_group === 'payment_out').map(toClientRow)
 
-  type AccountKey = 'sale' | 'renovation' | 'rental' | 'airbnb'
+  type AccountKey = 'purchase' | 'sale' | 'renovation' | 'rental' | 'airbnb'
   const incomeLabelMap: Record<AccountKey, string> = {
+    purchase: t('incomePurchase', lang),
     sale: t('incomeSale', lang),
     renovation: t('incomeRenov', lang),
     rental: t('incomeRental', lang),
     airbnb: t('incomeAirbnb', lang),
   }
   const expenseLabelMap: Record<AccountKey, string> = {
+    purchase: t('expensesPurchase', lang),
     sale: t('expensesSale', lang),
     renovation: t('expensesRenov', lang),
     rental: t('expensesRental', lang),
