@@ -39,14 +39,15 @@ import type { RC3AccountType, RC3PropertyReport, RC3Row } from './types'
 // ─── View map ───────────────────────────────────────────────────────────────
 
 const RC3_VIEWS: Record<RC3AccountType, string> = {
+  purchase: 'v_rc3_purchase',
   sale: 'v_rc3_sale',
   renovation: 'v_rc3_renovation',
   rental: 'v_rc3_rental',
   airbnb: 'v_rc3_airbnb',
 }
 
-/** Client-facing account order (confirmed 2026-07-08, Yossi) */
-const ACCOUNT_ORDER: RC3AccountType[] = ['sale', 'renovation', 'rental', 'airbnb']
+/** Client-facing account order: Purchase → Renovation → Rental → Airbnb → Sale */
+const ACCOUNT_ORDER: RC3AccountType[] = ['purchase', 'renovation', 'rental', 'airbnb', 'sale']
 
 // ─── Query helper ───────────────────────────────────────────────────────────
 
@@ -74,6 +75,35 @@ async function fetchViewRows(
   return (data ?? []) as RC3Row[]
 }
 
+/**
+ * Fetch rows BEFORE fromDate (server-side filter) and compute closing balance
+ * for use as an opening balance for the period.
+ * Mandatory constraint: `.lt('date', fromDate)` — no JS-side filtering.
+ */
+async function computePrePeriodClosing(
+  view: string,
+  reportingName: string,
+  accountType: RC3AccountType,
+  fromDate: string,
+): Promise<number> {
+  const client = createServiceClient()
+  const { data, error } = await (client as any)
+    .from(view)
+    .select('*')
+    .eq('reporting_name', reportingName)
+    .lt('date', fromDate)
+    .order('date', { ascending: true })
+
+  if (error) {
+    console.error(`[fetchReport] OB query ${view} error:`, error.message)
+    return 0
+  }
+  if (!data || data.length === 0) return 0
+
+  const section = buildAccountSection(accountType, data as RC3Row[], 0)
+  return section.closing_balance
+}
+
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 export interface FetchReportParams {
@@ -87,8 +117,14 @@ export interface FetchReportParams {
 
 /**
  * Fetch a complete RC3 property report.
- * Queries all four account views in parallel and builds account sections.
+ * Queries all five account views in parallel and builds account sections.
  * Accounts with no rows are omitted from the result.
+ *
+ * Opening Balance resolution (per-account):
+ *   1. If explicitOB[accountType] is provided → use it (caller override).
+ *   2. Else if fromDate exists → compute closing balance from pre-period rows
+ *      via server-side `.lt('date', fromDate)` filter (mandatory — no JS filtering).
+ *   3. Else → 0 (all-time report, no opening balance needed).
  */
 export async function fetchRC3Report(params: FetchReportParams): Promise<RC3PropertyReport> {
   const { reportingName, fromDate, toDate, openingBalances = {} } = params
@@ -106,7 +142,24 @@ export async function fetchRC3Report(params: FetchReportParams): Promise<RC3Prop
         toDate,
       )
       if (rows.length === 0) return null
-      const opening = openingBalances[accountType] ?? 0
+
+      // Per-account OB resolution: explicit → computed pre-period → 0
+      let opening: number
+      if (openingBalances[accountType] !== undefined) {
+        // Explicit override takes precedence
+        opening = openingBalances[accountType]!
+      } else if (fromDate) {
+        // Compute from pre-period data (server-side filtered)
+        opening = await computePrePeriodClosing(
+          RC3_VIEWS[accountType],
+          reportingName,
+          accountType,
+          fromDate,
+        )
+      } else {
+        opening = 0
+      }
+
       return buildAccountSection(accountType, rows, opening)
     }),
   )
@@ -121,6 +174,7 @@ export async function fetchRC3Report(params: FetchReportParams): Promise<RC3Prop
     to_date: toDate ?? null,
     generated_at: new Date().toISOString(),
     accounts,
+    has_purchase: accounts.some(a => a.account_type === 'purchase'),
     has_sale: accounts.some(a => a.account_type === 'sale'),
     has_renovation: accounts.some(a => a.account_type === 'renovation'),
     has_rental: accounts.some(a => a.account_type === 'rental'),
