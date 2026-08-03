@@ -2,7 +2,9 @@ import type { Metadata } from 'next'
 import { WorkspaceShell } from '@/components/ds'
 import { CeoWorkspaceHeader } from '@/components/ceo/CeoWorkspaceHeader'
 import { getAuthorizedExecutiveBrief } from '@/lib/executive/executiveBriefService'
+import { getCompanyOverview } from '@/lib/ceo/companyDataService'
 import { ExecutiveBrief } from '@/components/executive'
+import { CompanyOverview } from '@/components/ceo/CompanyOverview'
 import type { TabDef } from '@/components/ds'
 
 export const dynamic = 'force-dynamic'
@@ -28,7 +30,7 @@ export const metadata: Metadata = {
  *
  * Authority Map:
  *   Executive Brief → ExecutiveBriefDTO (DAL-protected via getAuthorizedExecutiveBrief())
- *   Company tab → placeholder (future: cashboxes, P&L, company health, staff)
+ *   Company tab → CompanyOverviewDTO (v_cashbox_audit + v_jj_company_pl + v_anastasia_clearing)
  *
  * @see RC004_GATE0_CEO_WORKSPACE.md — Gate 0 package
  * @see JJ_DESIGN_SYSTEM_V1.0.md — Part 6, Option D
@@ -59,6 +61,11 @@ export default async function CeoWorkspacePage({
   const { tab: tabParam } = searchParams
   const activeTab = VALID_TABS.has(tabParam ?? '') ? (tabParam as string) : DEFAULT_TAB
 
+  // Company tab data — service_role, server-side only
+  const companyDTO = activeTab === 'company'
+    ? await getCompanyOverview()
+    : null
+
   // Brief tab data — DAL-protected
   const briefResult = activeTab === 'brief'
     ? await getAuthorizedExecutiveBrief()
@@ -78,18 +85,9 @@ export default async function CeoWorkspacePage({
       tabs={TABS}
       activeTab={activeTab}
     >
-      {/* Tab 1 — Company (placeholder for Gate 0) */}
-      {activeTab === 'company' && (
-        <div className="space-y-6">
-          <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
-            <p className="text-sm text-gray-500">
-              Company overview coming soon.
-            </p>
-            <p className="mt-2 text-xs text-gray-400">
-              Cashboxes, P&L, company health, and staff — all in one place.
-            </p>
-          </div>
-        </div>
+      {/* Tab 1 — Company (R2: Cash Positions + P&L + Anastasia Clearing) */}
+      {activeTab === 'company' && companyDTO && (
+        <CompanyOverview dto={companyDTO} />
       )}
 
       {/* Tab 2 — Brief (Executive Brief — reuses existing DAL-protected service) */}
