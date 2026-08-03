@@ -101,6 +101,7 @@ function makeReport(
     to_date: null,
     generated_at: '2026-07-25T00:00:00Z',
     accounts: sections,
+    has_purchase: sections.some(s => s.account_type === 'purchase'),
     has_sale: sections.some(s => s.account_type === 'sale'),
     has_renovation: sections.some(s => s.account_type === 'renovation'),
     has_rental: sections.some(s => s.account_type === 'rental'),
