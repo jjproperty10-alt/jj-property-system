@@ -47,6 +47,7 @@ jest.mock('@/lib/report/fetchReport', () => ({
     accounts: [],
     from_date: null,
     to_date: null,
+    has_purchase: false,
     has_sale: false,
     has_renovation: false,
     has_rental: false,

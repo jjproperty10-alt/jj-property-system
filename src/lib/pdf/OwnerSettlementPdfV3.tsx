@@ -79,6 +79,7 @@ const C = {
 }
 
 const ACCOUNT_COLOURS = {
+  purchase: C.navy,
   sale: C.navy,
   renovation: C.purple,
   rental: C.blue,
@@ -87,7 +88,7 @@ const ACCOUNT_COLOURS = {
 
 /* M6: monolingual label keys per account type */
 const ACCOUNT_LABEL_KEYS_PDF: Record<string, LabelKey> = {
-  sale: 'accountSale', renovation: 'accountRenovation',
+  purchase: 'accountPurchase', sale: 'accountSale', renovation: 'accountRenovation',
   rental: 'accountRental', airbnb: 'accountAirbnb',
 }
 
@@ -544,7 +545,7 @@ function computeDashboard(accounts: RC3AccountSection[]) {
 }
 
 const M2_PDF_COLORS: Record<string, string> = {
-  sale: C.navy, renovation: C.purple, rental: C.blue, airbnb: C.orange,
+  purchase: C.navy, sale: C.navy, renovation: C.purple, rental: C.blue, airbnb: C.orange,
 }
 
 function PremiumSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
@@ -559,7 +560,7 @@ function PremiumSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: 
     ? `${report.from_date ? fmtDate(report.from_date) : '—'} – ${report.to_date ? fmtDate(report.to_date) : '—'}`
     : t('execAllDates', lang)
   const accLabelKeys: Record<string, LabelKey> = {
-    sale: 'accountSale', renovation: 'accountRenovation', rental: 'accountRental', airbnb: 'accountAirbnb',
+    purchase: 'accountPurchase', sale: 'accountSale', renovation: 'accountRenovation', rental: 'accountRental', airbnb: 'accountAirbnb',
   }
   return (
     <View style={{ backgroundColor: '#0d1f36', borderRadius: 8, padding: 20, marginBottom: 16 }}>
@@ -836,14 +837,16 @@ function AccountBlock({ section, lang }: { section: RC3AccountSection; lang: Lan
   const expenseRows = section.rows.filter(r => r.display_group === 'expense').map(toClientRow)
   const payoutRows = section.rows.filter(r => r.display_group === 'payment_out').map(toClientRow)
 
-  type AccountKey = 'sale' | 'renovation' | 'rental' | 'airbnb'
+  type AccountKey = 'purchase' | 'sale' | 'renovation' | 'rental' | 'airbnb'
   const incomeLabelMap: Record<AccountKey, string> = {
+    purchase: t('incomePurchase', lang),
     sale: t('incomeSale', lang),
     renovation: t('incomeRenov', lang),
     rental: t('incomeRental', lang),
     airbnb: t('incomeAirbnb', lang),
   }
   const expenseLabelMap: Record<AccountKey, string> = {
+    purchase: t('expensesPurchase', lang),
     sale: t('expensesSale', lang),
     renovation: t('expensesRenov', lang),
     rental: t('expensesRental', lang),

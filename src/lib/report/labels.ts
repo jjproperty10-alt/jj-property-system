@@ -75,6 +75,7 @@ const L = {
   confidential:         { en: 'Confidential',                  he: 'סודי'                        },
 
   /* ── Module names ────────────────────────────────────────────────────────── */
+  accountPurchase:      { en: 'Property Acquisition', he: 'רכישת נכס'          },
   accountSale:          { en: 'Property Purchase',    he: 'רכישת נכס'          },
   accountRenovation:    { en: 'Renovation',           he: 'שיפוץ'              },
   // M6: renamed from "Rental" → "Property Management"
@@ -179,6 +180,8 @@ const L = {
   total:                { en: 'Total',         he: 'סה"כ'    },
 
   /* ── Income / expense group headers inside each account ─────────────────── */
+  incomePurchase:       { en: 'Purchase Costs',                  he: 'עלויות רכישה'         },
+  expensesPurchase:     { en: 'Purchase Payments',               he: 'תשלומי רכישה'         },
   incomeSale:           { en: 'Charges & Expenses',              he: 'חיובים והוצאות'       },
   expensesSale:         { en: 'Payments Received',               he: 'תשלומים שהתקבלו'      },
   incomeRenov:          { en: 'Additional Approved Charges',     he: 'חיובים נוספים מאושרים' },

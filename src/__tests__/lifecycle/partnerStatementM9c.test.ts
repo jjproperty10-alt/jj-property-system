@@ -76,6 +76,7 @@ function makeFinancial(overrides: Partial<FinancialStatement> = {}): FinancialSt
     accountSections: [],
     fromDate: null,
     toDate: null,
+    hasPurchase: false,
     hasSale: false,
     hasRenovation: false,
     hasRental: false,

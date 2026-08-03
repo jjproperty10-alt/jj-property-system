@@ -487,6 +487,7 @@ export async function loadPartnerStatementForEntity(
           fromDate: rc3Report.from_date,
           toDate: rc3Report.to_date,
           accountSections: rc3Report.accounts,
+          hasPurchase: rc3Report.has_purchase,
           hasSale: rc3Report.has_sale,
           hasRenovation: rc3Report.has_renovation,
           hasRental: rc3Report.has_rental,

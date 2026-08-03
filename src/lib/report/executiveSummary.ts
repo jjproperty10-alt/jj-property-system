@@ -7,6 +7,21 @@
  */
 import type { RC3AccountSection } from './types'
 
+/**
+ * Account types included in the Executive Summary's operational KPIs.
+ *
+ * "Operational" here means RECURRING INCOME accounts — rental and airbnb —
+ * where ongoing income/expense activity drives the owner's periodic balance.
+ *
+ * Excluded account types and why:
+ *   - purchase: capital acquisition, not recurring income
+ *   - sale: one-time disposition event, not recurring
+ *   - renovation: contract-baseline debt model, not periodic income/expense
+ *
+ * Renovation IS operationally relevant to JJ, but it uses contract-baseline
+ * semantics (debt = contract − payments) rather than periodic income/expense,
+ * so it doesn't fit the operational KPI aggregation model.
+ */
 export const OPERATIONAL_ACCOUNT_TYPES = new Set<string>(['rental', 'airbnb'])
 
 export interface OperationalKPIs {
