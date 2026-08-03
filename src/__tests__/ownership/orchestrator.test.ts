@@ -52,6 +52,7 @@ function makeReport(
     to_date: null,
     generated_at: '2026-07-13T00:00:00.000Z',
     accounts: [section],
+    has_purchase: false,
     has_sale: false,
     has_renovation: false,
     has_rental: true,
