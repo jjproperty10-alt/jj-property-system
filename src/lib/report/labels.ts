@@ -97,6 +97,12 @@ const L = {
   execPeriod:           { en: 'Period',              he: 'תקופה'              },
   execAllDates:         { en: 'All dates',           he: 'כל התאריכים'        },
 
+  /* ── Summary cards — Purchase ──────────────────────────────────────────── */
+  cardPurchaseContract:  { en: 'Purchase Price',       he: 'מחיר רכישה'        },
+  cardPurchaseExpenses:  { en: 'Purchase Expenses',    he: 'הוצאות רכישה'      },
+  cardPurchasePayments:  { en: 'Payments Made',        he: 'תשלומים שבוצעו'    },
+  cardPurchaseBalance:   { en: 'Current Balance',      he: 'יתרה נוכחית'       },
+
   /* ── Summary cards — Sale ────────────────────────────────────────────────── */
   cardSaleContract:     { en: 'Contract Value',      he: 'ערך חוזה'          },
   cardSaleExpenses:     { en: 'Purchase Expenses',   he: 'הוצאות רכישה'      },

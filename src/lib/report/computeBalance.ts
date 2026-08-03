@@ -110,8 +110,8 @@ const TRUST_SUBS = new Set(['Deposit', 'Deposit refund'])
  * owner reduce the owner's settlement balance. Management Fee is always a real deduction
  * in this context — it is JJ's monthly management fee deducted from the rent collected.
  *
- * NOTE: Staff Accommodation Rent (payer=JJ, payee=JJ) is intentionally excluded —
- * it is an internal JJ entry requiring manual review.
+ * NOTE: Staff Accommodation Rent is NOT in this set — it is classified separately
+ * as income (owner entitlement) per DS-009B decision (2026-07-20).
  */
 const RENTAL_EXPENSE_SUBS = new Set([
   // JJ management fee — deducted from rent
@@ -234,6 +234,16 @@ function classifyRentalRow(row: RC3Row): RowClassification {
       is_balance_affecting: true,
       display_group:        'expense',
       display_label:        sub,
+    }
+  }
+
+  // DS-009B: Staff Accommodation Rent = owner entitlement (income, not expense)
+  if (sub === 'Staff Accommodation Rent') {
+    return {
+      balance_effect:       row.client_amount,
+      is_balance_affecting: true,
+      display_group:        'income',
+      display_label:        'Staff Accommodation Rent',
     }
   }
 

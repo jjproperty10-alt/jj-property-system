@@ -607,6 +607,11 @@ function PremiumSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: 
           const absBalance = Math.abs(acc.closing_balance)
           const lkKey = accLabelKeys[acc.account_type]
           const metrics: { label: string; value: number }[] = (() => {
+            if (acc.account_type === 'purchase') return [
+              { label: t('cardPurchaseContract', lang), value: acc.contract_baseline },
+              { label: t('cardPurchaseExpenses', lang), value: acc.total_income },
+              { label: t('cardPurchasePayments', lang), value: acc.total_expenses },
+            ]
             if (acc.account_type === 'sale') return [
               { label: t('cardSaleContract', lang), value: acc.contract_baseline },
               { label: t('cardSaleExpenses', lang), value: acc.total_income },
@@ -657,7 +662,14 @@ function ModuleMetrics({ section, lang }: { section: RC3AccountSection; lang: La
   type MetricItem = { label: string; value: number; highlight?: boolean }
   let metrics: MetricItem[]
 
-  if (section.account_type === 'sale') {
+  if (section.account_type === 'purchase') {
+    metrics = [
+      { label: t('cardPurchaseContract', lang), value: section.contract_baseline },
+      { label: t('cardPurchaseExpenses', lang), value: section.total_income },
+      { label: t('cardPurchasePayments', lang), value: section.total_expenses },
+      { label: t('cardPurchaseBalance', lang), value: Math.abs(section.closing_balance), highlight: true },
+    ]
+  } else if (section.account_type === 'sale') {
     metrics = [
       { label: t('cardSaleContract', lang), value: section.contract_baseline },
       { label: t('cardSaleExpenses', lang), value: section.total_income },
