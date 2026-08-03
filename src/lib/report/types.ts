@@ -9,14 +9,14 @@
  *
  * Balance conventions:
  *   rental / airbnb : positive = JJ owes owner  (owner_credit)
- *   sale / renovation : positive = client owes JJ (client_debt)
+ *   purchase / sale / renovation : positive = client owes JJ (client_debt)
  */
 
 // ─── Account type ─────────────────────────────────────────────────────────────
 
-/** The four client-facing account types in RC3.
- *  Order matches client report display order: Sale → Renovation → Rental → Airbnb */
-export type RC3AccountType = 'sale' | 'renovation' | 'rental' | 'airbnb'
+/** The five client-facing account types in RC3.
+ *  Display order: Purchase → Renovation → Rental → Airbnb → Sale */
+export type RC3AccountType = 'purchase' | 'sale' | 'renovation' | 'rental' | 'airbnb'
 
 /** Which direction the account balance is expressed */
 export type BalanceConvention = 'owner_credit' | 'client_debt'
@@ -31,7 +31,7 @@ export type DisplayGroup =
 
 // ─── Raw view row ─────────────────────────────────────────────────────────────
 
-/** Raw row shape returned by v_rc3_sale | v_rc3_renovation | v_rc3_rental | v_rc3_airbnb.
+/** Raw row shape returned by v_rc3_purchase | v_rc3_sale | v_rc3_renovation | v_rc3_rental | v_rc3_airbnb.
  *  All fields match the Supabase view columns exactly. */
 export interface RC3Row {
   id:                   string
@@ -86,7 +86,7 @@ export interface RC3AccountSection {
   balance_convention:  BalanceConvention
   opening_balance:     number           // 0 until contact_opening_balances is implemented (Task 5)
   rows:                RC3AccountRow[]  // all rows including info/reference
-  // Contract baseline (sale + renovation only)
+  // Contract baseline (purchase + sale + renovation only)
   // Sum of is_contract_value rows' client_amount.
   // Rental / airbnb always 0.
   // Rule (approved Yossi 2026-07-09): contract value is the client debt baseline.
@@ -108,6 +108,7 @@ export interface RC3PropertyReport {
   generated_at:   string          // ISO timestamp
   accounts:       RC3AccountSection[]
   // Convenience flags — which accounts have data
+  has_purchase:    boolean
   has_sale:        boolean
   has_renovation:  boolean
   has_rental:      boolean

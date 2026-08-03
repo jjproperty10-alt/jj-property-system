@@ -2,14 +2,18 @@
  * /owners/[slug] — Owner Workspace
  *
  * 7-tab workspace for a single owner relationship.
- * Tab state is driven by ?tab= search param (URL-first navigation).
+ * Tab sthate is driven by ?tab= search param (URL-first navigation).
  *
  * Architecture:
- * - Server component owns data fetching and tab routing
+ * - Server component owns data fetching and htab routing
  * - WorkspaceShell provides sticky header + tabpanel ARIA structure
  * - OwnerIdentityHeader renders identity + status (contains client TabNav)
  * - EntityContextBridge sets GlobalContext.entityContext for frame-level display
  * - Each tab component receives a DTO — no accounting logic in UI
+ *
+ * VS1: Page-level authentication added. authenticateStatementUser() is called
+ * ONCE before any tab data is fetched. Fail closed — redirect to /login or 404
+ * before rendering any content. This closes security gap E8 from Phase 0.
  *
  * Entity Context (RC-003):
  *   Server resolves canonical owner identity from the identity authority.
@@ -19,10 +23,11 @@
  *
  * PR #3 — JJ Workspace Navigation + Owner Workspace Design System
  * RC-003 — Owner Entity Context bridge
+ * VS1 — Page-level authentication
  */
 
 import type { Metadata } from 'next'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { WorkspaceShell } from '@/components/ds'
 import { OwnerIdentityHeader } from '@/components/owners/OwnerIdentityHeader'
 import { EntityContextBridge } from '@/components/owners/EntityContextBridge'
@@ -33,6 +38,7 @@ import { DocumentsTab } from '@/components/owners/tabs/DocumentsTab'
 import { MaintenanceTab } from '@/components/owners/tabs/MaintenanceTab'
 import { RelationshipTab } from '@/components/owners/tabs/RelationshipTab'
 import { AuditTab } from '@/components/owners/tabs/AuditTab'
+import { authenticateStatementUser } from '@/lib/statements/statementAuthService'
 import {
   getOwnerWorkspace,
   getOwnerOverview,
@@ -92,6 +98,18 @@ export default async function OwnerWorkspacePage({
 }) {
   const { slug } = params
   const { tab: tabParam } = searchParams
+
+  // ── VS1: Page-level authentication (fail closed) ──────────────────────────
+  // Authenticate ONCE before any data access. This closes security gap E8.
+  // The same auth chain used by the statement route (HB5/HB6).
+  const auth = await authenticateStatementUser()
+  if (!auth.ok) {
+    if (auth.error === 'NO_SESSION') {
+      redirect('/login')
+    }
+    // NOT_STAFF, STAFF_INACTIVE, AUTH_ERROR → 404
+    notFound()
+  }
 
   const activeTab = VALID_TABS.has(tabParam ?? '') ? (tabParam as string) : DEFAULT_TAB
 
@@ -184,7 +202,7 @@ export default async function OwnerWorkspacePage({
 
       {/* Tab 7 — Audit */}
       {activeTab === 'audit' && (
-        <AuditTab dto={audit} />
+        <AuditTab result={audit} />
       )}
     </WorkspaceShell>
   )

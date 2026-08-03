@@ -3,12 +3,16 @@
 import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
+import { sanitizeReturnPath } from '@/lib/auth/sanitizeReturnPath'
 import { Eye, EyeOff, Lock, Mail, AlertCircle } from 'lucide-react'
 
 function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const next = searchParams.get('next') || '/'
+  // FIX(VS1B): Sanitize the return path to prevent open redirects.
+  // The `next` param now includes query strings (e.g. ?property=Villa%20Mazotos)
+  // after the middleware fix.
+  const next = sanitizeReturnPath(searchParams.get('next'))
 
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')

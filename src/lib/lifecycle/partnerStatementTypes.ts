@@ -138,6 +138,7 @@ export interface FinancialStatement {
   readonly toDate: string | null
   /** One section per account type that has rows (omitted when empty) */
   readonly accountSections: readonly RC3AccountSection[]
+  readonly hasPurchase: boolean
   readonly hasSale: boolean
   readonly hasRenovation: boolean
   readonly hasRental: boolean

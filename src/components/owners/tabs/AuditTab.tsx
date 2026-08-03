@@ -9,10 +9,18 @@
  * - Correction cases (public_reason only — internal_note never shown here)
  * - Decision history
  * - Verification history
+ *
+ * Gate A–E (2 Aug 2026): Now receives AuditResolutionResult instead of OwnerAuditDTO.
+ * Every failure mode is rendered with a distinct, named message.
+ * Empty arrays are valid ONLY when status='resolved'.
+ *
+ * P-ARCH-1: Unknown = NULL — "No audit records" is only shown when resolved + empty.
+ * EX-4: Unknown ≠ Zero — resolution failures are never rendered as "no data".
  */
 
 import { EmptyState } from '@/components/ds'
 import type {
+  AuditResolutionResult,
   OwnerAuditDTO,
   EvidencePointerDTO,
   StatementVersionDTO,
@@ -22,7 +30,7 @@ import type {
 } from '@/lib/owners/ownerWorkspaceTypes'
 
 export interface AuditTabProps {
-  dto: OwnerAuditDTO
+  result: AuditResolutionResult
 }
 
 const EVIDENCE_STRENGTH_CONFIG = {
@@ -43,14 +51,24 @@ const CORRECTION_STATUS_CONFIG = {
   closed: { label: 'Closed', className: 'text-gray-500 bg-gray-50 border-gray-200' },
 }
 
-export function AuditTab({ dto }: AuditTabProps) {
-  const isEmpty =
-    dto.evidenceItems.length === 0 &&
-    dto.statementVersions.length === 0 &&
-    dto.correctionCases.length === 0 &&
-    dto.decisionHistory.length === 0
+export function AuditTab({ result }: AuditTabProps) {
+  // ── Handle non-resolved states ─────────────────────────────────────────────
+  if (result.status !== 'resolved') {
+    return <AuditResolutionMessage result={result} />
+  }
 
-  if (isEmpty) {
+  // ── Resolved — render audit data ───────────────────────────────────────────
+  const dto = result.data
+  const evidenceUnsupported = result.resolution.evidenceSourceContract === 'unsupported'
+
+  // isEmpty: evidence doesn't count when unsupported (P-ARCH-1)
+  const hasAuditRecords =
+    dto.statementVersions.length > 0 ||
+    dto.correctionCases.length > 0 ||
+    dto.decisionHistory.length > 0 ||
+    (!evidenceUnsupported && dto.evidenceItems.length > 0)
+
+  if (!hasAuditRecords && !evidenceUnsupported) {
     return (
       <EmptyState
         icon="⚖"
@@ -72,8 +90,23 @@ export function AuditTab({ dto }: AuditTabProps) {
         </p>
       </div>
 
-      {/* Evidence items */}
-      {dto.evidenceItems.length > 0 && (
+      {/* Evidence: unsupported source contract — distinct from "queried and found nothing" */}
+      {evidenceUnsupported ? (
+        <section aria-labelledby="audit-evidence-heading">
+          <h2 id="audit-evidence-heading" className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+            Evidence
+          </h2>
+          <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3" data-testid="evidence-unsupported">
+            <p className="text-sm text-gray-600">
+              Evidence source not yet connected.
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              The evidence registry requires a UUID-based identity contract before owner-scoped evidence can be displayed.
+              This does not affect other audit data.
+            </p>
+          </div>
+        </section>
+      ) : dto.evidenceItems.length > 0 ? (
         <section aria-labelledby="audit-evidence-heading">
           <h2 id="audit-evidence-heading" className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
             Evidence ({dto.evidenceItems.length})
@@ -84,7 +117,7 @@ export function AuditTab({ dto }: AuditTabProps) {
             ))}
           </ul>
         </section>
-      )}
+      ) : null}
 
       {/* Statement versions */}
       {dto.statementVersions.length > 0 && (
@@ -143,6 +176,94 @@ export function AuditTab({ dto }: AuditTabProps) {
       )}
     </div>
   )
+}
+
+// ─────────────────────────────────────────────────────────────
+// Resolution status component
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Renders a distinct, named message for each non-resolved AuditResolutionResult status.
+ * P-ARCH-1: never renders "no data" for a resolution failure.
+ */
+function AuditResolutionMessage({ result }: { result: Exclude<AuditResolutionResult, { status: 'resolved' }> }) {
+  switch (result.status) {
+    case 'entity_not_found':
+      return (
+        <EmptyState
+          icon="🔍"
+          title="Owner not found"
+          description={`No entity matching "${result.slug}" was found in the identity registry.`}
+        />
+      )
+
+    case 'ambiguous_identity':
+      return (
+        <EmptyState
+          icon="⚠"
+          title="Multiple identity matches"
+          description={`The identifier "${result.slug}" matches multiple entities. Contact JJ administration to resolve.`}
+        />
+      )
+
+    case 'party_bridge_missing':
+      return (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-4">
+          <p className="text-sm font-medium text-amber-800">
+            Identity bridge not yet configured
+          </p>
+          <p className="text-sm text-amber-700 mt-1">
+            Audit data requires an identity link between the entity registry and party registry.
+            This link has not been established for {result.canonicalName}.
+          </p>
+          <p className="text-xs text-amber-600 mt-2">
+            Contact JJ administration to configure the identity bridge.
+          </p>
+        </div>
+      )
+
+    case 'ambiguous_party_mapping':
+      return (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-4">
+          <p className="text-sm font-medium text-amber-800">
+            Multiple identity matches
+          </p>
+          <p className="text-sm text-amber-700 mt-1">
+            {result.canonicalName} maps to multiple party records ({result.candidatePartyIds.length} matches).
+            Manual resolution is required before audit data can be displayed.
+          </p>
+        </div>
+      )
+
+    case 'source_unavailable':
+      return (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-4">
+          <p className="text-sm font-medium text-red-800">
+            Data source temporarily unavailable
+          </p>
+          <p className="text-sm text-red-700 mt-1">
+            The {formatSourceName(result.failedSource)} could not be reached.
+            Please try again later.
+          </p>
+        </div>
+      )
+
+    default: {
+      // Exhaustive check — TypeScript ensures all statuses are handled
+      const _exhaustive: never = result
+      return null
+    }
+  }
+}
+
+function formatSourceName(source: string): string {
+  switch (source) {
+    case 'finance_schema': return 'financial evidence service'
+    case 'statements_schema': return 'statement history service'
+    case 'identity_resolver': return 'identity service'
+    case 'party_bridge': return 'identity bridge service'
+    default: return source
+  }
 }
 
 // ─────────────────────────────────────────────────────────────

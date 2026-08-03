@@ -91,6 +91,7 @@ function makeReport(reportingName: string, rows: ReturnType<typeof makeRenovatio
     to_date: null,
     generated_at: '2026-07-25T00:00:00Z',
     accounts: rows.length > 0 ? [makeRenovationSection(rows)] : [],
+    has_purchase: false,
     has_sale: false,
     has_renovation: rows.length > 0,
     has_rental: false,
@@ -113,7 +114,7 @@ describe('fetchOwnerMaintenance', () => {
     mockFetchRC3Report.mockResolvedValueOnce({
       reporting_name: 'Villa Mazotos',
       from_date: null, to_date: null, generated_at: '2026-07-25T00:00:00Z',
-      accounts: [], has_sale: false, has_renovation: false, has_rental: false, has_airbnb: false,
+      accounts: [], has_purchase: false, has_sale: false, has_renovation: false, has_rental: false, has_airbnb: false,
     })
 
     const result = await fetchOwnerMaintenance({ properties: ['Villa Mazotos'] })

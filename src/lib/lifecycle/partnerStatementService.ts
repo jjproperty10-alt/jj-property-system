@@ -239,6 +239,29 @@ export interface PartnerStatementOptions {
 }
 
 /**
+ * Input for loadPartnerStatementForEntity.
+ * Accepts an already-resolved identity — no slug resolution needed.
+ *
+ * AUTHORIZATION BOUNDARY: propertyNames MUST come from an authorized source
+ * (e.g. partner_entry query, statementContextResolver).
+ * This function trusts the supplied list and NEVER broadens it.
+ *
+ * @see loadPartnerStatement — slug-based wrapper that resolves identity first.
+ */
+export interface LoadPartnerStatementForEntityInput {
+  /** Entity UUID from lifecycle.entity_identity */
+  entityId: string
+  /** Canonical name from lifecycle.entity_identity */
+  canonicalName: string
+  /** Properties authorized for this entity. Never broadened by this function. */
+  propertyNames: readonly string[]
+  /** Entity type from lifecycle.entity_identity. Default: 'partner'. */
+  entityType?: string
+  /** URL slug. Derived from canonicalName via buildSlug() when omitted. */
+  slug?: string
+}
+
+/**
  * Load PartnerStatementDTO for one investor identified by URL slug.
  *
  * Authorization flow:
@@ -294,6 +317,60 @@ export async function loadPartnerStatement(
   const propertyNames = Array.from(
     new Set((partnerEntries as Array<{ property_name: string }>).map(e => e.property_name)),
   )
+
+  // ── Delegate to entity-based loader (Steps 3-7) ──────────────────────────
+  return loadPartnerStatementForEntity(
+    {
+      entityId,
+      canonicalName,
+      propertyNames,
+      entityType: ownerType,
+      slug: investorSlug,
+    },
+    options,
+  )
+}
+
+/**
+ * Load PartnerStatementDTO for one investor identified by already-resolved entity.
+ *
+ * This is the data-loading core extracted from loadPartnerStatement.
+ * It accepts an already-resolved identity and authorized property list —
+ * no slug resolution, no partner_entry authorization gate.
+ *
+ * AUTHORIZATION BOUNDARY:
+ * - propertyNames are trusted as-is — this function NEVER re-queries
+ *   partner_entry or management_relationship to discover additional properties.
+ * - The caller is responsible for authorization (e.g. via statementContextResolver
+ *   or the slug-based gate in loadPartnerStatement).
+ *
+ * Steps (matching original loadPartnerStatement numbering):
+ * 3. Load summary rows from lifecycle view
+ * 4. Build per-property statements (capital, ownership, financial, settlement, timeline)
+ * 5. Compose PortfolioSummary
+ * 6. Build shared blocks (investor info, actions, localization)
+ * 7. Return discriminated union based on viewMode
+ *
+ * Returns null when propertyNames is empty.
+ *
+ * @param input Already-resolved entity identity + authorized properties
+ * @param options View mode, language, date range
+ */
+export async function loadPartnerStatementForEntity(
+  input: LoadPartnerStatementForEntityInput,
+  options: PartnerStatementOptions = {},
+): Promise<PartnerStatementDTO | null> {
+  const { entityId, canonicalName, propertyNames: inputPropertyNames, entityType, slug } = input
+  const { viewMode = 'partner', lang = 'en', fromDate, toDate } = options
+
+  // Empty property list → no statement possible
+  if (inputPropertyNames.length === 0) return null
+
+  const resolvedSlug = slug ?? buildSlug(canonicalName)
+  const ownerType = entityType ?? 'partner'
+  // Deduplicate while preserving authorization boundary — never add properties
+  const propertyNames = Array.from(new Set(Array.from(inputPropertyNames)))
+  const db = createServiceClient()
 
   // ── Step 3: load summary rows from view (all properties in one query) ─────
   const { data: summaryRows } = await db
@@ -410,6 +487,7 @@ export async function loadPartnerStatement(
           fromDate: rc3Report.from_date,
           toDate: rc3Report.to_date,
           accountSections: rc3Report.accounts,
+          hasPurchase: rc3Report.has_purchase,
           hasSale: rc3Report.has_sale,
           hasRenovation: rc3Report.has_renovation,
           hasRental: rc3Report.has_rental,
@@ -475,7 +553,7 @@ export async function loadPartnerStatement(
   const investor: InvestorInfo = {
     entityId,
     canonicalName,
-    slug: investorSlug,
+    slug: resolvedSlug,
     ownerType,
   }
 

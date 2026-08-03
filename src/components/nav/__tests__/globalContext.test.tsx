@@ -28,11 +28,10 @@ import {
 } from '../GlobalContextProvider'
 import type {
   FrameUser,
-  WorkspaceRegistration,
+  WorkspaceNavItem,
   EntityContext,
   GlobalContextShape,
 } from '@/lib/nav/types'
-import { Home } from 'lucide-react'
 
 // ─── Fixtures ────────────────────────────────────────────────────────────
 
@@ -43,22 +42,20 @@ const mockUser: FrameUser = {
   role: 'ceo',
 }
 
-const mockWorkspaces: WorkspaceRegistration[] = [
+const mockWorkspaces: WorkspaceNavItem[] = [
   {
     id: 'home',
     label: 'Home',
-    icon: Home,
+    iconId: 'home',
     landingRoute: '/home',
     routePrefix: '/home',
-    attentionProvider: async () => null,
   },
   {
     id: 'finance',
     label: 'Finance',
-    icon: Home,
+    iconId: 'finance',
     landingRoute: '/finance',
     routePrefix: '/finance',
-    attentionProvider: async () => 3,
   },
 ]
 

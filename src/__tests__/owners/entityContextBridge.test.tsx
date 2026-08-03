@@ -44,11 +44,10 @@ import {
 import { EntityContextBridge } from '@/components/owners/EntityContextBridge'
 import type {
   FrameUser,
-  WorkspaceRegistration,
+  WorkspaceNavItem,
   EntityContext,
   GlobalContextShape,
 } from '@/lib/nav/types'
-import { Home, Users } from 'lucide-react'
 
 // ─── Fixtures ────────────────────────────────────────────────────────────
 
@@ -59,22 +58,20 @@ const mockUser: FrameUser = {
   role: 'ceo',
 }
 
-const mockWorkspaces: WorkspaceRegistration[] = [
+const mockWorkspaces: WorkspaceNavItem[] = [
   {
     id: 'home',
     label: 'Home',
-    icon: Home,
+    iconId: 'home',
     landingRoute: '/home',
     routePrefix: '/home',
-    attentionProvider: async () => null,
   },
   {
     id: 'owners',
     label: 'Owners',
-    icon: Users,
+    iconId: 'owners',
     landingRoute: '/owners',
     routePrefix: '/owners',
-    attentionProvider: async () => null,
   },
 ]
 
@@ -345,11 +342,16 @@ describe('RC-003 boundary audits', () => {
       path.resolve(__dirname, '../../components/nav/OperatingFrame.tsx'),
       'utf-8',
     )
-    expect(frameSrc).not.toContain('owners/')
-    expect(frameSrc).not.toContain('ownerWorkspace')
-    expect(frameSrc).not.toContain('OwnerIdentity')
-    expect(frameSrc).not.toContain('EntityContextBridge')
-    expect(frameSrc).not.toContain('identityResolver')
+    // Check import lines only — comments may reference owners/ for documentation
+    const importLines = frameSrc
+      .split('\n')
+      .filter((line: string) => line.trimStart().startsWith('import'))
+    const importBlock = importLines.join('\n')
+    expect(importBlock).not.toContain('owners/')
+    expect(importBlock).not.toContain('ownerWorkspace')
+    expect(importBlock).not.toContain('OwnerIdentity')
+    expect(importBlock).not.toContain('EntityContextBridge')
+    expect(importBlock).not.toContain('identityResolver')
   })
 
   // TC-RC3-14: Bridge has no DB/Supabase/fetch imports

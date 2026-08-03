@@ -404,61 +404,22 @@ export async function getOwnerRelationship(slug: string): Promise<OwnerRelations
 // Tab 7 — Audit
 // ─────────────────────────────────────────────────────────────
 
-export async function getOwnerAudit(slug: string): Promise<OwnerAuditDTO> {
-  // Evidence links from finance schema
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let evidenceData: any[] | null = null
-  try {
-    const sb = createServiceClient()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const _r = await (sb as any).schema('finance').from('evidence_links')
-      .select('*')
-      .eq('entity_id', slug)
-      .eq('validity_status', 'active')
-      .limit(50)
-    evidenceData = _r.data
-  } catch {
-    evidenceData = null
-  }
-
-  // Statement versions from statements schema
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let statementsData: any[] | null = null
-  try {
-    const sb = createServiceClient()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const _r = await (sb as any).schema('statements').from('sent_statement_snapshots').select('*').limit(20)
-    statementsData = _r.data
-  } catch {
-    statementsData = null
-  }
-
-  return {
-    evidenceItems: (evidenceData ?? []).map((e: Record<string, unknown>) => ({
-      id: String(e.id),
-      type: String(e.source_type ?? ''),
-      strength: String(e.strength ?? 'supporting') as 'primary' | 'secondary' | 'supporting' | 'attestation',
-      description: String(e.description ?? ''),
-      date: e.period_start ? String(e.period_start) : null,
-      source: String(e.source_ref ?? ''),
-      verifiedAt: String(e.verified_at ?? ''),
-      validityStatus: String(e.validity_status ?? 'active') as 'active' | 'needs_renewal' | 'expired',
-    })),
-    statementVersions: (statementsData ?? []).map((s: Record<string, unknown>) => ({
-      id: String(s.id),
-      version: Number(s.version ?? 1),
-      period: String(s.period_label ?? ''),
-      sentAt: s.sent_at ? String(s.sent_at) : null,
-      status: 'sent' as const,
-      channel: s.delivery_channel ? String(s.delivery_channel) : null,
-      replacedBy: null,
-      replacedFrom: null,
-    })),
-    correctionCases: [],
-    decisionHistory: [],
-    verificationHistory: [],
-  }
-}
+/**
+ * Resolve audit data for an owner slug.
+ *
+ * Returns AuditResolutionResult — a discriminated union. The caller
+ * MUST switch on .status before accessing .data.
+ *
+ * Delegates to ownerAuditAdapter which:
+ *   - Resolves identity via G1 identityResolverService
+ *   - Bridges to registry.parties via resolve_party_id RPC
+ *   - Scopes snapshot queries by owner_party_id (fixes Bug #2)
+ *   - Queries evidence by canonical_name (fixes Bug #1)
+ *   - Returns explicit failure status on every error (fixes Bug #3)
+ *
+ * Gate A–E investigation (2 Aug 2026).
+ */
+export { resolveOwnerAudit as getOwnerAudit } from './ownerAuditAdapter'
 
 // ─────────────────────────────────────────────────────────────
 // Timeline

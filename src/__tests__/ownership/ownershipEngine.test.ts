@@ -125,6 +125,7 @@ function makeReport(name: string, sections: RC3AccountSection[]) {
     to_date:        REFERENCE_DATE,
     generated_at:   new Date().toISOString(),
     accounts:       sections,
+    has_purchase:   sections.some(s => s.account_type === 'purchase'),
     has_sale:       false,
     has_renovation: false,
     has_rental:     sections.some(s => s.account_type === 'rental'),
