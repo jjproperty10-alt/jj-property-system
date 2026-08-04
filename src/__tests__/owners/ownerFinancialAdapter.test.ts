@@ -70,6 +70,7 @@ function makeRow(overrides: Partial<{
 function makeSection(overrides: Partial<{
   account_type: string
   account_label: string
+  balance_convention: string
   total_income: number
   total_expenses: number
   total_bpo: number
@@ -80,7 +81,7 @@ function makeSection(overrides: Partial<{
     account_type: (overrides.account_type ?? 'airbnb') as RC3AccountSection['account_type'],
     account_label: overrides.account_label ?? 'Airbnb',
     account_label_he: 'אייר בי אנד בי',
-    balance_convention: 'owner_credit',
+    balance_convention: overrides.balance_convention ?? 'owner_credit',
     opening_balance: 0,
     contract_baseline: 0,
     rows: overrides.rows ?? [],
@@ -278,6 +279,194 @@ describe('fetchOwnerFinancial', () => {
       reportingName: 'Villa Mazotos',
       fromDate: '2026-01-01',
       toDate:   '2026-06-30',
+    })
+  })
+
+  // ── Perspective correction (Oshrit-only scope) ─────────────────────────────
+
+  describe('perspective correction — Oshrit-only purchase exclusion from Overall Net', () => {
+    it('excludes purchase from Oshrit Overall Net (NEEDS_REVIEW property)', async () => {
+      const purchaseSection = makeSection({
+        account_type: 'purchase',
+        account_label: 'Property Purchase',
+        balance_convention: 'client_debt',
+        closing_balance: 183000,
+      })
+      const saleSection = makeSection({
+        account_type: 'sale',
+        account_label: 'Property Sale',
+        balance_convention: 'client_debt',
+        closing_balance: -5600,
+      })
+      const rentalSection = makeSection({
+        account_type: 'rental',
+        account_label: 'Rental',
+        balance_convention: 'owner_credit',
+        closing_balance: -17380,
+      })
+
+      mockFetchRC3Report.mockResolvedValueOnce(
+        makeReport('Oshrit Deklia', [purchaseSection, saleSection, rentalSection]),
+      )
+
+      const result = await fetchOwnerFinancial({ properties: ['Oshrit Deklia'] })
+
+      // Overall Net should NOT include purchase — only sale + rental
+      expect(result.overallNet).not.toBeNull()
+      const deptTypes = result.overallNet!.departments.map(d => d.type)
+      expect(deptTypes).not.toContain('purchase')
+      expect(deptTypes).toContain('sale')
+      expect(deptTypes).toContain('rental')
+    })
+
+    it('does NOT exclude purchase for non-guarded properties with both purchase+sale', async () => {
+      // Tamir has both purchase and sale — but is NOT in NEEDS_REVIEW_PROPERTIES
+      const purchaseSection = makeSection({
+        account_type: 'purchase',
+        account_label: 'Property Purchase',
+        balance_convention: 'client_debt',
+        closing_balance: 180000,
+      })
+      const saleSection = makeSection({
+        account_type: 'sale',
+        account_label: 'Property Sale',
+        balance_convention: 'client_debt',
+        closing_balance: -10000,
+      })
+
+      mockFetchRC3Report.mockResolvedValueOnce(
+        makeReport('Tamir Dekelia', [purchaseSection, saleSection]),
+      )
+
+      const result = await fetchOwnerFinancial({ properties: ['Tamir Dekelia'] })
+
+      // Purchase MUST remain in Overall Net for non-guarded properties
+      const deptTypes = result.overallNet!.departments.map(d => d.type)
+      expect(deptTypes).toContain('purchase')
+      expect(deptTypes).toContain('sale')
+    })
+
+    it('does NOT alter Overall Net for Uriel (purchase+sale, not in NEEDS_REVIEW)', async () => {
+      const purchaseSection = makeSection({
+        account_type: 'purchase',
+        account_label: 'Property Purchase',
+        balance_convention: 'client_debt',
+        closing_balance: 165000,
+      })
+      const saleSection = makeSection({
+        account_type: 'sale',
+        account_label: 'Property Sale',
+        balance_convention: 'client_debt',
+        closing_balance: -8000,
+      })
+
+      mockFetchRC3Report.mockResolvedValueOnce(
+        makeReport('Uriel Duplex', [purchaseSection, saleSection]),
+      )
+
+      const result = await fetchOwnerFinancial({ properties: ['Uriel Duplex'] })
+
+      // Uriel is not guarded → purchase stays in Overall Net
+      const deptTypes = result.overallNet!.departments.map(d => d.type)
+      expect(deptTypes).toContain('purchase')
+      expect(deptTypes).toContain('sale')
+      expect(result.overallNet!.reviewStatus).toBeUndefined()
+    })
+
+    it('still shows purchase section in sections breakdown even when excluded from net', async () => {
+      const purchaseSection = makeSection({
+        account_type: 'purchase',
+        account_label: 'Property Purchase',
+        balance_convention: 'client_debt',
+        closing_balance: 183000,
+      })
+      const saleSection = makeSection({
+        account_type: 'sale',
+        account_label: 'Property Sale',
+        balance_convention: 'client_debt',
+        closing_balance: -5600,
+      })
+
+      mockFetchRC3Report.mockResolvedValueOnce(
+        makeReport('Oshrit Deklia', [purchaseSection, saleSection]),
+      )
+
+      const result = await fetchOwnerFinancial({ properties: ['Oshrit Deklia'] })
+
+      // Sections breakdown shows ALL sections including purchase
+      const sectionTypes = result.sections.map(s => s.type)
+      expect(sectionTypes).toContain('purchase')
+      expect(sectionTypes).toContain('sale')
+
+      // But Overall Net excludes purchase (Oshrit is guarded)
+      const deptTypes = result.overallNet!.departments.map(d => d.type)
+      expect(deptTypes).not.toContain('purchase')
+    })
+
+    it('keeps purchase in Overall Net for JJ-owned property (no sale)', async () => {
+      const purchaseSection = makeSection({
+        account_type: 'purchase',
+        account_label: 'Property Purchase',
+        balance_convention: 'client_debt',
+        closing_balance: 100000,
+      })
+      const rentalSection = makeSection({
+        account_type: 'rental',
+        account_label: 'Rental',
+        balance_convention: 'owner_credit',
+        closing_balance: 5000,
+      })
+
+      mockFetchRC3Report.mockResolvedValueOnce(
+        makeReport('Villa Mazotos', [purchaseSection, rentalSection]),
+      )
+
+      const result = await fetchOwnerFinancial({ properties: ['Villa Mazotos'] })
+
+      const deptTypes = result.overallNet!.departments.map(d => d.type)
+      expect(deptTypes).toContain('purchase')
+      expect(deptTypes).toContain('rental')
+    })
+  })
+
+  // ── Production guard ────────────────────────────────────────────────────────
+
+  describe('production guard — needs_review for incomplete accounting models', () => {
+    it('marks Oshrit Deklia Overall Net as needs_review', async () => {
+      mockFetchRC3Report.mockResolvedValueOnce(
+        makeReport('Oshrit Deklia', [
+          makeSection({ account_type: 'rental', account_label: 'Rental', closing_balance: 5000 }),
+        ]),
+      )
+
+      const result = await fetchOwnerFinancial({ properties: ['Oshrit Deklia'] })
+
+      expect(result.overallNet).not.toBeNull()
+      expect(result.overallNet!.reviewStatus).toBe('needs_review')
+      expect(result.overallNet!.reviewReason).toBeTruthy()
+    })
+
+    it('does NOT mark non-guarded properties as needs_review', async () => {
+      mockFetchRC3Report.mockResolvedValueOnce(
+        makeReport('Villa Mazotos', [
+          makeSection({ account_type: 'rental', account_label: 'Rental', closing_balance: 5000 }),
+        ]),
+      )
+
+      const result = await fetchOwnerFinancial({ properties: ['Villa Mazotos'] })
+
+      expect(result.overallNet).not.toBeNull()
+      expect(result.overallNet!.reviewStatus).toBeUndefined()
+    })
+
+    it('does NOT set reviewStatus when overallNet is null (no sections)', async () => {
+      mockFetchRC3Report.mockResolvedValueOnce(
+        makeReport('Oshrit Deklia', []),
+      )
+
+      const result = await fetchOwnerFinancial({ properties: ['Oshrit Deklia'] })
+
+      expect(result.overallNet).toBeNull()
     })
   })
 })

@@ -128,10 +128,38 @@ function normalizeDepartment(section: RC3AccountSection): OwnerDepartmentBalance
   }
 }
 
-function buildOverallNet(sections: RC3AccountSection[]): OwnerOverallNetDTO | null {
+/**
+ * Perspective correction (OSHRIT-ONLY — narrowed scope).
+ *
+ * For Oshrit Deklia specifically, JJ's Purchase Contract (€183K) is JJ-internal
+ * acquisition cost that must not enter the owner-facing Overall Net. The client's
+ * relationship is through the Sale contract.
+ *
+ * This correction is applied ONLY to properties listed in NEEDS_REVIEW_PROPERTIES.
+ * Extending to all client properties requires a separate generic rule approval
+ * from Yossi — see Oshrit Corrective Protocol scope correction.
+ *
+ * The Purchase section remains visible in the sections breakdown for JJ internal
+ * reference; it is excluded only from the Overall Net computation.
+ */
+function applyPerspectiveCorrection(
+  sections: RC3AccountSection[],
+  properties: readonly string[],
+): RC3AccountSection[] {
+  const needsCorrection = properties.some(p => NEEDS_REVIEW_PROPERTIES.has(p))
+  if (!needsCorrection) return sections
+  return sections.filter(s => s.account_type !== 'purchase')
+}
+
+function buildOverallNet(
+  sections: RC3AccountSection[],
+  properties: readonly string[],
+): OwnerOverallNetDTO | null {
   if (sections.length === 0) return null
-  const net = computeNetOwnerBalance(sections)
-  const departments = sections.map(normalizeDepartment)
+  const ownerFacing = applyPerspectiveCorrection(sections, properties)
+  if (ownerFacing.length === 0) return null
+  const net = computeNetOwnerBalance(ownerFacing)
+  const departments = ownerFacing.map(normalizeDepartment)
   return {
     departments,
     netEur:           toEur(net) as string,
@@ -174,6 +202,23 @@ function composePosition(sections: RC3AccountSection[]): OwnerFinancialDTO['posi
   }
 }
 
+// ─── Production guard ────────────────────────────────────────────────────────
+
+/**
+ * Properties with known incomplete accounting models.
+ *
+ * Oshrit Deklia: personal occupancy model not implemented — €20K accrued
+ * obligations and €14K settled payments are not reflected in the RC3 engine.
+ * Overall Net shows incorrect values until the occupancy + partner current-account
+ * ledger architecture is built.
+ *
+ * Remove entries from this set as their accounting models are implemented.
+ * See Oshrit Corrective Protocol Section 8.
+ */
+const NEEDS_REVIEW_PROPERTIES = new Set([
+  'Oshrit Deklia',
+])
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -208,8 +253,17 @@ export async function fetchOwnerFinancial(
 
   const allSections = reports.flatMap(r => r.accounts)
   const position    = composePosition(allSections)
-  const overallNet  = buildOverallNet(allSections)
+  const overallNet  = buildOverallNet(allSections, properties)
   const sections    = allSections.map(mapSectionToDTO)
+
+  // Production guard: mark Overall Net as needs_review for properties
+  // with known incomplete accounting models
+  if (overallNet && properties.some(p => NEEDS_REVIEW_PROPERTIES.has(p))) {
+    overallNet.reviewStatus = 'needs_review'
+    overallNet.reviewReason =
+      'Personal occupancy obligations and partner settlement credits are not yet ' +
+      'reflected in the accounting engine. The amounts shown are incomplete.'
+  }
 
   return { position, overallNet, sections, timeline: [] }
 }

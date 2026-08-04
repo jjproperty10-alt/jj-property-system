@@ -252,6 +252,14 @@ export interface OwnerOverallNetDTO {
   label: 'due_to_jj' | 'due_to_you' | 'settled'
   /** Absolute value for display */
   displayAmountEur: string
+  /**
+   * Production guard — when set, the net values are known to be incomplete
+   * or incorrect due to missing accounting infrastructure. UI should display
+   * a review banner instead of the numeric values.
+   */
+  reviewStatus?: 'needs_review'
+  /** Human-readable explanation of why review is needed */
+  reviewReason?: string
 }
 
 export interface OwnerDepartmentBalanceDTO {
