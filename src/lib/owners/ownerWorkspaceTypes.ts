@@ -229,17 +229,57 @@ export interface OwnerFinancialDTO {
     /** Engine-computed closing balance. Null until Settlement Engine (RC2). */
     closingBalanceEur: EuroAmount
   }
+  /** Overall net relationship — computed from RC3 departmental balances */
+  overallNet: OwnerOverallNetDTO | null
   sections: OwnerFinancialSectionDTO[]
   timeline: FinancialTimelineItemDTO[]
 }
 
+/**
+ * Overall Net Relationship — "Does this owner owe JJ, or does JJ owe them?"
+ *
+ * Computed by computeNetOwnerBalance() from RC3AccountSection[].
+ * Negative net = owner owes JJ. Positive net = JJ owes owner. Zero = settled.
+ *
+ * @see computeNetOwnerBalance in executiveSummary.ts
+ */
+export interface OwnerOverallNetDTO {
+  /** Per-department closing balances, normalized to owner perspective */
+  departments: OwnerDepartmentBalanceDTO[]
+  /** Overall net in euros (negative = owner owes JJ) */
+  netEur: string
+  /** Pre-computed display label */
+  label: 'due_to_jj' | 'due_to_you' | 'settled'
+  /** Absolute value for display */
+  displayAmountEur: string
+}
+
+export interface OwnerDepartmentBalanceDTO {
+  /** Department type e.g. 'purchase', 'rental', 'sale', 'airbnb', 'renovation' */
+  type: string
+  /** Display label e.g. 'Property Purchase', 'Rental' */
+  label: string
+  /** Raw closing balance */
+  closingBalanceEur: string
+  /** Normalized to owner perspective (negative = owner owes JJ) */
+  normalizedEur: string
+  /** Pre-computed display label */
+  label_status: 'due_to_jj' | 'due_to_you' | 'settled'
+  /** Absolute value for display */
+  displayAmountEur: string
+}
+
 export interface OwnerFinancialSectionDTO {
-  /** e.g. 'airbnb', 'rental', 'renovation', 'sale', 'transfer' */
+  /** e.g. 'airbnb', 'rental', 'renovation', 'sale', 'purchase', 'transfer' */
   type: string
   label: string
   incomeEur: EuroAmount
   expensesEur: EuroAmount
   netEur: EuroAmount
+  /** Engine-computed closing balance for this section */
+  closingBalanceEur: EuroAmount
+  /** Balance convention: 'client_debt' or 'owner_credit' */
+  balanceConvention: string | null
   /** Breakdown rows */
   rows: OwnerFinancialRowDTO[]
 }

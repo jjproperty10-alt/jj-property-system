@@ -32,10 +32,13 @@ import type {
   RC3PropertyReport,
   DisplayGroup,
 } from '@/lib/report/types'
+import { computeNetOwnerBalance } from '@/lib/report/executiveSummary'
 import type {
   OwnerFinancialDTO,
   OwnerFinancialSectionDTO,
   OwnerFinancialRowDTO,
+  OwnerOverallNetDTO,
+  OwnerDepartmentBalanceDTO,
   EuroAmount,
 } from './ownerWorkspaceTypes'
 
@@ -81,12 +84,59 @@ function mapSectionToDTO(section: RC3AccountSection): OwnerFinancialSectionDTO {
     r => !r.is_platform_tracking && r.display_group !== 'reference',
   )
   return {
-    type:        section.account_type,
-    label:       section.account_label,
-    incomeEur:   toEur(section.total_income),
-    expensesEur: toEur(section.total_expenses),
-    netEur:      toEur(section.total_income - section.total_expenses),
-    rows:        visibleRows.map(mapRowToDTO),
+    type:               section.account_type,
+    label:              section.account_label,
+    incomeEur:          toEur(section.total_income),
+    expensesEur:        toEur(section.total_expenses),
+    netEur:             toEur(section.total_income - section.total_expenses),
+    closingBalanceEur:  toEur(section.closing_balance),
+    balanceConvention:  section.balance_convention,
+    rows:               visibleRows.map(mapRowToDTO),
+  }
+}
+
+// ─── Overall Net computation ─────────────────────────────────────────────────
+
+function netLabel(net: number): 'due_to_jj' | 'due_to_you' | 'settled' {
+  if (net < 0) return 'due_to_jj'
+  if (net > 0) return 'due_to_you'
+  return 'settled'
+}
+
+/**
+ * Normalize a single section's closing balance to the owner's perspective.
+ *
+ * Convention:
+ * - client_debt: positive closing = owner owes JJ → normalized negative
+ * - owner_credit: positive closing = JJ owes owner → normalized positive
+ *
+ * This matches computeNetOwnerBalance():
+ *   client_debt  → net -= closing_balance  (i.e. normalized = -closing)
+ *   owner_credit → net += closing_balance  (i.e. normalized = +closing)
+ */
+function normalizeDepartment(section: RC3AccountSection): OwnerDepartmentBalanceDTO {
+  const normalized = section.balance_convention === 'owner_credit'
+    ? section.closing_balance
+    : -section.closing_balance
+  return {
+    type:              section.account_type,
+    label:             section.account_label,
+    closingBalanceEur: toEur(section.closing_balance) as string,
+    normalizedEur:     toEur(normalized) as string,
+    label_status:      netLabel(normalized),
+    displayAmountEur:  toEur(Math.abs(normalized)) as string,
+  }
+}
+
+function buildOverallNet(sections: RC3AccountSection[]): OwnerOverallNetDTO | null {
+  if (sections.length === 0) return null
+  const net = computeNetOwnerBalance(sections)
+  const departments = sections.map(normalizeDepartment)
+  return {
+    departments,
+    netEur:           toEur(net) as string,
+    label:            netLabel(net),
+    displayAmountEur: toEur(Math.abs(net)) as string,
   }
 }
 
@@ -139,7 +189,7 @@ export async function fetchOwnerFinancial(
   const { properties, fromDate, toDate } = input
 
   if (properties.length === 0) {
-    return { position: emptyPosition(), sections: [], timeline: [] }
+    return { position: emptyPosition(), overallNet: null, sections: [], timeline: [] }
   }
 
   const settled = await Promise.allSettled(
@@ -153,12 +203,13 @@ export async function fetchOwnerFinancial(
     .map(r => r.value)
 
   if (reports.length === 0) {
-    return { position: emptyPosition(), sections: [], timeline: [] }
+    return { position: emptyPosition(), overallNet: null, sections: [], timeline: [] }
   }
 
   const allSections = reports.flatMap(r => r.accounts)
   const position    = composePosition(allSections)
+  const overallNet  = buildOverallNet(allSections)
   const sections    = allSections.map(mapSectionToDTO)
 
-  return { position, sections, timeline: [] }
+  return { position, overallNet, sections, timeline: [] }
 }
