@@ -92,6 +92,7 @@ const EMPTY_FINANCIAL: OwnerFinancialDTO = {
     pendingEur: null,
     closingBalanceEur: null,
   },
+  overallNet: null,
   sections: [],
   timeline: [],
 }

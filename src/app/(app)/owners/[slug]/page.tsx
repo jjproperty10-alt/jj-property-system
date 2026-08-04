@@ -2,10 +2,10 @@
  * /owners/[slug] — Owner Workspace
  *
  * 7-tab workspace for a single owner relationship.
- * Tab sthate is driven by ?tab= search param (URL-first navigation).
+ * Tab state is driven by ?tab= search param (URL-first navigation).
  *
  * Architecture:
- * - Server component owns data fetching and htab routing
+ * - Server component owns data fetching and tab routing
  * - WorkspaceShell provides sticky header + tabpanel ARIA structure
  * - OwnerIdentityHeader renders identity + status (contains client TabNav)
  * - EntityContextBridge sets GlobalContext.entityContext for frame-level display

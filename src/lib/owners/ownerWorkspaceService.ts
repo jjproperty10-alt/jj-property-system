@@ -269,6 +269,7 @@ export async function getOwnerFinancial(
         pendingEur: null,
         closingBalanceEur: null,
       },
+      overallNet: null,
       sections: [],
       timeline: [],
     }
@@ -294,6 +295,7 @@ export async function getOwnerFinancial(
         pendingEur: null,
         closingBalanceEur: null,
       },
+      overallNet: null,
       sections: [],
       timeline: [],
     }

@@ -11,14 +11,14 @@
 import type { ReactNode } from 'react'
 import { KpiCard, MoneyValue, UnknownValue, EmptyState, DataTable, AttentionBanner } from '@/components/ds'
 import type { DataTableColumn } from '@/components/ds'
-import type { OwnerFinancialDTO, OwnerFinancialRowDTO } from '@/lib/owners/ownerWorkspaceTypes'
+import type { OwnerFinancialDTO, OwnerFinancialRowDTO, OwnerOverallNetDTO } from '@/lib/owners/ownerWorkspaceTypes'
 
 export interface FinancialTabProps {
   dto: OwnerFinancialDTO
 }
 
 export function FinancialTab({ dto }: FinancialTabProps) {
-  const { position, sections, timeline } = dto
+  const { position, overallNet, sections, timeline } = dto
 
   // When ALL position KPIs are null AND there are no sections, avoid rendering
   // six simultaneous UnknownValue cards. Show a single explanatory banner instead.
@@ -85,6 +85,9 @@ export function FinancialTab({ dto }: FinancialTabProps) {
           description="Financial data will appear here once RC3 views are connected to this owner."
         />
       )}
+
+      {/* Overall Net Relationship */}
+      {overallNet && <OverallNetRelationship overallNet={overallNet} />}
 
       {/* Financial timeline */}
       {timeline.length > 0 && (
@@ -185,6 +188,66 @@ function FinancialSection({ section }: { section: OwnerFinancialDTO['sections'][
         </div>
       )}
     </div>
+  )
+}
+
+function OverallNetRelationship({ overallNet }: { overallNet: OwnerOverallNetDTO }) {
+  const labelText: Record<OwnerOverallNetDTO['label'], string> = {
+    due_to_jj:  'Due to JJ',
+    due_to_you: 'Due to You',
+    settled:    'Settled',
+  }
+
+  const labelColor: Record<OwnerOverallNetDTO['label'], string> = {
+    due_to_jj:  'text-red-700 bg-red-50 border-red-200',
+    due_to_you: 'text-green-700 bg-green-50 border-green-200',
+    settled:    'text-gray-700 bg-gray-50 border-gray-200',
+  }
+
+  return (
+    <section aria-labelledby="fin-net-heading">
+      <h2 id="fin-net-heading" className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+        Overall Net Relationship
+      </h2>
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        {/* Department balances */}
+        <div className="divide-y divide-gray-100">
+          {overallNet.departments.map(dept => (
+            <div key={dept.type} className="flex items-center justify-between px-4 py-3">
+              <span className="text-sm text-gray-700">{dept.label}</span>
+              <div className="flex items-center gap-2">
+                <span className={`text-xs px-2 py-0.5 rounded border ${labelColor[dept.label_status]}`}>
+                  {labelText[dept.label_status]}
+                </span>
+                <span className="text-sm font-medium text-gray-900 tabular-nums" dir="ltr">
+                  {dept.label_status === 'settled'
+                    ? '€0'
+                    : <MoneyValue amount={parseFloat(dept.displayAmountEur)} size="sm" />}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Overall net summary */}
+        <div className={`flex items-center justify-between px-4 py-4 border-t-2 border-gray-300 ${
+          overallNet.label === 'due_to_jj' ? 'bg-red-50' :
+          overallNet.label === 'due_to_you' ? 'bg-green-50' : 'bg-gray-50'
+        }`}>
+          <span className="text-sm font-semibold text-gray-900">Overall Net</span>
+          <div className="flex items-center gap-3">
+            <span className={`text-sm font-semibold px-3 py-1 rounded-full border ${labelColor[overallNet.label]}`}>
+              {labelText[overallNet.label]}
+            </span>
+            <span className="text-lg font-bold text-gray-900 tabular-nums" dir="ltr">
+              {overallNet.label === 'settled'
+                ? '€0'
+                : <MoneyValue amount={parseFloat(overallNet.displayAmountEur)} size="lg" />}
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
   )
 }
 

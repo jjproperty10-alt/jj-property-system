@@ -48,8 +48,9 @@ export async function getFinancial(
         pendingEur:        null,
         closingBalanceEur: null,
       },
-      sections:  [],
-      timeline:  [],
+      overallNet: null,
+      sections:   [],
+      timeline:   [],
     }
   }
 }

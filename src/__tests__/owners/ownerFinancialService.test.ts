@@ -28,8 +28,9 @@ const EMPTY_DTO: OwnerFinancialDTO = {
     pendingEur:        null,
     closingBalanceEur: null,
   },
-  sections:  [],
-  timeline:  [],
+  overallNet: null,
+  sections:   [],
+  timeline:   [],
 }
 
 const POPULATED_DTO: OwnerFinancialDTO = {
@@ -41,7 +42,13 @@ const POPULATED_DTO: OwnerFinancialDTO = {
     pendingEur:        null,
     closingBalanceEur: '6000',
   },
-  sections:  [{ type: 'airbnb', label: 'Airbnb', incomeEur: '5000', expensesEur: '800', netEur: '4200', rows: [] }],
+  overallNet: {
+    departments: [{ type: 'airbnb', label: 'Airbnb', closingBalanceEur: '6000', normalizedEur: '6000', label_status: 'due_to_you', displayAmountEur: '6000' }],
+    netEur: '6000',
+    label: 'due_to_you',
+    displayAmountEur: '6000',
+  },
+  sections:  [{ type: 'airbnb', label: 'Airbnb', incomeEur: '5000', expensesEur: '800', netEur: '4200', closingBalanceEur: '6000', balanceConvention: 'owner_credit', rows: [] }],
   timeline:  [],
 }
 
