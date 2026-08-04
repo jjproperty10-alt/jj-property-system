@@ -204,6 +204,29 @@ function OverallNetRelationship({ overallNet }: { overallNet: OwnerOverallNetDTO
     settled:    'text-gray-700 bg-gray-50 border-gray-200',
   }
 
+  // Production guard: when reviewStatus is set, show a review banner
+  // instead of potentially incorrect numeric values
+  if (overallNet.reviewStatus === 'needs_review') {
+    return (
+      <section aria-labelledby="fin-net-heading">
+        <h2 id="fin-net-heading" className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+          Overall Net Relationship
+        </h2>
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-4">
+          <div className="flex items-start gap-3">
+            <span className="text-amber-600 text-lg flex-shrink-0">⚠</span>
+            <div>
+              <p className="text-sm font-semibold text-amber-800">Needs Review</p>
+              <p className="text-sm text-amber-700 mt-1">
+                {overallNet.reviewReason ?? 'The amounts shown for this owner are incomplete and under review.'}
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section aria-labelledby="fin-net-heading">
       <h2 id="fin-net-heading" className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
