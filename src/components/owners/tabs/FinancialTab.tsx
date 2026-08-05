@@ -11,14 +11,14 @@
 import type { ReactNode } from 'react'
 import { KpiCard, MoneyValue, UnknownValue, EmptyState, DataTable, AttentionBanner } from '@/components/ds'
 import type { DataTableColumn } from '@/components/ds'
-import type { OwnerFinancialDTO, OwnerFinancialRowDTO, OwnerOverallNetDTO } from '@/lib/owners/ownerWorkspaceTypes'
+import type { OwnerFinancialDTO, OwnerFinancialRowDTO, OwnerOverallNetDTO, OccupancyPositionDTO } from '@/lib/owners/ownerWorkspaceTypes'
 
 export interface FinancialTabProps {
   dto: OwnerFinancialDTO
 }
 
 export function FinancialTab({ dto }: FinancialTabProps) {
-  const { position, overallNet, sections, timeline } = dto
+  const { position, overallNet, sections, timeline, occupancyPosition } = dto
 
   // When ALL position KPIs are null AND there are no sections, avoid rendering
   // six simultaneous UnknownValue cards. Show a single explanatory banner instead.
@@ -88,6 +88,9 @@ export function FinancialTab({ dto }: FinancialTabProps) {
 
       {/* Overall Net Relationship */}
       {overallNet && <OverallNetRelationship overallNet={overallNet} />}
+
+      {/* Occupancy Position — personal occupancy obligations (Oshrit) */}
+      {occupancyPosition && <OccupancySection position={occupancyPosition} />}
 
       {/* Financial timeline */}
       {timeline.length > 0 && (
@@ -267,6 +270,91 @@ function OverallNetRelationship({ overallNet }: { overallNet: OwnerOverallNetDTO
                 ? '€0'
                 : <MoneyValue amount={parseFloat(overallNet.displayAmountEur)} size="lg" />}
             </span>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function OccupancySection({ position }: { position: OccupancyPositionDTO }) {
+  const outstanding = parseFloat(position.outstandingEur)
+
+  return (
+    <section aria-labelledby="fin-occupancy-heading">
+      <h2 id="fin-occupancy-heading" className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+        Personal Occupancy — {position.propertyName}
+      </h2>
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        {/* Summary header */}
+        <div className="px-4 py-3 bg-blue-50 border-b border-blue-200">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-blue-600 text-sm">🏠</span>
+            <span className="text-sm font-semibold text-blue-900">
+              €{position.monthlyAmountEur}/month since {formatDate(position.effectiveFrom)}
+            </span>
+          </div>
+          <p className="text-xs text-blue-700">
+            Economic bearer: Yossi (personal obligation — not JJ company expense)
+          </p>
+        </div>
+
+        {/* Position KPIs */}
+        <div className="grid grid-cols-3 gap-px bg-gray-100">
+          <div className="bg-white px-4 py-3 text-center">
+            <div className="text-xs text-gray-500 mb-1">Total Obligated</div>
+            <div className="text-sm font-semibold text-gray-900 tabular-nums" dir="ltr">
+              <MoneyValue amount={parseFloat(position.totalObligatedEur)} size="sm" />
+            </div>
+            <div className="text-xs text-gray-400">{position.totalObligations} months</div>
+          </div>
+          <div className="bg-white px-4 py-3 text-center">
+            <div className="text-xs text-gray-500 mb-1">Settled</div>
+            <div className="text-sm font-semibold text-green-700 tabular-nums" dir="ltr">
+              <MoneyValue amount={parseFloat(position.totalSettledEur)} size="sm" />
+            </div>
+            <div className="text-xs text-gray-400">{position.settledCount} months</div>
+          </div>
+          <div className="bg-white px-4 py-3 text-center">
+            <div className="text-xs text-gray-500 mb-1">Outstanding</div>
+            <div className={`text-sm font-semibold tabular-nums ${outstanding > 0 ? 'text-red-700' : 'text-gray-900'}`} dir="ltr">
+              <MoneyValue amount={outstanding} size="sm" />
+            </div>
+            <div className="text-xs text-gray-400">{position.openCount} months</div>
+          </div>
+        </div>
+
+        {/* Settlement breakdown by payer (P-ARCH-2: identity preservation) */}
+        <div className="px-4 py-3 border-t border-gray-200">
+          <div className="text-xs text-gray-500 mb-2">Settlement Breakdown by Payer</div>
+          <div className="flex gap-4 text-sm">
+            {parseFloat(position.settledByJjEur) > 0 && (
+              <span className="text-gray-700">
+                JJ: <span className="font-medium tabular-nums" dir="ltr">€{position.settledByJjEur}</span>
+              </span>
+            )}
+            {parseFloat(position.settledByJacobEur) > 0 && (
+              <span className="text-gray-700">
+                Jacob: <span className="font-medium tabular-nums" dir="ltr">€{position.settledByJacobEur}</span>
+              </span>
+            )}
+            {parseFloat(position.settledByYossiEur) > 0 && (
+              <span className="text-gray-700">
+                Yossi: <span className="font-medium tabular-nums" dir="ltr">€{position.settledByYossiEur}</span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Needs Review guard */}
+        <div className="px-4 py-3 bg-amber-50 border-t border-amber-200">
+          <div className="flex items-start gap-2">
+            <span className="text-amber-600 text-sm flex-shrink-0">⚠</span>
+            <p className="text-xs text-amber-700">
+              Occupancy obligations are tracked but not yet integrated into the settlement engine.
+              Outstanding amounts are not subtracted from the Overall Net until the partner
+              current-account ledger is implemented.
+            </p>
           </div>
         </div>
       </div>

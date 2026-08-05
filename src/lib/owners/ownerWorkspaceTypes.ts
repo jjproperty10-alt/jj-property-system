@@ -233,6 +233,36 @@ export interface OwnerFinancialDTO {
   overallNet: OwnerOverallNetDTO | null
   sections: OwnerFinancialSectionDTO[]
   timeline: FinancialTimelineItemDTO[]
+  /** Occupancy position — personal occupancy obligations (Oshrit only for now) */
+  occupancyPosition?: OccupancyPositionDTO | null
+}
+
+/**
+ * Occupancy Position — recurring personal obligations outside the RC3 engine.
+ *
+ * Sourced from lifecycle.v_occupancy_position. Only populated for properties
+ * listed in NEEDS_REVIEW_PROPERTIES that have occupancy agreements.
+ *
+ * Economic bearer = Yossi (personal obligation, not JJ company expense).
+ * Settlement credits are tracked but NOT subtracted from owner balance
+ * until the partner current-account ledger is implemented.
+ */
+export interface OccupancyPositionDTO {
+  propertyName: string
+  monthlyAmountEur: string
+  effectiveFrom: string
+  effectiveTo: string | null
+  agreementStatus: string
+  totalObligations: number
+  settledCount: number
+  openCount: number
+  totalObligatedEur: string
+  totalSettledEur: string
+  outstandingEur: string
+  /** Settlement breakdown by payer identity (P-ARCH-2: Yossi ≠ Jacob ≠ JJ) */
+  settledByJjEur: string
+  settledByJacobEur: string
+  settledByYossiEur: string
 }
 
 /**

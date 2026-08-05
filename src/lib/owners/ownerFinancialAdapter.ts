@@ -33,12 +33,14 @@ import type {
   DisplayGroup,
 } from '@/lib/report/types'
 import { computeNetOwnerBalance } from '@/lib/report/executiveSummary'
+import { createServiceClient } from '@/lib/supabase'
 import type {
   OwnerFinancialDTO,
   OwnerFinancialSectionDTO,
   OwnerFinancialRowDTO,
   OwnerOverallNetDTO,
   OwnerDepartmentBalanceDTO,
+  OccupancyPositionDTO,
   EuroAmount,
 } from './ownerWorkspaceTypes'
 
@@ -219,6 +221,55 @@ const NEEDS_REVIEW_PROPERTIES = new Set([
   'Oshrit Deklia',
 ])
 
+// ─── Occupancy Position ──────────────────────────────────────────────────
+
+/**
+ * Fetch occupancy position for properties with personal occupancy agreements.
+ *
+ * Only queries lifecycle.v_occupancy_position for NEEDS_REVIEW properties.
+ * Returns null for properties without occupancy agreements (most owners).
+ *
+ * Uses service client — lifecycle schema has RLS deny-all.
+ */
+async function fetchOccupancyPosition(
+  properties: readonly string[],
+): Promise<OccupancyPositionDTO | null> {
+  const needsReview = properties.filter(p => NEEDS_REVIEW_PROPERTIES.has(p))
+  if (needsReview.length === 0) return null
+
+  try {
+    const supabase = createServiceClient()
+    const { data, error } = await supabase
+      .schema('lifecycle')
+      .from('v_occupancy_position')
+      .select('*')
+      .in('property_name', needsReview)
+      .limit(1)
+      .single()
+
+    if (error || !data) return null
+
+    return {
+      propertyName:       data.property_name,
+      monthlyAmountEur:   String(data.monthly_amount_eur),
+      effectiveFrom:      data.effective_from,
+      effectiveTo:        data.effective_to ?? null,
+      agreementStatus:    data.agreement_status,
+      totalObligations:   Number(data.total_obligations),
+      settledCount:       Number(data.settled_count),
+      openCount:          Number(data.open_count),
+      totalObligatedEur:  String(data.total_obligated_eur),
+      totalSettledEur:    String(data.total_settled_eur),
+      outstandingEur:     String(data.outstanding_eur),
+      settledByJjEur:     String(data.settled_by_jj_eur),
+      settledByJacobEur:  String(data.settled_by_jacob_eur),
+      settledByYossiEur:  String(data.settled_by_yossi_eur),
+    }
+  } catch {
+    return null
+  }
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -234,13 +285,22 @@ export async function fetchOwnerFinancial(
   const { properties, fromDate, toDate } = input
 
   if (properties.length === 0) {
-    return { position: emptyPosition(), overallNet: null, sections: [], timeline: [] }
+    return { position: emptyPosition(), overallNet: null, sections: [], timeline: [], occupancyPosition: null }
   }
 
   const settled = await Promise.allSettled(
-    properties.map(reportingName =>
-      fetchRC3Report({ reportingName, fromDate, toDate }),
-    ),
+    properties.map(reportingName => {
+      // Phase 0: Properties with incomplete accounting models (e.g. Oshrit —
+      // personal occupancy not yet in transactions) have no current-month rows.
+      // Show all-time data so historical sections remain visible.
+      // Other owners keep the caller-supplied date filter.
+      const skipDateFilter = NEEDS_REVIEW_PROPERTIES.has(reportingName)
+      return fetchRC3Report({
+        reportingName,
+        fromDate: skipDateFilter ? undefined : fromDate,
+        toDate: skipDateFilter ? undefined : toDate,
+      })
+    }),
   )
 
   const reports: RC3PropertyReport[] = settled
@@ -248,13 +308,19 @@ export async function fetchOwnerFinancial(
     .map(r => r.value)
 
   if (reports.length === 0) {
-    return { position: emptyPosition(), overallNet: null, sections: [], timeline: [] }
+    // Still fetch occupancy even if RC3 reports fail — the position data
+    // lives in lifecycle schema, independent of RC3.
+    const occupancyPosition = await fetchOccupancyPosition(properties)
+    return { position: emptyPosition(), overallNet: null, sections: [], timeline: [], occupancyPosition }
   }
 
   const allSections = reports.flatMap(r => r.accounts)
   const position    = composePosition(allSections)
   const overallNet  = buildOverallNet(allSections, properties)
   const sections    = allSections.map(mapSectionToDTO)
+
+  // Fetch occupancy position for NEEDS_REVIEW properties
+  const occupancyPosition = await fetchOccupancyPosition(properties)
 
   // Production guard: mark Overall Net as needs_review for properties
   // with known incomplete accounting models
@@ -265,5 +331,5 @@ export async function fetchOwnerFinancial(
       'reflected in the accounting engine. The amounts shown are incomplete.'
   }
 
-  return { position, overallNet, sections, timeline: [] }
+  return { position, overallNet, sections, timeline: [], occupancyPosition }
 }
