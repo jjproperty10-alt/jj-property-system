@@ -15,6 +15,19 @@
 
 jest.mock('server-only', () => ({}), { virtual: true })
 
+// ─── Supabase mock (required for fetchOccupancyPosition) ─────────────────────
+
+const mockSingle = jest.fn().mockResolvedValue({ data: null, error: { message: 'not found' } })
+const mockLimit = jest.fn(() => ({ single: mockSingle }))
+const mockIn = jest.fn(() => ({ limit: mockLimit }))
+const mockSelect = jest.fn(() => ({ in: mockIn }))
+const mockFrom = jest.fn(() => ({ select: mockSelect }))
+const mockSchema = jest.fn(() => ({ from: mockFrom }))
+
+jest.mock('@/lib/supabase', () => ({
+  createServiceClient: () => ({ schema: mockSchema }),
+}))
+
 const mockFetchRC3Report = jest.fn()
 jest.mock('@/lib/report/fetchReport', () => ({
   fetchRC3Report: (...args: unknown[]) => mockFetchRC3Report(...args),
