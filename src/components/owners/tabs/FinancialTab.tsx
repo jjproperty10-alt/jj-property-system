@@ -32,6 +32,11 @@ export function FinancialTab({ dto }: FinancialTabProps) {
 
   const showPositionBanner = allPositionUnknown && sections.length === 0
 
+  // When the Overall Net is under review, the top-level summary KPIs include
+  // figures (e.g. JJ internal purchase cost) that do not represent the owner's
+  // true financial position. Suppress them to avoid presenting misleading totals.
+  const summaryUnderReview = overallNet?.reviewStatus === 'needs_review'
+
   return (
     <div className="space-y-6">
 
@@ -44,6 +49,12 @@ export function FinancialTab({ dto }: FinancialTabProps) {
           <AttentionBanner
             type="info"
             title="Financial detail will appear here once RC3 is connected to this owner's properties."
+          />
+        ) : summaryUnderReview ? (
+          <AttentionBanner
+            type="warning"
+            title="Financial summary is pending review"
+            description="The overall position for this owner includes items that are not yet fully reconciled. Category breakdowns are shown below for reference."
           />
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
