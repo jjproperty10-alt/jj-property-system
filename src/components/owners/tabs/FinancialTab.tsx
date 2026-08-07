@@ -15,10 +15,11 @@ import type { OwnerFinancialDTO, OwnerFinancialRowDTO, OwnerOverallNetDTO, Occup
 
 export interface FinancialTabProps {
   dto: OwnerFinancialDTO
+  periodLabel?: string
 }
 
-export function FinancialTab({ dto }: FinancialTabProps) {
-  const { position, overallNet, sections, timeline, occupancyPosition } = dto
+export function FinancialTab({ dto, periodLabel }: FinancialTabProps) {
+  const { position, overallNet, sections, timeline, occupancyPosition, historicalSummary } = dto
 
   // Three-state financial display:
   // A. No Data â overallNet null, no sections, no occupancy â Empty State only
@@ -27,6 +28,7 @@ export function FinancialTab({ dto }: FinancialTabProps) {
   const hasAnyFinancialContent = sections.length > 0 || occupancyPosition != null
   const noFinancialData = overallNet === null && !hasAnyFinancialContent
   const summaryUnderReview = overallNet?.reviewStatus === 'needs_review'
+  const hasHistoricalOnly = noFinancialData && historicalSummary != null
 
   return (
     <div className="space-y-6">
@@ -35,7 +37,7 @@ export function FinancialTab({ dto }: FinancialTabProps) {
       {overallNet != null && (
         <section aria-labelledby="fin-position-heading">
           <h2 id="fin-position-heading" className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-            Current Financial Position
+            {periodLabel === 'All History' ? 'All History - Financial Position' : 'Current Financial Position'}
           </h2>
           {summaryUnderReview ? (
             <AttentionBanner
@@ -77,12 +79,16 @@ export function FinancialTab({ dto }: FinancialTabProps) {
         </section>
       )}
 
-      {noFinancialData && (
+      {noFinancialData && !hasHistoricalOnly && (
         <EmptyState
           icon="ð¶"
           title="No financial data available"
           description="Financial data will appear here once RC3 views are connected to this owner."
         />
+      )}
+
+      {hasHistoricalOnly && (
+        <HistoricalAvailability summary={historicalSummary!} periodLabel={periodLabel ?? 'this period'} />
       )}
 
       {/* Overall Net Relationship */}
@@ -358,6 +364,29 @@ function OccupancySection({ position }: { position: OccupancyPositionDTO }) {
         </div>
       </div>
     </section>
+  )
+}
+
+function HistoricalAvailability({ summary, periodLabel }: { summary: NonNullable<OwnerFinancialDTO['historicalSummary']>; periodLabel: string }) {
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-4">
+      <div className="flex items-start gap-3">
+        <span className="text-blue-600 text-lg flex-shrink-0">i</span>
+        <div>
+          <p className="text-sm font-semibold text-blue-800">No financial activity found for {periodLabel}</p>
+          <p className="text-sm text-blue-700 mt-1">
+            {summary.rowCount} historical transactions
+            <br />Historical activity: {summary.earliestDate} - {summary.latestDate}
+          </p>
+          <a
+            href="?tab=financial&period=all"
+            className="inline-block mt-2 text-sm text-blue-700 font-medium hover:underline"
+          >
+            View all history
+          </a>
+        </div>
+      </div>
+    </div>
   )
 }
 

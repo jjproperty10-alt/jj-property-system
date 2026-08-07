@@ -221,6 +221,27 @@ const NEEDS_REVIEW_PROPERTIES = new Set([
   'Oshrit Deklia',
 ])
 
+/**
+ * Properties that must bypass date filtering to show historical data.
+ *
+ * Superset of NEEDS_REVIEW_PROPERTIES — all reviewed properties also bypass
+ * the date filter. Additional properties here have clean accounting models
+ * but no current-month data (all rows predate the current period).
+ *
+ * Without this bypass, the Financial tab shows "No financial data available"
+ * even though the owner has dozens of historical rows in RC3 views.
+ *
+ * Properties NOT in this set use the three-state display model instead:
+ * - State A: current period has data → show normally
+ * - State B: current period empty, historical exists → show message + summary
+ * - State C: no historical data → "No financial data available"
+ *
+ * Permanent fix: historical date range selector (future scope).
+ */
+const BYPASS_DATE_FILTER_PROPERTIES = new Set([
+  'Oshrit Deklia',
+])
+
 // ─── Occupancy Position ──────────────────────────────────────────────────
 
 /**
@@ -270,6 +291,49 @@ async function fetchOccupancyPosition(
   }
 }
 
+
+/**
+ * Fetch a historical summary (date range + row count) for properties that
+ * are NOT in BYPASS_DATE_FILTER_PROPERTIES. Returns null when no historical
+ * rows exist or all properties bypass the date filter.
+ */
+async function fetchHistoricalSummary(
+  properties: readonly string[],
+): Promise<OwnerFinancialDTO['historicalSummary']> {
+  const toCheck = properties.filter(p => !BYPASS_DATE_FILTER_PROPERTIES.has(p))
+  if (toCheck.length === 0) return null
+
+  try {
+    const settled = await Promise.allSettled(
+      toCheck.map(reportingName =>
+        fetchRC3Report({ reportingName })
+      ),
+    )
+
+    const reports: RC3PropertyReport[] = settled
+      .filter((r): r is PromiseFulfilledResult<RC3PropertyReport> => r.status === 'fulfilled')
+      .map(r => r.value)
+
+    const allRows = reports.flatMap(r => r.accounts.flatMap(a => a.rows))
+    if (allRows.length === 0) return null
+
+    const dates = allRows
+      .map(r => r.date)
+      .filter((d): d is string => d != null)
+      .sort()
+
+    if (dates.length === 0) return null
+
+    return {
+      earliestDate: dates[0],
+      latestDate: dates[dates.length - 1],
+      rowCount: allRows.length,
+    }
+  } catch {
+    return null
+  }
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -294,7 +358,7 @@ export async function fetchOwnerFinancial(
       // personal occupancy not yet in transactions) have no current-month rows.
       // Show all-time data so historical sections remain visible.
       // Other owners keep the caller-supplied date filter.
-      const skipDateFilter = NEEDS_REVIEW_PROPERTIES.has(reportingName)
+      const skipDateFilter = BYPASS_DATE_FILTER_PROPERTIES.has(reportingName)
       return fetchRC3Report({
         reportingName,
         fromDate: skipDateFilter ? undefined : fromDate,
@@ -311,10 +375,19 @@ export async function fetchOwnerFinancial(
     // Still fetch occupancy even if RC3 reports fail — the position data
     // lives in lifecycle schema, independent of RC3.
     const occupancyPosition = await fetchOccupancyPosition(properties)
-    return { position: emptyPosition(), overallNet: null, sections: [], timeline: [], occupancyPosition }
+    const historicalSummary = await fetchHistoricalSummary(properties)
+    return { position: emptyPosition(), overallNet: null, sections: [], timeline: [], occupancyPosition, historicalSummary }
   }
 
   const allSections = reports.flatMap(r => r.accounts)
+
+  // When the date-filtered report returned sections but they're all empty,
+  // check whether unfiltered history exists (State B).
+  let historicalSummary: OwnerFinancialDTO['historicalSummary'] = undefined
+  if (allSections.length === 0) {
+    historicalSummary = await fetchHistoricalSummary(properties)
+  }
+
   const position    = composePosition(allSections)
   const overallNet  = buildOverallNet(allSections, properties)
   const sections    = allSections.map(mapSectionToDTO)
@@ -331,5 +404,5 @@ export async function fetchOwnerFinancial(
       'reflected in the accounting engine. The amounts shown are incomplete.'
   }
 
-  return { position, overallNet, sections, timeline: [], occupancyPosition }
+  return { position, overallNet, sections, timeline: [], occupancyPosition, historicalSummary }
 }
