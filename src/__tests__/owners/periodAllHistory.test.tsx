@@ -727,7 +727,7 @@ describe('FinancialTab three-state display', () => {
 
     expect(html).not.toContain('No financial data available')
     expect(html).toContain('No financial activity found for')
-    expect(html).toContain('42 historical transactions')
+    expect(html).toContain('42 transactions on record')
     expect(html).toContain('View all history')
     expect(html).toContain('?tab=financial&amp;period=all')
   })
@@ -771,7 +771,7 @@ describe('FinancialTab three-state display', () => {
     expect(html).toContain('Money Received')
   })
 
-  it('periodLabel="All History" renders "All History - Financial Position" heading', () => {
+  it('periodLabel="All History" renders "All History — Financial Position" heading', () => {
     const dto: OwnerFinancialDTO = {
       position: {
         incomeEur: '1000',
@@ -804,7 +804,7 @@ describe('FinancialTab three-state display', () => {
       <FinancialTab dto={dto} periodLabel="All History" />,
     )
 
-    expect(html).toContain('All History - Financial Position')
+    expect(html).toContain('All History — Financial Position')
     expect(html).not.toContain('Current Financial Position')
     expect(html).not.toContain('No financial activity found for')
   })
