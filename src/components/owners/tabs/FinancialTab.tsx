@@ -1,8 +1,8 @@
 /**
- * Financial Tab â "Where is the owner's money?"
+ * Financial Tab — "Where is the owner's money?"
  *
  * Rules (OWNER_VERTICAL_SLICE_BRIEF Section 5.2):
- * - All values arrive via props/DTO â no client-side accounting
+ * - All values arrive via props/DTO — no client-side accounting
  * - Cashbox values do NOT appear here (Finance module only)
  * - Null values show UnknownValue, never 0
  * - RC3 engine is source of truth for all amounts
@@ -21,49 +21,59 @@ export interface FinancialTabProps {
 export function FinancialTab({ dto, periodLabel }: FinancialTabProps) {
   const { position, overallNet, sections, timeline, occupancyPosition, historicalSummary } = dto
 
-  // Three-state financial display:
-  // A. No Data â overallNet null, no sections, no occupancy â Empty State only
-  // B. Needs Review â overallNet.reviewStatus='needs_review' â warning banner
-  // C. Valid Data â normal 6 KPI cards
-  const hasAnyFinancialContent = sections.length > 0 || occupancyPosition != null
-  const noFinancialData = overallNet === null && !hasAnyFinancialContent
-  const summaryUnderReview = overallNet?.reviewStatus === 'needs_review'
+  // Three-state financial display model:
+  //   State A: Current period has activity → show normally
+  //   State B: Current period empty, historical data exists → show historical summary
+  //   State C: No historical data at all → show empty state
+  const hasAnyFinancialContent = sections.length > 0 || overallNet != null
+  const noFinancialData = !hasAnyFinancialContent
   const hasHistoricalOnly = noFinancialData && historicalSummary != null
+
+  // When the Overall Net is under review, the top-level summary KPIs include
+  // figures (e.g. JJ internal purchase cost) that do not represent the owner's
+  // true financial position. Suppress them to avoid presenting misleading totals.
+  const summaryUnderReview = overallNet?.reviewStatus === 'needs_review'
 
   return (
     <div className="space-y-6">
 
-      {/* Current financial position â only when overallNet provides computed values */}
-      {overallNet != null && (
-        <section aria-labelledby="fin-position-heading">
-          <h2 id="fin-position-heading" className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-            {periodLabel === 'All History' ? 'All History - Financial Position' : 'Current Financial Position'}
-          </h2>
-          {summaryUnderReview ? (
-            <AttentionBanner
-              type="warning"
-              title="Financial summary is pending review"
-              description="The overall position for this owner includes items that are not yet fully reconciled. Category breakdowns are shown below for reference."
+      {/* Current financial position */}
+      <section aria-labelledby="fin-position-heading">
+        <h2 id="fin-position-heading" className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+          {periodLabel === 'All History' ? 'All History — Financial Position' : 'Current Financial Position'}
+        </h2>
+        {noFinancialData && !hasHistoricalOnly ? (
+          <AttentionBanner
+            type="info"
+            title="No financial data available"
+            description="Financial data will appear here once RC3 views are connected to this owner."
+          />
+        ) : hasHistoricalOnly ? (
+          <HistoricalAvailability summary={historicalSummary!} />
+        ) : summaryUnderReview ? (
+          <AttentionBanner
+            type="warning"
+            title="Financial summary is pending review"
+            description="The overall position for this owner includes items that are not yet fully reconciled. Category breakdowns are shown below for reference."
+          />
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <MoneyKpi label="Money Received" value={position.incomeEur} />
+            <MoneyKpi label="Money Paid (Expenses)" value={position.expensesEur} />
+            <MoneyKpi label="Paid to Owner" value={position.paidToOwnerEur} />
+            <MoneyKpi label="Net" value={position.netEur} />
+            <MoneyKpi label="Pending" value={position.pendingEur} />
+            <KpiCard
+              label="Closing Balance"
+              value={
+                position.closingBalanceEur != null
+                  ? <MoneyValue amount={parseFloat(position.closingBalanceEur)} size="lg" />
+                  : <UnknownValue reason="Settlement Engine (RC2) — not yet computed" />
+              }
             />
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-              <MoneyKpi label="Money Received" value={position.incomeEur} />
-              <MoneyKpi label="Money Paid (Expenses)" value={position.expensesEur} />
-              <MoneyKpi label="Paid to Owner" value={position.paidToOwnerEur} />
-              <MoneyKpi label="Net" value={position.netEur} />
-              <MoneyKpi label="Pending" value={position.pendingEur} />
-              <KpiCard
-                label="Closing Balance"
-                value={
-                  position.closingBalanceEur != null
-                    ? <MoneyValue amount={parseFloat(position.closingBalanceEur)} size="lg" />
-                    : <UnknownValue reason="Settlement Engine (RC2) â not yet computed" />
-                }
-              />
-            </div>
-          )}
-        </section>
-      )}
+          </div>
+        )}
+      </section>
 
       {/* Sections breakdown */}
       {sections.length > 0 && (
@@ -79,22 +89,12 @@ export function FinancialTab({ dto, periodLabel }: FinancialTabProps) {
         </section>
       )}
 
-      {noFinancialData && !hasHistoricalOnly && (
-        <EmptyState
-          icon="ð¶"
-          title="No financial data available"
-          description="Financial data will appear here once RC3 views are connected to this owner."
-        />
-      )}
 
-      {hasHistoricalOnly && (
-        <HistoricalAvailability summary={historicalSummary!} periodLabel={periodLabel ?? 'this period'} />
-      )}
 
       {/* Overall Net Relationship */}
       {overallNet && <OverallNetRelationship overallNet={overallNet} />}
 
-      {/* Occupancy Position â personal occupancy obligations (Oshrit) */}
+      {/* Occupancy Position — personal occupancy obligations (Oshrit) */}
       {occupancyPosition && <OccupancySection position={occupancyPosition} />}
 
       {/* Financial timeline */}
@@ -129,9 +129,9 @@ export function FinancialTab({ dto, periodLabel }: FinancialTabProps) {
   )
 }
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─────────────────────────────────────────────────────────────
 // Sub-components
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─────────────────────────────────────────────────────────────
 
 function MoneyKpi({ label, value }: { label: string; value: string | null }) {
   return (
@@ -167,9 +167,9 @@ function FinancialSection({ section }: { section: OwnerFinancialDTO['sections'][
       <UnknownValue reason="Amount unknown" />
     ),
     evidenceRef: row.evidenceRef ? (
-      <a href={row.evidenceRef} className="text-xs text-blue-600 hover:underline">View â</a>
+      <a href={row.evidenceRef} className="text-xs text-blue-600 hover:underline">View →</a>
     ) : (
-      <span className="text-xs text-gray-300">â</span>
+      <span className="text-xs text-gray-300">—</span>
     ),
   }))
 
@@ -179,13 +179,29 @@ function FinancialSection({ section }: { section: OwnerFinancialDTO['sections'][
       <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
         <h3 className="text-sm font-semibold text-gray-800 capitalize">{section.label}</h3>
         <div className="flex items-center gap-4 text-sm">
-          <span className="text-gray-500">
-            Net: {section.netEur != null
-              ? <MoneyValue amount={parseFloat(section.netEur)} size="sm" />
-              : 'â'}
-          </span>
+          {section.type === 'sale' ? (
+            <span className="text-gray-500">
+              {section.closingBalanceEur != null && parseFloat(section.closingBalanceEur) === 0
+                ? <span className="font-medium text-green-700">Settled · €0</span>
+                : <>Balance: {section.closingBalanceEur != null
+                    ? <MoneyValue amount={parseFloat(section.closingBalanceEur)} size="sm" />
+                    : '—'}</>}
+            </span>
+          ) : (
+            <span className="text-gray-500">
+              Net: {section.netEur != null
+                ? <MoneyValue amount={parseFloat(section.netEur)} size="sm" />
+                : '—'}
+            </span>
+          )}
         </div>
       </div>
+      {/* Display note (e.g. JJ Internal Acquisition for NEEDS_REVIEW purchase sections) */}
+      {section.displayNote && (
+        <div className="px-4 py-2 bg-amber-50 border-b border-amber-200 text-xs text-amber-800">
+          {section.displayNote}
+        </div>
+      )}
 
       {/* Rows */}
       {section.rows.length > 0 ? (
@@ -222,7 +238,7 @@ function OverallNetRelationship({ overallNet }: { overallNet: OwnerOverallNetDTO
         </h2>
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-4">
           <div className="flex items-start gap-3">
-            <span className="text-amber-600 text-lg flex-shrink-0">â </span>
+            <span className="text-amber-600 text-lg flex-shrink-0">⚠</span>
             <div>
               <p className="text-sm font-semibold text-amber-800">Needs Review</p>
               <p className="text-sm text-amber-700 mt-1">
@@ -252,7 +268,7 @@ function OverallNetRelationship({ overallNet }: { overallNet: OwnerOverallNetDTO
                 </span>
                 <span className="text-sm font-medium text-gray-900 tabular-nums" dir="ltr">
                   {dept.label_status === 'settled'
-                    ? 'â¬0'
+                    ? '€0'
                     : <MoneyValue amount={parseFloat(dept.displayAmountEur)} size="sm" />}
                 </span>
               </div>
@@ -272,7 +288,7 @@ function OverallNetRelationship({ overallNet }: { overallNet: OwnerOverallNetDTO
             </span>
             <span className="text-lg font-bold text-gray-900 tabular-nums" dir="ltr">
               {overallNet.label === 'settled'
-                ? 'â¬0'
+                ? '€0'
                 : <MoneyValue amount={parseFloat(overallNet.displayAmountEur)} size="lg" />}
             </span>
           </div>
@@ -288,19 +304,19 @@ function OccupancySection({ position }: { position: OccupancyPositionDTO }) {
   return (
     <section aria-labelledby="fin-occupancy-heading">
       <h2 id="fin-occupancy-heading" className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-        Personal Occupancy â {position.propertyName}
+        Personal Occupancy — {position.propertyName}
       </h2>
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
         {/* Summary header */}
         <div className="px-4 py-3 bg-blue-50 border-b border-blue-200">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-blue-600 text-sm">ð </span>
+            <span className="text-blue-600 text-sm">🏠</span>
             <span className="text-sm font-semibold text-blue-900">
-              â¬{position.monthlyAmountEur}/month since {formatDate(position.effectiveFrom)}
+              €{position.monthlyAmountEur}/month since {formatDate(position.effectiveFrom)}
             </span>
           </div>
           <p className="text-xs text-blue-700">
-            Economic bearer: Yossi (personal obligation â not JJ company expense)
+            Economic bearer: Yossi (personal obligation — not JJ company expense)
           </p>
         </div>
 
@@ -335,17 +351,17 @@ function OccupancySection({ position }: { position: OccupancyPositionDTO }) {
           <div className="flex gap-4 text-sm">
             {parseFloat(position.settledByJjEur) > 0 && (
               <span className="text-gray-700">
-                JJ: <span className="font-medium tabular-nums" dir="ltr">â¬{position.settledByJjEur}</span>
+                JJ: <span className="font-medium tabular-nums" dir="ltr">€{position.settledByJjEur}</span>
               </span>
             )}
             {parseFloat(position.settledByJacobEur) > 0 && (
               <span className="text-gray-700">
-                Jacob: <span className="font-medium tabular-nums" dir="ltr">â¬{position.settledByJacobEur}</span>
+                Jacob: <span className="font-medium tabular-nums" dir="ltr">€{position.settledByJacobEur}</span>
               </span>
             )}
             {parseFloat(position.settledByYossiEur) > 0 && (
               <span className="text-gray-700">
-                Yossi: <span className="font-medium tabular-nums" dir="ltr">â¬{position.settledByYossiEur}</span>
+                Yossi: <span className="font-medium tabular-nums" dir="ltr">€{position.settledByYossiEur}</span>
               </span>
             )}
           </div>
@@ -354,7 +370,7 @@ function OccupancySection({ position }: { position: OccupancyPositionDTO }) {
         {/* Needs Review guard */}
         <div className="px-4 py-3 bg-amber-50 border-t border-amber-200">
           <div className="flex items-start gap-2">
-            <span className="text-amber-600 text-sm flex-shrink-0">â </span>
+            <span className="text-amber-600 text-sm flex-shrink-0">⚠</span>
             <p className="text-xs text-amber-700">
               Occupancy obligations are tracked but not yet integrated into the settlement engine.
               Outstanding amounts are not subtracted from the Overall Net until the partner
@@ -367,33 +383,53 @@ function OccupancySection({ position }: { position: OccupancyPositionDTO }) {
   )
 }
 
-function HistoricalAvailability({ summary, periodLabel }: { summary: NonNullable<OwnerFinancialDTO['historicalSummary']>; periodLabel: string }) {
-  return (
-    <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-4">
-      <div className="flex items-start gap-3">
-        <span className="text-blue-600 text-lg flex-shrink-0">i</span>
-        <div>
-          <p className="text-sm font-semibold text-blue-800">No financial activity found for {periodLabel}</p>
-          <p className="text-sm text-blue-700 mt-1">
-            {summary.rowCount} historical transactions
-            <br />Historical activity: {summary.earliestDate} - {summary.latestDate}
-          </p>
-          <a
-            href="?tab=financial&period=all"
-            className="inline-block mt-2 text-sm text-blue-700 font-medium hover:underline"
-          >
-            View all history
-          </a>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function formatDate(iso: string): string {
   try {
     return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
   } catch {
     return iso
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Three-state display: Historical availability (State B)
+// ─────────────────────────────────────────────────────────────
+
+function formatMonthYear(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  return d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+}
+
+function HistoricalAvailability({ summary }: {
+  summary: NonNullable<OwnerFinancialDTO['historicalSummary']>
+}) {
+  const now = new Date()
+  const currentPeriod = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+  const earliest = formatMonthYear(summary.earliestDate)
+  const latest = formatMonthYear(summary.latestDate)
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg px-4 py-6 text-center">
+      <p className="text-sm text-gray-600 mb-3">
+        No financial activity found for {currentPeriod}.
+      </p>
+      <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 inline-block">
+        <p className="text-sm text-blue-800">
+          Historical data available: {earliest} {'–'} {latest}
+        </p>
+        <p className="text-xs text-blue-600 mt-1">
+          {summary.rowCount} transaction{summary.rowCount === 1 ? '' : 's'} on record
+        </p>
+      </div>
+      <p className="text-xs text-gray-400 mt-3">
+        <a
+          href="?tab=financial&period=all"
+          className="text-blue-600 hover:text-blue-800 underline"
+        >
+          View all history
+        </a>
+        {' '}to see full financial records.
+      </p>
+    </div>
+  )
 }

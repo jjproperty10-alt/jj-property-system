@@ -81,19 +81,35 @@ function mapRowToDTO(row: RC3AccountRow): OwnerFinancialRowDTO {
   }
 }
 
-function mapSectionToDTO(section: RC3AccountSection): OwnerFinancialSectionDTO {
+function mapSectionToDTO(
+  section: RC3AccountSection,
+  properties?: readonly string[],
+): OwnerFinancialSectionDTO {
   const visibleRows = section.rows.filter(
     r => !r.is_platform_tracking && r.display_group !== 'reference',
   )
+
+  // Purchase sections for NEEDS_REVIEW properties represent JJ internal
+  // acquisition cost — label them clearly for the owner-facing UI.
+  const isInternalPurchase =
+    section.account_type === 'purchase' &&
+    properties != null &&
+    properties.some(p => NEEDS_REVIEW_PROPERTIES.has(p))
+
   return {
     type:               section.account_type,
-    label:              section.account_label,
+    label:              isInternalPurchase
+                          ? 'JJ Internal Acquisition — Not Owner-Facing'
+                          : section.account_label,
     incomeEur:          toEur(section.total_income),
     expensesEur:        toEur(section.total_expenses),
     netEur:             toEur(section.total_income - section.total_expenses),
     closingBalanceEur:  toEur(section.closing_balance),
     balanceConvention:  section.balance_convention,
     rows:               visibleRows.map(mapRowToDTO),
+    displayNote:        isInternalPurchase
+                          ? 'This section shows JJ\'s acquisition cost for this property. It is excluded from the owner\'s Overall Net.'
+                          : null,
   }
 }
 
@@ -390,7 +406,7 @@ export async function fetchOwnerFinancial(
 
   const position    = composePosition(allSections)
   const overallNet  = buildOverallNet(allSections, properties)
-  const sections    = allSections.map(mapSectionToDTO)
+  const sections    = allSections.map(s => mapSectionToDTO(s, properties))
 
   // Fetch occupancy position for NEEDS_REVIEW properties
   const occupancyPosition = await fetchOccupancyPosition(properties)
