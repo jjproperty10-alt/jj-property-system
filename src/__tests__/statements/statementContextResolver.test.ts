@@ -59,7 +59,7 @@ const MGMT_RELS = {
   ],
   liora: [
     { property_name: 'Liora Anafotia 202', verification_status: 'verified', valid_to: null, status: 'active' },
-    { property_name: 'Liora Anafotia 201', verification_status: 'pending_verification', valid_to: null, status: 'active' },
+    { property_name: 'Liora Anafotia 101', verification_status: 'pending_verification', valid_to: null, status: 'active' },
   ],
   oren: [
     { property_name: 'Oren Aradipou', verification_status: 'verified', valid_to: null, status: 'active' },
@@ -217,7 +217,7 @@ describe('managed_owner only entities', () => {
     // Only the verified property grants statement authority
     expect(ctx.managedProperties).toEqual(['Liora Anafotia 202'])
     // Pending property is observable but does not grant authority
-    expect(ctx.pendingProperties).toEqual(['Liora Anafotia 201'])
+    expect(ctx.pendingProperties).toEqual(['Liora Anafotia 101'])
     expect(ctx.authority).toBe('management_relationship')
   })
 })
@@ -656,8 +656,8 @@ describe('pending_verification governance', () => {
     // Verified property → authorized for statement
     expect(ctx.managedProperties).toContain('Liora Anafotia 202')
     // Pending property → NOT authorized for statement, but observable
-    expect(ctx.managedProperties).not.toContain('Liora Anafotia 201')
-    expect(ctx.pendingProperties).toContain('Liora Anafotia 201')
+    expect(ctx.managedProperties).not.toContain('Liora Anafotia 101')
+    expect(ctx.pendingProperties).toContain('Liora Anafotia 101')
   })
 })
 

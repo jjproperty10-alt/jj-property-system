@@ -235,6 +235,12 @@ export interface OwnerFinancialDTO {
   timeline: FinancialTimelineItemDTO[]
   /** Occupancy position — personal occupancy obligations (Oshrit only for now) */
   occupancyPosition?: OccupancyPositionDTO | null
+  /** Historical data summary for three-state display (State B) */
+  historicalSummary?: {
+    earliestDate: string
+    latestDate: string
+    rowCount: number
+  } | null
 }
 
 /**

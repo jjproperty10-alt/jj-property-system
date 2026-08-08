@@ -255,8 +255,8 @@ export async function getOwnerOverview(slug: string): Promise<OwnerOverviewDTO> 
  */
 export async function getOwnerFinancial(
   slug: string,
-  startDate: string,
-  endDate: string
+  startDate?: string,
+  endDate?: string
 ): Promise<OwnerFinancialDTO> {
   const workspace = await getOwnerWorkspace(slug)
   if (!workspace) {
