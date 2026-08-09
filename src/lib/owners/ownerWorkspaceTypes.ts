@@ -326,6 +326,12 @@ export interface OwnerFinancialSectionDTO {
   balanceConvention: string | null
   /** Breakdown rows */
   rows: OwnerFinancialRowDTO[]
+  /**
+   * Optional display note for sections requiring contextual explanation.
+   * Set by the adapter for NEEDS_REVIEW properties (e.g. Purchase sections
+   * that represent JJ internal acquisition cost, not owner-facing debt).
+   */
+  displayNote?: string | null
 }
 
 export interface OwnerFinancialRowDTO {

@@ -179,13 +179,29 @@ function FinancialSection({ section }: { section: OwnerFinancialDTO['sections'][
       <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
         <h3 className="text-sm font-semibold text-gray-800 capitalize">{section.label}</h3>
         <div className="flex items-center gap-4 text-sm">
-          <span className="text-gray-500">
-            Net: {section.netEur != null
-              ? <MoneyValue amount={parseFloat(section.netEur)} size="sm" />
-              : 'â'}
-          </span>
+          {section.type === 'sale' ? (
+            <span className="text-gray-500">
+              {section.closingBalanceEur != null && parseFloat(section.closingBalanceEur) === 0
+                ? <span className="font-medium text-green-700">Settled · €0</span>
+                : <>Balance: {section.closingBalanceEur != null
+                    ? <MoneyValue amount={parseFloat(section.closingBalanceEur)} size="sm" />
+                    : 'â'}</>}
+            </span>
+          ) : (
+            <span className="text-gray-500">
+              Net: {section.netEur != null
+                ? <MoneyValue amount={parseFloat(section.netEur)} size="sm" />
+                : 'â'}
+            </span>
+          )}
         </div>
       </div>
+      {/* Display note (e.g. JJ Internal Acquisition for NEEDS_REVIEW purchase sections) */}
+      {section.displayNote && (
+        <div className="px-4 py-2 bg-amber-50 border-b border-amber-200 text-xs text-amber-800">
+          {section.displayNote}
+        </div>
+      )}
 
       {/* Rows */}
       {section.rows.length > 0 ? (
