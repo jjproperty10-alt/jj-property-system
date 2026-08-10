@@ -1,3 +1,24 @@
+—————
+  
+  /**
+   * Engagements grouped by property.
+    * propertyName is null when entity_property_associations lacks a mapping.
+     */
+  export interface PropertyServiceEngagementsDTO {
+      readonly propertyId: string
+      readonly propertyName: string | null
+      readonly engagements: readonly ServiceEngagementDTO[]
+  }
+
+/**
+ * Top-level response for an entity's service engagements.
+  * Empty properties[] is the normal state — the table starts empty.
+   */
+export interface OwnerServiceEngagementsDTO {
+    readonly entityId: string
+    readonly properties: readonly PropertyServiceEngagementsDTO[]
+    readonly totalEngagements: number
+}
 /**
  * Owner Workspace DTOs — PR #3: JJ Workspace Navigation
  *
