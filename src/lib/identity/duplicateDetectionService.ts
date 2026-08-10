@@ -5,16 +5,20 @@
  *
  * Three-tier collision model:
  *   SOFT   — similar names that might refer to the same entity (warning only)
- *   STRONG — same slug collision requiring explicit override to proceed
- *   HARD   — identical canonical_name (blocked — cannot create)
+ *   STRONG — exact name match, slug collision, or alias collision (requires
+ *            explicit override to proceed, but does NOT block creation)
+ *   HARD   — same entity_id or same authoritative verified legal identifier
+ *            (blocked — cannot create). HARD is NOT evaluated by this service
+ *            because the current API accepts only candidateName. HARD support
+ *            requires authoritative identifiers to be supplied in a future API.
  *
  * Design constraints:
  *   - Read-only: never writes, never merges, never mutates
  *   - Deterministic: same inputs → same output
  *   - No auto-merge: detection only, human decision required
  *   - No override persistence: override audit is EXPLICITLY DEFERRED
- *   - canonical_name is NOT UNIQUE — name alone is NEVER HARD by itself
- *     (HARD requires exact canonical_name match)
+ *   - Name alone is NEVER HARD — exact name match is STRONG
+ *   - blocked=true is NEVER set by this service (no HARD without identifiers)
  *
  * Constitutional basis: P-ARCH-1 (unknown = null), ADR-006 (R7)
  */
@@ -108,11 +112,12 @@ export function detectDuplicates(
   for (const entity of existingEntities) {
     const existingNormalized = normalizeName(entity.displayName)
 
-    // HARD: exact canonical_name match (case-insensitive normalized)
+    // STRONG: exact canonical_name match (case-insensitive normalized)
+    // Name alone is NEVER HARD — HARD requires entity_id or verified legal identifier
     if (candidateNormalized === existingNormalized) {
       matches.push({
         existingEntity: entity,
-        tier: 'hard',
+        tier: 'strong',
         reason: `Exact name match: "${entity.displayName}"`,
       })
       continue
@@ -171,7 +176,9 @@ export function detectDuplicates(
   matches.sort((a, b) => TIER_ORDER[a.tier] - TIER_ORDER[b.tier])
 
   const highestTier = matches.length > 0 ? matches[0].tier : null
-  const blocked = highestTier === 'hard'
+  // blocked is NEVER true from name-only detection.
+  // HARD requires entity_id or verified legal identifier — not available in this API.
+  const blocked = false
 
   return {
     candidateName,

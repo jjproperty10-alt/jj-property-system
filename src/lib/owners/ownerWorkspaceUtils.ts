@@ -82,6 +82,24 @@ export function detectOwnerFlag(name: string): string {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Country → flag mapping
+// ─────────────────────────────────────────────────────────────
+
+const COUNTRY_FLAG_MAP: Record<string, string> = {
+  CY: '🇨🇾', IL: '🇮🇱', UA: '🇺🇦', RU: '🇷🇺', GR: '🇬🇷',
+  GB: '🇬🇧', US: '🇺🇸', DE: '🇩🇪', FR: '🇫🇷',
+}
+
+/**
+ * Map an ISO 3166-1 alpha-2 country code to its flag emoji.
+ * Returns null for unknown or null/undefined input. Caller decides fallback.
+ */
+export function countryToFlag(country: string | null | undefined): string | null {
+  if (!country) return null
+  return COUNTRY_FLAG_MAP[country.toUpperCase()] ?? null
+}
+
+// ─────────────────────────────────────────────────────────────
 // Identity builder
 // ─────────────────────────────────────────────────────────────
 
@@ -91,8 +109,10 @@ export function detectOwnerFlag(name: string): string {
  * Language/country precedence (P1 Identity Service Foundation):
  *   - canonicalLanguage (from lifecycle.entity_identity.preferred_language)
  *     overrides the heuristic when present.
- *   - Heuristic (detectOwnerLanguage) is a display fallback only — never
- *     written to DB, never treated as canonical.
+ *   - canonicalCountry (from lifecycle.entity_identity.country)
+ *     overrides the heuristic flag when present and mappable.
+ *   - Heuristic (detectOwnerLanguage / detectOwnerFlag) is a display
+ *     fallback only — never written to DB, never treated as canonical.
  *
  * Fixture boundary: `since` is always null until lifecycle.partner_entry
  * is wired — that is explicit P-ARCH-1 compliance (null, not 0).
@@ -103,16 +123,24 @@ export function buildOwnerIdentity(
   properties: string[],
   /** Canonical preferred language from entity_identity. Overrides heuristic when present. */
   canonicalLanguage?: 'he' | 'en' | 'ru' | null,
+  /** Canonical country code (ISO 3166-1 alpha-2) from entity_identity. Overrides flag heuristic when present. */
+  canonicalCountry?: string | null,
 ): OwnerIdentityDTO {
   const slug = nameToSlug(name)
   // Canonical DB value takes precedence; heuristic is display fallback only
   const resolvedLanguage: 'he' | 'en' | 'ru' = canonicalLanguage ?? detectOwnerLanguage(name)
+  // Country → flag: canonical country takes absolute precedence over name heuristic
+  // If canonical country is present (non-null), it takes absolute precedence:
+  // mapped → country flag, unmapped → neutral flag. Heuristic only when country is null/undefined.
+  const resolvedFlag = canonicalCountry != null
+    ? (countryToFlag(canonicalCountry) ?? '🏳️')
+    : detectOwnerFlag(name)
   return {
     id,
     slug,
     name,
     preferredLanguage: resolvedLanguage,
-    flag: detectOwnerFlag(name),
+    flag: resolvedFlag,
     initials: ownerInitials(name),
     avatarColor: ownerAvatarColor(slug),
     since: null,  // P-ARCH-1: null until lifecycle.partner_entry is wired

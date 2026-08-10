@@ -151,7 +151,14 @@ export async function getAllVerifiedOwners(): Promise<{
     pendingRelationships: number
   }
 }> {
-  const sb = getServiceClient()
+  // Fail-closed: if client creation throws, return empty — never propagate exception
+  let sb: ReturnType<typeof createServiceClient>
+  try {
+    sb = getServiceClient()
+  } catch (err) {
+    console.error('[identityResolver] createServiceClient failed:', err)
+    return { owners: [], pendingRelationships: [], counts: { verifiedRelationships: 0, distinctVerifiedEntities: 0, distinctVerifiedProperties: 0, pendingRelationships: 0 } }
+  }
 
   // Fetch all active entities
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -247,7 +254,16 @@ export async function resolveBySlug(slug: string): Promise<IdentityResolutionRes
     return { status: 'not_found', slug: slug ?? '' }
   }
 
-  const sb = getServiceClient()
+  // Fail-closed: if client creation throws, return source_unavailable — never propagate exception
+  let sb: ReturnType<typeof createServiceClient>
+  try {
+    sb = getServiceClient()
+  } catch (err) {
+    return {
+      status: 'source_unavailable',
+      error: `createServiceClient failed: ${String(err)}`,
+    }
+  }
 
   // Fetch all active entities
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

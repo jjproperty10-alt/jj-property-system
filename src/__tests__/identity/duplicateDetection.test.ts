@@ -7,7 +7,7 @@
  * All tests are pure — no DB access, no side effects.
  *
  * Coverage:
- *   1. HARD — exact name match (case-insensitive)
+ *   1. STRONG — exact name match (case-insensitive). Name alone is never HARD.
  *   2. STRONG — slug collision (different name, same slug)
  *   3. STRONG — candidate matches existing alias
  *   4. SOFT — similar names (prefix, shared first name)
@@ -17,10 +17,12 @@
  *   8. Empty entity list → no matches
  *   9. normalizeName — diacritics, whitespace, case
  *  10. isSoftMatch — prefix detection
- *  11. blocked = true only for HARD
+ *  11. blocked is NEVER true (HARD requires entity_id — not available in this API)
  *  12. Language precedence — canonical overrides heuristic
  *  13. Language precedence — null canonical falls back to heuristic
  *  14. Language precedence — invalid DB value treated as null
+ *  15. Country precedence — canonical country overrides heuristic flag
+ *  16. Unknown country code → neutral flag (never heuristic)
  *
  * Constitutional basis: P-ARCH-1, ADR-006 (R7)
  */
@@ -31,7 +33,7 @@ import {
   isSoftMatch,
 } from '@/lib/identity/duplicateDetectionService'
 import type { CanonicalEntityIdentityDTO } from '@/lib/identity/identityTypes'
-import { buildOwnerIdentity, detectOwnerLanguage } from '@/lib/owners/ownerWorkspaceUtils'
+import { buildOwnerIdentity, detectOwnerLanguage, countryToFlag } from '@/lib/owners/ownerWorkspaceUtils'
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────
 
@@ -97,24 +99,41 @@ describe('isSoftMatch', () => {
   })
 })
 
-describe('detectDuplicates — HARD tier', () => {
-  it('exact name match (case-insensitive) → HARD', () => {
+describe('detectDuplicates — exact name match → STRONG (never HARD)', () => {
+  it('exact name match (case-insensitive) → STRONG, not blocked', () => {
     const existing = [makeEntity({ displayName: 'Tamir' })]
     const result = detectDuplicates('tamir', existing)
 
     expect(result.hasMatches).toBe(true)
-    expect(result.highestTier).toBe('hard')
-    expect(result.blocked).toBe(true)
+    expect(result.highestTier).toBe('strong')
+    expect(result.blocked).toBe(false)
     expect(result.matches).toHaveLength(1)
-    expect(result.matches[0].tier).toBe('hard')
+    expect(result.matches[0].tier).toBe('strong')
   })
 
-  it('name with different casing and whitespace → HARD', () => {
+  it('name with different casing and whitespace → STRONG, not blocked', () => {
     const existing = [makeEntity({ displayName: 'Liron & Alon' })]
     const result = detectDuplicates('liron & alon', existing)
 
-    expect(result.highestTier).toBe('hard')
-    expect(result.blocked).toBe(true)
+    expect(result.highestTier).toBe('strong')
+    expect(result.blocked).toBe(false)
+  })
+
+  it('name-only detection can NEVER produce blocked=true', () => {
+    // HARD requires entity_id or verified legal identifier — not available in this API.
+    // This test proves the constitutional rule: no name input can block creation.
+    const existing = [
+      makeEntity({ displayName: 'Tamir' }),
+      makeEntity({ entityId: 'e-002', displayName: 'Avi', canonicalSlug: 'avi', aliases: ['Avi Cohen'] }),
+    ]
+    const result = detectDuplicates('Tamir', existing)
+    expect(result.blocked).toBe(false)
+
+    const result2 = detectDuplicates('Avi Cohen', existing)
+    expect(result2.blocked).toBe(false)
+
+    const result3 = detectDuplicates('Completely New', existing)
+    expect(result3.blocked).toBe(false)
   })
 })
 
@@ -263,5 +282,58 @@ describe('Language/country precedence', () => {
 
   it('heuristic defaults to en for Latin characters', () => {
     expect(detectOwnerLanguage('Avi Cohen')).toBe('en')
+  })
+})
+
+// ─── Country / flag precedence tests ────────────────────────────────────
+
+describe('Country / flag precedence', () => {
+  it('canonical country CY → 🇨🇾 overrides name heuristic', () => {
+    // Hebrew name → heuristic would say 🇮🇱
+    // But canonical country says CY → 🇨🇾 wins
+    const identity = buildOwnerIdentity('id-1', 'אבי כהן', ['Prop A'], null, 'CY')
+    expect(identity.flag).toBe('🇨🇾')
+  })
+
+  it('canonical country IL → 🇮🇱', () => {
+    const identity = buildOwnerIdentity('id-1', 'Avi Cohen', ['Prop A'], null, 'IL')
+    expect(identity.flag).toBe('🇮🇱')
+  })
+
+  it('canonical country UA → 🇺🇦', () => {
+    const identity = buildOwnerIdentity('id-1', 'Avi Cohen', ['Prop A'], null, 'UA')
+    expect(identity.flag).toBe('🇺🇦')
+  })
+
+  it('null country → heuristic fallback (Hebrew → 🇮🇱)', () => {
+    const identity = buildOwnerIdentity('id-1', 'אבי כהן', ['Prop A'], null, null)
+    expect(identity.flag).toBe('🇮🇱')
+  })
+
+  it('undefined country → heuristic fallback', () => {
+    const identity = buildOwnerIdentity('id-1', 'Avi Cohen', ['Prop A'], null)
+    expect(identity.flag).toBe('🌍') // Latin → globe
+  })
+
+  it('unknown country code → neutral flag (not heuristic)', () => {
+    const identity = buildOwnerIdentity('id-1', 'אבי כהן', ['Prop A'], null, 'XX')
+    expect(identity.flag).toBe('🏳️') // canonical country present but unmapped → neutral
+  })
+
+  it('ZZ country code → neutral flag (not Hebrew heuristic)', () => {
+    const identity = buildOwnerIdentity('id-1', 'אבי כהן', ['Prop A'], null, 'ZZ')
+    expect(identity.flag).not.toBe('🇮🇱')
+    expect(identity.flag).toBe('🏳️')
+  })
+
+  it('countryToFlag returns null for unknown codes', () => {
+    expect(countryToFlag(null)).toBeNull()
+    expect(countryToFlag(undefined)).toBeNull()
+    expect(countryToFlag('ZZ')).toBeNull()
+  })
+
+  it('countryToFlag is case-insensitive', () => {
+    expect(countryToFlag('cy')).toBe('🇨🇾')
+    expect(countryToFlag('Cy')).toBe('🇨🇾')
   })
 })
