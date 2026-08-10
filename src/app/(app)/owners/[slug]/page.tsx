@@ -94,10 +94,10 @@ export default async function OwnerWorkspacePage({
   searchParams,
 }: {
   params: { slug: string }
-  searchParams: { tab?: string }
+  searchParams: { tab?: string; period?: string }
 }) {
   const { slug } = params
-  const { tab: tabParam } = searchParams
+  const { tab: tabParam, period: periodParam } = searchParams
 
   // ── VS1: Page-level authentication (fail closed) ──────────────────────────
   // Authenticate ONCE before any data access. This closes security gap E8.
@@ -119,14 +119,18 @@ export default async function OwnerWorkspacePage({
     notFound()
   }
 
-  // Current period for API calls
-  const { startDate, endDate, label: periodLabel } = workspace.currentPeriod
+  // Period selection: period=all -> all-time view; otherwise current month
+  const isAllHistory = periodParam === 'all'
+  const { startDate, endDate, label: currentMonthLabel } = workspace.currentPeriod
+  const periodLabel = isAllHistory ? 'All History' : currentMonthLabel
 
   // Fetch tab data — parallel where possible
   const [overview, financial, reservations, documents, maintenance, relationship, audit] =
     await Promise.all([
       getOwnerOverview(slug),
-      getOwnerFinancial(slug, startDate, endDate),
+      isAllHistory
+        ? getOwnerFinancial(slug)
+        : getOwnerFinancial(slug, startDate, endDate),
       getOwnerReservations(slug, startDate, endDate),
       getOwnerDocuments(slug),
       getOwnerMaintenance(slug),
@@ -177,7 +181,7 @@ export default async function OwnerWorkspacePage({
 
       {/* Tab 2 — Financial */}
       {activeTab === 'financial' && (
-        <FinancialTab dto={financial} />
+        <FinancialTab dto={financial} periodLabel={periodLabel} />
       )}
 
       {/* Tab 3 — Reservations */}

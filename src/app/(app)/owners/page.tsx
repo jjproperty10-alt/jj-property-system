@@ -28,7 +28,20 @@ export default async function OwnersRoomPage() {
 
   return (
     <PageShell>
-      <WorkspaceHeader title="Owners Room" />
+      <WorkspaceHeader
+        title="Owners Room"
+        actions={
+          <button
+            type="button"
+            disabled
+            title="Available in next update"
+            className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-400 cursor-not-allowed flex items-center gap-1.5"
+            aria-label="Add Client — available in next update"
+          >
+            <span aria-hidden>+</span> Add Client
+          </button>
+        }
+      />
       <OwnersRoomClient room={room} />
     </PageShell>
   )

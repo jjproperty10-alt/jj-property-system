@@ -27,6 +27,7 @@ import { TimelineZone } from '@/components/ds/TimelineZone'
 import type {
   OwnerOverviewDTO,
   OwnerFinancialDTO,
+  OwnerOverallNetDTO,
   OwnerReservationSummaryDTO,
   OwnerDocumentDTO,
   OwnerMaintenanceDTO,
@@ -95,6 +96,14 @@ const EMPTY_FINANCIAL: OwnerFinancialDTO = {
   overallNet: null,
   sections: [],
   timeline: [],
+}
+
+/** A valid overallNet fixture — ensures FinancialTab enters State C (Valid Data) */
+const VALID_OVERALL_NET: OwnerOverallNetDTO = {
+  departments: [],
+  netEur: '0',
+  label: 'settled',
+  displayAmountEur: '0',
 }
 
 const EMPTY_RESERVATIONS: OwnerReservationSummaryDTO = {
@@ -347,8 +356,10 @@ describe('FinancialTab — closing balance', () => {
 
   it('shows Settlement Engine / RC2 message when closingBalance is null but other values exist', () => {
     // When some values are known but closing balance not yet computed → show RC2 unknown
+    // overallNet must be non-null so the three-state display machine enters State C (Valid Data)
     const partialDto: OwnerFinancialDTO = {
       ...EMPTY_FINANCIAL,
+      overallNet: VALID_OVERALL_NET,
       position: { ...EMPTY_FINANCIAL.position, incomeEur: '1000.00' },
     }
     const html = renderToStaticMarkup(<FinancialTab dto={partialDto} />)
@@ -356,7 +367,12 @@ describe('FinancialTab — closing balance', () => {
   })
 
   it('renders Current Financial Position section heading', () => {
-    const html = renderToStaticMarkup(<FinancialTab dto={EMPTY_FINANCIAL} />)
+    // overallNet must be non-null so the three-state display machine enters State C (Valid Data)
+    const withOverallNet: OwnerFinancialDTO = {
+      ...EMPTY_FINANCIAL,
+      overallNet: VALID_OVERALL_NET,
+    }
+    const html = renderToStaticMarkup(<FinancialTab dto={withOverallNet} />)
     expect(html).toContain('Current Financial Position')
   })
 })

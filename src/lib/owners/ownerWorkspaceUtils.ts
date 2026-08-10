@@ -93,7 +93,7 @@ const COUNTRY_FLAG_MAP: Record<string, string> = {
 
 /**
  * Map an ISO 3166-1 alpha-2 country code to its flag emoji.
- * Returns null for unknown or null input — caller falls back to heuristic.
+ * Returns null for unknown or null/undefined input. Caller decides fallback.
  */
 export function countryToFlag(country: string | null | undefined): string | null {
   if (!country) return null
@@ -130,8 +130,12 @@ export function buildOwnerIdentity(
   const slug = nameToSlug(name)
   // Canonical DB value takes precedence; heuristic is display fallback only
   const resolvedLanguage: 'he' | 'en' | 'ru' = canonicalLanguage ?? detectOwnerLanguage(name)
-  // Country → flag: canonical country overrides name-based heuristic
-  const resolvedFlag = countryToFlag(canonicalCountry) ?? detectOwnerFlag(name)
+  // Country → flag: canonical country takes absolute precedence over name heuristic
+  // If canonical country is present (non-null), it takes absolute precedence:
+  // mapped → country flag, unmapped → neutral flag. Heuristic only when country is null/undefined.
+  const resolvedFlag = canonicalCountry != null
+    ? (countryToFlag(canonicalCountry) ?? '🏳️')
+    : detectOwnerFlag(name)
   return {
     id,
     slug,

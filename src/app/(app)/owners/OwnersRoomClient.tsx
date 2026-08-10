@@ -120,16 +120,6 @@ export function OwnersRoomClient({ room }: { room: OwnersRoomDTO }) {
           ))}
         </select>
 
-        {/* + Add Client — disabled, PR #4 scope */}
-        <button
-          type="button"
-          disabled
-          title="Available in next update"
-          className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-400 cursor-not-allowed flex items-center gap-1.5"
-          aria-label="Add Client — available in next update"
-        >
-          <span aria-hidden>+</span> Add Client
-        </button>
       </div>
 
       {/* Summary */}
