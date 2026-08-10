@@ -52,6 +52,8 @@ jest.mock('@/lib/owners/ownerWorkspaceUtils', () => ({
   }),
   isSystemActor: (name: string) =>
     ['JJ', 'Airbnb', 'Anastasia', 'Tenant', 'Client', 'Owner'].includes(name),
+  computeConfigHealth: () => ({ state: 'needs_review', missingCount: 0, label: 'Needs review' }),
+  deduplicatePropertyNames: (rels: { propertyName: string }[]) => Array.from(new Set(rels.map((r: { propertyName: string }) => r.propertyName))),
 }))
 
 const mockCreateServiceClient = jest.fn()

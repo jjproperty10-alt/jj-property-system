@@ -41,6 +41,8 @@ import {
 } from './ownerWorkspaceFixtures'
 import {
   buildOwnerIdentity,
+  computeConfigHealth,
+  deduplicatePropertyNames,
 } from './ownerWorkspaceUtils'
 import {
   getAllVerifiedOwners,
@@ -127,7 +129,10 @@ function buildRoomItemsFromIdentities(owners: readonly ResolvedManagedIdentityDT
   for (const owner of owners) {
     const name = owner.identity.displayName
     const properties = owner.managedProperties.map(r => r.propertyName).sort()
-    const identity = buildOwnerIdentity(owner.identity.entityId, name, properties)
+    const identity = buildOwnerIdentity(owner.identity.entityId, name, properties, owner.identity.preferredLanguage, owner.identity.country)
+
+    const configHealth = computeConfigHealth(owner.identity, owner.managedProperties)
+    const dedupedProperties = deduplicatePropertyNames(owner.managedProperties)
 
     items.push({
       identity,
@@ -139,6 +144,8 @@ function buildRoomItemsFromIdentities(owners: readonly ResolvedManagedIdentityDT
       openCorrectionCount: FIXTURE_OPEN_CORRECTIONS,
       upcomingCount: FIXTURE_UPCOMING_COUNT,
       priorityGroup: FIXTURE_PRIORITY_GROUP,
+      configHealth,
+      associatedPropertyCount: dedupedProperties.length,
     })
   }
 
@@ -180,6 +187,8 @@ export async function resolveOwnerWorkspace(slug: string): Promise<OwnerWorkspac
     resolved.identity.entityId,
     resolved.identity.displayName,
     properties,
+    resolved.identity.preferredLanguage,
+    resolved.identity.country,
   )
 
   const now = new Date()
@@ -255,8 +264,8 @@ export async function getOwnerOverview(slug: string): Promise<OwnerOverviewDTO> 
  */
 export async function getOwnerFinancial(
   slug: string,
-  startDate: string,
-  endDate: string
+  startDate?: string,
+  endDate?: string
 ): Promise<OwnerFinancialDTO> {
   const workspace = await getOwnerWorkspace(slug)
   if (!workspace) {

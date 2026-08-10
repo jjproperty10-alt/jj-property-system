@@ -96,6 +96,31 @@ export interface OwnerIdentityDTO {
 }
 
 // ─────────────────────────────────────────────────────────────
+// CONFIGURATION HEALTH (Blueprint 9.5)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Configuration Health state — onboarding/configuration completeness.
+ * NOT financial truth. See P0 Blueprint 9.5.
+ *
+ * Rules (Yossi-approved PR #3 scope):
+ * - pending_verification present → 'pending_verification'
+ * - missing canonical name, both contacts missing, or no active association → 'incomplete'
+ * - universal checks pass but full P0 relationship-aware completeness cannot be proven → 'needs_review'
+ * - Complete only if all applicable P0 requirements can be proven from authoritative sources
+ */
+export type ConfigHealthState = 'complete' | 'pending_verification' | 'needs_review' | 'incomplete'
+
+export interface ConfigHealthDTO {
+  /** The evaluated health state */
+  state: ConfigHealthState
+  /** Count of missing required items (0 when complete) */
+  missingCount: number
+  /** Human-readable label for display */
+  label: string
+}
+
+// ─────────────────────────────────────────────────────────────
 // OWNERS ROOM (list screen)
 // ─────────────────────────────────────────────────────────────
 
@@ -117,6 +142,10 @@ export interface OwnerRoomItemDTO {
   upcomingCount: number
   /** Priority group for display ordering: 'today' | 'this_week' | 'rest' */
   priorityGroup: 'today' | 'this_week' | 'rest'
+  /** Configuration Health — onboarding completeness (Blueprint 9.5) */
+  configHealth: ConfigHealthDTO
+  /** Deduplicated count of associated properties (Blueprint 9.5a) */
+  associatedPropertyCount: number
 }
 
 export interface OwnersRoomDTO {
@@ -235,6 +264,12 @@ export interface OwnerFinancialDTO {
   timeline: FinancialTimelineItemDTO[]
   /** Occupancy position — personal occupancy obligations (Oshrit only for now) */
   occupancyPosition?: OccupancyPositionDTO | null
+  /** Historical data summary for three-state display (State B) */
+  historicalSummary?: {
+    earliestDate: string
+    latestDate: string
+    rowCount: number
+  } | null
 }
 
 /**
@@ -320,6 +355,12 @@ export interface OwnerFinancialSectionDTO {
   balanceConvention: string | null
   /** Breakdown rows */
   rows: OwnerFinancialRowDTO[]
+  /**
+   * Optional display note for sections requiring contextual explanation.
+   * Set by the adapter for NEEDS_REVIEW properties (e.g. Purchase sections
+   * that represent JJ internal acquisition cost, not owner-facing debt).
+   */
+  displayNote?: string | null
 }
 
 export interface OwnerFinancialRowDTO {
