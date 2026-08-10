@@ -9,7 +9,8 @@
  * server-only boundary: NONE — intentionally client-safe.
  */
 
-import type { OwnerIdentityDTO } from './ownerWorkspaceTypes'
+import type { OwnerIdentityDTO, ConfigHealthDTO, ConfigHealthState } from './ownerWorkspaceTypes'
+import type { CanonicalEntityIdentityDTO, ManagementRelationshipDTO } from '../identity/identityTypes'
 
 // ─────────────────────────────────────────────────────────────
 // Slug
@@ -172,4 +173,106 @@ export const SYSTEM_ACTORS = new Set([
 
 export function isSystemActor(name: string): boolean {
   return SYSTEM_ACTORS.has(name)
+}
+
+// ─────────────────────────────────────────────────────────────
+// Associated Properties — deduplicated count (Blueprint 9.5a)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Deduplicate properties by property_name (Phase A transition —
+ * property_id UUID doesn't exist yet on transactions).
+ *
+ * PR #3 source: managedProperties[] only.
+ * This is association visibility, NOT ownership truth.
+ */
+export function deduplicatePropertyNames(
+  managedProperties: readonly ManagementRelationshipDTO[],
+): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const rel of managedProperties) {
+    const key = rel.propertyName.toLowerCase().trim()
+    if (!seen.has(key)) {
+      seen.add(key)
+      result.push(rel.propertyName)
+    }
+  }
+  return result
+}
+
+// ─────────────────────────────────────────────────────────────
+// Configuration Health (Blueprint 9.5)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Compute Configuration Health from currently available evidence.
+ *
+ * Yossi-approved PR #3 rules:
+ * 1. pending_verification present → Pending Verification
+ * 2. missing canonical name, both contacts missing, or no active association → Incomplete
+ * 3. universal checks pass but full P0 relationship-aware completeness
+ *    cannot currently be proven → Needs Review
+ * 4. Complete only if all applicable P0 requirements can be proven
+ *    from authoritative sources
+ *
+ * Currently provable: identity fields + active managed relationships.
+ * NOT provable yet: Service Engagement, Commercial Terms, Reporting Config.
+ * Therefore: Managed Clients can reach at most Needs Review until P2+ tables exist.
+ *
+ * Never infer missing configuration. No DB writes.
+ */
+export function computeConfigHealth(
+  identity: CanonicalEntityIdentityDTO,
+  managedProperties: readonly ManagementRelationshipDTO[],
+): ConfigHealthDTO {
+  const missing: string[] = []
+
+  // ── Universal requirements ──
+
+  const hasName = !!identity.displayName?.trim()
+  if (!hasName) missing.push('name')
+
+  const hasEmail = !!identity.contactEmail?.trim()
+  const hasPhone = !!identity.contactPhone?.trim()
+  if (!hasEmail && !hasPhone) missing.push('contact')
+
+  const activeRelationships = managedProperties.filter(
+    r => !r.validTo // no end date = currently active
+  )
+  const hasActiveAssociation = activeRelationships.length > 0
+  if (!hasActiveAssociation) missing.push('active relationship')
+
+  // ── If universal requirements are missing → Incomplete ──
+  if (missing.length > 0) {
+    return {
+      state: 'incomplete',
+      missingCount: missing.length,
+      label: `${missing.length} item${missing.length > 1 ? 's' : ''} missing`,
+    }
+  }
+
+  // ── Check for pending_verification ──
+  const hasPendingVerification = activeRelationships.some(
+    r => r.verificationStatus === 'pending_verification'
+  )
+  if (hasPendingVerification) {
+    return {
+      state: 'pending_verification',
+      missingCount: 0,
+      label: 'Pending verification',
+    }
+  }
+
+  // ── Universal checks pass. Can we prove full P0 completeness? ──
+  // PR #3 scope: Service Engagement, Commercial Terms, Reporting Config
+  // tables do not exist yet. We cannot prove relationship-aware completeness
+  // for Managed Clients. Conservative: Needs Review.
+  // Complete would require all applicable P0 requirements provable.
+  // Since we only have identity + relationships, no owner can reach Complete yet.
+  return {
+    state: 'needs_review',
+    missingCount: 0,
+    label: 'Needs review',
+  }
 }

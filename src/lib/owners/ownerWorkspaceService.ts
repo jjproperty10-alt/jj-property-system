@@ -41,6 +41,8 @@ import {
 } from './ownerWorkspaceFixtures'
 import {
   buildOwnerIdentity,
+  computeConfigHealth,
+  deduplicatePropertyNames,
 } from './ownerWorkspaceUtils'
 import {
   getAllVerifiedOwners,
@@ -129,6 +131,9 @@ function buildRoomItemsFromIdentities(owners: readonly ResolvedManagedIdentityDT
     const properties = owner.managedProperties.map(r => r.propertyName).sort()
     const identity = buildOwnerIdentity(owner.identity.entityId, name, properties, owner.identity.preferredLanguage, owner.identity.country)
 
+    const configHealth = computeConfigHealth(owner.identity, owner.managedProperties)
+    const dedupedProperties = deduplicatePropertyNames(owner.managedProperties)
+
     items.push({
       identity,
       statementStatus: FIXTURE_STATEMENT_STATUS,
@@ -139,6 +144,8 @@ function buildRoomItemsFromIdentities(owners: readonly ResolvedManagedIdentityDT
       openCorrectionCount: FIXTURE_OPEN_CORRECTIONS,
       upcomingCount: FIXTURE_UPCOMING_COUNT,
       priorityGroup: FIXTURE_PRIORITY_GROUP,
+      configHealth,
+      associatedPropertyCount: dedupedProperties.length,
     })
   }
 
