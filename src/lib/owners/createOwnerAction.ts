@@ -128,6 +128,16 @@ const VALID_ENTITY_TYPES = new Set([
   'external',
 ])
 
+/**
+ * UUID v4 format: 8-4-4-4-12 hex digits.
+ * Used to validate propertyIds before passing to the RPC (which expects UUID[]).
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export function isValidUUID(value: string): boolean {
+  return UUID_RE.test(value)
+}
+
 function validate(input: CreateOwnerInput): string | null {
   if (!input.canonicalName || input.canonicalName.trim().length === 0) {
     return 'Name is required'
@@ -143,6 +153,14 @@ function validate(input: CreateOwnerInput): string | null {
   }
   if (input.preferredLanguage && !['he', 'en', 'ru'].includes(input.preferredLanguage)) {
     return `Invalid language: ${input.preferredLanguage}`
+  }
+  // Validate propertyIds are UUIDs — reject property names or malformed values
+  if (input.propertyIds && input.propertyIds.length > 0) {
+    for (const pid of input.propertyIds) {
+      if (!isValidUUID(pid)) {
+        return `Invalid property ID: "${pid}" is not a valid UUID`
+      }
+    }
   }
   return null
 }
