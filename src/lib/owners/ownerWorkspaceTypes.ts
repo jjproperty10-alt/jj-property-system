@@ -146,6 +146,8 @@ export interface OwnerRoomItemDTO {
   configHealth: ConfigHealthDTO
   /** Deduplicated count of associated properties (Blueprint 9.5a) */
   associatedPropertyCount: number
+  /** PR #4: true if entity was created via wizard (jj_relationships, not management_relationship) */
+  isDraft: boolean
 }
 
 export interface OwnersRoomDTO {

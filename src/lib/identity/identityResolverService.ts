@@ -76,6 +76,19 @@ interface RelationshipRow {
   verification_status: string
 }
 
+/** PR #4: jj_relationships row (draft entities from wizard) */
+interface JJRelationshipRow {
+  id: string
+  entity_id: string
+  relationship_type: string
+  status: string
+  effective_from: string | null
+  effective_to: string | null
+  verification_status: string
+  notes: string | null
+  created_by: string | null
+}
+
 // ─────────────────────────────────────────────────────────────
 // Row → DTO mappers (pure)
 // ─────────────────────────────────────────────────────────────
@@ -135,20 +148,35 @@ function buildResolved(
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Get all entities with at least one VERIFIED management relationship.
- * This is the canonical source for the Owners Room listing.
+ * PR #4: Draft owner — entity created via wizard but not yet verified.
+ * Reads from jj_relationships (NOT management_relationship).
+ * Separate from verified owners — never contaminates verified semantics.
+ */
+export interface DraftOwnerDTO {
+  readonly identity: CanonicalEntityIdentityDTO
+  readonly relationshipType: string
+  readonly relationshipStatus: string
+  readonly effectiveFrom: string | null
+  readonly createdBy: string | null
+}
+
+/**
+ * Get all entities with at least one VERIFIED management relationship,
+ * plus draft entities from jj_relationships (PR #4 wizard).
  *
- * Returns: verified owners + separate list of pending relationships.
- * Never returns entities whose only relationships are pending.
+ * Returns: verified owners + pending relationships + draft owners.
+ * Draft owners are NEVER mixed into verified owners.
  */
 export async function getAllVerifiedOwners(): Promise<{
   owners: readonly ResolvedManagedIdentityDTO[]
   pendingRelationships: readonly ManagementRelationshipDTO[]
+  draftOwners: readonly DraftOwnerDTO[]
   counts: {
     verifiedRelationships: number
     distinctVerifiedEntities: number
     distinctVerifiedProperties: number
     pendingRelationships: number
+    draftOwners: number
   }
 }> {
   // Fail-closed: if client creation throws, return empty — never propagate exception
@@ -157,7 +185,7 @@ export async function getAllVerifiedOwners(): Promise<{
     sb = getServiceClient()
   } catch (err) {
     console.error('[identityResolver] createServiceClient failed:', err)
-    return { owners: [], pendingRelationships: [], counts: { verifiedRelationships: 0, distinctVerifiedEntities: 0, distinctVerifiedProperties: 0, pendingRelationships: 0 } }
+    return { owners: [], pendingRelationships: [], draftOwners: [], counts: { verifiedRelationships: 0, distinctVerifiedEntities: 0, distinctVerifiedProperties: 0, pendingRelationships: 0, draftOwners: 0 } }
   }
 
   // Fetch all active entities
@@ -175,7 +203,7 @@ export async function getAllVerifiedOwners(): Promise<{
   } catch (err) {
     // Source unavailable — return empty (fail-closed: no fallback to scanning)
     console.error('[identityResolver] entity_identity query failed:', err)
-    return { owners: [], pendingRelationships: [], counts: { verifiedRelationships: 0, distinctVerifiedEntities: 0, distinctVerifiedProperties: 0, pendingRelationships: 0 } }
+    return { owners: [], pendingRelationships: [], draftOwners: [], counts: { verifiedRelationships: 0, distinctVerifiedEntities: 0, distinctVerifiedProperties: 0, pendingRelationships: 0, draftOwners: 0 } }
   }
 
   // Fetch all active management relationships
@@ -192,7 +220,7 @@ export async function getAllVerifiedOwners(): Promise<{
     relRows = (data ?? []) as RelationshipRow[]
   } catch (err) {
     console.error('[identityResolver] management_relationship query failed:', err)
-    return { owners: [], pendingRelationships: [], counts: { verifiedRelationships: 0, distinctVerifiedEntities: 0, distinctVerifiedProperties: 0, pendingRelationships: 0 } }
+    return { owners: [], pendingRelationships: [], draftOwners: [], counts: { verifiedRelationships: 0, distinctVerifiedEntities: 0, distinctVerifiedProperties: 0, pendingRelationships: 0, draftOwners: 0 } }
   }
 
   // Map rows to DTOs
@@ -230,14 +258,63 @@ export async function getAllVerifiedOwners(): Promise<{
     verifiedProperties.add(rel.propertyName)
   }
 
+  // ── PR #4: Draft owners from jj_relationships ──
+  // Separate query path — NEVER contaminates verified owners.
+  // Only entities that have a jj_relationships row but are NOT already
+  // in the verified owners list are included as drafts.
+  const verifiedEntityIds = new Set(owners.map(o => o.identity.entityId))
+  let draftOwners: DraftOwnerDTO[] = []
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: jjRelData, error: jjRelError } = await (sb as any)
+      .schema('lifecycle')
+      .from('jj_relationships')
+      .select('id, entity_id, relationship_type, status, effective_from, effective_to, verification_status, notes, created_by')
+      .in('status', ['draft', 'active'])
+    if (jjRelError) throw jjRelError
+
+    const jjRelRows = (jjRelData ?? []) as JJRelationshipRow[]
+
+    // Group by entity_id, pick the first relationship per entity
+    const draftEntityMap = new Map<string, JJRelationshipRow>()
+    for (const row of jjRelRows) {
+      if (!verifiedEntityIds.has(row.entity_id) && !draftEntityMap.has(row.entity_id)) {
+        draftEntityMap.set(row.entity_id, row)
+      }
+    }
+
+    // Map to DraftOwnerDTO
+    for (const [entityId, rel] of Array.from(draftEntityMap.entries())) {
+      const entity = entities.find(e => e.entityId === entityId)
+      if (entity) {
+        draftOwners.push({
+          identity: entity,
+          relationshipType: rel.relationship_type,
+          relationshipStatus: rel.status,
+          effectiveFrom: rel.effective_from ?? null,
+          createdBy: rel.created_by ?? null,
+        })
+      }
+    }
+
+    draftOwners.sort((a, b) => a.identity.displayName.localeCompare(b.identity.displayName))
+  } catch (err) {
+    // Non-fatal: draft owners are optional — verified owners still work
+    console.error('[identityResolver] jj_relationships query failed:', err)
+    draftOwners = []
+  }
+
   return {
     owners: Object.freeze(owners),
     pendingRelationships: Object.freeze(pending),
+    draftOwners: Object.freeze(draftOwners),
     counts: {
       verifiedRelationships: verified.length,
       distinctVerifiedEntities: owners.length,
       distinctVerifiedProperties: verifiedProperties.size,
       pendingRelationships: pending.length,
+      draftOwners: draftOwners.length,
     },
   }
 }

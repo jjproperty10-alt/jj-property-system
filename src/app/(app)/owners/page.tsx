@@ -13,6 +13,7 @@
  */
 
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import { PageShell, WorkspaceHeader } from '@/components/ds'
 import { getOwnersRoom } from '@/lib/owners/ownerWorkspaceService'
 import { OwnersRoomClient } from './OwnersRoomClient'
@@ -31,15 +32,12 @@ export default async function OwnersRoomPage() {
       <WorkspaceHeader
         title="Owners Room"
         actions={
-          <button
-            type="button"
-            disabled
-            title="Available in next update"
-            className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-400 cursor-not-allowed flex items-center gap-1.5"
-            aria-label="Add Client — available in next update"
+          <Link
+            href="/owners/new"
+            className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 hover:bg-blue-100 transition-colors flex items-center gap-1.5"
           >
             <span aria-hidden>+</span> Add Client
-          </button>
+          </Link>
         }
       />
       <OwnersRoomClient room={room} />
