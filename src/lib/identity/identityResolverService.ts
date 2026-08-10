@@ -285,7 +285,7 @@ export async function getAllVerifiedOwners(): Promise<{
     }
 
     // Map to DraftOwnerDTO
-    for (const [entityId, rel] of draftEntityMap) {
+    for (const [entityId, rel] of Array.from(draftEntityMap.entries())) {
       const entity = entities.find(e => e.entityId === entityId)
       if (entity) {
         draftOwners.push({

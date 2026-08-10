@@ -191,12 +191,12 @@ export async function createOwnerAction(input: CreateOwnerInput): Promise<Create
   }
 
   // STRONG match without override reason → reject
-  const strongMatches = dupResult.matches.filter(m => m.tier === 'STRONG')
+  const strongMatches = dupResult.matches.filter(m => m.tier === 'strong')
   if (strongMatches.length > 0 && !input.duplicateOverrideReason?.trim()) {
     return {
       ok: false,
       error: 'duplicate_blocked',
-      message: `Strong match found: "${strongMatches[0].matchedName}". Provide an override reason to proceed.`,
+      message: `Strong match found: "${strongMatches[0].existingEntity.displayName}". Provide an override reason to proceed.`,
     }
   }
 

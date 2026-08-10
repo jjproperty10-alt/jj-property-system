@@ -125,7 +125,7 @@ export async function getOwnersRoom(): Promise<OwnersRoomDTO> {
       openCorrectionCount: 0,
       upcomingCount: 0,
       priorityGroup: 'rest',
-      configHealth: { state: 'incomplete', missingFields: ['relationship_verification', 'property_association'] },
+      configHealth: { state: 'incomplete', missingCount: 2, label: 'Missing: relationship verification, property association' },
       associatedPropertyCount: 0,
       isDraft: true,
     })

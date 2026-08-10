@@ -108,7 +108,7 @@ export function AddClientWizard({ existingEntities, availableProperties }: Props
       entityId: e.entityId,
       displayName: e.displayName,
       canonicalSlug: e.canonicalSlug,
-      entityKind: 'individual' as const,
+      entityKind: 'person' as const,
       aliases: Object.freeze([] as string[]),
       status: 'active' as const,
       source: 'lifecycle.entity_identity' as const,
@@ -123,18 +123,18 @@ export function AddClientWizard({ existingEntities, availableProperties }: Props
     const result = detectDuplicates(name.trim(), entities)
 
     if (result.blocked) {
-      setDupWarnings([{ tier: 'HARD', matchedName: '', reason: 'Identical entity exists — creation blocked' }])
+      setDupWarnings([{ tier: 'hard', matchedName: '', reason: 'Identical entity exists — creation blocked' }])
       setNeedsOverride(false)
       return
     }
 
     setDupWarnings(result.matches.map(m => ({
       tier: m.tier,
-      matchedName: m.matchedName,
+      matchedName: m.existingEntity.displayName,
       reason: m.reason,
     })))
 
-    const hasStrong = result.matches.some(m => m.tier === 'STRONG')
+    const hasStrong = result.matches.some(m => m.tier === 'strong')
     setNeedsOverride(hasStrong)
 
     if (hasStrong && !overrideReason.trim()) {
