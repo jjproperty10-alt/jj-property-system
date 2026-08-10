@@ -75,18 +75,20 @@ export default async function AddClientPage() {
   ]
 
   // Fetch properties for Step 3
-  // property_definitions uses property_name as the identifier (legacy table)
+  // property_definitions has property_id (UUID) — that's what the RPC expects
   let properties: { propertyId: string; displayName: string }[] = []
   try {
     const { data: propData } = await db
       .from('property_definitions')
-      .select('property_name, relationship_type')
+      .select('property_id, property_name')
       .order('property_name')
     if (propData) {
-      properties = propData.map((p: { property_name: string; relationship_type: string }) => ({
-        propertyId: p.property_name,
-        displayName: p.property_name,
-      }))
+      properties = propData
+        .filter((p: { property_id: string | null; property_name: string }) => p.property_id != null)
+        .map((p: { property_id: string; property_name: string }) => ({
+          propertyId: p.property_id,
+          displayName: p.property_name,
+        }))
     }
   } catch {
     // Non-fatal — wizard works without property selection
