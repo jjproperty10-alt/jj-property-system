@@ -40,6 +40,14 @@ import type {
 import { resolveEntityKind } from './identityTypes'
 
 // ─────────────────────────────────────────────────────────────
+// Supabase client (server-side only)
+// ─────────────────────────────────────────────────────────────
+
+function getServiceClient() {
+  return createServiceClient()
+}
+
+// ─────────────────────────────────────────────────────────────
 // DB Row Types (internal — not exported)
 // ─────────────────────────────────────────────────────────────
 
@@ -49,6 +57,13 @@ interface EntityRow {
   entity_type: string
   aliases: string[] | null
   status: string
+  // P1 contact fields
+  contact_email: string | null
+  contact_phone: string | null
+  preferred_language: string | null
+  country: string | null
+  entity_legal_name: string | null
+  internal_notes: string | null
 }
 
 interface RelationshipRow {
@@ -66,6 +81,11 @@ interface RelationshipRow {
 // ─────────────────────────────────────────────────────────────
 
 function mapEntity(row: EntityRow): CanonicalEntityIdentityDTO {
+  // Map preferred_language with strict allowlist; invalid values → null
+  const rawLang = row.preferred_language
+  const validLanguage: 'he' | 'en' | 'ru' | null =
+    rawLang === 'he' || rawLang === 'en' || rawLang === 'ru' ? rawLang : null
+
   return {
     entityId: row.id,
     displayName: row.canonical_name,
@@ -74,6 +94,12 @@ function mapEntity(row: EntityRow): CanonicalEntityIdentityDTO {
     aliases: Object.freeze(row.aliases ?? []),
     status: row.status === 'active' ? 'active' : 'inactive',
     source: 'lifecycle.entity_identity',
+    contactEmail: row.contact_email ?? null,
+    contactPhone: row.contact_phone ?? null,
+    preferredLanguage: validLanguage,
+    country: row.country ?? null,
+    entityLegalName: row.entity_legal_name ?? null,
+    internalNotes: row.internal_notes ?? null,
   }
 }
 
@@ -125,16 +151,7 @@ export async function getAllVerifiedOwners(): Promise<{
     pendingRelationships: number
   }
 }> {
-  const emptyResult = { owners: [], pendingRelationships: [], counts: { verifiedRelationships: 0, distinctVerifiedEntities: 0, distinctVerifiedProperties: 0, pendingRelationships: 0 } }
-
-  // SSR resilience: createServiceClient can throw if env vars are missing
-  let sb
-  try {
-    sb = createServiceClient()
-  } catch (err) {
-    console.error('[identityResolver] createServiceClient failed:', err instanceof Error ? err.message : String(err))
-    return emptyResult
-  }
+  const sb = getServiceClient()
 
   // Fetch all active entities
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -144,14 +161,14 @@ export async function getAllVerifiedOwners(): Promise<{
     const { data, error } = await (sb as any)
       .schema('lifecycle')
       .from('entity_identity')
-      .select('id, canonical_name, entity_type, aliases, status')
+      .select('id, canonical_name, entity_type, aliases, status, contact_email, contact_phone, preferred_language, country, entity_legal_name, internal_notes')
       .eq('status', 'active')
     if (error) throw error
     entityRows = (data ?? []) as EntityRow[]
   } catch (err) {
     // Source unavailable — return empty (fail-closed: no fallback to scanning)
     console.error('[identityResolver] entity_identity query failed:', err)
-    return emptyResult
+    return { owners: [], pendingRelationships: [], counts: { verifiedRelationships: 0, distinctVerifiedEntities: 0, distinctVerifiedProperties: 0, pendingRelationships: 0 } }
   }
 
   // Fetch all active management relationships
@@ -168,7 +185,7 @@ export async function getAllVerifiedOwners(): Promise<{
     relRows = (data ?? []) as RelationshipRow[]
   } catch (err) {
     console.error('[identityResolver] management_relationship query failed:', err)
-    return emptyResult
+    return { owners: [], pendingRelationships: [], counts: { verifiedRelationships: 0, distinctVerifiedEntities: 0, distinctVerifiedProperties: 0, pendingRelationships: 0 } }
   }
 
   // Map rows to DTOs
@@ -230,16 +247,7 @@ export async function resolveBySlug(slug: string): Promise<IdentityResolutionRes
     return { status: 'not_found', slug: slug ?? '' }
   }
 
-  // SSR resilience: createServiceClient can throw if env vars are missing
-  let sb
-  try {
-    sb = createServiceClient()
-  } catch (err) {
-    return {
-      status: 'source_unavailable',
-      error: `createServiceClient failed: ${err instanceof Error ? err.message : String(err)}`,
-    }
-  }
+  const sb = getServiceClient()
 
   // Fetch all active entities
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -249,7 +257,7 @@ export async function resolveBySlug(slug: string): Promise<IdentityResolutionRes
     const { data, error } = await (sb as any)
       .schema('lifecycle')
       .from('entity_identity')
-      .select('id, canonical_name, entity_type, aliases, status')
+      .select('id, canonical_name, entity_type, aliases, status, contact_email, contact_phone, preferred_language, country, entity_legal_name, internal_notes')
       .eq('status', 'active')
     if (error) throw error
     entityRows = (data ?? []) as EntityRow[]

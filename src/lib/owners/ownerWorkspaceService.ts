@@ -127,7 +127,7 @@ function buildRoomItemsFromIdentities(owners: readonly ResolvedManagedIdentityDT
   for (const owner of owners) {
     const name = owner.identity.displayName
     const properties = owner.managedProperties.map(r => r.propertyName).sort()
-    const identity = buildOwnerIdentity(owner.identity.entityId, name, properties)
+    const identity = buildOwnerIdentity(owner.identity.entityId, name, properties, owner.identity.preferredLanguage)
 
     items.push({
       identity,
@@ -180,6 +180,7 @@ export async function resolveOwnerWorkspace(slug: string): Promise<OwnerWorkspac
     resolved.identity.entityId,
     resolved.identity.displayName,
     properties,
+    resolved.identity.preferredLanguage,
   )
 
   const now = new Date()

@@ -87,7 +87,12 @@ export function detectOwnerFlag(name: string): string {
 
 /**
  * Build an OwnerIdentityDTO from a name string and property list.
- * Used as a lightweight adapter until a full identity table exists.
+ *
+ * Language/country precedence (P1 Identity Service Foundation):
+ *   - canonicalLanguage (from lifecycle.entity_identity.preferred_language)
+ *     overrides the heuristic when present.
+ *   - Heuristic (detectOwnerLanguage) is a display fallback only — never
+ *     written to DB, never treated as canonical.
  *
  * Fixture boundary: `since` is always null until lifecycle.partner_entry
  * is wired — that is explicit P-ARCH-1 compliance (null, not 0).
@@ -96,13 +101,17 @@ export function buildOwnerIdentity(
   id: string,
   name: string,
   properties: string[],
+  /** Canonical preferred language from entity_identity. Overrides heuristic when present. */
+  canonicalLanguage?: 'he' | 'en' | 'ru' | null,
 ): OwnerIdentityDTO {
   const slug = nameToSlug(name)
+  // Canonical DB value takes precedence; heuristic is display fallback only
+  const resolvedLanguage: 'he' | 'en' | 'ru' = canonicalLanguage ?? detectOwnerLanguage(name)
   return {
     id,
     slug,
     name,
-    preferredLanguage: detectOwnerLanguage(name),
+    preferredLanguage: resolvedLanguage,
     flag: detectOwnerFlag(name),
     initials: ownerInitials(name),
     avatarColor: ownerAvatarColor(slug),

@@ -48,6 +48,13 @@ function makeEntity(overrides: Partial<CanonicalEntityIdentityDTO> = {}): Canoni
     aliases: [],
     status: 'active',
     source: 'lifecycle.entity_identity',
+    // P1 contact fields — default null (P-ARCH-1)
+    contactEmail: null,
+    contactPhone: null,
+    preferredLanguage: null,
+    country: null,
+    entityLegalName: null,
+    internalNotes: null,
     ...overrides,
   }
 }
@@ -356,6 +363,59 @@ describe('OwnerWorkspaceResolutionResult — exhaustive variants', () => {
       { status: 'source_unavailable', error: 'down' },
     ]
     expect(results.every(r => r.status !== 'resolved')).toBe(true)
+  })
+})
+
+describe('P1 contact fields on CanonicalEntityIdentityDTO', () => {
+  it('defaults all contact fields to null', () => {
+    const entity = makeEntity()
+    expect(entity.contactEmail).toBeNull()
+    expect(entity.contactPhone).toBeNull()
+    expect(entity.preferredLanguage).toBeNull()
+    expect(entity.country).toBeNull()
+    expect(entity.entityLegalName).toBeNull()
+    expect(entity.internalNotes).toBeNull()
+  })
+
+  it('accepts populated contact fields', () => {
+    const entity = makeEntity({
+      contactEmail: 'tamir@example.com',
+      contactPhone: '+357-99-123456',
+      preferredLanguage: 'he',
+      country: 'CY',
+      entityLegalName: 'Tamir Ltd',
+      internalNotes: 'VIP client',
+    })
+    expect(entity.contactEmail).toBe('tamir@example.com')
+    expect(entity.contactPhone).toBe('+357-99-123456')
+    expect(entity.preferredLanguage).toBe('he')
+    expect(entity.country).toBe('CY')
+    expect(entity.entityLegalName).toBe('Tamir Ltd')
+    expect(entity.internalNotes).toBe('VIP client')
+  })
+
+  it('preferredLanguage restricted to he/en/ru/null', () => {
+    const he = makeEntity({ preferredLanguage: 'he' })
+    const en = makeEntity({ preferredLanguage: 'en' })
+    const ru = makeEntity({ preferredLanguage: 'ru' })
+    const none = makeEntity({ preferredLanguage: null })
+    expect(he.preferredLanguage).toBe('he')
+    expect(en.preferredLanguage).toBe('en')
+    expect(ru.preferredLanguage).toBe('ru')
+    expect(none.preferredLanguage).toBeNull()
+  })
+
+  it('contact fields survive grouping into ResolvedManagedIdentityDTO', () => {
+    const entity = makeEntity({
+      contactEmail: 'test@jj.cy',
+      preferredLanguage: 'en',
+      country: 'CY',
+    })
+    const rel = makeRelationship()
+    const resolved = buildResolved(entity, [rel])
+    expect(resolved.identity.contactEmail).toBe('test@jj.cy')
+    expect(resolved.identity.preferredLanguage).toBe('en')
+    expect(resolved.identity.country).toBe('CY')
   })
 })
 
