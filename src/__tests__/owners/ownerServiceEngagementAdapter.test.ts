@@ -128,8 +128,8 @@ describe('ownerServiceEngagementAdapter', () => {
     expect(result.totalEngagements).toBe(3)
     expect(result.properties).toHaveLength(2)
 
-    const propA = result.properties.find(p => p.propertyId === 'prop-A')
-    const propB = result.properties.find(p => p.propertyId === 'prop-B')
+    const propA = result.properties.find((p: any) => p.propertyId === 'prop-A')
+    const propB = result.properties.find((p: any) => p.propertyId === 'prop-B')
 
     expect(propA?.engagements).toHaveLength(2)
     expect(propB?.engagements).toHaveLength(1)
@@ -212,7 +212,7 @@ describe('ownerServiceEngagementAdapter', () => {
     const result = await fetchEntityServiceEngagements('entity-uuid-1')
 
     expect(result.totalEngagements).toBe(4)
-    const serviceTypes = result.properties[0].engagements.map(e => e.serviceType)
+    const serviceTypes = result.properties[0].engagements.map((e: any) => e.serviceType)
     expect(serviceTypes).toEqual(types)
   })
 
@@ -224,7 +224,7 @@ describe('ownerServiceEngagementAdapter', () => {
     const result = await fetchEntityServiceEngagements('entity-uuid-1')
 
     expect(result.totalEngagements).toBe(4)
-    const actualStatuses = result.properties[0].engagements.map(e => e.status)
+    const actualStatuses = result.properties[0].engagements.map((e: any) => e.status)
     expect(actualStatuses).toEqual(statuses)
   })
 
