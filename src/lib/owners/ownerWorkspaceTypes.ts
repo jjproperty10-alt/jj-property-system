@@ -1,3 +1,43 @@
+// SERVICE ENGAGEMENTS (P2 PR #2 — Read Layer)
+
+export type ServiceType = 'renovation' | 'sale' | 'management_ltr' | 'airbnb_str'
+
+export type ServiceEngagementStatus = 'draft' | 'active' | 'suspended' | 'closed'
+
+export interface ServiceEngagementDTO {
+  readonly id: string
+  readonly entityId: string
+  readonly propertyId: string
+  readonly serviceType: ServiceType
+  readonly status: ServiceEngagementStatus
+  readonly effectiveFrom: string | null
+  readonly effectiveTo: string | null
+  readonly notes: string | null
+  readonly createdBy: string
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+/**
+ * Engagements grouped by property.
+ * propertyName is null when entity_property_associations lacks a mapping.
+ */
+export interface PropertyServiceEngagementsDTO {
+  readonly propertyId: string
+  readonly propertyName: string | null
+  readonly engagements: readonly ServiceEngagementDTO[]
+}
+
+/**
+ * Top-level response for an entity's service engagements.
+ * Empty properties[] is the normal state — the table starts empty.
+ */
+export interface OwnerServiceEngagementsDTO {
+  readonly entityId: string
+  readonly properties: readonly PropertyServiceEngagementsDTO[]
+  readonly totalEngagements: number
+}
+
 /**
  * Owner Workspace DTOs — PR #3: JJ Workspace Navigation
  *
