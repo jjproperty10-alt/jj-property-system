@@ -567,3 +567,41 @@ export async function getHostawayPortfolio(
 ): Promise<HostawayPortfolioSummaryDTO> {
   return getPortfolio({ startDate, endDate })
 }
+
+// -------------------------------------------------------------
+// Service Engagements (P2 PR #2 -- Read Layer)
+// -------------------------------------------------------------
+
+/**
+ * Fetch service engagements for an owner.
+ *
+ * P2 PR #2: Read-only layer connecting lifecycle.service_engagements
+ * to Owner Workspace via G3 adapter pattern.
+ *
+ * Architecture: getOwnerServiceEngagements -> ownerServiceEngagementAdapter
+ *               -> lifecycle.get_entity_service_engagements RPC
+ *
+ * Returns empty OwnerServiceEngagementsDTO when:
+ * - Owner slug cannot be resolved (fail-closed)
+ * - No engagements exist (normal -- table starts empty)
+ * - RPC fails (adapter fail-closed)
+ */
+export async function getOwnerServiceEngagements(
+  slug: string,
+): Promise<OwnerServiceEngagementsDTO> {
+  const empty: OwnerServiceEngagementsDTO = {
+    entityId: '',
+    properties: [],
+    totalEngagements: 0,
+  }
+
+  // Resolve slug -> entity identity (reuse G1 canonical service)
+  const identity = await resolveBySlug(slug)
+  if (identity.status !== 'resolved') return empty
+
+  const entityId = identity.data.identity.entityId
+
+  // Delegate to adapter
+  const { fetchEntityServiceEngagements } = await import('./ownerServiceEngagementAdapter')
+  return fetchEntityServiceEngagements(entityId)
+}
