@@ -107,7 +107,7 @@ export async function getOwnersRoom(): Promise<OwnersRoomDTO> {
   const items: OwnerRoomItemDTO[] = buildRoomItemsFromIdentities(owners, seriesData ?? [])
 
   // PR #4: Add draft owners from jj_relationships — separate semantics, isDraft=true
-  for (const draft of draftOwners) {
+  for (const draft of (draftOwners ?? [])) {
     const identity = buildOwnerIdentity(
       draft.identity.entityId,
       draft.identity.displayName,

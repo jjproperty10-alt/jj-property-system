@@ -14,7 +14,7 @@
  * Auth: cookie session → user_roles check (same pattern as reportAuthorization.ts)
  *
  * FORBIDDEN:
- *   - Writing to management_relationship
+ *   - Writing to the legacy relationship table (G1 boundary)
  *   - Sequential partial writes (all-or-nothing via RPC)
  *   - Legacy bridge writes
  */
