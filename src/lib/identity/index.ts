@@ -20,6 +20,7 @@ export { resolveEntityKind } from './identityTypes'
 
 // Service (server-only — re-exported for convenience,
 // but importing module will pull 'server-only' guard)
+export type { DraftOwnerDTO } from './identityResolverService'
 export {
   getAllVerifiedOwners,
   resolveBySlug,

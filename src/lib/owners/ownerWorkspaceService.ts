@@ -89,7 +89,7 @@ export async function getOwnersRoom(): Promise<OwnersRoomDTO> {
   // G1B: Identity resolution from lifecycle schema (canonical source).
   // Only verified relationships appear in the Owner Room.
   // Pending relationships are available separately but not listed as owners.
-  const { owners } = await getAllVerifiedOwners()
+  const { owners, draftOwners } = await getAllVerifiedOwners()
 
   // Fetch statement_series for workflow status
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -103,8 +103,33 @@ export async function getOwnersRoom(): Promise<OwnersRoomDTO> {
     seriesData = null
   }
 
-  // Build room items from resolved identities
+  // Build room items from resolved identities (verified + draft)
   const items: OwnerRoomItemDTO[] = buildRoomItemsFromIdentities(owners, seriesData ?? [])
+
+  // PR #4: Add draft owners from jj_relationships — separate semantics, isDraft=true
+  for (const draft of draftOwners) {
+    const identity = buildOwnerIdentity(
+      draft.identity.entityId,
+      draft.identity.displayName,
+      [],
+      draft.identity.preferredLanguage,
+      draft.identity.country,
+    )
+    items.push({
+      identity,
+      statementStatus: FIXTURE_STATEMENT_STATUS,
+      balanceDirection: FIXTURE_BALANCE_DIRECTION,
+      balanceEur: FIXTURE_OWNER_BALANCE_EUR,
+      lastStatementSentAt: null,
+      nextActionSummary: null,
+      openCorrectionCount: 0,
+      upcomingCount: 0,
+      priorityGroup: 'rest',
+      configHealth: { state: 'incomplete', missingFields: ['relationship_verification', 'property_association'] },
+      associatedPropertyCount: 0,
+      isDraft: true,
+    })
+  }
 
   return {
     items,
@@ -146,6 +171,7 @@ function buildRoomItemsFromIdentities(owners: readonly ResolvedManagedIdentityDT
       priorityGroup: FIXTURE_PRIORITY_GROUP,
       configHealth,
       associatedPropertyCount: dedupedProperties.length,
+      isDraft: false,
     })
   }
 
