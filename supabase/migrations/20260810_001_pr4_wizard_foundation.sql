@@ -9,7 +9,7 @@
 -- SAFETY:
 -- No DELETE, TRUNCATE, or UPDATE on any existing data.
 -- DROP INDEX is safe — the index was a contradiction to P0 spec.
--- RPC is SECURITY DEFINER — callable only by authenticated staff via Server Action.
+-- RPC is SECURITY DEFINER — callable only by service_role via Server Action.
 -- =============================================================================
 -- DECISION RECORD:
 -- B1: Yossi approved DROP canonical_name unique index (Option X) — 2026-08-10
@@ -37,7 +37,7 @@ DROP INDEX IF EXISTS lifecycle.entity_identity_canonical_name_uq;
 -- Atomic 3-table insert in a single implicit PostgreSQL transaction.
 -- No BEGIN/COMMIT needed — a single RPC call = one transaction.
 -- SECURITY DEFINER: runs as postgres, not as the calling role.
--- Callable only from Server Action after staff auth check.
+-- Callable only via service_role from Server Action after staff auth check.
 --
 -- Returns the new entity_id UUID for redirect.
 
@@ -136,12 +136,24 @@ BEGIN
 END;
 $$;
 
--- Grant execute to authenticated (Server Action calls as authenticated user,
--- but SECURITY DEFINER means the function body runs as postgres).
--- The Server Action itself enforces staff authorization before calling.
+-- Security: Server Action uses createServiceClient() (service_role).
+-- REVOKE from all other roles to prevent direct RPC bypass.
+-- Only service_role may execute this SECURITY DEFINER function.
+REVOKE ALL ON FUNCTION lifecycle.create_owner_draft(
+  TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, DATE, TEXT, UUID[], TEXT
+) FROM PUBLIC;
+
+REVOKE ALL ON FUNCTION lifecycle.create_owner_draft(
+  TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, DATE, TEXT, UUID[], TEXT
+) FROM anon;
+
+REVOKE ALL ON FUNCTION lifecycle.create_owner_draft(
+  TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, DATE, TEXT, UUID[], TEXT
+) FROM authenticated;
+
 GRANT EXECUTE ON FUNCTION lifecycle.create_owner_draft(
   TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, DATE, TEXT, UUID[], TEXT
-) TO authenticated;
+) TO service_role;
 
 
 -- =============================================================================
