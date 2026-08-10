@@ -1,7 +1,7 @@
 /**
  * /owners/[slug] — Owner Workspace
  *
- * 7-tab workspace for a single owner relationship.
+ * 8-tab workspace for a single owner relationship.
  * Tab state is driven by ?tab= search param (URL-first navigation).
  *
  * Architecture:
@@ -38,6 +38,7 @@ import { DocumentsTab } from '@/components/owners/tabs/DocumentsTab'
 import { MaintenanceTab } from '@/components/owners/tabs/MaintenanceTab'
 import { RelationshipTab } from '@/components/owners/tabs/RelationshipTab'
 import { AuditTab } from '@/components/owners/tabs/AuditTab'
+import { ServicesTab } from '@/components/owners/tabs/ServicesTab'
 import { authenticateStatementUser } from '@/lib/statements/statementAuthService'
 import {
   getOwnerWorkspace,
@@ -48,6 +49,7 @@ import {
   getOwnerMaintenance,
   getOwnerRelationship,
   getOwnerAudit,
+  getOwnerServiceEngagements,
 } from '@/lib/owners/ownerWorkspaceService'
 import type { TabDef } from '@/components/ds'
 
@@ -65,6 +67,7 @@ const TABS: TabDef[] = [
   { id: 'maintenance', label: 'Maintenance' },
   { id: 'relationship', label: 'Relationship' },
   { id: 'audit', label: 'Audit' },
+  { id: 'services', label: 'Services' },
 ]
 
 const VALID_TABS = new Set(TABS.map(t => t.id))
@@ -125,7 +128,7 @@ export default async function OwnerWorkspacePage({
   const periodLabel = isAllHistory ? 'All History' : currentMonthLabel
 
   // Fetch tab data — parallel where possible
-  const [overview, financial, reservations, documents, maintenance, relationship, audit] =
+  const [overview, financial, reservations, documents, maintenance, relationship, audit, services] =
     await Promise.all([
       getOwnerOverview(slug),
       isAllHistory
@@ -136,6 +139,7 @@ export default async function OwnerWorkspacePage({
       getOwnerMaintenance(slug),
       getOwnerRelationship(slug),
       getOwnerAudit(slug),
+      getOwnerServiceEngagements(slug),
     ])
 
   // Inject correction counts into tab labels
@@ -207,6 +211,11 @@ export default async function OwnerWorkspacePage({
       {/* Tab 7 — Audit */}
       {activeTab === 'audit' && (
         <AuditTab result={audit} />
+      )}
+
+      {/* Tab 8 — Services */}
+      {activeTab === 'services' && (
+        <ServicesTab dto={services} />
       )}
     </WorkspaceShell>
   )
