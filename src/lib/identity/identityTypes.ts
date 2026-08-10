@@ -23,6 +23,15 @@ export interface CanonicalEntityIdentityDTO {
   readonly aliases: readonly string[]
   readonly status: 'active' | 'inactive'
   readonly source: 'lifecycle.entity_identity'
+
+  // P1 contact fields — all nullable (P-ARCH-1: unknown = null)
+  readonly contactEmail: string | null
+  readonly contactPhone: string | null
+  /** Canonical preferred language from DB. Overrides heuristic when present. */
+  readonly preferredLanguage: 'he' | 'en' | 'ru' | null
+  readonly country: string | null
+  readonly entityLegalName: string | null
+  readonly internalNotes: string | null
 }
 
 // ─────────────────────────────────────────────────────────────

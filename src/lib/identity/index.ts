@@ -24,3 +24,16 @@ export {
   getAllVerifiedOwners,
   resolveBySlug,
 } from './identityResolverService'
+
+// Duplicate detection (client-safe — pure functions, no DB access)
+export type {
+  DuplicateTier,
+  DuplicateMatch,
+  DuplicateDetectionResult,
+} from './duplicateDetectionService'
+
+export {
+  detectDuplicates,
+  normalizeName,
+  isSoftMatch,
+} from './duplicateDetectionService'
