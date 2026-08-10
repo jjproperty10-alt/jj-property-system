@@ -68,6 +68,7 @@ import type {
   UpcomingEventDTO,
   TimelineEventDTO,
   HostawayPortfolioSummaryDTO,
+  OwnerServiceEngagementsDTO,
 } from './ownerWorkspaceTypes'
 
 // ─────────────────────────────────────────────────────────────
