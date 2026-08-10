@@ -24,6 +24,7 @@ import { createServerClient } from '@supabase/ssr'
 import { createServiceClient } from '@/lib/supabase'
 import { detectDuplicates } from '@/lib/identity/duplicateDetectionService'
 import { getAllVerifiedOwners } from '@/lib/identity/identityResolverService'
+import { isValidUUID } from '@/lib/owners/validation'
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -127,16 +128,6 @@ const VALID_ENTITY_TYPES = new Set([
   'jj_company',
   'external',
 ])
-
-/**
- * UUID v4 format: 8-4-4-4-12 hex digits.
- * Used to validate propertyIds before passing to the RPC (which expects UUID[]).
- */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-export function isValidUUID(value: string): boolean {
-  return UUID_RE.test(value)
-}
 
 function validate(input: CreateOwnerInput): string | null {
   if (!input.canonicalName || input.canonicalName.trim().length === 0) {

@@ -15,7 +15,7 @@ jest.mock('server-only', () => ({}), { virtual: true })
 // Mock next/headers — server action uses cookies()
 jest.mock('next/headers', () => ({ cookies: jest.fn() }), { virtual: true })
 
-import { isValidUUID } from '@/lib/owners/createOwnerAction'
+import { isValidUUID } from '@/lib/owners/validation'
 
 // ─── Architecture audit tests (source-level, no runtime) ────────────────
 
