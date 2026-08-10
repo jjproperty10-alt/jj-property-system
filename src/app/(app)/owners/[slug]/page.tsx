@@ -50,6 +50,7 @@ import {
   getOwnerRelationship,
   getOwnerAudit,
   getOwnerServiceEngagements,
+  getOwnerEntityProperties,
 } from '@/lib/owners/ownerWorkspaceService'
 import type { TabDef } from '@/components/ds'
 
@@ -128,7 +129,7 @@ export default async function OwnerWorkspacePage({
   const periodLabel = isAllHistory ? 'All History' : currentMonthLabel
 
   // Fetch tab data — parallel where possible
-  const [overview, financial, reservations, documents, maintenance, relationship, audit, services] =
+  const [overview, financial, reservations, documents, maintenance, relationship, audit, services, entityProperties] =
     await Promise.all([
       getOwnerOverview(slug),
       isAllHistory
@@ -140,6 +141,7 @@ export default async function OwnerWorkspacePage({
       getOwnerRelationship(slug),
       getOwnerAudit(slug),
       getOwnerServiceEngagements(slug),
+      getOwnerEntityProperties(slug),
     ])
 
   // Inject correction counts into tab labels
@@ -215,7 +217,7 @@ export default async function OwnerWorkspacePage({
 
       {/* Tab 8 — Services */}
       {activeTab === 'services' && (
-        <ServicesTab dto={services} />
+        <ServicesTab dto={services} entityProperties={[...entityProperties]} />
       )}
     </WorkspaceShell>
   )
