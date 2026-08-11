@@ -86,6 +86,68 @@ export type ServiceEngagementActionResult =
   | { ok: true; engagement: ServiceEngagementDTO }
   | { ok: false; error: 'unauthenticated' | 'unauthorized' | 'validation' | 'db_error'; message: string }
 
+// ─── RENTAL CONTRACTS (P2 LTR Operations) ────────────────────────────────────
+// Service Engagement ≠ Rental Contract ≠ Tenant Payment
+// This DTO represents CONTRACT/EXPECTED-PAYMENT operational truth only.
+// Existing Tenant Payment transactions remain the financial evidence authority.
+
+export type RentalContractStatus = 'draft' | 'active' | 'expired' | 'terminated'
+
+export interface RentalContractDTO {
+  readonly id: string
+  readonly propertyId: string
+  readonly serviceEngagementId: string | null
+  readonly tenantName: string
+  readonly tenantEntityId: string | null
+  readonly startDate: string
+  readonly endDate: string | null
+  readonly monthlyRentEur: number
+  readonly depositEur: number | null
+  readonly paymentDay: number
+  readonly currency: string
+  readonly status: RentalContractStatus
+  readonly notes: string | null
+  readonly createdBy: string | null
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+export interface CreateRentalContractInput {
+  readonly propertyId: string
+  readonly serviceEngagementId?: string | null
+  readonly tenantName: string
+  readonly tenantEntityId?: string | null
+  readonly startDate: string
+  readonly endDate?: string | null
+  readonly monthlyRentEur: number
+  readonly depositEur?: number | null
+  readonly paymentDay?: number
+  readonly currency?: string
+  readonly status?: RentalContractStatus
+  readonly notes?: string | null
+}
+
+export interface UpdateRentalContractInput {
+  readonly id: string
+  readonly tenantName?: string | null
+  readonly tenantEntityId?: string | null
+  readonly startDate?: string | null
+  readonly endDate?: string | null
+  readonly monthlyRentEur?: number | null
+  readonly depositEur?: number | null
+  readonly paymentDay?: number | null
+  readonly status?: RentalContractStatus | null
+  readonly notes?: string | null
+  readonly clearEndDate?: boolean
+  readonly clearDeposit?: boolean
+  readonly clearNotes?: boolean
+  readonly clearTenantEntityId?: boolean
+}
+
+export type RentalContractActionResult =
+  | { ok: true; contract: RentalContractDTO }
+  | { ok: false; error: 'unauthenticated' | 'unauthorized' | 'validation' | 'db_error'; message: string }
+
 /**
  * Owner Workspace DTOs — PR #3: JJ Workspace Navigation
  *

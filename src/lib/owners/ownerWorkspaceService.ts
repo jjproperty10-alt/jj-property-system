@@ -70,6 +70,7 @@ import type {
   HostawayPortfolioSummaryDTO,
   OwnerServiceEngagementsDTO,
   EntityPropertyOption,
+  RentalContractDTO,
 } from './ownerWorkspaceTypes'
 
 // ─────────────────────────────────────────────────────────────
@@ -628,4 +629,55 @@ export async function getOwnerEntityProperties(
 
   const { fetchEntityProperties } = await import('./ownerServiceEngagementAdapter')
   return fetchEntityProperties(entityId)
+}
+
+// -------------------------------------------------------------
+// Rental Contracts (P2 — Rental Contract Foundation)
+// -------------------------------------------------------------
+
+/**
+ * Fetch rental contracts for all management_ltr engagements.
+ *
+ * Takes the already-fetched service engagements DTO, extracts
+ * management_ltr engagement IDs, and fetches their rental contracts.
+ *
+ * Returns a plain Record (serializable across Server→Client boundary):
+ * engagementId → RentalContractDTO[].
+ * Empty object when no management_ltr engagements exist.
+ *
+ * Three-authority separation:
+ *   Service Engagement = what service JJ provides
+ *   Rental Contract = who is renting, terms, period (THIS FUNCTION)
+ *   Tenant Payment = actual rent money (public.transactions — NOT touched)
+ */
+export async function getOwnerRentalContracts(
+  serviceEngagements: OwnerServiceEngagementsDTO,
+): Promise<Record<string, readonly RentalContractDTO[]>> {
+  const result: Record<string, readonly RentalContractDTO[]> = {}
+
+  // Collect all management_ltr engagement IDs
+  const ltrEngagementIds: string[] = []
+  for (const prop of serviceEngagements.properties) {
+    for (const eng of prop.engagements) {
+      if (eng.serviceType === 'management_ltr') {
+        ltrEngagementIds.push(eng.id)
+      }
+    }
+  }
+
+  if (ltrEngagementIds.length === 0) return result
+
+  // Fetch contracts for each engagement in parallel
+  const { fetchEngagementRentalContracts } = await import('./rentalContractAdapter')
+  const fetches = ltrEngagementIds.map(async (id) => {
+    const contracts = await fetchEngagementRentalContracts(id)
+    return [id, contracts] as const
+  })
+
+  const results = await Promise.all(fetches)
+  for (const [id, contracts] of results) {
+    result[id] = contracts
+  }
+
+  return result
 }
