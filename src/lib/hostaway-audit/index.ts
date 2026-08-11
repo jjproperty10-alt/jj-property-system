@@ -40,6 +40,8 @@ export type {
 // ── Property identity (P1) ──
 export { resolvePropertyIdentity } from './resolvePropertyIdentity';
 export type { MappingIdentityInput, PropertyIdentityResolution } from './resolvePropertyIdentity';
+export { resolveActiveStrEngagement } from './strEngagement';
+export type { StrEngagementRow, StrEngagementResolution } from './strEngagement';
 
 // ── Status rules ──
 export { isRevenueEligible, REVENUE_ELIGIBLE_STATUSES } from './types';
