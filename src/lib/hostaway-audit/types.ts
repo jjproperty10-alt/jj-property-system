@@ -400,6 +400,8 @@ export interface HostawayPropertyAuditDTO {
   // ── Identity ──
   readonly jjPropertyName: string;
   readonly hostawayPropertyId: string;
+  /** Canonical JJ property identity (public.property_definitions UUID). Authoritative machine identity as of P1. */
+  readonly propertyId: string | null;
   readonly hostawayPropertyName: string;
   readonly hostawayInternalName: string | null;
   readonly mappingConfidence: string;   // 'exact' | 'high'
@@ -470,6 +472,8 @@ export interface IPropertyAuditService {
 export interface AuditableProperty {
   readonly jjPropertyName: string;
   readonly hostawayPropertyId: string;
+  /** Canonical JJ property identity (public.property_definitions UUID). Authoritative machine identity as of P1. */
+  readonly propertyId: string | null;
   readonly hostawayName: string;
   readonly mappingConfidence: string;
   readonly earliestReservation: string | null;

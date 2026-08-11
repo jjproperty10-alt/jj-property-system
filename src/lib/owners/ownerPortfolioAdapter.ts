@@ -46,6 +46,7 @@ function mapAuditableProperty(
 ): HostawayPropertySummaryDTO {
   return {
     propertyName:              p.jjPropertyName,
+    propertyId:                p.propertyId,
     canonicalName:             p.hostawayName || null,
     mappingStatus:             'mapped',    // listAuditableProperties() returns only approved mappings
     reservations:              0,           // period-filtered count requires audit run — RC2 scope
