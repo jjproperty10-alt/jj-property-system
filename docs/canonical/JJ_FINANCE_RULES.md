@@ -14,7 +14,7 @@
 8. **Transfer ≠ economic event** — `category='Transfer'` changes custody/location only, never income/expense. (P-LEDGER-5)
 
 ## Ledger constitution (P-LEDGER)
-1 Three-Layer Settlement (Cash / Economic / Counterparty) · 2 Ledger Qualification (PASS 0 + 1.25) · 3 Investigation Entry Condition · 4 Settlement Availability · 5 Transfer ≠ Economic · 6 Owner-Facing Amount Basis. Full text: CLAUDE.md §13.17 / `AV005_LEDGER.md`. ⚠️ **CLAUDE Dependency Gate:** promote P-LEDGER full text into Git before trimming CLAUDE.md (see `JJ_OPEN_QUESTIONS.md`).
+1 Three-Layer Settlement (Cash / Economic / Counterparty) · 2 Ledger Qualification (PASS 0 + 1.25) · 3 Investigation Entry Condition · 4 Settlement Availability · 5 Transfer ≠ Economic · 6 Owner-Facing Amount Basis. Full text: `docs/governance/JJ_LEDGER_CONSTITUTION.md` (Git authority; promoted faithfully from CLAUDE.md §13.17, origin `AV005_LEDGER.md`). ⚠️ **CLAUDE Dependency Gate remains ACTIVE:** §13.17/P-LEDGER is now Git-backed, but §4 + §14 are still referenced — see `JJ_OPEN_QUESTIONS.md`.
 
 ## Business Governance D2–D11
 Locked. Source: `docs/governance/JJ_BUSINESS_GOVERNANCE_V1.md` (v1.2). Mandatory reading before any partner-balance / income-allocation / settlement work.
