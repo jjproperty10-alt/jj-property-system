@@ -51,6 +51,7 @@ import {
   getOwnerAudit,
   getOwnerServiceEngagements,
   getOwnerEntityProperties,
+  getOwnerRentalContracts,
 } from '@/lib/owners/ownerWorkspaceService'
 import type { TabDef } from '@/components/ds'
 
@@ -144,6 +145,9 @@ export default async function OwnerWorkspacePage({
       getOwnerEntityProperties(slug),
     ])
 
+  // Fetch rental contracts for management_ltr engagements (depends on services result)
+  const rentalContracts = await getOwnerRentalContracts(services)
+
   // Inject correction counts into tab labels
   const tabs: TabDef[] = TABS.map(tab => {
     if (tab.id === 'audit' && workspace.openCorrectionCount > 0) {
@@ -217,7 +221,7 @@ export default async function OwnerWorkspacePage({
 
       {/* Tab 8 — Services */}
       {activeTab === 'services' && (
-        <ServicesTab dto={services} entityProperties={[...entityProperties]} />
+        <ServicesTab dto={services} entityProperties={[...entityProperties]} rentalContracts={rentalContracts} />
       )}
     </WorkspaceShell>
   )
