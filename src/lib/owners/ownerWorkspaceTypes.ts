@@ -933,3 +933,106 @@ export interface ReconciliationSummaryDTO {
   /** Flag: true when differences exist */
   hasDifferences: boolean
 }
+
+// ─── P1 LTR — RENT TERMS + EXPECTED RENT + FIFO ALLOCATOR ──────────────────
+// Three-authority separation:
+//   Service Engagement = what service JJ provides
+//   Rental Contract = who is renting, terms, period
+//   Rent Terms = expected rent amounts over time (THIS SECTION)
+//   Rent Obligations = monthly expected-vs-received tracking (THIS SECTION)
+//   Tenant Payment = actual rent money received (public.transactions — NOT here)
+
+export type MoveoutRentTreatment = 'full_month' | 'prorated_by_days' | 'custom_adjustment'
+
+export type RentTermReason =
+  | 'initial'
+  | 'annual_increase'
+  | 'renegotiation'
+  | 'correction'
+  | 'market_adjustment'
+
+export interface RentTermDTO {
+  readonly id: string
+  readonly rentalContractId: string
+  readonly monthlyRentEur: number
+  readonly effectiveFrom: string
+  readonly effectiveTo: string | null
+  readonly reason: RentTermReason
+  readonly governingEvidence: string | null
+}
+
+export interface RentPositionDTO {
+  readonly rentalContractId: string
+  readonly propertyId: string
+  readonly tenantName: string
+  readonly currentMonthlyRent: number | null   // null if no active term (P-ARCH-1)
+  readonly contractStart: string
+  readonly contractEnd: string | null
+  readonly contractStatus: RentalContractStatus
+  readonly totalObligations: number
+  readonly receivedCount: number
+  readonly outstandingCount: number
+  readonly overdueCount: number
+  readonly totalExpectedEur: string
+  readonly totalReceivedEur: string
+  readonly outstandingEur: string
+  readonly latestObligationMonth: string | null
+  // Per-PAYEE breakdown (who physically received the money — P-ARCH-2, P-LEDGER-1)
+  readonly receivedByJjEur: string
+  readonly receivedByJacobEur: string
+  readonly receivedByYossiEur: string
+  readonly receivedByAnastasiaEur: string
+}
+
+/** V1.2 Correction 1: Mid-cycle rent change prorata segment */
+export interface RentProrataSegment {
+  readonly rentTermId: string
+  readonly monthlyRentEur: number
+  readonly segmentStart: string          // ISO date
+  readonly segmentEnd: string            // ISO date
+  readonly segmentDays: number
+  readonly segmentAmountEur: number      // (monthlyRent / daysInMonth) × segmentDays
+}
+
+export type RentObligationStatus =
+  | 'expected' | 'due' | 'partial' | 'received' | 'overdue' | 'waived' | 'reversed'
+
+export interface SettlementEvidenceEntry {
+  readonly source_transaction_id: string | null
+  readonly payer: string
+  readonly payee: string
+  readonly amount: number
+  readonly date: string
+  readonly mechanism: string
+  readonly allocation_order: number
+}
+
+export interface RentObligationRowDTO {
+  readonly id: string
+  readonly rentTermId: string                    // primary term (highest contribution)
+  readonly prorataDetails: readonly RentProrataSegment[] | null  // null when single-term month
+  readonly obligationMonth: string
+  readonly dueDate: string
+  readonly expectedAmountEur: string
+  readonly receivedAmountEur: string
+  readonly unappliedCreditEur: string
+  readonly status: RentObligationStatus
+  readonly tenantName: string
+  readonly settlementEvidence: readonly SettlementEvidenceEntry[] | null
+}
+
+export interface RentAllocationEntry {
+  readonly obligationId: string
+  readonly obligationMonth: string
+  readonly allocated: number
+  readonly newStatus: RentObligationStatus
+}
+
+export interface RentAllocationResultDTO {
+  readonly allocations: readonly RentAllocationEntry[]
+  readonly totalAllocated: number
+  readonly unappliedCredit: number
+  readonly sourceTransactionId: string
+  readonly needsReview: boolean
+  readonly reviewReason: string | null
+}

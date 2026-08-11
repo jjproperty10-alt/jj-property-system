@@ -53,6 +53,12 @@ import {
   getOwnerEntityProperties,
   getOwnerRentalContracts,
 } from '@/lib/owners/ownerWorkspaceService'
+import {
+  fetchPropertyRentPosition,
+  fetchRentObligations,
+  fetchRentTermHistory,
+} from '@/lib/owners/rentPositionAdapter'
+import type { RentPositionDTO, RentObligationRowDTO, RentTermDTO } from '@/lib/owners/ownerWorkspaceTypes'
 import type { TabDef } from '@/components/ds'
 
 export const dynamic = 'force-dynamic'
@@ -148,6 +154,54 @@ export default async function OwnerWorkspacePage({
   // Fetch rental contracts for management_ltr engagements (depends on services result)
   const rentalContracts = await getOwnerRentalContracts(services)
 
+  // Fetch P1 rent data (positions, obligations, terms) per rental contract
+  // Collect all contracts + unique property IDs for position queries
+  const allContracts: { id: string; propertyId: string }[] = []
+  const uniquePropertyIds = new Set<string>()
+  for (const contracts of Object.values(rentalContracts)) {
+    for (const c of contracts) {
+      allContracts.push({ id: c.id, propertyId: c.propertyId })
+      uniquePropertyIds.add(c.propertyId)
+    }
+  }
+
+  const rentPositions: Record<string, RentPositionDTO> = {}
+  const rentObligations: Record<string, readonly RentObligationRowDTO[]> = {}
+  const rentTerms: Record<string, readonly RentTermDTO[]> = {}
+
+  if (allContracts.length > 0) {
+    // Fetch positions per property (returns all contracts on that property)
+    const positionFetches = Array.from(uniquePropertyIds).map(async (propId) => {
+      const positions = await fetchPropertyRentPosition(propId)
+      return positions
+    })
+    // Fetch obligations + terms per contract
+    const contractFetches = allContracts.map(async ({ id }) => {
+      const [obligations, terms] = await Promise.all([
+        fetchRentObligations(id),
+        fetchRentTermHistory(id),
+      ])
+      return { contractId: id, obligations, terms }
+    })
+
+    const [positionResults, contractResults] = await Promise.all([
+      Promise.all(positionFetches),
+      Promise.all(contractFetches),
+    ])
+
+    // Index positions by contract ID
+    for (const positions of positionResults) {
+      for (const pos of positions) {
+        rentPositions[pos.rentalContractId] = pos
+      }
+    }
+    // Index obligations + terms by contract ID
+    for (const { contractId, obligations, terms } of contractResults) {
+      rentObligations[contractId] = obligations
+      rentTerms[contractId] = terms
+    }
+  }
+
   // Inject correction counts into tab labels
   const tabs: TabDef[] = TABS.map(tab => {
     if (tab.id === 'audit' && workspace.openCorrectionCount > 0) {
@@ -221,7 +275,7 @@ export default async function OwnerWorkspacePage({
 
       {/* Tab 8 — Services */}
       {activeTab === 'services' && (
-        <ServicesTab dto={services} entityProperties={[...entityProperties]} rentalContracts={rentalContracts} />
+        <ServicesTab dto={services} entityProperties={[...entityProperties]} rentalContracts={rentalContracts} rentPositions={rentPositions} rentObligations={rentObligations} rentTerms={rentTerms} />
       )}
     </WorkspaceShell>
   )
