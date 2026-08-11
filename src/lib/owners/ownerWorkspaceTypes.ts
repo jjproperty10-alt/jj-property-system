@@ -895,6 +895,7 @@ export interface HostawayPortfolioSummaryDTO {
 
 export interface HostawayPropertySummaryDTO {
   propertyName: string
+  propertyId: string | null       // canonical public.property_definitions UUID (P1 authoritative identity)
   canonicalName: string | null    // matched name in JJ DB
   mappingStatus: 'mapped' | 'unmapped' | 'proposed'
   reservations: number
