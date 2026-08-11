@@ -1114,3 +1114,71 @@ export interface ManagementFeeOffsetResultDTO {
   readonly newFeeStatus: ManagementFeeObligationStatus
   readonly settlementEvidence: unknown
 }
+// âââ P3 LTR â DEPOSIT LIFECYCLE (EVENT-SOURCED) ââââââââââââââââââââââââââââââ
+// Deposit is NEVER income. Custodial/settlement lifecycle only.
+// Event-sourced, append-only (P-ARCH-4). No UPDATE/DELETE.
+// Custodian identity preserved (P-ARCH-2).
+
+export type DepositEventType =
+  | 'received'
+  | 'refunded'
+  | 'partially_withheld'
+  | 'forfeited_to_owner'
+  | 'transferred_custody'
+  | 'adjustment'
+
+export type DepositCustodian =
+  | 'Owner' | 'JJ' | 'Yossi' | 'Jacob' | 'Anastasia' | 'Tenant'
+
+export type DepositLifecycleStatus =
+  | 'no_deposit'
+  | 'held'
+  | 'partially_settled'
+  | 'fully_closed'
+
+export interface DepositEventDTO {
+  readonly id: string
+  readonly rentalContractId: string
+  readonly propertyId: string
+  readonly eventType: DepositEventType
+  readonly amountEur: number
+  readonly withheldAmountEur: number | null
+  readonly withheldReason: string | null
+  readonly custodian: DepositCustodian
+  readonly previousCustodian: string | null
+  readonly tenantName: string
+  readonly effectiveDate: string
+  readonly governingEvidence: string | null
+  readonly notes: string | null
+  readonly createdAt: string
+}
+
+export interface DepositCurrentStateDTO {
+  readonly rentalContractId: string
+  readonly propertyId: string
+  readonly tenantName: string
+  readonly originalAmountEur: number
+  readonly currentHeldEur: number
+  readonly totalRefundedEur: number
+  readonly totalWithheldEur: number
+  readonly currentCustodian: DepositCustodian
+  readonly latestEventType: DepositEventType
+  readonly latestEventDate: string
+  readonly latestWithheldReason: string | null
+  readonly eventCount: number
+  readonly lifecycleStatus: DepositLifecycleStatus
+  readonly isFullyClosed: boolean
+}
+
+export interface DepositHistoryDTO {
+  readonly events: readonly DepositEventDTO[]
+  readonly currentState: DepositCurrentStateDTO | null
+}
+
+export interface RecordDepositEventResultDTO {
+  readonly eventId: string
+  readonly eventType: DepositEventType
+  readonly amountEur: number
+  readonly custodian: DepositCustodian
+  readonly effectiveDate: string
+}
