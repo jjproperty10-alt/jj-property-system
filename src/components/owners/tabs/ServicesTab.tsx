@@ -30,6 +30,9 @@ import {
   createRentalContractAction,
   updateRentalContractAction,
 } from '@/lib/owners/rentalContractActions'
+import { RentPositionCard } from '@/components/owners/RentPositionCard'
+import { RentTermHistory } from '@/components/owners/RentTermHistory'
+import { RentObligationTimeline } from '@/components/owners/RentObligationTimeline'
 import type {
   OwnerServiceEngagementsDTO,
   PropertyServiceEngagementsDTO,
@@ -43,6 +46,9 @@ import type {
   RentalContractStatus,
   CreateRentalContractInput,
   UpdateRentalContractInput,
+  RentPositionDTO,
+  RentObligationRowDTO,
+  RentTermDTO,
 } from '@/lib/owners/ownerWorkspaceTypes'
 import type { StatusToken } from '@/lib/ds/tokens'
 
@@ -115,11 +121,24 @@ export interface ServicesTabProps {
   entityProperties: EntityPropertyOption[]
   /** Rental contracts keyed by service engagement ID */
   rentalContracts?: Record<string, readonly RentalContractDTO[]>
+  /** Rent position per contract ID (from v_rent_position) */
+  rentPositions?: Record<string, RentPositionDTO>
+  /** Rent obligations per contract ID */
+  rentObligations?: Record<string, readonly RentObligationRowDTO[]>
+  /** Rent terms per contract ID */
+  rentTerms?: Record<string, readonly RentTermDTO[]>
 }
 
 // ─── Main component ─────────────────────────────────────────────────────────
 
-export function ServicesTab({ dto, entityProperties, rentalContracts = {} }: ServicesTabProps) {
+export function ServicesTab({
+  dto,
+  entityProperties,
+  rentalContracts = {},
+  rentPositions = {},
+  rentObligations = {},
+  rentTerms = {},
+}: ServicesTabProps) {
   const router = useRouter()
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -213,6 +232,9 @@ export function ServicesTab({ dto, entityProperties, rentalContracts = {} }: Ser
               onUpdated={handleUpdated}
               onError={handleError}
               rentalContracts={rentalContracts}
+              rentPositions={rentPositions}
+              rentObligations={rentObligations}
+              rentTerms={rentTerms}
               editingLeaseId={editingLeaseId}
               addLeaseForEngagement={addLeaseForEngagement}
               onStartLeaseEdit={(id) => { setEditingLeaseId(id); setError(null) }}
@@ -440,6 +462,9 @@ interface PropertyServiceGroupProps {
   onUpdated: () => void
   onError: (msg: string) => void
   rentalContracts: Record<string, readonly RentalContractDTO[]>
+  rentPositions: Record<string, RentPositionDTO>
+  rentObligations: Record<string, readonly RentObligationRowDTO[]>
+  rentTerms: Record<string, readonly RentTermDTO[]>
   editingLeaseId: string | null
   addLeaseForEngagement: string | null
   onStartLeaseEdit: (id: string) => void
@@ -458,6 +483,9 @@ function PropertyServiceGroup({
   onUpdated,
   onError,
   rentalContracts,
+  rentPositions,
+  rentObligations,
+  rentTerms,
   editingLeaseId,
   addLeaseForEngagement,
   onStartLeaseEdit,
@@ -512,6 +540,9 @@ function PropertyServiceGroup({
               onEdit={() => onStartEdit(engagement.id)}
               onClose={() => handleClose(engagement.id, onUpdated, onError)}
               contracts={engagement.serviceType === 'management_ltr' ? (rentalContracts[engagement.id] ?? []) : []}
+              rentPositions={rentPositions}
+              rentObligations={rentObligations}
+              rentTerms={rentTerms}
               editingLeaseId={editingLeaseId}
               addLeaseForEngagement={addLeaseForEngagement}
               onStartLeaseEdit={onStartLeaseEdit}
@@ -536,6 +567,9 @@ interface ServiceEngagementRowProps {
   onEdit: () => void
   onClose: () => void
   contracts: readonly RentalContractDTO[]
+  rentPositions: Record<string, RentPositionDTO>
+  rentObligations: Record<string, readonly RentObligationRowDTO[]>
+  rentTerms: Record<string, readonly RentTermDTO[]>
   editingLeaseId: string | null
   addLeaseForEngagement: string | null
   onStartLeaseEdit: (id: string) => void
@@ -552,6 +586,9 @@ function ServiceEngagementRow({
   onEdit,
   onClose,
   contracts,
+  rentPositions,
+  rentObligations,
+  rentTerms,
   editingLeaseId,
   addLeaseForEngagement,
   onStartLeaseEdit,
@@ -620,6 +657,9 @@ function ServiceEngagementRow({
         <RentalContractSection
           engagement={engagement}
           contracts={contracts}
+          rentPositions={rentPositions}
+          rentObligations={rentObligations}
+          rentTerms={rentTerms}
           editingLeaseId={editingLeaseId}
           addLeaseForEngagement={addLeaseForEngagement}
           onStartLeaseEdit={onStartLeaseEdit}
@@ -822,6 +862,9 @@ function checkOverlap(
 interface RentalContractSectionProps {
   engagement: ServiceEngagementDTO
   contracts: readonly RentalContractDTO[]
+  rentPositions: Record<string, RentPositionDTO>
+  rentObligations: Record<string, readonly RentObligationRowDTO[]>
+  rentTerms: Record<string, readonly RentTermDTO[]>
   editingLeaseId: string | null
   addLeaseForEngagement: string | null
   onStartLeaseEdit: (id: string) => void
@@ -836,6 +879,9 @@ interface RentalContractSectionProps {
 function RentalContractSection({
   engagement,
   contracts,
+  rentPositions,
+  rentObligations,
+  rentTerms,
   editingLeaseId,
   addLeaseForEngagement,
   onStartLeaseEdit,
@@ -883,40 +929,62 @@ function RentalContractSection({
         <p className="text-xs text-gray-400 italic">No rental contracts configured.</p>
       ) : (
         <ul className="space-y-1.5">
-          {activeContracts.map(contract =>
-            editingLeaseId === contract.id ? (
-              <EditLeaseRow
-                key={contract.id}
-                contract={contract}
-                onUpdated={onLeaseUpdated}
-                onCancel={onCancelLeaseEdit}
-                onError={onError}
-              />
-            ) : (
-              <LeaseRow
-                key={contract.id}
-                contract={contract}
-                onEdit={() => onStartLeaseEdit(contract.id)}
-              />
-            )
-          )}
-          {historicalContracts.map(contract =>
-            editingLeaseId === contract.id ? (
-              <EditLeaseRow
-                key={contract.id}
-                contract={contract}
-                onUpdated={onLeaseUpdated}
-                onCancel={onCancelLeaseEdit}
-                onError={onError}
-              />
-            ) : (
-              <LeaseRow
-                key={contract.id}
-                contract={contract}
-                onEdit={() => onStartLeaseEdit(contract.id)}
-              />
-            )
-          )}
+          {activeContracts.map(contract => (
+            <li key={contract.id} className="space-y-2">
+              {editingLeaseId === contract.id ? (
+                <EditLeaseRow
+                  contract={contract}
+                  onUpdated={onLeaseUpdated}
+                  onCancel={onCancelLeaseEdit}
+                  onError={onError}
+                />
+              ) : (
+                <LeaseRow
+                  contract={contract}
+                  onEdit={() => onStartLeaseEdit(contract.id)}
+                />
+              )}
+
+              {/* P1 Rent Position + Terms + Obligations per contract */}
+              {rentPositions[contract.id] && (
+                <RentPositionCard position={rentPositions[contract.id]} />
+              )}
+              {(rentTerms[contract.id]?.length ?? 0) > 0 && (
+                <div className="pl-2">
+                  <h5 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Rent Terms</h5>
+                  <RentTermHistory terms={rentTerms[contract.id]} />
+                </div>
+              )}
+              {(rentObligations[contract.id]?.length ?? 0) > 0 && (
+                <div className="pl-2">
+                  <h5 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Payment Timeline</h5>
+                  <RentObligationTimeline obligations={rentObligations[contract.id]} />
+                </div>
+              )}
+            </li>
+          ))}
+          {historicalContracts.map(contract => (
+            <li key={contract.id} className="space-y-2">
+              {editingLeaseId === contract.id ? (
+                <EditLeaseRow
+                  contract={contract}
+                  onUpdated={onLeaseUpdated}
+                  onCancel={onCancelLeaseEdit}
+                  onError={onError}
+                />
+              ) : (
+                <LeaseRow
+                  contract={contract}
+                  onEdit={() => onStartLeaseEdit(contract.id)}
+                />
+              )}
+
+              {/* P1 Rent Position for historical contracts (read-only) */}
+              {rentPositions[contract.id] && (
+                <RentPositionCard position={rentPositions[contract.id]} />
+              )}
+            </li>
+          ))}
         </ul>
       )}
     </div>
