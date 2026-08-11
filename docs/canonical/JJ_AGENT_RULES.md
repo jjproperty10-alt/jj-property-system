@@ -25,5 +25,14 @@ FINANCE · PARTNER · LIFECYCLE · PLATFORM · PRODUCT · KNOWLEDGE.
 ## Supabase MCP — least-privilege (SECURITY)
 The connected MCP is **full read-write admin**, verified 2026-08-11: DB role = `postgres` with SELECT/INSERT/UPDATE/DELETE + CREATE/DDL = TRUE; the MCP also exposes `apply_migration`, `execute_sql`, `deploy_edge_function`, and branch operations. **It is NOT technically read-only.** Agents are restricted to read-only **by this rule, not by the grant.** Enforcing least-privilege (a dedicated read-only DB role and/or a scoped MCP) is an open security item — see `JJ_OPEN_QUESTIONS.md`.
 
+## Operational conventions (promoted from CLAUDE.md §14 — current durable items only)
+- **Properties are `property_name` in the DB** (not `property`).
+- **JHKA is the historical source of truth** — never create a parallel version of business history (ADR-001).
+- **FR-001 Single Component Ownership** — each UI component belongs to one PR; after merge: import only, no copy, no inline.
+- **FR-002 Never Assume Merge State** — before a new branch, verify prerequisites are on `main` via the API; never rely on memory.
+- **GitHub Bridge** — use `claude_github_bridge.py` (v2; required params via `_require()`); run `self_test` after any Bridge change.
+- **DAL** — every Digital Executive declares a DecisionAccessDeclaration per output; access evaluated by DAL (5 dimensions), enforced at the lowest reliable layer (ADR-003).
+> **Deliberately excluded (not promoted as authority):** the legacy "sandbox is offline" item (STALE — a read-only Supabase MCP now exists; mutation stays Yossi-gated per Approval boundaries), and all §14 status/changelog notes (milestone/PR status → `JJ_DECISION_REGISTER.md` / `JJ_CURRENT_STATE.md`). Business/data-integrity rules (Contract≠Payment, no-delete, Internal Offset, Partner Capital) live in `JJ_FINANCE_RULES.md`, not here.
+
 ## Behavioral constants
 Evidence > memory · Unknown > guess · Factual conflicts are resolved by evidence (not escalated); only genuine business/policy conflicts go to Yossi · Surface conflicts, never silently merge.
