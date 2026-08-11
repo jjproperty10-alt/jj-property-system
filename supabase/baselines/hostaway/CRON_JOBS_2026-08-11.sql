@@ -1,0 +1,29 @@
+-- =====================================================================================
+-- RECOVERED DEPLOYED-STATE SNAPSHOT — pg_cron jobs (schema cron)
+-- Captured from Supabase production (vsiiprzjrstjcmjpwcrd) on 2026-08-11.
+-- Documentation of the 6 ACTIVE jobs driving the Hostaway/PMS integration.
+-- This is NOT an executable migration. Do not re-schedule blindly (would duplicate jobs).
+-- No secrets are present in these commands (the edge invoke key is read from Vault
+-- inside ops.invoke_pms_function, never passed here).
+-- =====================================================================================
+--
+-- jobid | jobname                        | schedule       | command
+-- ------+--------------------------------+----------------+-------------------------------------------------------------------------------
+--   1   | pms-sync-listings-hourly       | 5 * * * *      | SELECT ops.invoke_pms_function('pms-hostaway-sync-listings', '{"trigger":"cron"}'::jsonb);
+--   2   | pms-sync-reservations-hourly   | 10 * * * *     | SELECT ops.invoke_pms_function('pms-hostaway-sync-reservations', '{"offset":0,"maxPages":6,"trigger":"cron"}'::jsonb);
+--   3   | pms-reconcile-nightly          | 0 3 * * *      | SELECT ops.invoke_pms_function('pms-hostaway-sync-reservations', '{"offset":0,"maxPages":6,"trigger":"cron"}'::jsonb);
+--   4   | ops-watchdog                   | */15 * * * *   | SELECT ops.watchdog_stuck_runs();
+--   5   | ops-health-refresh             | */15 * * * *   | SELECT ops.refresh_health();
+--   6   | pms-normalize-hourly           | 20 * * * *     | SELECT ops.normalize_pms();
+--
+-- NOTE (audit finding, not fixed in P0): job #3 "reconcile-nightly" currently re-runs the
+-- same reservations sync as job #2; it is not a distinct reconciliation with drift detection.
+-- Dependency: ops.invoke_pms_function reads vault secret 'edge_invoke_key'.
+--
+-- Reproduction reference (DO NOT run against prod without checking cron.job first):
+-- SELECT cron.schedule('pms-sync-listings-hourly',     '5 * * * *',    $$SELECT ops.invoke_pms_function('pms-hostaway-sync-listings', '{"trigger":"cron"}'::jsonb);$$);
+-- SELECT cron.schedule('pms-sync-reservations-hourly', '10 * * * *',   $$SELECT ops.invoke_pms_function('pms-hostaway-sync-reservations', '{"offset":0,"maxPages":6,"trigger":"cron"}'::jsonb);$$);
+-- SELECT cron.schedule('pms-reconcile-nightly',        '0 3 * * *',    $$SELECT ops.invoke_pms_function('pms-hostaway-sync-reservations', '{"offset":0,"maxPages":6,"trigger":"cron"}'::jsonb);$$);
+-- SELECT cron.schedule('ops-watchdog',                 '*/15 * * * *', $$SELECT ops.watchdog_stuck_runs();$$);
+-- SELECT cron.schedule('ops-health-refresh',           '*/15 * * * *', $$SELECT ops.refresh_health();$$);
+-- SELECT cron.schedule('pms-normalize-hourly',         '20 * * * *',   $$SELECT ops.normalize_pms();$$);
