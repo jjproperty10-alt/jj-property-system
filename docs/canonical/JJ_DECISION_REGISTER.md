@@ -18,6 +18,7 @@
 | CONS-002 | 2026-08-11 | Knowledge | `CLAUDE.md` to be versioned in Git; original preserved before refactor | Yossi (F-6) | Approved |
 | CONS-003 | 2026-08-11 | Knowledge | Canonical Knowledge Gate blocks any archival until capture proven | Yossi direction | Active |
 | CONS-006 | 2026-08-11 | Knowledge | Authority is scoped by kind of truth (DB=current state, JHKA=history, Constitution/ADR=rules/architecture). No global "DB = only truth" | Yossi direction | Approved |
+| CONS-009 | 2026-08-11 | Knowledge | §13.17 promoted to Git: JJ_LEDGER_CONSTITUTION (P-LEDGER-1…6 + D4) + JJ_INVESTIGATION_CONSTITUTION (P-EVIDENCE-1 + Resolution) — intentionally split; P-LEDGER-7 excluded (draft); CLAUDE Dependency Gate stays ACTIVE (§4/§14 remain); CLAUDE.md unchanged | Yossi (Phase 2A) | Approved |
 
 > **This register holds DECISIONS only — not facts, findings, or events.**
 > - Verified current facts (transaction baseline, cashbox values) → `JJ_CURRENT_STATE.md`.

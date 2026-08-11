@@ -22,7 +22,7 @@ Settlement Phase 2: `docs/adr/ADR-P2-001…006`.
 > ⚠️ ADR-number collisions exist in the legacy set (two ADR-001, two ADR-003, three ADR-004). Canonical numbering is an **open decision** — see `JJ_OPEN_QUESTIONS.md`.
 
 ## Ledger & Settlement Constitution (P-LEDGER)
-P-LEDGER-1 Three-Layer Settlement · P-LEDGER-2 Ledger Qualification · P-LEDGER-3 Investigation Entry Condition · P-LEDGER-4 Settlement Availability · P-LEDGER-5 Transfer ≠ Economic Event · P-LEDGER-6 Owner-Facing Amount Basis. Source: `AV005_LEDGER.md` + CLAUDE.md §13.17. Governing evidence: **D4 — JJ Entity Settlement Model**.
+P-LEDGER-1 Three-Layer Settlement · P-LEDGER-2 Ledger Qualification · P-LEDGER-3 Investigation Entry Condition · P-LEDGER-4 Settlement Availability · P-LEDGER-5 Transfer ≠ Economic Event · P-LEDGER-6 Owner-Facing Amount Basis. Authority: `docs/governance/JJ_LEDGER_CONSTITUTION.md` (Git; promoted from CLAUDE.md §13.17, origin `AV005_LEDGER.md`). Investigation Constitution: `docs/governance/JJ_INVESTIGATION_CONSTITUTION.md`. Governing evidence: **D4 — JJ Entity Settlement Model**.
 
 ## Business Governance
 `docs/governance/JJ_BUSINESS_GOVERNANCE_V1.md` (v1.2, D2–D11 locked) · `CFO_CONSTITUTION.md` (CFO-1…8).
