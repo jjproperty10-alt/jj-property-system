@@ -38,6 +38,54 @@ export interface OwnerServiceEngagementsDTO {
   readonly totalEngagements: number
 }
 
+// SERVICE ENGAGEMENTS — Write Layer (P2 PR #4)
+
+/**
+ * Property available for service engagement selection.
+ * Populated from entity_property_associations + property_definitions.
+ */
+export interface EntityPropertyOption {
+  readonly propertyId: string
+  readonly propertyName: string
+}
+
+/**
+ * Input for creating a new service engagement.
+ */
+export interface CreateServiceEngagementInput {
+  readonly entityId: string
+  readonly propertyId: string
+  readonly serviceType: ServiceType
+  readonly status?: ServiceEngagementStatus
+  readonly effectiveFrom?: string | null
+  readonly effectiveTo?: string | null
+  readonly notes?: string | null
+}
+
+/**
+ * Input for updating an existing service engagement.
+ * Uses explicit set-flags for typed-patch semantics:
+ *   setEffectiveFrom=false → don't touch the field
+ *   setEffectiveFrom=true, effectiveFrom=null → explicitly clear it
+ */
+export interface UpdateServiceEngagementInput {
+  readonly id: string
+  readonly status?: ServiceEngagementStatus | null
+  readonly setEffectiveFrom?: boolean
+  readonly effectiveFrom?: string | null
+  readonly setEffectiveTo?: boolean
+  readonly effectiveTo?: string | null
+  readonly setNotes?: boolean
+  readonly notes?: string | null
+}
+
+/**
+ * Discriminated union result for service engagement actions.
+ */
+export type ServiceEngagementActionResult =
+  | { ok: true; engagement: ServiceEngagementDTO }
+  | { ok: false; error: 'unauthenticated' | 'unauthorized' | 'validation' | 'db_error'; message: string }
+
 /**
  * Owner Workspace DTOs — PR #3: JJ Workspace Navigation
  *

@@ -69,6 +69,7 @@ import type {
   TimelineEventDTO,
   HostawayPortfolioSummaryDTO,
   OwnerServiceEngagementsDTO,
+  EntityPropertyOption,
 } from './ownerWorkspaceTypes'
 
 // ─────────────────────────────────────────────────────────────
@@ -605,4 +606,26 @@ export async function getOwnerServiceEngagements(
   // Delegate to adapter
   const { fetchEntityServiceEngagements } = await import('./ownerServiceEngagementAdapter')
   return fetchEntityServiceEngagements(entityId)
+}
+
+/**
+ * Fetch properties associated with an owner entity.
+ *
+ * P2 PR #4: Provides property options for the "Add Service" form dropdown.
+ * Uses entity_property_associations → property_definitions.
+ *
+ * Returns empty array when:
+ * - Owner slug cannot be resolved
+ * - No property associations exist (normal for new entities)
+ */
+export async function getOwnerEntityProperties(
+  slug: string,
+): Promise<readonly EntityPropertyOption[]> {
+  const identity = await resolveBySlug(slug)
+  if (identity.status !== 'resolved') return []
+
+  const entityId = identity.data.identity.entityId
+
+  const { fetchEntityProperties } = await import('./ownerServiceEngagementAdapter')
+  return fetchEntityProperties(entityId)
 }

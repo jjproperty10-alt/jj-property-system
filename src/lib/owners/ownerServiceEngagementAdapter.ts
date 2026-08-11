@@ -32,6 +32,7 @@ import type {
   ServiceEngagementStatus,
   PropertyServiceEngagementsDTO,
   OwnerServiceEngagementsDTO,
+  EntityPropertyOption,
 } from './ownerWorkspaceTypes'
 
 // ─── DB Row Type (internal — not exported) ───────────────────────────────────
@@ -103,13 +104,14 @@ function mapRow(row: ServiceEngagementRow): ServiceEngagementDTO | null {
 // ─── Property name resolution ────────────────────────────────────────────────
 
 /**
- * Build a map from property_id UUID → property_name string.
+ * Build a map from property_id UUID → property display name.
  *
- * Uses entity_property_associations (which links entity+property_id)
- * joined with management_relationship (which has property_name).
+ * Uses the get_entity_associated_properties RPC which joins
+ * entity_property_associations → property_definitions.
+ * Falls back to direct property_definitions lookup for any
+ * property_ids not found in associations.
  *
- * If no association exists, the property_id remains unresolved (null name).
- * This is expected — entity_property_associations may not be fully populated yet.
+ * P2 PR #4: Replaced stub with working implementation.
  */
 async function resolvePropertyNames(
   entityId: string,
@@ -126,30 +128,84 @@ async function resolvePropertyNames(
   try {
     const sb = createServiceClient()
 
-    // Query entity_property_associations for this entity's property mappings
+    // Try the RPC first (joins EPA → property_definitions)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (sb as any)
       .schema('lifecycle')
-      .from('entity_property_associations')
-      .select('property_id, association_source')
-      .eq('entity_id', entityId)
-      .eq('status', 'active')
-      .in('property_id', propertyIds)
+      .rpc('get_entity_associated_properties', {
+        p_entity_id: entityId,
+      })
 
-    if (error) throw error
+    if (!error && data) {
+      for (const row of data as { property_id: string; property_name: string }[]) {
+        if (propertyIds.includes(row.property_id)) {
+          result.set(row.property_id, row.property_name)
+        }
+      }
+    }
 
-    // entity_property_associations doesn't have property_name directly.
-    // For now, property names remain null — they'll be resolved when
-    // entity_property_associations is populated or a property registry exists.
-    // The UI can still display engagements grouped by property_id.
+    // For any still-unresolved, try property_definitions directly
+    const unresolved = propertyIds.filter(pid => result.get(pid) === null)
+    if (unresolved.length > 0) {
+      const { data: pdData, error: pdError } = await sb
+        .from('property_definitions')
+        .select('property_id, display_name, canonical_name, property_name')
+        .in('property_id', unresolved)
 
-    // Future: join with a property registry table to get names.
+      if (!pdError && pdData) {
+        for (const row of pdData as {
+          property_id: string
+          display_name: string | null
+          canonical_name: string | null
+          property_name: string
+        }[]) {
+          result.set(
+            row.property_id,
+            row.display_name ?? row.canonical_name ?? row.property_name,
+          )
+        }
+      }
+    }
   } catch (err) {
     // Non-fatal — property names are display-only, not authorization
     console.error('[serviceEngagementAdapter] Property name resolution failed:', err)
   }
 
   return result
+}
+
+/**
+ * Fetch properties associated with an entity for UI selection (dropdowns).
+ *
+ * Calls lifecycle.get_entity_associated_properties RPC.
+ * Returns empty array if entity has no associations (normal).
+ *
+ * P2 PR #4: New function for Add Service form.
+ */
+export async function fetchEntityProperties(
+  entityId: string,
+): Promise<readonly EntityPropertyOption[]> {
+  try {
+    const sb = createServiceClient()
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (sb as any)
+      .schema('lifecycle')
+      .rpc('get_entity_associated_properties', {
+        p_entity_id: entityId,
+      })
+
+    if (error) throw error
+    if (!data) return []
+
+    return (data as { property_id: string; property_name: string }[]).map(row => ({
+      propertyId: row.property_id,
+      propertyName: row.property_name,
+    }))
+  } catch (err) {
+    console.error('[serviceEngagementAdapter] fetchEntityProperties failed:', err)
+    return []
+  }
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
