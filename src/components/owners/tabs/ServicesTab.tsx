@@ -65,6 +65,7 @@ const STATUS_OPTIONS: { value: ServiceEngagementStatus; label: string }[] = [
   { value: 'draft', label: 'Draft' },
   { value: 'active', label: 'Active' },
   { value: 'suspended', label: 'Suspended' },
+  { value: 'closed', label: 'Closed' },
 ]
 
 /** Valid transitions from a given status */
