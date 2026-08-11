@@ -56,6 +56,7 @@ import type {
   CanonicalReservationRow,
   JjAirbnbTransaction,
 } from './matchReservations';
+import { resolvePropertyIdentity } from './resolvePropertyIdentity';
 
 // ─── Audit ID counter ────────────────────────────────────────────────────────
 
@@ -88,7 +89,7 @@ export class PropertyAuditService implements IPropertyAuditService {
   private async listAuditablePropertiesDirect(): Promise<readonly AuditableProperty[]> {
     const { data: mappings, error } = await this.supabase
       .from('property_mappings')
-      .select('external_id, jj_property_name, confidence_label, status')
+      .select('external_id, jj_property_name, confidence_label, status, property_id')
       .eq('status', 'approved')
       .order('jj_property_name');
 
@@ -120,18 +121,32 @@ export class PropertyAuditService implements IPropertyAuditService {
       nameMap.set(p.external_id, p.name ?? '');
     }
 
-    return mappings.map((m): AuditableProperty => {
+    const resolved: AuditableProperty[] = [];
+    for (const m of mappings) {
+      const identity = resolvePropertyIdentity({
+        status: m.status,
+        propertyId: (m.property_id as string | null) ?? null,
+        jjPropertyName: m.jj_property_name,
+      });
+      if (!identity.resolved) {
+        // Observable: an approved mapping without canonical property_id is skipped,
+        // not silently trusted by name.
+        console.warn(`[propertyAuditService] ${identity.reason}`);
+        continue;
+      }
       const rc = countMap.get(m.external_id);
-      return {
+      resolved.push({
         jjPropertyName: m.jj_property_name,
         hostawayPropertyId: m.external_id,
+        propertyId: identity.propertyId,
         hostawayName: nameMap.get(m.external_id) ?? '',
         mappingConfidence: m.confidence_label,
         earliestReservation: rc?.earliest ?? null,
         latestReservation: rc?.latest ?? null,
         totalReservations: rc?.count ?? 0,
-      };
-    });
+      });
+    }
+    return resolved;
   }
 
   async auditProperty(request: PropertyAuditRequest): Promise<PropertyAuditResult> {
@@ -148,6 +163,18 @@ export class PropertyAuditService implements IPropertyAuditService {
           audit: null,
           error: `No approved mapping found for property "${jjPropertyName}"`,
         };
+      }
+
+      // P1: property_id (canonical UUID) is the authoritative machine identity.
+      // An approved mapping without a property_id is UNRESOLVED — never silently
+      // fall back to jj_property_name as an identity authority.
+      const identity = resolvePropertyIdentity({
+        status: mapping.status,
+        propertyId: mapping.propertyId,
+        jjPropertyName: mapping.jjPropertyName,
+      });
+      if (!identity.resolved) {
+        return { success: false, audit: null, error: identity.reason };
       }
 
       // ── Step 2: Fetch Hostaway canonical reservations ──
@@ -292,6 +319,7 @@ export class PropertyAuditService implements IPropertyAuditService {
       const audit: HostawayPropertyAuditDTO = {
         jjPropertyName,
         hostawayPropertyId: mapping.externalId,
+        propertyId: identity.propertyId,
         hostawayPropertyName: mapping.hostawayName,
         hostawayInternalName: mapping.internalName,
         mappingConfidence: mapping.confidenceLabel,
@@ -325,7 +353,7 @@ export class PropertyAuditService implements IPropertyAuditService {
   private async resolveMapping(jjPropertyName: string) {
     const { data } = await this.supabase
       .from('property_mappings')
-      .select('external_id, jj_property_name, status, confidence_label, evidence')
+      .select('external_id, jj_property_name, status, confidence_label, evidence, property_id')
       .eq('jj_property_name', jjPropertyName)
       .eq('status', 'approved')
       .limit(1)
@@ -346,6 +374,7 @@ export class PropertyAuditService implements IPropertyAuditService {
       jjPropertyName: data.jj_property_name as string,
       status: data.status as string,
       confidenceLabel: data.confidence_label as string,
+      propertyId: (data.property_id as string | null) ?? null,
       hostawayName: (prop?.name as string) ?? '',
       internalName: (prop?.internal_name as string | null) ?? null,
     };
