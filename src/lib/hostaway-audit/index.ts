@@ -37,6 +37,10 @@ export type {
   AuditableProperty,
 } from './types';
 
+// ── Property identity (P1) ──
+export { resolvePropertyIdentity } from './resolvePropertyIdentity';
+export type { MappingIdentityInput, PropertyIdentityResolution } from './resolvePropertyIdentity';
+
 // ── Status rules ──
 export { isRevenueEligible, REVENUE_ELIGIBLE_STATUSES } from './types';
 
