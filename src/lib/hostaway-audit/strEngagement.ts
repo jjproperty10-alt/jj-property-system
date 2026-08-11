@@ -1,11 +1,18 @@
 /**
- * strEngagement.ts — STR service-engagement resolution (P2, 2026-08-11).
+ * strEngagement.ts — STR service-engagement resolution (P2, 2026-08-11; QA fix 2026-08-12).
  *
  * Resolves the canonical chain tail:
- *   canonical property_id -> owner/entity -> active airbnb_str service engagement.
+ *   canonical property_id -> owner/entity -> the airbnb_str engagement effective on a given date.
  *
  * Identity is ALWAYS property_id (P1). This helper never uses jj_property_name.
- * Overlapping active engagements are flagged as ambiguous, never silently picked.
+ *
+ * "Active" is effective-period aware, not just the status flag: an engagement whose
+ * effective period has ended must NOT be returned as the current engagement even if its
+ * `status` column is still 'active'. Resolution is deterministic via an explicit `asOfDate`
+ * (no hidden `new Date()`).
+ *
+ * Boundary convention (verified against lifecycle schema — CHECK effective_to >= effective_from,
+ * NULL = ongoing): both boundaries are INCLUSIVE.
  */
 
 export interface StrEngagementRow {
@@ -15,44 +22,34 @@ export interface StrEngagementRow {
   readonly entityId: string;
   readonly serviceType: string;
   readonly status: string;
-  readonly effectiveFrom: string | null; // ISO date
-  readonly effectiveTo: string | null;   // ISO date | null (open-ended)
+  readonly effectiveFrom: string | null; // ISO date 'YYYY-MM-DD'
+  readonly effectiveTo: string | null;   // ISO date | null (open-ended / ongoing)
 }
 
 export type StrEngagementResolution =
   | { readonly resolved: true; readonly entityId: string; readonly effectiveFrom: string | null }
   | { readonly resolved: false; readonly reason: 'no_active_engagement' | 'ambiguous_overlap' };
 
-function periodsOverlap(a: StrEngagementRow, b: StrEngagementRow): boolean {
-  const aFrom = a.effectiveFrom ?? '0000-01-01';
-  const aTo = a.effectiveTo ?? '9999-12-31';
-  const bFrom = b.effectiveFrom ?? '0000-01-01';
-  const bTo = b.effectiveTo ?? '9999-12-31';
-  return aFrom <= bTo && bFrom <= aTo;
-}
-
 /**
- * Resolve the active airbnb_str engagement for a property, keyed strictly by property_id.
+ * Resolve the airbnb_str engagement effective on `asOfDate`, keyed strictly by property_id.
+ *
+ * @param asOfDate ISO date 'YYYY-MM-DD' the resolution is evaluated against.
  */
 export function resolveActiveStrEngagement(
   propertyId: string,
   rows: readonly StrEngagementRow[],
+  asOfDate: string,
 ): StrEngagementResolution {
-  const active = rows.filter(
-    (r) => r.propertyId === propertyId && r.serviceType === 'airbnb_str' && r.status === 'active',
+  const effective = rows.filter(
+    (r) =>
+      r.propertyId === propertyId &&
+      r.serviceType === 'airbnb_str' &&
+      r.status === 'active' &&
+      (r.effectiveFrom === null || r.effectiveFrom <= asOfDate) &&   // started on/before asOfDate
+      (r.effectiveTo === null || r.effectiveTo >= asOfDate),          // not yet ended (inclusive)
   );
-  if (active.length === 0) return { resolved: false, reason: 'no_active_engagement' };
-  if (active.length > 1) {
-    for (let i = 0; i < active.length; i++) {
-      for (let j = i + 1; j < active.length; j++) {
-        if (periodsOverlap(active[i], active[j])) {
-          return { resolved: false, reason: 'ambiguous_overlap' };
-        }
-      }
-    }
-  }
-  const chosen = active
-    .slice()
-    .sort((a, b) => (a.effectiveFrom ?? '') < (b.effectiveFrom ?? '') ? -1 : 1)[0];
+  if (effective.length === 0) return { resolved: false, reason: 'no_active_engagement' };
+  if (effective.length > 1) return { resolved: false, reason: 'ambiguous_overlap' };
+  const chosen = effective[0];
   return { resolved: true, entityId: chosen.entityId, effectiveFrom: chosen.effectiveFrom };
 }
