@@ -1036,3 +1036,80 @@ export interface RentAllocationResultDTO {
   readonly needsReview: boolean
   readonly reviewReason: string | null
 }
+
+// ─── P2 LTR — Management Fee Engine ────────────────────────────────────────
+
+export type ManagementFeeType = 'one_month_rent' | 'percentage' | 'fixed_amount' | 'no_fee'
+
+export type ManagementFeeObligationStatus = 'pending' | 'billed' | 'partial' | 'settled' | 'waived' | 'reversed'
+
+export type ManagementFeeConfigStatus = 'active' | 'suspended' | 'closed'
+
+export type ObligationFrequency = 'annual' | 'semi_annual' | 'quarterly'
+
+export interface ManagementFeeConfigDTO {
+  readonly id: string
+  readonly serviceEngagementId: string
+  readonly propertyId: string
+  readonly feeType: ManagementFeeType
+  readonly feeValue: number | null
+  readonly cycleAnchorDate: string
+  readonly obligationFrequency: ObligationFrequency
+  readonly effectiveFrom: string
+  readonly effectiveTo: string | null
+  readonly status: ManagementFeeConfigStatus
+  readonly governingEvidence: string | null
+  readonly notes: string | null
+}
+
+export interface ManagementFeeObligationDTO {
+  readonly id: string
+  readonly feeConfigId: string
+  readonly propertyId: string
+  readonly periodStart: string
+  readonly periodEnd: string
+  readonly periodLabel: string
+  readonly calculatedAmountEur: string
+  readonly proratedAmountEur: string
+  readonly prorationDetails: readonly FeeProrationSegment[] | null
+  readonly settledAmountEur: string
+  readonly status: ManagementFeeObligationStatus
+  readonly settlementEvidence: unknown | null
+}
+
+export interface FeeProrationSegment {
+  readonly tenantName: string
+  readonly rentalContractId: string
+  readonly rentTermId: string | null
+  readonly segmentStart: string
+  readonly segmentEnd: string
+  readonly segmentDays: number
+  readonly effectiveRentEur: number
+  readonly segmentContributionEur: number
+}
+
+export interface ManagementFeePositionDTO {
+  readonly configs: readonly ManagementFeeConfigDTO[]
+  readonly obligations: readonly ManagementFeeObligationDTO[]
+}
+
+export interface OwnerFundAllocationDTO {
+  readonly id: string
+  readonly propertyId: string
+  readonly sourceType: string
+  readonly sourceReferenceId: string
+  readonly targetType: string
+  readonly targetReferenceId: string
+  readonly amountEur: string
+  readonly settlementEvidence: unknown | null
+  readonly allocatedAt: string
+}
+
+export interface ManagementFeeOffsetResultDTO {
+  readonly allocationId: string
+  readonly sourceObligationId: string
+  readonly targetObligationId: string
+  readonly offsetAmount: number
+  readonly newFeeStatus: ManagementFeeObligationStatus
+  readonly settlementEvidence: unknown
+}
