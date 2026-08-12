@@ -498,6 +498,11 @@ export interface OwnerFinancialSectionDTO {
   /** e.g. 'airbnb', 'rental', 'renovation', 'sale', 'purchase', 'transfer' */
   type: string
   label: string
+  /** Property this section belongs to (multi-property owners need attribution). */
+  propertyName?: string | null
+  /** Owner-facing direction for this section (convention-aware, from closing balance). Display only. */
+  ownerDirection?: 'due_to_jj' | 'due_to_you' | 'settled'
+  ownerDirectionAmountEur?: EuroAmount
   incomeEur: EuroAmount
   expensesEur: EuroAmount
   netEur: EuroAmount
@@ -1380,58 +1385,4 @@ export interface PresentationResolutionDTO {
   readonly deferUntilDate: string | null
   readonly economicDate: string | null
   readonly overrideReason: string | null
-}
-
-// ─── BROKERAGE OBLIGATIONS (P6 LTR Operations) ─────────────────────────────
-// One-time fee per NEW tenant placement.
-// No recurrence on renewal. No brokerage triggered by rent change.
-// Same lease = same tenant = same rental_contract_id = one brokerage max.
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/**
- * Calculation method for brokerage fee.
- * V1.3 locked business types — no additions without spec amendment.
- */
-export type BrokerageCalculationType =
-  | 'one_month_rent'     // brokerage = rent effective at tenancy start
-  | 'fixed_amount'       // explicit configured EUR amount
-  | 'percentage'         // configured % × agreed rent basis
-
-/**
- * Status lifecycle for brokerage obligations.
- * P-ARCH-4: no DELETE — status changes only.
- */
-export type BrokerageStatus =
-  | 'pending'
-  | 'billed'
-  | 'settled'
-  | 'waived'
-  | 'reversed'
-
-/**
- * DTO for lifecycle.brokerage_obligations.
- * One brokerage per lease, enforced by idempotency_key UNIQUE.
- */
-export interface BrokerageObligationDTO {
-  readonly id: string
-  readonly rentalContractId: string
-  readonly propertyId: string
-  readonly tenantName: string
-  readonly brokerageApplicable: boolean
-  readonly brokerName: string | null       // NULL when not applicable
-  readonly calculationType: BrokerageCalculationType
-  readonly percentageRate: number | null   // required only when calculation_type = 'percentage'
-  readonly chargeAmountEur: number
-  readonly chargeDate: string              // ISO date
-  readonly isNewTenant: boolean
-  readonly payer: string                   // 'Owner' | 'Tenant' | 'JJ'
-  readonly payee: string                   // 'JJ' | 'Broker' | 'Yossi' | 'Jacob'
-  readonly governingEvidence: string | null
-  readonly settledAmountEur: number
-  readonly status: BrokerageStatus
-  readonly settlementEvidence: Record<string, unknown> | null
-  readonly idempotencyKey: string
-  readonly notes: string | null
-  readonly createdAt: string
-  readonly updatedAt: string
 }
