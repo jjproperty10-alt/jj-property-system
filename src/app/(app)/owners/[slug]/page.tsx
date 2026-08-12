@@ -36,6 +36,7 @@ import { FinancialTab } from '@/components/owners/tabs/FinancialTab'
 import { ReservationsTab } from '@/components/owners/tabs/ReservationsTab'
 import { StrReconciliationSection } from '@/components/owners/StrReconciliationSection'
 import { ReservationsPeriodNav } from '@/components/owners/ReservationsPeriodNav'
+import { selectStrProperties } from '@/lib/owners/selectStrProperties'
 import { DocumentsTab } from '@/components/owners/tabs/DocumentsTab'
 import { MaintenanceTab } from '@/components/owners/tabs/MaintenanceTab'
 import { RelationshipTab } from '@/components/owners/tabs/RelationshipTab'
@@ -256,6 +257,11 @@ export default async function OwnerWorkspacePage({
 
   const tabBaseUrl = `/owners/${slug}`
 
+  // STR reconciliation renders once per CANONICAL property that has an airbnb_str engagement.
+  // This excludes legacy/duplicate managed-property names that are not STR properties
+  // (e.g. the "Tamir Kiti" variants), so we never render empty "no engagement" panels for them.
+  const strProperties = selectStrProperties(services)
+
   return (
     <WorkspaceShell
       header={
@@ -311,18 +317,26 @@ export default async function OwnerWorkspacePage({
                 : null
             }
           />
+          <p className="text-xs text-gray-400">
+            Figures reflect Hostaway reservation evidence for the selected month — not JJ ledger balances or owner payout.
+          </p>
           <ReservationsTab dto={reservations} />
-          {/* P3B: read-only STR reconciliation (Hostaway evidence vs JJ ledger), per property.
+          {/* P3B: read-only STR reconciliation (Hostaway evidence vs JJ ledger).
+              Rendered ONCE per canonical property that has an airbnb_str engagement.
               Month-aligned: same window + label as the Reservations screen. */}
-          {workspace.identity.properties.map((propertyName) => (
-            <StrReconciliationSection
-              key={propertyName}
-              propertyName={propertyName}
-              startDate={resBounds.start}
-              endDate={resBounds.end}
-              periodLabel={resBounds.label}
-            />
-          ))}
+          {strProperties.length === 0 ? (
+            <p className="text-xs text-gray-400">No Airbnb/STR properties under active management for this owner.</p>
+          ) : (
+            strProperties.map((prop) => (
+              <StrReconciliationSection
+                key={prop.id}
+                propertyName={prop.name}
+                startDate={resBounds.start}
+                endDate={resBounds.end}
+                periodLabel={resBounds.label}
+              />
+            ))
+          )}
         </div>
       )}
 
