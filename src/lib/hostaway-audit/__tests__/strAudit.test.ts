@@ -12,3 +12,18 @@ describe('buildStrReconciliation (P3B read-path DTO)',()=>{
   it('identity is property_id (no name anywhere in output)',()=>{const d=buildStrReconciliation(PID,ENG,[P({})]);expect(JSON.stringify(d)).not.toMatch(/property_name|jjPropertyName/);});
   it('low confidence maps to medium',()=>{const d=buildStrReconciliation(PID,ENG,[P({hostawayConfidence:'low',hostawayAmount:900,jjAmount:null})]);expect(d.periods[0].confidence).toBe('medium');});
 });
+describe('buildStrReconciliation P4 attribution passthrough',()=>{
+  const PID2='4eb09c84-907a-404c-b19a-7856f73fadff';
+  it('attaches attribution + counts multi_period_aggregate/period_unresolved; amounts unchanged',()=>{
+    const d=buildStrReconciliation(PID2,'eng-1',[
+      {period:'2025-07',hostawayAmount:1000,hostawayConfidence:'high',jjAmount:1000,attribution:{method:'explicit_period_range',spansMultipleMonths:true,reviewReason:'multi_period_aggregate'}},
+      {period:'AIRBNB',hostawayAmount:500,hostawayConfidence:'high',jjAmount:null,attribution:{method:'period_unresolved',spansMultipleMonths:false,reviewReason:'period_unresolved'}},
+    ]);
+    expect(d.summary.multiPeriodAggregate).toBe(1);
+    expect(d.summary.periodUnresolved).toBe(1);
+    expect(d.periods[0].attributionReason).toBe('multi_period_aggregate');
+    expect(d.periods[0].jjAmount).toBe(1000); // source amount unchanged
+    expect(d.periods[1].attributionMethod).toBe('period_unresolved');
+  });
+  it('no attribution provided -> null (backward compatible)',()=>{const d=buildStrReconciliation(PID2,'eng-1',[{period:'2025-07',hostawayAmount:1000,hostawayConfidence:'high',jjAmount:1000}]);expect(d.periods[0].attributionMethod).toBeNull();expect(d.summary.multiPeriodAggregate).toBe(0);});
+});

@@ -46,6 +46,9 @@ export { reconcileStrPeriod } from './strReconciliation';
 export type { StrPeriodEvidence, ReconciliationResult, ReconciliationStatus, EvidenceConfidence } from './strReconciliation';
 export { buildStrReconciliation } from './strAudit';
 export type { StrPeriodInput, StrReconciliationDTO, StrReconciliationSummary } from './strAudit';
+export type { StrReconciliationPeriod } from './strAudit';
+export { classifyStrPeriodAttribution, monthsSpanned } from './strLedgerAttribution';
+export type { PeriodAttribution, AttributionMethod, AttributionReviewReason } from './strLedgerAttribution';
 
 // ── Status rules ──
 export { isRevenueEligible, REVENUE_ELIGIBLE_STATUSES } from './types';

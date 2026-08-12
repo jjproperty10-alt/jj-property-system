@@ -8,7 +8,7 @@
 import 'server-only';
 import { createServiceClient } from '@/lib/supabase';
 import {
-  PropertyAuditService, buildStrReconciliation, resolveActiveStrEngagement,
+  PropertyAuditService, buildStrReconciliation, resolveActiveStrEngagement, classifyStrPeriodAttribution,
 } from '@/lib/hostaway-audit';
 import type { StrPeriodInput, StrReconciliationDTO, StrEngagementRow } from '@/lib/hostaway-audit';
 
@@ -46,6 +46,7 @@ export async function getStrReconciliation(input: OwnerStrAuditInput): Promise<S
         hostawayAmount: pc.hostawayPeriodPayout.amount,
         hostawayConfidence: pc.hostawayPeriodPayout.confidence,
         jjAmount: pc.jjPeriodAmount.amount,
+        attribution: classifyStrPeriodAttribution(pc.jjAggregate.periodFrom, pc.jjAggregate.periodTo, pc.jjAggregate.description),
       }))
     : [];
   return buildStrReconciliation(input.propertyId, engagementId, periods);
