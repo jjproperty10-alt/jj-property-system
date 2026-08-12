@@ -86,7 +86,6 @@ function mapSectionToDTO(
   properties?: readonly string[],
   propertyName?: string | null,
 ): OwnerFinancialSectionDTO {
-  // Owner-facing direction — reuses the exact convention-aware normalization used for Overall Net.
   const normalized = section.balance_convention === 'owner_credit'
     ? section.closing_balance
     : -section.closing_balance
