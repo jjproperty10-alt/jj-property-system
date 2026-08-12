@@ -88,7 +88,7 @@ export class PropertyAuditService implements IPropertyAuditService {
 
   private async listAuditablePropertiesDirect(): Promise<readonly AuditableProperty[]> {
     const { data: mappings, error } = await this.supabase
-      .from('property_mappings')
+      .schema('pms').from('property_mappings')
       .select('external_id, jj_property_name, confidence_label, status, property_id')
       .eq('status', 'approved')
       .order('jj_property_name');
@@ -97,7 +97,7 @@ export class PropertyAuditService implements IPropertyAuditService {
 
     // Get reservation counts per property
     const { data: resCounts } = await this.supabase
-      .from('canonical_reservations')
+      .schema('pms').from('canonical_reservations')
       .select('external_property_id, check_in, check_out')
       .in('external_property_id', mappings.map(m => m.external_id));
 
@@ -112,7 +112,7 @@ export class PropertyAuditService implements IPropertyAuditService {
 
     // Get property names from canonical
     const { data: props } = await this.supabase
-      .from('canonical_properties')
+      .schema('pms').from('canonical_properties')
       .select('external_id, name')
       .in('external_id', mappings.map(m => m.external_id));
 
@@ -352,7 +352,7 @@ export class PropertyAuditService implements IPropertyAuditService {
 
   private async resolveMapping(jjPropertyName: string) {
     const { data } = await this.supabase
-      .from('property_mappings')
+      .schema('pms').from('property_mappings')
       .select('external_id, jj_property_name, status, confidence_label, evidence, property_id')
       .eq('jj_property_name', jjPropertyName)
       .eq('status', 'approved')
@@ -363,7 +363,7 @@ export class PropertyAuditService implements IPropertyAuditService {
 
     // Get Hostaway property name
     const { data: prop } = await this.supabase
-      .from('canonical_properties')
+      .schema('pms').from('canonical_properties')
       .select('name, internal_name')
       .eq('external_id', data.external_id)
       .limit(1)
@@ -388,7 +388,7 @@ export class PropertyAuditService implements IPropertyAuditService {
   ) {
     // Build query based on date filter mode
     let query = this.supabase
-      .from('canonical_reservations')
+      .schema('pms').from('canonical_reservations')
       .select(
         'external_id, external_property_id, channel, channel_raw, status, guest_name, check_in, check_out, nights, guests, currency_code, total_price, cleaning_fee'
       )
@@ -422,7 +422,7 @@ export class PropertyAuditService implements IPropertyAuditService {
 
     if (externalIds.length > 0) {
       const { data: rawRows } = await this.supabase
-        .from('raw_reservations')
+        .schema('pms').from('raw_reservations')
         .select('external_id, raw')
         .in('external_id', externalIds)
         .eq('is_current', true);

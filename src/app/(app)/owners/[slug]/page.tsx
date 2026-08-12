@@ -35,6 +35,7 @@ import { OverviewTab } from '@/components/owners/tabs/OverviewTab'
 import { FinancialTab } from '@/components/owners/tabs/FinancialTab'
 import { ReservationsTab } from '@/components/owners/tabs/ReservationsTab'
 import { StrReconciliationSection } from '@/components/owners/StrReconciliationSection'
+import { ReservationsPeriodNav } from '@/components/owners/ReservationsPeriodNav'
 import { DocumentsTab } from '@/components/owners/tabs/DocumentsTab'
 import { MaintenanceTab } from '@/components/owners/tabs/MaintenanceTab'
 import { RelationshipTab } from '@/components/owners/tabs/RelationshipTab'
@@ -46,6 +47,7 @@ import {
   getOwnerOverview,
   getOwnerFinancial,
   getOwnerReservations,
+  getOwnerReservationActivity,
   getOwnerDocuments,
   getOwnerMaintenance,
   getOwnerRelationship,
@@ -82,6 +84,28 @@ const TABS: TabDef[] = [
 const VALID_TABS = new Set(TABS.map(t => t.id))
 const DEFAULT_TAB = 'overview'
 
+// ── Reservations month navigation helpers (URL-driven) ────────────────────────
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/
+function isValidMonth(m: string | undefined): m is string { return !!m && MONTH_RE.test(m) }
+function addMonths(ym: string, delta: number): string {
+  const [y, mo] = ym.split('-').map(Number)
+  const d = new Date(Date.UTC(y, mo - 1 + delta, 1))
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+}
+function monthBounds(ym: string): { start: string; end: string; label: string } {
+  const [y, mo] = ym.split('-').map(Number)
+  const start = `${ym}-01`
+  const last = new Date(Date.UTC(y, mo, 0))
+  const end = `${ym}-${String(last.getUTCDate()).padStart(2, '0')}`
+  const label = new Date(Date.UTC(y, mo - 1, 1)).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+  return { start, end, label }
+}
+function monthLabel(ym: string): string {
+  const [y, mo] = ym.split('-').map(Number)
+  return new Date(Date.UTC(y, mo - 1, 1)).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+}
+function resHref(ym: string): string { return `?tab=reservations&resMonth=${ym}` }
+
 // ─────────────────────────────────────────────────────────────
 // Metadata
 // ─────────────────────────────────────────────────────────────
@@ -106,10 +130,10 @@ export default async function OwnerWorkspacePage({
   searchParams,
 }: {
   params: { slug: string }
-  searchParams: { tab?: string; period?: string }
+  searchParams: { tab?: string; period?: string; resMonth?: string }
 }) {
   const { slug } = params
-  const { tab: tabParam, period: periodParam } = searchParams
+  const { tab: tabParam, period: periodParam, resMonth: resMonthParam } = searchParams
 
   // ── VS1: Page-level authentication (fail closed) ──────────────────────────
   // Authenticate ONCE before any data access. This closes security gap E8.
@@ -136,6 +160,25 @@ export default async function OwnerWorkspacePage({
   const { startDate, endDate, label: currentMonthLabel } = workspace.currentPeriod
   const periodLabel = isAllHistory ? 'All History' : currentMonthLabel
 
+  // ── Reservations month selection (independent of the financial period) ──────
+  // Probe which months have Hostaway activity, then choose the displayed month:
+  //  1) explicit ?resMonth= wins
+  //  2) else current month if it has activity
+  //  3) else auto-default to the latest active month (surfaced explicitly to the user)
+  const resActivity = await getOwnerReservationActivity(slug)
+  const currentMonth = startDate.slice(0, 7)
+  let resMonth = isValidMonth(resMonthParam) ? resMonthParam : currentMonth
+  let resAutoDefaulted: string | null = null
+  if (!isValidMonth(resMonthParam)
+      && !resActivity.activeMonths.includes(currentMonth)
+      && resActivity.latestActiveMonth
+      && resActivity.latestActiveMonth !== currentMonth) {
+    resMonth = resActivity.latestActiveMonth
+    resAutoDefaulted = monthLabel(resActivity.latestActiveMonth)
+  }
+  const resBounds = monthBounds(resMonth)
+  const resSelectedHasActivity = resActivity.activeMonths.includes(resMonth)
+
   // Fetch tab data — parallel where possible
   const [overview, financial, reservations, documents, maintenance, relationship, audit, services, entityProperties] =
     await Promise.all([
@@ -143,7 +186,7 @@ export default async function OwnerWorkspacePage({
       isAllHistory
         ? getOwnerFinancial(slug)
         : getOwnerFinancial(slug, startDate, endDate),
-      getOwnerReservations(slug, startDate, endDate),
+      getOwnerReservations(slug, resBounds.start, resBounds.end),
       getOwnerDocuments(slug),
       getOwnerMaintenance(slug),
       getOwnerRelationship(slug),
@@ -251,13 +294,36 @@ export default async function OwnerWorkspacePage({
 
       {/* Tab 3 — Reservations */}
       {activeTab === 'reservations' && (
-        <>
+        <div className="space-y-4">
+          <ReservationsPeriodNav
+            selectedLabel={resBounds.label}
+            prevHref={resHref(addMonths(resMonth, -1))}
+            nextHref={resHref(addMonths(resMonth, 1))}
+            autoDefaultedLabel={resAutoDefaulted}
+            latestActiveLabel={
+              !resSelectedHasActivity && resActivity.latestActiveMonth && resActivity.latestActiveMonth !== resMonth
+                ? monthLabel(resActivity.latestActiveMonth)
+                : null
+            }
+            latestActiveHref={
+              !resSelectedHasActivity && resActivity.latestActiveMonth && resActivity.latestActiveMonth !== resMonth
+                ? resHref(resActivity.latestActiveMonth)
+                : null
+            }
+          />
           <ReservationsTab dto={reservations} />
-          {/* P3B: read-only STR reconciliation (Hostaway evidence vs JJ ledger), per property */}
+          {/* P3B: read-only STR reconciliation (Hostaway evidence vs JJ ledger), per property.
+              Month-aligned: same window + label as the Reservations screen. */}
           {workspace.identity.properties.map((propertyName) => (
-            <StrReconciliationSection key={propertyName} propertyName={propertyName} />
+            <StrReconciliationSection
+              key={propertyName}
+              propertyName={propertyName}
+              startDate={resBounds.start}
+              endDate={resBounds.end}
+              periodLabel={resBounds.label}
+            />
           ))}
-        </>
+        </div>
       )}
 
       {/* Tab 4 — Documents */}

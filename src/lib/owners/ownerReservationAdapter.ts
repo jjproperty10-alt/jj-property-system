@@ -25,7 +25,7 @@
 import 'server-only'
 
 import { createServiceClient } from '@/lib/supabase'
-import { PropertyAuditService } from '@/lib/hostaway-audit'
+import { PropertyAuditService, isRevenueEligible } from '@/lib/hostaway-audit'
 import type {
   IPropertyAuditService,
   ReservationAuditDTO,
@@ -290,5 +290,62 @@ export async function fetchOwnerReservations(
     },
     channelMix,
     reservations: allReservations,
+  }
+}
+
+
+// ─── Reservation activity probe (month navigation) ────────────────────────────
+
+export interface ReservationActivityDTO {
+  /** Sorted unique YYYY-MM months that have >=1 revenue-eligible Hostaway reservation (by check-in). */
+  readonly activeMonths: readonly string[]
+  /** Latest active YYYY-MM, or null when the owner has no revenue-eligible reservations at all. */
+  readonly latestActiveMonth: string | null
+}
+
+/**
+ * Probe which months have revenue-eligible Hostaway activity for an owner's properties.
+ * Read-only. Counting only — no revenue arithmetic (G3-5). Wide window so month navigation
+ * and the "latest active period" hint reflect the full booking history (past + future).
+ * Failed/unmapped properties are skipped gracefully (partial data preferred over total failure).
+ */
+export async function fetchReservationActivity(
+  input: OwnerReservationAdapterInput,
+): Promise<ReservationActivityDTO> {
+  const { properties } = input
+  if (properties.length === 0) return { activeMonths: [], latestActiveMonth: null }
+
+  const today = input.today ?? new Date().toISOString().slice(0, 10)
+  const y = Number(today.slice(0, 4))
+  const wideStart = `${y - 3}-01-01`
+  const wideEnd = `${y + 2}-12-31`
+
+  const sb = createServiceClient()
+  const auditService: IPropertyAuditService = new PropertyAuditService(sb)
+
+  const settled = await Promise.allSettled(
+    properties.map((jjPropertyName) =>
+      auditService.auditProperty({ jjPropertyName, dateFrom: wideStart, dateTo: wideEnd }),
+    ),
+  )
+
+  const months = new Set<string>()
+  for (const r of settled) {
+    if (r.status !== 'fulfilled') continue
+    const audit = r.value.audit
+    if (!r.value.success || audit == null) continue
+    for (const res of audit.reservations) {
+      // Revenue-eligible only (confirmed/modified) — cancelled/inquiry excluded from "activity".
+      if (!isRevenueEligible(res.status)) continue
+      if (typeof res.checkIn === 'string' && res.checkIn.length >= 7) {
+        months.add(res.checkIn.slice(0, 7))
+      }
+    }
+  }
+
+  const activeMonths = Array.from(months).sort()
+  return {
+    activeMonths,
+    latestActiveMonth: activeMonths.length > 0 ? activeMonths[activeMonths.length - 1] : null,
   }
 }

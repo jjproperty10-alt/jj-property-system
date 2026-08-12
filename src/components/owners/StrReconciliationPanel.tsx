@@ -16,9 +16,11 @@ const eur = (n: number | null) => (n === null ? '—' : `€${n.toFixed(2)}`);
 
 export interface StrReconciliationPanelProps {
   readonly data: StrReconciliationDTO;
+  /** Human label for the selected window (e.g. "August 2026"), display only. */
+  readonly periodLabel?: string;
 }
 
-export function StrReconciliationPanel({ data }: StrReconciliationPanelProps) {
+export function StrReconciliationPanel({ data, periodLabel }: StrReconciliationPanelProps) {
   if (!data.hasActiveEngagement) {
     return (
       <div data-testid="str-recon-no-engagement" className="text-sm text-gray-600">
@@ -29,7 +31,8 @@ export function StrReconciliationPanel({ data }: StrReconciliationPanelProps) {
   if (data.periods.length === 0) {
     return (
       <div data-testid="str-recon-empty" className="text-sm text-gray-600">
-        No reconcilable STR periods in range.
+        No Airbnb/STR activity{periodLabel ? ` in ${periodLabel}` : ' in this period'} — no Hostaway
+        reservations and no JJ ledger entries to reconcile.
       </div>
     );
   }

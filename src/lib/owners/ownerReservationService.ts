@@ -16,11 +16,11 @@
 
 import 'server-only'
 
-import { fetchOwnerReservations } from './ownerReservationAdapter'
-import type { OwnerReservationAdapterInput } from './ownerReservationAdapter'
+import { fetchOwnerReservations, fetchReservationActivity } from './ownerReservationAdapter'
+import type { OwnerReservationAdapterInput, ReservationActivityDTO } from './ownerReservationAdapter'
 import type { OwnerReservationSummaryDTO } from './ownerWorkspaceTypes'
 
-export type { OwnerReservationAdapterInput }
+export type { OwnerReservationAdapterInput, ReservationActivityDTO }
 
 function emptyReservationSummary(
   startDate: string,
@@ -59,5 +59,23 @@ export async function getReservations(
       err instanceof Error ? err.message : String(err),
     )
     return emptyReservationSummary(input.startDate, input.endDate)
+  }
+}
+
+/**
+ * Get reservation activity (active months + latest active month) for an owner.
+ * Never throws — returns empty activity on any adapter failure.
+ */
+export async function getReservationActivity(
+  input: OwnerReservationAdapterInput,
+): Promise<ReservationActivityDTO> {
+  try {
+    return await fetchReservationActivity(input)
+  } catch (err) {
+    console.error(
+      '[ownerReservationService] getReservationActivity: adapter failed',
+      err instanceof Error ? err.message : String(err),
+    )
+    return { activeMonths: [], latestActiveMonth: null }
   }
 }
