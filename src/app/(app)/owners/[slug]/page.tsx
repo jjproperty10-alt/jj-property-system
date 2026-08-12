@@ -34,9 +34,12 @@ import { EntityContextBridge } from '@/components/owners/EntityContextBridge'
 import { OverviewTab } from '@/components/owners/tabs/OverviewTab'
 import { FinancialTab } from '@/components/owners/tabs/FinancialTab'
 import { ReservationsTab } from '@/components/owners/tabs/ReservationsTab'
-import { StrReconciliationSection } from '@/components/owners/StrReconciliationSection'
+import { StrNeedsAttention } from '@/components/owners/StrNeedsAttention'
+import { StrPropertyBreakdown } from '@/components/owners/StrPropertyBreakdown'
+import { StrReconciliationTable } from '@/components/owners/StrReconciliationTable'
 import { ReservationsPeriodNav } from '@/components/owners/ReservationsPeriodNav'
 import { selectStrProperties } from '@/lib/owners/selectStrProperties'
+import { buildOwnerStrCockpit } from '@/lib/owners/ownerStrCockpit'
 import { DocumentsTab } from '@/components/owners/tabs/DocumentsTab'
 import { MaintenanceTab } from '@/components/owners/tabs/MaintenanceTab'
 import { RelationshipTab } from '@/components/owners/tabs/RelationshipTab'
@@ -261,6 +264,9 @@ export default async function OwnerWorkspacePage({
   // This excludes legacy/duplicate managed-property names that are not STR properties
   // (e.g. the "Tamir Kiti" variants), so we never render empty "no engagement" panels for them.
   const strProperties = selectStrProperties(services)
+  const strCockpit = activeTab === 'reservations' && strProperties.length > 0
+    ? await buildOwnerStrCockpit({ properties: strProperties, startDate: resBounds.start, endDate: resBounds.end })
+    : null
 
   return (
     <WorkspaceShell
@@ -301,14 +307,17 @@ export default async function OwnerWorkspacePage({
       {/* Tab 3 — Reservations */}
       {activeTab === 'reservations' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-gray-400">STR owner statement for the selected month.</p>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-gray-900">Owner Statement</div>
+              <div className="text-xs text-gray-500">Printable STR statement (PDF) for {resBounds.label}.</div>
+            </div>
             <a
               href={`/owners/${slug}/statement?period=${resMonth}`}
               target="_blank"
               rel="noopener noreferrer"
               data-testid="download-statement-link"
-              className="text-sm font-medium px-3 py-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700"
+              className="shrink-0 inline-flex items-center gap-1 text-sm font-semibold px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
             >
               Generate / Download Statement
             </a>
@@ -332,23 +341,15 @@ export default async function OwnerWorkspacePage({
           <p className="text-xs text-gray-400">
             Figures reflect Hostaway reservation evidence for the selected month — not JJ ledger balances or owner payout.
           </p>
+          {strCockpit ? <StrNeedsAttention cockpit={strCockpit} /> : null}
+          {strCockpit ? <StrPropertyBreakdown cockpit={strCockpit} /> : null}
           <ReservationsTab dto={reservations} />
-          {/* P3B: read-only STR reconciliation (Hostaway evidence vs JJ ledger).
-              Rendered ONCE per canonical property that has an airbnb_str engagement.
-              Month-aligned: same window + label as the Reservations screen. */}
+          {/* Compact STR reconciliation — one row per canonical property (read-only, lower priority). */}
           {strProperties.length === 0 ? (
             <p className="text-xs text-gray-400">No Airbnb/STR properties under active management for this owner.</p>
-          ) : (
-            strProperties.map((prop) => (
-              <StrReconciliationSection
-                key={prop.id}
-                propertyName={prop.name}
-                startDate={resBounds.start}
-                endDate={resBounds.end}
-                periodLabel={resBounds.label}
-              />
-            ))
-          )}
+          ) : strCockpit ? (
+            <StrReconciliationTable cockpit={strCockpit} periodLabel={resBounds.label} />
+          ) : null}
         </div>
       )}
 
