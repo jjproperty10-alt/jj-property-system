@@ -1,14 +1,16 @@
 /**
  * ownerStrAuditAdapter — server-only read path: Hostaway STR evidence reconciliation (P3B).
- * external_id -> property_id -> active airbnb_str engagement -> Hostaway evidence vs JJ ledger
- * -> reconcileStrPeriod -> StrReconciliationDTO. READ-ONLY. No writes, no financial authority.
- * property_id is authoritative; jj_property_name is derived from property_definitions only for the
- * legacy transactions ledger hop (transactions.property_id is unpopulated) — never a machine identity.
+ * external_id -> property_id -> active airbnb_str engagement (certified P2 effective-period
+ * resolution) -> Hostaway evidence vs JJ ledger -> reconcileStrPeriod -> StrReconciliationDTO.
+ * READ-ONLY. No writes, no financial authority. property_id authoritative; name used only for the
+ * legacy transactions ledger hop (documented), never as machine identity.
  */
 import 'server-only';
 import { createServiceClient } from '@/lib/supabase';
-import { PropertyAuditService, buildStrReconciliation } from '@/lib/hostaway-audit';
-import type { StrPeriodInput, StrReconciliationDTO } from '@/lib/hostaway-audit';
+import {
+  PropertyAuditService, buildStrReconciliation, resolveActiveStrEngagement,
+} from '@/lib/hostaway-audit';
+import type { StrPeriodInput, StrReconciliationDTO, StrEngagementRow } from '@/lib/hostaway-audit';
 
 export interface OwnerStrAuditInput {
   readonly propertyId: string;   // canonical UUID (authoritative)
@@ -19,23 +21,23 @@ export interface OwnerStrAuditInput {
 export async function getStrReconciliation(input: OwnerStrAuditInput): Promise<StrReconciliationDTO> {
   const sb = createServiceClient();
 
-  // Legacy ledger hop: derive property_name from canonical property_id (documented boundary).
+  // P2 certified effective-period resolution (as of endDate): expired/future ignored, overlap => fail closed.
+  const { data: engRows } = await (sb as any).schema('lifecycle').from('service_engagements')
+    .select('id, entity_id, service_type, status, effective_from, effective_to')
+    .eq('property_id', input.propertyId).eq('service_type', 'airbnb_str');
+  const rows: StrEngagementRow[] = (engRows ?? []).map((r: any) => ({
+    id: r.id, propertyId: input.propertyId, entityId: r.entity_id, serviceType: r.service_type,
+    status: r.status, effectiveFrom: r.effective_from ?? null, effectiveTo: r.effective_to ?? null,
+  }));
+  const resolution = resolveActiveStrEngagement(input.propertyId, rows, input.endDate);
+  const engagementId: string | null = resolution.resolved ? resolution.engagementId : null;
+
+  // Legacy ledger hop: canonical property_id -> property_name (documented boundary).
   const { data: pd } = await sb.from('property_definitions')
     .select('property_name').eq('property_id', input.propertyId).limit(1).maybeSingle();
   const jjPropertyName = (pd?.property_name as string | undefined) ?? null;
-
-  // P2: active airbnb_str engagement resolved by property_id.
-  const { data: eng } = await (sb as any).schema('lifecycle').from('service_engagements')
-    .select('id, effective_from')
-    .eq('property_id', input.propertyId).eq('service_type', 'airbnb_str').eq('status', 'active')
-    .lte('effective_from', input.endDate)
-    .order('effective_from', { ascending: true }).limit(1).maybeSingle();
-  const engagementId: string | null = eng?.id ?? null;
-
-  // No canonical property name => cannot reach the ledger; return fail-closed (no evidence).
   if (!jjPropertyName) return buildStrReconciliation(input.propertyId, engagementId, []);
 
-  // Reuse the existing read-only period-aggregate audit for evidence.
   const svc = new PropertyAuditService(sb);
   const res = await svc.auditProperty({ jjPropertyName, dateFrom: input.startDate, dateTo: input.endDate });
   const periods: StrPeriodInput[] = res.success && res.audit
@@ -47,4 +49,18 @@ export async function getStrReconciliation(input: OwnerStrAuditInput): Promise<S
       }))
     : [];
   return buildStrReconciliation(input.propertyId, engagementId, periods);
+}
+
+/** Resolve canonical property_id from a JJ property name (property_definitions is the name<->UUID authority). */
+export async function getStrReconciliationByName(
+  propertyName: string, startDate: string, endDate: string,
+): Promise<StrReconciliationDTO | null> {
+  const sb = createServiceClient();
+  const { data: pd } = await sb.from('property_definitions')
+    .select('property_id')
+    .or(`property_name.eq.${propertyName},canonical_name.eq.${propertyName}`)
+    .limit(1).maybeSingle();
+  const propertyId = (pd?.property_id as string | undefined) ?? null;
+  if (!propertyId) return null;
+  return getStrReconciliation({ propertyId, startDate, endDate });
 }
