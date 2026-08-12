@@ -60,6 +60,9 @@ export function reconcileStrPeriod(
   if (!e.propertyId || e.propertyId.trim() === '') {
     throw new Error('reconcileStrPeriod: propertyId (canonical UUID) is required — name is not an identity');
   }
+  if (!Number.isFinite(toleranceEur) || toleranceEur < 0) {
+    throw new Error('reconcileStrPeriod: toleranceEur must be a finite, non-negative number');
+  }
   const base = {
     propertyId: e.propertyId,
     serviceEngagementId: e.serviceEngagementId,
@@ -67,6 +70,14 @@ export function reconcileStrPeriod(
     hostawayAmount: e.hostawayAmount,
     jjAmount: e.jjAmount,
   };
+
+  // Fail-closed on the P2 chain: reconciliation requires an active airbnb_str service
+  // engagement. Without it there is no proven STR service context — never a match/variance,
+  // never a name fallback.
+  if (!e.serviceEngagementId || e.serviceEngagementId.trim() === '') {
+    return { ...base, variance: null, status: 'insufficient_evidence', confidence: 'none',
+      needsReviewReason: 'No active airbnb_str service engagement for this property/period.' };
+  }
 
   const hasH = e.hostawayAmount !== null;
   const hasJ = e.jjAmount !== null;
@@ -84,8 +95,10 @@ export function reconcileStrPeriod(
       needsReviewReason: 'JJ ledger entry present but no Hostaway evidence to corroborate.' };
   }
 
-  const variance = round2((e.hostawayAmount as number) - (e.jjAmount as number));
-  if (Math.abs(variance) <= toleranceEur) {
+  // Compare the RAW difference against tolerance; round only for the returned/displayed variance.
+  const rawDifference = (e.hostawayAmount as number) - (e.jjAmount as number);
+  const variance = round2(rawDifference);
+  if (Math.abs(rawDifference) <= toleranceEur) {
     return { ...base, variance, status: 'match', confidence: e.hostawayConfidence, needsReviewReason: null };
   }
   return { ...base, variance, status: 'variance', confidence: e.hostawayConfidence,
