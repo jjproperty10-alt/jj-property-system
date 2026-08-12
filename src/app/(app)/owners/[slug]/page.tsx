@@ -34,6 +34,7 @@ import { EntityContextBridge } from '@/components/owners/EntityContextBridge'
 import { OverviewTab } from '@/components/owners/tabs/OverviewTab'
 import { FinancialTab } from '@/components/owners/tabs/FinancialTab'
 import { ReservationsTab } from '@/components/owners/tabs/ReservationsTab'
+import { StrReconciliationSection } from '@/components/owners/StrReconciliationSection'
 import { DocumentsTab } from '@/components/owners/tabs/DocumentsTab'
 import { MaintenanceTab } from '@/components/owners/tabs/MaintenanceTab'
 import { RelationshipTab } from '@/components/owners/tabs/RelationshipTab'
@@ -250,7 +251,13 @@ export default async function OwnerWorkspacePage({
 
       {/* Tab 3 — Reservations */}
       {activeTab === 'reservations' && (
-        <ReservationsTab dto={reservations} />
+        <>
+          <ReservationsTab dto={reservations} />
+          {/* P3B: read-only STR reconciliation (Hostaway evidence vs JJ ledger), per property */}
+          {workspace.identity.properties.map((propertyName) => (
+            <StrReconciliationSection key={propertyName} propertyName={propertyName} />
+          ))}
+        </>
       )}
 
       {/* Tab 4 — Documents */}
