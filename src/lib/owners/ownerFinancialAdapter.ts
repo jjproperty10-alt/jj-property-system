@@ -84,7 +84,12 @@ function mapRowToDTO(row: RC3AccountRow): OwnerFinancialRowDTO {
 function mapSectionToDTO(
   section: RC3AccountSection,
   properties?: readonly string[],
+  propertyName?: string | null,
 ): OwnerFinancialSectionDTO {
+  // Owner-facing direction — reuses the exact convention-aware normalization used for Overall Net.
+  const normalized = section.balance_convention === 'owner_credit'
+    ? section.closing_balance
+    : -section.closing_balance
   const visibleRows = section.rows.filter(
     r => !r.is_platform_tracking && r.display_group !== 'reference',
   )
@@ -106,6 +111,9 @@ function mapSectionToDTO(
     netEur:             toEur(section.total_income - section.total_expenses),
     closingBalanceEur:  toEur(section.closing_balance),
     balanceConvention:  section.balance_convention,
+    propertyName:       propertyName ?? null,
+    ownerDirection:     netLabel(normalized),
+    ownerDirectionAmountEur: toEur(Math.abs(normalized)),
     rows:               visibleRows.map(mapRowToDTO),
     displayNote:        isInternalPurchase
                           ? 'This section shows JJ\'s acquisition cost for this property. It is excluded from the owner\'s Overall Net.'
@@ -406,7 +414,7 @@ export async function fetchOwnerFinancial(
 
   const position    = composePosition(allSections)
   const overallNet  = buildOverallNet(allSections, properties)
-  const sections    = allSections.map(s => mapSectionToDTO(s, properties))
+  const sections    = reports.flatMap(r => r.accounts.map(sec => mapSectionToDTO(sec, properties, r.reporting_name)))
 
   // Fetch occupancy position for NEEDS_REVIEW properties
   const occupancyPosition = await fetchOccupancyPosition(properties)
