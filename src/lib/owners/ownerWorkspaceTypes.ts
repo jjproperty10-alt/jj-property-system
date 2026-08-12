@@ -1284,3 +1284,100 @@ export interface UtilityPositionDTO {
   readonly meters: readonly UtilityMeterDTO[]
   readonly obligations: readonly TenantUtilityObligationDTO[]
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// P5 — Tenant Charges + Billing Presentation Metadata
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Charge types for tenant obligations.
+ * 'utility_arrears' — ONLY for explicitly distinct manual arrears,
+ * NOT a duplicate of P4 tenant_utility_obligations.
+ */
+export type TenantChargeType =
+  | 'damage'
+  | 'penalty'
+  | 'cleaning'
+  | 'key_replacement'
+  | 'utility_arrears'
+  | 'other'
+
+/**
+ * Status lifecycle for tenant charges.
+ * P-ARCH-4: no DELETE — status changes only.
+ */
+export type TenantChargeStatus =
+  | 'pending'
+  | 'billed'
+  | 'partial'
+  | 'settled'
+  | 'disputed'
+  | 'waived'
+  | 'reversed'
+
+/**
+ * Presentation controls — determines WHEN a charge appears on a statement.
+ * NEVER changes financial truth (balances, dates, amounts).
+ */
+export type PresentationStatus =
+  | 'include_now'
+  | 'next_statement'
+  | 'defer_until_date'
+  | 'internal_only'
+
+/**
+ * DTO for lifecycle.tenant_charge_obligations.
+ * Three-event separation: this is the Tenant Charge obligation,
+ * NOT the owner expense (public.transactions) or tenant payment.
+ */
+export interface TenantChargeObligationDTO {
+  readonly id: string
+  readonly rentalContractId: string
+  readonly propertyId: string
+  readonly tenantName: string
+  readonly chargeType: TenantChargeType
+  readonly description: string
+  readonly actualCostEur: number | null   // NULL = unknown (P-ARCH-1)
+  readonly chargeAmountEur: number
+  readonly marginEur: number | null       // derived: charge - cost; NULL when cost is NULL
+  readonly sourceEvidence: string | null
+  readonly economicDate: string           // ISO date
+  readonly deductibleFromDeposit: boolean
+  readonly settledAmountEur: number
+  readonly status: TenantChargeStatus
+  readonly settlementEvidence: Record<string, unknown> | null
+  readonly idempotencyKey: string
+  readonly notes: string | null
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+/**
+ * DTO for lifecycle.statement_presentation_overrides.
+ * Presentation-only metadata — NEVER changes financial balances,
+ * original economic dates, or transaction amounts.
+ */
+export interface StatementPresentationOverrideDTO {
+  readonly id: string
+  readonly sourceTransactionId: string
+  readonly propertyId: string
+  readonly presentationStatus: PresentationStatus
+  readonly deferUntilDate: string | null
+  readonly economicDate: string           // original transaction date, preserved
+  readonly overrideReason: string | null
+  readonly createdBy: string | null
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+/**
+ * Result of resolve_statement_presentation RPC.
+ */
+export interface PresentationResolutionDTO {
+  readonly hasOverride: boolean
+  readonly presentationStatus: PresentationStatus
+  readonly visible: boolean
+  readonly deferUntilDate: string | null
+  readonly economicDate: string | null
+  readonly overrideReason: string | null
+}

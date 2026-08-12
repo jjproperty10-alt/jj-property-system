@@ -45,3 +45,9 @@ export { ReadingHistory } from './ReadingHistory'
 export type { ReadingHistoryProps } from './ReadingHistory'
 export { ObligationView } from './ObligationView'
 export type { ObligationViewProps } from './ObligationView'
+
+// P5 — Tenant Charges + Billing Presentation
+export { TenantChargeCard } from './TenantChargeCard'
+export type { TenantChargeCardProps } from './TenantChargeCard'
+export { PresentationOverrideIndicator } from './PresentationOverrideIndicator'
+export type { PresentationOverrideIndicatorProps } from './PresentationOverrideIndicator'
