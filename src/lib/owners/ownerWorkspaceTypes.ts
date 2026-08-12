@@ -498,6 +498,11 @@ export interface OwnerFinancialSectionDTO {
   /** e.g. 'airbnb', 'rental', 'renovation', 'sale', 'purchase', 'transfer' */
   type: string
   label: string
+  /** Property this section belongs to (multi-property owners need attribution). */
+  propertyName?: string | null
+  /** Owner-facing direction for this section (convention-aware, from closing balance). Display only. */
+  ownerDirection?: 'due_to_jj' | 'due_to_you' | 'settled'
+  ownerDirectionAmountEur?: EuroAmount
   incomeEur: EuroAmount
   expensesEur: EuroAmount
   netEur: EuroAmount

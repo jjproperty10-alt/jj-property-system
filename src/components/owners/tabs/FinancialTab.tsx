@@ -73,7 +73,7 @@ export function FinancialTab({ dto, periodLabel }: FinancialTabProps) {
           </h2>
           <div className="space-y-4">
             {sections.map(section => (
-              <FinancialSection key={section.type} section={section} />
+              <FinancialSection key={`${section.type}-${section.propertyName ?? 'na'}`} section={section} periodLabel={periodLabel} />
             ))}
           </div>
         </section>
@@ -146,7 +146,13 @@ function MoneyKpi({ label, value }: { label: string; value: string | null }) {
   )
 }
 
-function FinancialSection({ section }: { section: OwnerFinancialDTO['sections'][number] }) {
+function FinancialSection({ section, periodLabel }: { section: OwnerFinancialDTO['sections'][number]; periodLabel?: string }) {
+  const DIR: Record<'due_to_jj' | 'due_to_you' | 'settled', { label: string; cls: string }> = {
+    due_to_jj:  { label: 'Due to JJ',  cls: 'text-red-700 bg-red-50 border-red-200' },
+    due_to_you: { label: 'Due to You', cls: 'text-green-700 bg-green-50 border-green-200' },
+    settled:    { label: 'Settled',    cls: 'text-gray-600 bg-gray-50 border-gray-200' },
+  }
+  const dir = section.ownerDirection ? DIR[section.ownerDirection] : null
   const columns: DataTableColumn[] = [
     { key: 'date',        label: 'Date',        dir: 'ltr' },
     { key: 'description', label: 'Description' },
@@ -177,9 +183,18 @@ function FinancialSection({ section }: { section: OwnerFinancialDTO['sections'][
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
       {/* Section header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
-        <h3 className="text-sm font-semibold text-gray-800 capitalize">{section.label}</h3>
-        <div className="flex items-center gap-4 text-sm">
-          {section.type === 'sale' ? (
+        <h3 className="text-sm font-semibold text-gray-800 truncate min-w-0">
+          {section.label}
+          {section.propertyName ? <span className="text-gray-500 font-normal"> · {section.propertyName}</span> : null}
+          {periodLabel ? <span className="text-gray-400 font-normal"> · {periodLabel}</span> : null}
+        </h3>
+        <div className="flex items-center gap-3 text-sm shrink-0">
+          {dir && section.ownerDirectionAmountEur != null ? (
+            <span className={`text-xs border rounded px-2 py-0.5 font-medium ${dir.cls}`}>
+              {dir.label} <MoneyValue amount={parseFloat(section.ownerDirectionAmountEur)} size="sm" />
+            </span>
+          ) : null}
+          {!dir && (section.type === 'sale' ? (
             <span className="text-gray-500">
               {section.closingBalanceEur != null && parseFloat(section.closingBalanceEur) === 0
                 ? <span className="font-medium text-green-700">Settled · €0</span>
@@ -193,7 +208,7 @@ function FinancialSection({ section }: { section: OwnerFinancialDTO['sections'][
                 ? <MoneyValue amount={parseFloat(section.netEur)} size="sm" />
                 : 'â'}
             </span>
-          )}
+          ))}
         </div>
       </div>
       {/* Display note (e.g. JJ Internal Acquisition for NEEDS_REVIEW purchase sections) */}
