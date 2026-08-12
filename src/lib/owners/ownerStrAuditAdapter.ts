@@ -18,6 +18,15 @@ export interface OwnerStrAuditInput {
   readonly endDate: string;
 }
 
+/** Human label for a reconciliation window (e.g. "Aug 2026" or "Jun–Sep 2026"). Display only. */
+function periodWindowLabel(startDate: string, endDate: string): string {
+  const fmt = (iso: string) =>
+    new Date(iso + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+  const a = fmt(startDate);
+  const b = fmt(endDate);
+  return a === b ? a : `${a} \u2013 ${b}`;
+}
+
 export async function getStrReconciliation(input: OwnerStrAuditInput): Promise<StrReconciliationDTO> {
   const sb = createServiceClient();
 
@@ -40,15 +49,29 @@ export async function getStrReconciliation(input: OwnerStrAuditInput): Promise<S
 
   const svc = new PropertyAuditService(sb);
   const res = await svc.auditProperty({ jjPropertyName, dateFrom: input.startDate, dateTo: input.endDate });
-  const periods: StrPeriodInput[] = res.success && res.audit
-    ? res.audit.periodComparisons.map((pc) => ({
-        period: pc.jjAggregate.periodFrom ?? pc.jjAggregate.description ?? 'unknown',
-        hostawayAmount: pc.hostawayPeriodPayout.amount,
-        hostawayConfidence: pc.hostawayPeriodPayout.confidence,
-        jjAmount: pc.jjPeriodAmount.amount,
-        attribution: classifyStrPeriodAttribution(pc.jjAggregate.periodFrom, pc.jjAggregate.periodTo, pc.jjAggregate.description),
-      }))
-    : [];
+
+  // Month-aligned evidence (P3B/UX): build ONE reconciliation period for the SELECTED window,
+  // using engine-computed totals only (no local arithmetic — G3-5). This makes the panel follow
+  // the same period as the Reservations screen and surfaces Hostaway-only activity as
+  // "Missing in JJ / Needs Review" instead of hiding it behind an empty period list.
+  const periods: StrPeriodInput[] = [];
+  if (res.success && res.audit) {
+    const s = res.audit.summary;
+    const jjHasPlatformIncome = s.jjPeriodAggregateCount > 0;   // # of JJ Platform Income rows
+    const hasHostawayActivity = s.revenueEligibleReservations > 0;
+    if (hasHostawayActivity || jjHasPlatformIncome) {
+      const label = periodWindowLabel(input.startDate, input.endDate);
+      periods.push({
+        period: label,
+        hostawayAmount: s.hostawayTotalPayout.amount,               // engine (authoritative), null if unknown
+        hostawayConfidence: s.hostawayTotalPayout.confidence,
+        // null when JJ has NO Platform Income evidence in the window (P-ARCH-1: unknown != 0),
+        // else the engine-computed period total.
+        jjAmount: jjHasPlatformIncome ? s.jjPlatformIncomeTotal : null,
+        attribution: classifyStrPeriodAttribution(input.startDate, input.endDate, label),
+      });
+    }
+  }
   return buildStrReconciliation(input.propertyId, engagementId, periods);
 }
 
