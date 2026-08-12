@@ -14,6 +14,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getOwnerProperty } from '@/lib/ownership/orchestrator'
 import { OwnerShareSection } from '@/components/owner/OwnerShareSection'
+import { StrReconciliationSection } from '@/components/owners/StrReconciliationSection'
 import { ProjectViewSection } from '@/components/owner/ProjectViewSection'
 import { OwnershipStructure } from '@/components/owner/OwnershipStructure'
 
@@ -71,6 +72,9 @@ export default async function OwnerPropertyPage({ params }: Props) {
             </span>
           </div>
         </div>
+      </div>
+      <div className="max-w-5xl mx-auto px-6">
+        <StrReconciliationSection propertyName={propertyName} />
       </div>
 
       <div className="max-w-5xl mx-auto px-4 py-6">
