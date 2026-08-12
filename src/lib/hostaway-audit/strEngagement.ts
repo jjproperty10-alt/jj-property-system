@@ -18,6 +18,8 @@
 export interface StrEngagementRow {
   /** canonical public.property_definitions UUID (identity) */
   readonly propertyId: string;
+  /** engagement id (lifecycle.service_engagements.id) */
+  readonly id?: string;
   /** owner/entity (lifecycle.entity_identity id) */
   readonly entityId: string;
   readonly serviceType: string;
@@ -27,7 +29,7 @@ export interface StrEngagementRow {
 }
 
 export type StrEngagementResolution =
-  | { readonly resolved: true; readonly entityId: string; readonly effectiveFrom: string | null }
+  | { readonly resolved: true; readonly engagementId: string | null; readonly entityId: string; readonly effectiveFrom: string | null }
   | { readonly resolved: false; readonly reason: 'no_active_engagement' | 'ambiguous_overlap' };
 
 /**
@@ -51,5 +53,5 @@ export function resolveActiveStrEngagement(
   if (effective.length === 0) return { resolved: false, reason: 'no_active_engagement' };
   if (effective.length > 1) return { resolved: false, reason: 'ambiguous_overlap' };
   const chosen = effective[0];
-  return { resolved: true, entityId: chosen.entityId, effectiveFrom: chosen.effectiveFrom };
+  return { resolved: true, engagementId: chosen.id ?? null, entityId: chosen.entityId, effectiveFrom: chosen.effectiveFrom };
 }
