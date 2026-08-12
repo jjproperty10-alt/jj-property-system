@@ -1182,3 +1182,105 @@ export interface RecordDepositEventResultDTO {
   readonly custodian: DepositCustodian
   readonly effectiveDate: string
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// P4 — Utilities / Sub-Meters
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Utility types tracked by the metering system */
+export type UtilityType = 'electricity' | 'water' | 'gas' | 'internet' | 'other'
+
+/** Meter operational status */
+export type MeterStatus = 'active' | 'inactive'
+
+/** Rate scope — property-specific wins over central */
+export type RateScope = 'central' | 'property_specific'
+
+/** Tenant utility obligation settlement status */
+export type ObligationStatus =
+  | 'pending'
+  | 'billed'
+  | 'partial'
+  | 'settled'
+  | 'disputed'
+  | 'reversed'
+
+// ── DTOs ────────────────────────────────────────────────────────────────────
+
+export interface UtilityMeterDTO {
+  readonly id: string
+  readonly propertyId: string
+  readonly utilityType: UtilityType
+  readonly meterIdentifier: string | null
+  readonly unitOfMeasure: string
+  readonly status: MeterStatus
+  readonly readingIntervalMonths: number
+  readonly lastReadingDate: string | null
+  readonly nextReadingDue: string | null
+  readonly notes: string | null
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+export interface MeterReadingDTO {
+  readonly id: string
+  readonly meterId: string
+  readonly readingDate: string
+  readonly readingValue: number
+  readonly previousValue: number | null
+  readonly consumption: number | null
+  readonly photoEvidence: string | null
+  readonly recordedBy: string | null
+  readonly createdAt: string
+}
+
+export interface UtilityRateDTO {
+  readonly id: string
+  readonly utilityType: UtilityType
+  readonly ratePerUnitEur: number
+  readonly effectiveFrom: string
+  readonly effectiveTo: string | null
+  readonly source: string | null
+  readonly scope: RateScope
+  readonly propertyId: string | null
+  readonly notes: string | null
+  readonly createdAt: string
+}
+
+export interface TenantUtilityObligationDTO {
+  readonly id: string
+  readonly rentalContractId: string
+  readonly propertyId: string
+  readonly meterId: string
+  readonly readingId: string
+  readonly rateId: string
+  readonly utilityType: UtilityType
+  readonly periodStart: string
+  readonly periodEnd: string
+  readonly consumption: number
+  readonly ratePerUnitEur: number
+  readonly obligationAmountEur: number
+  readonly tenantName: string
+  readonly settledAmountEur: number
+  readonly status: ObligationStatus
+  readonly settlementEvidence: Record<string, unknown> | null
+  readonly idempotencyKey: string
+  readonly notes: string | null
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+export interface RecordMeterReadingResultDTO {
+  readonly readingId: string
+  readonly consumption: number | null
+  readonly obligationCreated: boolean
+  readonly obligationId: string | null
+  readonly needsReview: boolean
+  readonly reason: string | null
+  readonly nextReadingDue: string
+}
+
+export interface UtilityPositionDTO {
+  readonly meters: readonly UtilityMeterDTO[]
+  readonly obligations: readonly TenantUtilityObligationDTO[]
+}
