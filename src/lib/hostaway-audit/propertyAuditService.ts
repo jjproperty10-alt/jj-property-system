@@ -351,32 +351,21 @@ export class PropertyAuditService implements IPropertyAuditService {
   // ─── Private query helpers ─────────────────────────────────────────────────
 
   private async resolveMapping(jjPropertyName: string) {
+    // pms is not exposed to PostgREST; read via SECURITY DEFINER RPC (mirrors
+    // get_auditable_properties_v1). Server-side service role only.
     const { data } = await this.supabase
-      .schema('pms').from('property_mappings')
-      .select('external_id, jj_property_name, status, confidence_label, evidence, property_id')
-      .eq('jj_property_name', jjPropertyName)
-      .eq('status', 'approved')
-      .limit(1)
-      .single();
-
-    if (!data) return null;
-
-    // Get Hostaway property name
-    const { data: prop } = await this.supabase
-      .schema('pms').from('canonical_properties')
-      .select('name, internal_name')
-      .eq('external_id', data.external_id)
-      .limit(1)
-      .single();
+      .rpc('pms_resolve_mapping', { p_jj_property_name: jjPropertyName });
+    const row = Array.isArray(data) ? (data[0] as Record<string, unknown> | undefined) : null;
+    if (!row) return null;
 
     return {
-      externalId: data.external_id as string,
-      jjPropertyName: data.jj_property_name as string,
-      status: data.status as string,
-      confidenceLabel: data.confidence_label as string,
-      propertyId: (data.property_id as string | null) ?? null,
-      hostawayName: (prop?.name as string) ?? '',
-      internalName: (prop?.internal_name as string | null) ?? null,
+      externalId: row.external_id as string,
+      jjPropertyName: row.jj_property_name as string,
+      status: row.status as string,
+      confidenceLabel: row.confidence_label as string,
+      propertyId: (row.property_id as string | null) ?? null,
+      hostawayName: (row.hostaway_name as string) ?? '',
+      internalName: (row.hostaway_internal_name as string | null) ?? null,
     };
   }
 
@@ -386,60 +375,36 @@ export class PropertyAuditService implements IPropertyAuditService {
     dateTo: string,
     dateFilterMode: DateFilterMode,
   ) {
-    // Build query based on date filter mode
-    let query = this.supabase
-      .schema('pms').from('canonical_reservations')
-      .select(
-        'external_id, external_property_id, channel, channel_raw, status, guest_name, check_in, check_out, nights, guests, currency_code, total_price, cleaning_fee'
-      )
-      .eq('external_property_id', externalPropertyId);
+    // pms is not exposed to PostgREST; read via SECURITY DEFINER RPC. The RPC performs the
+    // canonical stay-overlaps filter (check_in <= dateTo AND check_out >= dateFrom) and joins
+    // the current raw financials. dateFilterMode is retained for the interface; all live callers
+    // use the default 'stay_overlaps'.
+    void dateFilterMode;
+    const { data: canonical, error } = await this.supabase
+      .rpc('pms_reservations_for_property', {
+        p_external_id: externalPropertyId,
+        p_from: dateFrom,
+        p_to: dateTo,
+      });
 
-    switch (dateFilterMode) {
-      case 'stay_overlaps':
-        // Reservation overlaps [dateFrom, dateTo] if check_in <= dateTo AND check_out >= dateFrom
-        query = query.lte('check_in', dateTo).gte('check_out', dateFrom);
-        break;
-      case 'check_in_within':
-        query = query.gte('check_in', dateFrom).lte('check_in', dateTo);
-        break;
-      case 'check_out_within':
-        query = query.gte('check_out', dateFrom).lte('check_out', dateTo);
-        break;
-      case 'created_within':
-        query = query.gte('created_at', dateFrom).lte('created_at', dateTo);
-        break;
-    }
+    if (error) throw new Error(`pms_reservations_for_property failed: ${error.message}`);
 
-    const { data: canonical, error } = await query;
+    const rows = (canonical ?? []) as Array<Record<string, unknown>>;
 
-    if (error) throw new Error(`canonical_reservations query failed: ${error.message}`);
-
-    const rows = canonical ?? [];
-
-    // Get raw financials for these reservations
-    const externalIds = rows.map(r => r.external_id);
+    // Raw financials come joined on each row (rr.raw).
     const rawFinancials = new Map<string, RawReservationFinancials>();
-
-    if (externalIds.length > 0) {
-      const { data: rawRows } = await this.supabase
-        .schema('pms').from('raw_reservations')
-        .select('external_id, raw')
-        .in('external_id', externalIds)
-        .eq('is_current', true);
-
-      for (const rr of rawRows ?? []) {
-        const raw = rr.raw as Record<string, unknown>;
-        rawFinancials.set(rr.external_id, {
-          totalPrice: (raw.totalPrice as string) ?? null,
-          cleaningFee: (raw.cleaningFee as string) ?? null,
-          airbnbListingHostFee: (raw.airbnbListingHostFee as string) ?? null,
-          airbnbExpectedPayoutAmount: (raw.airbnbExpectedPayoutAmount as string) ?? null,
-          channelCommissionAmount: (raw.channelCommissionAmount as string) ?? null,
-          taxAmount: (raw.taxAmount as string) ?? null,
-          airbnbListingBasePrice: (raw.airbnbListingBasePrice as string) ?? null,
-          airbnbListingCleaningFee: (raw.airbnbListingCleaningFee as string) ?? null,
-        });
-      }
+    for (const rr of rows) {
+      const raw = (rr.raw as Record<string, unknown> | null) ?? {};
+      rawFinancials.set(rr.external_id as string, {
+        totalPrice: (raw.totalPrice as string) ?? null,
+        cleaningFee: (raw.cleaningFee as string) ?? null,
+        airbnbListingHostFee: (raw.airbnbListingHostFee as string) ?? null,
+        airbnbExpectedPayoutAmount: (raw.airbnbExpectedPayoutAmount as string) ?? null,
+        channelCommissionAmount: (raw.channelCommissionAmount as string) ?? null,
+        taxAmount: (raw.taxAmount as string) ?? null,
+        airbnbListingBasePrice: (raw.airbnbListingBasePrice as string) ?? null,
+        airbnbListingCleaningFee: (raw.airbnbListingCleaningFee as string) ?? null,
+      });
     }
 
     const reservations = rows.map(r => ({
