@@ -42,6 +42,8 @@ export { resolvePropertyIdentity } from './resolvePropertyIdentity';
 export type { MappingIdentityInput, PropertyIdentityResolution } from './resolvePropertyIdentity';
 export { resolveActiveStrEngagement } from './strEngagement';
 export type { StrEngagementRow, StrEngagementResolution } from './strEngagement';
+export { reconcileStrPeriod } from './strReconciliation';
+export type { StrPeriodEvidence, ReconciliationResult, ReconciliationStatus, EvidenceConfidence } from './strReconciliation';
 
 // ── Status rules ──
 export { isRevenueEligible, REVENUE_ELIGIBLE_STATUSES } from './types';
