@@ -51,7 +51,8 @@ import {
 import type { ResolvedManagedIdentityDTO } from '../identity'
 import { getFinancial } from './ownerFinancialService'
 import { getMaintenanceItems } from './ownerMaintenanceService'
-import { getReservations } from './ownerReservationService'
+import type { ReservationActivityDTO } from './ownerReservationService'
+import { getReservations, getReservationActivity } from './ownerReservationService'
 import { getPortfolio } from './ownerPortfolioAdapter'
 import type {
   OwnersRoomDTO,
@@ -382,6 +383,19 @@ export async function getOwnerReservations(
     startDate,
     endDate,
   })
+}
+
+/**
+ * Reservation activity (active months + latest active month) for an owner's properties.
+ * Drives the Reservations-tab month navigation and the "latest active period" hint.
+ * Never throws — returns empty activity when the owner has no properties or on failure.
+ */
+export async function getOwnerReservationActivity(
+  slug: string,
+): Promise<ReservationActivityDTO> {
+  const workspace = await getOwnerWorkspace(slug)
+  if (!workspace) return { activeMonths: [], latestActiveMonth: null }
+  return getReservationActivity({ properties: workspace.identity.properties, startDate: '', endDate: '' })
 }
 
 // ─────────────────────────────────────────────────────────────
