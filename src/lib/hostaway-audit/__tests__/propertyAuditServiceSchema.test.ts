@@ -1,43 +1,30 @@
 /**
- * Regression: PropertyAuditService must read pms.* tables via .schema('pms').
- * Before the fix it queried unqualified public.property_mappings (which does not exist),
- * so every audit returned empty → Reservations tab + STR reconciliation were blank.
+ * Regression: PropertyAuditService must read pms.* through public SECURITY DEFINER RPCs
+ * (pms is NOT exposed to PostgREST and service_role has no grants on it). Before this fix it
+ * queried pms tables directly, which silently returned empty → blank Reservations + STR screens.
  */
 import { PropertyAuditService } from '../propertyAuditService';
 
-function makeChain(singleResult: unknown) {
-  const chain: Record<string, unknown> = {};
-  const passthrough = () => chain;
-  for (const m of ['select', 'eq', 'in', 'gte', 'lte', 'or', 'order', 'limit']) chain[m] = passthrough;
-  chain.single = () => Promise.resolve(singleResult);
-  chain.maybeSingle = () => Promise.resolve(singleResult);
-  chain.then = (res: (v: unknown) => void) => res({ data: [], error: null }); // awaited non-single queries
-  return chain;
-}
-
-describe('PropertyAuditService pms schema routing', () => {
-  it("reads property_mappings through .schema('pms'), never unqualified public", async () => {
+describe('PropertyAuditService pms access via RPC', () => {
+  it('resolves the mapping through pms_resolve_mapping RPC, never a direct pms table read', async () => {
+    const rpcCalls: string[] = [];
+    const fromCalls: string[] = [];
     const schemaCalls: string[] = [];
-    const topLevelFrom: string[] = [];
     const client = {
-      schema: (name: string) => {
-        schemaCalls.push(name);
-        return { from: () => makeChain({ data: null, error: null }) };
+      rpc: (name: string) => {
+        rpcCalls.push(name);
+        // Return an awaitable that resolves to an empty result (mapping not found).
+        return Promise.resolve({ data: [], error: null });
       },
-      from: (t: string) => {
-        topLevelFrom.push(t);
-        return makeChain({ data: null, error: null });
-      },
-      rpc: () => ({ select: () => Promise.resolve({ data: [], error: null }) }),
+      from: (t: string) => { fromCalls.push(t); throw new Error('direct .from should not be used for pms in the audit path'); },
+      schema: (n: string) => { schemaCalls.push(n); return { from: () => { throw new Error('pms schema not exposed'); } }; },
     };
 
     const svc = new PropertyAuditService(client as never);
     const res = await svc.auditProperty({ jjPropertyName: 'Orit Rob Pingodes', dateFrom: '2026-08-01', dateTo: '2026-08-31' });
 
-    // Mapping resolves to null in this mock → audit reports failure, but the point is the ROUTING:
-    expect(schemaCalls).toContain('pms');
-    // property_mappings must NOT be queried on the default public schema.
-    expect(topLevelFrom).not.toContain('property_mappings');
-    expect(res.success).toBe(false); // null mapping, as designed
+    expect(rpcCalls).toContain('pms_resolve_mapping');
+    expect(schemaCalls).not.toContain('pms'); // no direct pms schema access on the live path
+    expect(res.success).toBe(false); // empty mapping → audit reports failure, as designed
   });
 });
