@@ -1435,3 +1435,127 @@ export interface BrokerageObligationDTO {
   readonly createdAt: string
   readonly updatedAt: string
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// P7 — TENANT SETTLEMENT + CLOSING STATEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Direction of settlement: who owes whom after deposit application.
+ */
+export type SettlementDirection = 'tenant_owes_jj' | 'jj_owes_tenant' | 'balanced'
+
+/**
+ * Settlement run lifecycle. draft → approved → communicated → settled | disputed.
+ */
+export type SettlementStatus = 'draft' | 'approved' | 'communicated' | 'settled' | 'disputed'
+
+/**
+ * Closing statement lifecycle. draft → approved → sent → acknowledged.
+ * Once 'sent', snapshot is immutable (P-ARCH-4).
+ */
+export type ClosingStatementStatus = 'draft' | 'approved' | 'sent' | 'acknowledged'
+
+/**
+ * DTO for lifecycle.tenant_settlement_runs.
+ * Computed from P1 rent, P3 deposits, P4 utilities, P5 charges.
+ *
+ * V1.2 Correction 3 — Deposit Application Model:
+ *   total_obligations = rent + utilities + charges − credits
+ *   deposit_applied = LEAST(deposit_held, total_obligations)
+ *   deposit_refund = deposit_held − deposit_applied
+ *   net = total_obligations − deposit_applied (capped at 0 minimum)
+ */
+export interface TenantSettlementRunDTO {
+  readonly id: string
+  readonly rentalContractId: string
+  readonly propertyId: string
+  readonly tenantName: string
+  readonly settlementDate: string           // ISO date
+
+  // Components (from authoritative sources)
+  readonly rentOutstandingEur: number
+  readonly utilityOutstandingEur: number
+  readonly tenantChargesEur: number         // damages, penalties etc.
+  readonly creditsEur: number               // overpayments, goodwill
+  readonly depositHeldEur: number
+
+  // Deposit application (V1.2 Correction 3)
+  readonly totalObligationsEur: number
+  readonly depositAppliedToObligations: number
+  readonly depositRefundEur: number
+
+  readonly netSettlementEur: number
+  readonly settlementDirection: SettlementDirection
+
+  readonly status: SettlementStatus
+  readonly componentDetails: Record<string, unknown>
+  readonly approvedBy: string | null
+  readonly approvedAt: string | null
+  readonly notes: string | null
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+/**
+ * DTO for lifecycle.tenant_closing_statements.
+ * Tenant-facing snapshot — NEVER exposes JJ margin, internal payer/payee,
+ * partner settlement, or internal cost (P-ARCH-6).
+ *
+ * Once status = 'sent', the snapshot is immutable (P-ARCH-4).
+ * Corrections create a new version (statement_version increments).
+ */
+export interface TenantClosingStatementDTO {
+  readonly id: string
+  readonly settlementRunId: string
+  readonly rentalContractId: string
+  readonly tenantName: string
+  readonly propertyAddress: string | null
+  readonly statementDate: string            // ISO date
+  readonly statementVersion: number
+
+  // Tenant-visible breakdown
+  readonly depositAmountEur: number
+  readonly rentBalanceEur: number           // positive = tenant owes
+  readonly utilityBalanceEur: number
+  readonly damageChargesEur: number
+  readonly creditsEur: number
+
+  // Deposit application (V1.2 Correction 3)
+  readonly totalObligationsEur: number
+  readonly depositAppliedToObligations: number
+  readonly depositRefundEur: number         // deposit − applied (may be 0)
+  readonly finalBalanceEur: number          // total_obligations − deposit_applied; positive = tenant owes
+
+  readonly status: ClosingStatementStatus
+  readonly sentAt: string | null
+  readonly sentVia: string | null           // 'email' | 'postal' | 'hand_delivered'
+  readonly documentReference: string | null
+  readonly templateVersion: string | null
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+/**
+ * Composition view: settlement run + latest closing statement (if any).
+ * From lifecycle.v_tenant_closing_position.
+ */
+export interface TenantClosingPositionDTO {
+  // Settlement run fields
+  readonly settlementRunId: string
+  readonly rentalContractId: string
+  readonly propertyId: string
+  readonly tenantName: string
+  readonly settlementDate: string
+  readonly netSettlementEur: number
+  readonly settlementDirection: SettlementDirection
+  readonly settlementStatus: SettlementStatus
+
+  // Latest closing statement (NULL if none exists)
+  readonly closingStatementId: string | null
+  readonly statementVersion: number | null
+  readonly statementStatus: ClosingStatementStatus | null
+  readonly finalBalanceEur: number | null
+  readonly sentAt: string | null
+}
