@@ -301,6 +301,18 @@ export default async function OwnerWorkspacePage({
       {/* Tab 3 — Reservations */}
       {activeTab === 'reservations' && (
         <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-gray-400">STR owner statement for the selected month.</p>
+            <a
+              href={`/owners/${slug}/statement?period=${resMonth}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="download-statement-link"
+              className="text-sm font-medium px-3 py-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700"
+            >
+              Generate / Download Statement
+            </a>
+          </div>
           <ReservationsPeriodNav
             selectedLabel={resBounds.label}
             prevHref={resHref(addMonths(resMonth, -1))}
