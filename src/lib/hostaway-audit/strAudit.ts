@@ -1,17 +1,25 @@
 /**
- * strAudit.ts — read-only STR reconciliation DTO builder (P3B, 2026-08-12).
- * Maps per-period Hostaway-vs-JJ evidence into reconciliation statuses via reconcileStrPeriod().
- * Pure. Read-only. property_id + airbnb_str engagement keyed (P1/P2). Never financial authority.
+ * strAudit.ts — read-only STR reconciliation DTO builder (P3B; P4 attribution).
+ * Maps per-period Hostaway-vs-JJ evidence into reconciliation statuses (reconcileStrPeriod) and
+ * attaches deterministic ledger period-attribution (P4). Pure. Never financial authority.
  */
 import { reconcileStrPeriod } from './strReconciliation';
 import type { ReconciliationResult, EvidenceConfidence } from './strReconciliation';
+import type { PeriodAttribution, AttributionMethod, AttributionReviewReason } from './strLedgerAttribution';
 
 export interface StrPeriodInput {
   readonly period: string;
   readonly hostawayAmount: number | null;
   readonly hostawayConfidence: 'high' | 'medium' | 'low' | 'none';
   readonly jjAmount: number | null;
+  /** P4: deterministic period attribution of the JJ ledger row (read-only). */
+  readonly attribution?: PeriodAttribution;
 }
+
+export type StrReconciliationPeriod = ReconciliationResult & {
+  readonly attributionMethod: AttributionMethod | null;
+  readonly attributionReason: AttributionReviewReason;
+};
 
 export interface StrReconciliationSummary {
   readonly total: number;
@@ -20,6 +28,8 @@ export interface StrReconciliationSummary {
   readonly missingInJj: number;
   readonly missingInHostaway: number;
   readonly insufficient: number;
+  readonly multiPeriodAggregate: number;
+  readonly periodUnresolved: number;
   readonly totalVarianceEur: number | null;
 }
 
@@ -27,7 +37,7 @@ export interface StrReconciliationDTO {
   readonly propertyId: string;
   readonly serviceEngagementId: string | null;
   readonly hasActiveEngagement: boolean;
-  readonly periods: readonly ReconciliationResult[];
+  readonly periods: readonly StrReconciliationPeriod[];
   readonly summary: StrReconciliationSummary;
 }
 
@@ -41,19 +51,19 @@ export function buildStrReconciliation(
   periods: readonly StrPeriodInput[],
   toleranceEur = 0.01,
 ): StrReconciliationDTO {
-  const results = periods.map((p) =>
-    reconcileStrPeriod(
+  const results: StrReconciliationPeriod[] = periods.map((p) => {
+    const r = reconcileStrPeriod(
       { propertyId, serviceEngagementId, period: p.period,
         hostawayAmount: p.hostawayAmount, hostawayConfidence: mapConfidence(p.hostawayConfidence), jjAmount: p.jjAmount },
       toleranceEur,
-    ),
-  );
+    );
+    return { ...r, attributionMethod: p.attribution?.method ?? null, attributionReason: p.attribution?.reviewReason ?? null };
+  });
   const count = (s: ReconciliationResult['status']) => results.filter((r) => r.status === s).length;
   const anyVar = results.some((r) => r.variance !== null);
   const varSum = results.reduce((a, r) => (r.variance !== null ? a + Math.abs(r.variance) : a), 0);
   return {
-    propertyId,
-    serviceEngagementId,
+    propertyId, serviceEngagementId,
     hasActiveEngagement: !!(serviceEngagementId && serviceEngagementId.trim() !== ''),
     periods: results,
     summary: {
@@ -63,6 +73,8 @@ export function buildStrReconciliation(
       missingInJj: count('missing_in_jj'),
       missingInHostaway: count('missing_in_hostaway'),
       insufficient: count('insufficient_evidence'),
+      multiPeriodAggregate: results.filter((r) => r.attributionReason === 'multi_period_aggregate').length,
+      periodUnresolved: results.filter((r) => r.attributionReason === 'period_unresolved' || r.attributionReason === 'missing_period_metadata').length,
       totalVarianceEur: anyVar ? Math.round(varSum * 100) / 100 : null,
     },
   };
