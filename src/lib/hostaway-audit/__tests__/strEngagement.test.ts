@@ -77,3 +77,11 @@ describe('resolveActiveStrEngagement (P2, effective-period aware)', () => {
     expect(r.resolved).toBe(true);
   });
 });
+describe('resolveActiveStrEngagement id passthrough',()=>{
+  const PID2='47f53dde-9882-4f7c-ba49-3effeb937848';
+  it('returns engagementId when resolved',()=>{
+    const rows=[{id:'se-9',propertyId:PID2,entityId:'e',serviceType:'airbnb_str',status:'active',effectiveFrom:'2025-01-01',effectiveTo:null}] as any;
+    const r=resolveActiveStrEngagement(PID2,rows,'2026-08-12');
+    expect(r.resolved).toBe(true); if(r.resolved) expect(r.engagementId).toBe('se-9');
+  });
+});
