@@ -34,6 +34,7 @@ import { EntityContextBridge } from '@/components/owners/EntityContextBridge'
 import { OverviewTab } from '@/components/owners/tabs/OverviewTab'
 import { FinancialTab } from '@/components/owners/tabs/FinancialTab'
 import { ReservationsTab } from '@/components/owners/tabs/ReservationsTab'
+import { StrKpiRow } from '@/components/owners/StrKpiRow'
 import { StrNeedsAttention } from '@/components/owners/StrNeedsAttention'
 import { StrPropertyBreakdown } from '@/components/owners/StrPropertyBreakdown'
 import { StrReconciliationTable } from '@/components/owners/StrReconciliationTable'
@@ -338,12 +339,13 @@ export default async function OwnerWorkspacePage({
                 : null
             }
           />
+          {strCockpit ? <StrKpiRow cockpit={strCockpit} /> : null}
           <p className="text-xs text-gray-400">
             Figures reflect Hostaway reservation evidence for the selected month — not JJ ledger balances or owner payout.
           </p>
-          {strCockpit ? <StrNeedsAttention cockpit={strCockpit} /> : null}
+          {strCockpit ? <StrNeedsAttention cockpit={strCockpit} periodLabel={resBounds.label} financialHref={`/owners/${slug}?tab=financial`} /> : null}
           {strCockpit ? <StrPropertyBreakdown cockpit={strCockpit} /> : null}
-          <ReservationsTab dto={reservations} />
+          <ReservationsTab dto={reservations} hideKpis />
           {/* Compact STR reconciliation — one row per canonical property (read-only, lower priority). */}
           {strProperties.length === 0 ? (
             <p className="text-xs text-gray-400">No Airbnb/STR properties under active management for this owner.</p>
