@@ -1564,3 +1564,133 @@ export interface TenantClosingPositionDTO {
   readonly finalBalanceEur: number | null
   readonly sentAt: string | null
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// P8 — Owner LTR Statement Integration
+//
+// Composition layer — NOT a new calculation engine.
+// Consumes P1–P7 authorities + RC3 engine and presents as unified owner statement.
+//
+// Constitutional:
+//   P-ARCH-1: NULL = Unknown (no placeholders)
+//   P-ARCH-6: Tenant/Owner NEVER sees JJ margin, internal payer/payee, partner settlement
+//   P-LEDGER-6: owner-facing amounts = COALESCE(client_charge, amount_eur)
+//   Spec Section 13: "The Owner LTR Statement does NOT build a second calculation engine"
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Balance direction for the statement closing balance.
+ */
+export type BalanceDirection = 'due_to_owner' | 'due_to_jj' | 'balanced'
+
+/**
+ * Per-period rent summary for the statement rental income section.
+ * Distinct from RentObligationRowDTO — this is the owner-facing presentation.
+ */
+export interface RentPeriodSummaryDTO {
+  readonly month: string                    // ISO date "YYYY-MM"
+  readonly expected: EuroAmount
+  readonly received: EuroAmount
+  readonly paymentDate: ISODate | null      // when payment was actually received (late-payment tracking)
+  readonly status: RentObligationStatus
+}
+
+/**
+ * Owner expense line item — from RC3 engine using P-LEDGER-6.
+ * COALESCE(client_charge, amount_eur) — CLIENT CHARGE only.
+ */
+export interface OwnerExpenseLineDTO {
+  readonly date: ISODate
+  readonly description: string
+  readonly chargeAmount: EuroAmount         // COALESCE(client_charge, amount_eur) per P-LEDGER-6
+  readonly presentationStatus: PresentationStatus
+}
+
+/**
+ * Owner payment line item — Bank Payment to Owner rows from RC3.
+ * Settlement, NOT expense.
+ */
+export interface OwnerPaymentLineDTO {
+  readonly date: ISODate
+  readonly description: string
+  readonly amount: EuroAmount
+}
+
+/**
+ * Tenant charge relevant to owner position.
+ * Only charges that affect the owner's balance (e.g. damage deducted from deposit).
+ * P-ARCH-6: no JJ internal margin or custodian details.
+ */
+export interface TenantChargeLineDTO {
+  readonly chargeType: TenantChargeType
+  readonly description: string
+  readonly chargeAmountEur: EuroAmount
+  readonly status: TenantChargeStatus
+  readonly deductibleFromDeposit: boolean
+}
+
+/**
+ * Owner LTR Statement — composition of P1–P7 authorities.
+ *
+ * This DTO is the contract for Section 13 of the V1.3 spec.
+ * It does NOT recalculate anything — it consumes and formats.
+ *
+ * Source authorities:
+ * - rentalIncome:       P1 (v_rent_position + rent_obligations)
+ * - managementFee:      P2 (management_fee_obligations)
+ * - ownerExpenses:      RC3 engine + P-LEDGER-6
+ * - tenantCharges:      P5 (tenant_charge_obligations)
+ * - depositHeld:        P3 (v_deposit_current_state) — informational, never income
+ * - ownerPayments:      RC3 engine (is_bpo rows)
+ * - openingBalance:     statements.statement_series (if prior period exists)
+ * - closingBalance:     computed from all sections above
+ */
+export interface OwnerLtrStatementDTO {
+  readonly propertyId: string
+  readonly propertyName: string
+  readonly ownerName: string
+  readonly statementPeriod: { readonly start: ISODate; readonly end: ISODate }
+
+  // Section 1: Rental Income (P1 authority)
+  readonly rentalIncome: {
+    readonly expected: EuroAmount
+    readonly received: EuroAmount
+    readonly outstanding: EuroAmount
+    readonly periods: readonly RentPeriodSummaryDTO[]
+  }
+
+  // Section 2: Management Fee (P2 authority) — null if no_fee (P-ARCH-1)
+  readonly managementFee: {
+    readonly due: EuroAmount
+    readonly settled: EuroAmount
+    readonly outstanding: EuroAmount
+    readonly feeType: ManagementFeeType
+    readonly periodLabel: string
+  } | null
+
+  // Section 3: Owner Expenses (RC3 + P-LEDGER-6)
+  readonly ownerExpenses: readonly OwnerExpenseLineDTO[]
+  readonly totalOwnerExpenses: EuroAmount
+
+  // Section 4: Tenant Charges relevant to owner (P5 authority)
+  readonly tenantChargesRelevantToOwner: readonly TenantChargeLineDTO[]
+
+  // Section 5: Deposit Held (P3 authority) — informational, NOT income
+  // V1.2 Correction 5: custodian removed (P-ARCH-6 — JJ/Yossi/Jacob/Anastasia is internal)
+  readonly depositHeld: {
+    readonly amount: EuroAmount
+    readonly status: string  // 'held' | 'partially_applied' | 'fully_applied' | 'refunded'
+  } | null
+
+  // Section 6: Owner Payments (RC3 BPO rows) — settlement, NOT expense
+  readonly ownerPayments: readonly OwnerPaymentLineDTO[]
+  readonly totalOwnerPayments: EuroAmount
+
+  // Section 7: Balance
+  readonly openingBalance: EuroAmount | null
+  readonly closingBalance: EuroAmount
+  readonly balanceDirection: BalanceDirection
+
+  // Presentation
+  readonly presentationOverrides: readonly string[]  // IDs of deferred items
+}
