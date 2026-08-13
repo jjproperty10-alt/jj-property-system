@@ -7,9 +7,9 @@
  */
 import 'server-only'
 import { createServiceClient } from '@/lib/supabase'
-import { PropertyAuditService, isRevenueEligible } from '@/lib/hostaway-audit'
+import { PropertyAuditService, isRevenueEligible, parsePeriodFromDescription } from '@/lib/hostaway-audit'
 import { maskGuestName } from '@/lib/owners/ownerReservationAdapter'
-import { composeOwnerStrStatement, type OwnerStrStatement, type StatementReservationEvidence, type StatementExtra } from './ownerStrStatement'
+import { composeOwnerStrStatement, isOwnerStatementExtra, type OwnerStrStatement, type StatementReservationEvidence, type StatementExtra } from './ownerStrStatement'
 
 export interface OwnerStrStatementInput {
   readonly ownerName: string
@@ -70,6 +70,13 @@ export async function buildOwnerStrStatement(input: OwnerStrStatementInput): Pro
   // 2) Expenses & Extras — JJ authoritative ledger (owner property expenses in period).
   //    Owner-facing amount = COALESCE(client_charge, amount_eur) (P-LEDGER-6), shown as a negative charge.
   //    Platform Income / Client Payment are NOT extras (income/settlement — handled via reconciliation).
+  //    Cleaning / Management Fee are NOT extras either: both are already deducted inside the certified
+  //    per-reservation chain (Net = Total Payout − Cleaning − Management Fee − Taxes). Re-adding them here
+  //    would double-count (proven in the accuracy audit: Mgmt €4,023.79 + Cleaning €3,061.08).
+  //    KNOWN LIMITATION (subcategory-based exclusion): this drops Cleaning/Management Fee purely by
+  //    subcategory. If a future row is a genuinely SEPARATE charge (different business meaning than the
+  //    reservation's own cleaning/mgmt — e.g. a one-off deep-clean billed apart from any reservation),
+  //    it must be distinguished EXPLICITLY (dedicated flag / linkage), not inferred from subcategory alone.
   const extras: StatementExtra[] = []
   if (names.length) {
     const { data: exRows } = await sb.from('transactions')
@@ -80,7 +87,9 @@ export async function buildOwnerStrStatement(input: OwnerStrStatementInput): Pro
       .or('review_status.eq.active,review_status.is.null')
     for (const t of exRows ?? []) {
       const sub = String(t.subcategory ?? '')
-      if (sub === 'Platform Income' || sub === 'Client Payment') continue
+      // Owner-facing extras only. Excludes income/settlement (Platform Income/Client Payment) AND
+      // reservation-chain deductions (Cleaning/Management Fee — Decision B, prevents double-count).
+      if (!isOwnerStatementExtra(sub)) continue
       const ownerFacing = num(t.client_charge) ?? num(t.amount_eur) ?? 0
       if (ownerFacing === 0) continue
       extras.push({
@@ -94,23 +103,39 @@ export async function buildOwnerStrStatement(input: OwnerStrStatementInput): Pro
     }
   }
 
-  // 3) JJ Platform Income posted in period (aggregate rows kept as-is, NEVER split).
+  // 3) JJ Platform Income coverage — aggregate-aware, identical semantics to the certified cockpit
+  //    reconciliation (ownerStrAuditAdapter.getStrReconciliation). Fetch ALL Platform Income rows for
+  //    the owner's properties (any transaction date) and classify each by its RECORDED period using the
+  //    reused parser (parsePeriodFromDescription) — no second parser, no monthly allocation, no split.
+  //    A row whose period spans beyond the selected window is a MULTI-MONTH aggregate that must never be
+  //    presented as a clean monthly match.
   let jjPI: number | null = null
   let piAggregate = false
   if (names.length) {
     const { data: piRows } = await sb.from('transactions')
-      .select('amount_eur, client_charge')
+      .select('date, description, amount_eur')
       .in('property_name', names)
       .eq('category', 'Airbnb').eq('subcategory', 'Platform Income')
-      .gte('date', input.startDate).lte('date', input.endDate)
       .or('review_status.eq.active,review_status.is.null')
-    if (piRows && piRows.length) {
-      let s = 0
-      for (const t of piRows) s += num(t.amount_eur) ?? 0
-      jjPI = Math.round(s * 100) / 100
-      // Established fact: JJ records Platform Income as multi-period aggregates — treat as aggregate
-      // evidence (do not claim a clean monthly match). Refined only with explicit monthly evidence.
+    let monthSpecificSum = 0, monthSpecificCount = 0
+    let aggregateSum = 0, aggregateCount = 0
+    for (const t of piRows ?? []) {
+      const parsed = parsePeriodFromDescription((t.description as string | null) ?? null)
+      const from = parsed?.from ?? String(t.date)   // ISO 'YYYY-MM-DD' — lexical compare is date-correct
+      const to = parsed?.to ?? String(t.date)
+      const overlaps = from <= input.endDate && to >= input.startDate
+      if (!overlaps) continue
+      const amt = num(t.amount_eur) ?? 0
+      const spansBeyondMonth = from < input.startDate || to > input.endDate
+      if (spansBeyondMonth) { aggregateSum += amt; aggregateCount++ }
+      else { monthSpecificSum += amt; monthSpecificCount++ }
+    }
+    if (aggregateCount > 0) {
+      // Any multi-month aggregate touching this window → aggregate_only (context sum, never compared).
+      jjPI = Math.round((aggregateSum + monthSpecificSum) * 100) / 100
       piAggregate = true
+    } else if (monthSpecificCount > 0) {
+      jjPI = Math.round(monthSpecificSum * 100) / 100   // genuinely month-specific → normal reconciliation
     }
   }
 
