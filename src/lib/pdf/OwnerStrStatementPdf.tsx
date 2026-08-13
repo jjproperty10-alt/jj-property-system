@@ -271,8 +271,8 @@ export function OwnerStrStatementPdf({ data }: { data: OwnerStrStatement }) {
           <Text style={S.overviewHead}>How this statement is calculated</Text>
           <Text style={S.overviewT}>Rental figures -- gross, platform fees, cleaning and taxes -- come directly from the booking platform.</Text>
           <Text style={S.overviewT}>A management fee of 20% applies to the net rental after platform fees; your Net Owner Payout is what remains after platform fees, cleaning, management fee and taxes.</Text>
-          <Text style={S.overviewT}>Expenses & Extras are billed separately from JJ's records and are shown apart from the rental figures.</Text>
-          <Text style={S.overviewT}>Any amount we cannot yet confirm is marked "Needs Review" -- it is never assumed to be zero.</Text>
+          <Text style={S.overviewT}>{"Expenses & Extras are billed separately from JJ's records and are shown apart from the rental figures."}</Text>
+          <Text style={S.overviewT}>{'Any amount we cannot yet confirm is marked "Needs Review" — it is never assumed to be zero.'}</Text>
         </View>
         <Text style={S.note}>{data.provenanceNote}</Text>
       </Page>
