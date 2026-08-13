@@ -21,7 +21,7 @@ const STATUS_CONFIG = {
   no_show: { label: 'No Show', className: 'text-amber-700 bg-amber-50 border-amber-200' },
 }
 
-export function ReservationsTab({ dto }: ReservationsTabProps) {
+export function ReservationsTab({ dto, hideKpis }: ReservationsTabProps & { hideKpis?: boolean }) {
   const { portfolio, channelMix, reservations } = dto
 
   const columns: DataTableColumn[] = [
@@ -53,6 +53,7 @@ export function ReservationsTab({ dto }: ReservationsTabProps) {
     <div className="space-y-6">
 
       {/* Portfolio KPIs */}
+      {!hideKpis && (
       <section aria-labelledby="res-kpi-heading">
         <h2 id="res-kpi-heading" className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
           Period Summary · {formatDate(dto.period.startDate)} – {formatDate(dto.period.endDate)}
@@ -82,6 +83,7 @@ export function ReservationsTab({ dto }: ReservationsTabProps) {
           <KpiCard label="Cancellations" value={<span className="text-2xl font-bold text-gray-900" dir="ltr">{portfolio.cancellations}</span>} />
         </div>
       </section>
+      )}
 
       {/* Channel mix */}
       {channelMix.length > 0 && (

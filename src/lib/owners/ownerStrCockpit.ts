@@ -9,6 +9,7 @@ import 'server-only'
 import { createServiceClient } from '@/lib/supabase'
 import { PropertyAuditService, isRevenueEligible } from '@/lib/hostaway-audit'
 import { getStrReconciliationByName } from './ownerStrAuditAdapter'
+import { buildStrStatementLine, type StrLineEvidence } from '@/lib/report/str/strStatementLine'
 
 export interface StrPropertyBreakdown {
   readonly propertyId: string
@@ -17,6 +18,8 @@ export interface StrPropertyBreakdown {
   readonly cancelled: number
   readonly nights: number
   readonly revenueEur: number | null   // Hostaway payout evidence (engine)
+  /** Derived Net Owner Payout (certified statement line logic). null = Needs Review (never 0). */
+  readonly netOwnerPayoutEur: number | null
   readonly nextCheckIn: string | null
   readonly status: 'active' | 'idle'   // has an upcoming check-in in range vs none
 }
@@ -35,7 +38,7 @@ export interface StrReconRow {
 export interface OwnerStrCockpit {
   readonly breakdown: readonly StrPropertyBreakdown[]
   readonly reconciliation: readonly StrReconRow[]
-  readonly totals: { confirmed: number; cancelled: number; nights: number; revenueEur: number | null }
+  readonly totals: { confirmed: number; cancelled: number; nights: number; revenueEur: number | null; netOwnerPayoutEur: number | null }
 }
 
 export interface OwnerStrCockpitInput {
@@ -57,6 +60,7 @@ export async function buildOwnerStrCockpit(input: OwnerStrCockpitInput): Promise
     // ── Per-property operational breakdown (engine evidence) ──
     let confirmed = 0, cancelled = 0, nights = 0
     let revenueEur: number | null = null
+    let netOwnerPayoutEur: number | null = null
     let nextCheckIn: string | null = null
     const res = await audit.auditProperty({ jjPropertyName: p.name, dateFrom: input.startDate, dateTo: input.endDate })
     if (res.success && res.audit) {
@@ -69,10 +73,33 @@ export async function buildOwnerStrCockpit(input: OwnerStrCockpitInput): Promise
         nights += r.nights ?? 0
         if (r.checkIn >= today && (nextCheckIn === null || r.checkIn < nextCheckIn)) nextCheckIn = r.checkIn
       }
+      // Derived Net Owner Payout — certified statement line logic. Any unknown input (e.g. Booking
+      // tax) => property net is Needs Review (null), never fabricated.
+      let netSum = 0, netKnown = true, anyEligible = false
+      for (const r of res.audit.reservations) {
+        if (!isRevenueEligible(r.status)) continue
+        anyEligible = true
+        const f: any = r.financials
+        const hostFee = f.hostServiceFee as number | null
+        const commission = f.channelCommission as number | null
+        const ev: StrLineEvidence = {
+          reservationId: r.hostawayReservationId,
+          channel: String(r.channel),
+          grossEur: f.totalPrice ?? null,
+          platformFeesEur: hostFee ?? commission ?? (r.channel === 'direct' ? 0 : null),
+          platformFeesSource: hostFee != null ? 'hostaway:airbnbListingHostFee' : commission != null ? 'hostaway:channelCommissionAmount' : 'hostaway:none',
+          cleaningEur: f.cleaningFee ?? null,
+          taxesEur: f.taxAmount ?? null,
+          platformPayoutEvidenceEur: f.payout?.amount ?? null,
+        }
+        const v = buildStrStatementLine(ev).netOwnerPayout.value
+        if (v == null) netKnown = false; else netSum += v
+      }
+      netOwnerPayoutEur = anyEligible && netKnown ? Math.round(netSum * 100) / 100 : null
     }
     breakdown.push({
       propertyId: p.id, propertyName: p.name, confirmed, cancelled, nights, revenueEur,
-      nextCheckIn, status: nextCheckIn ? 'active' : 'idle',
+      netOwnerPayoutEur, nextCheckIn, status: nextCheckIn ? 'active' : 'idle',
     })
 
     // ── Compact reconciliation (reuse existing month-aligned helper) ──
@@ -98,11 +125,13 @@ export async function buildOwnerStrCockpit(input: OwnerStrCockpitInput): Promise
   }
 
   const anyRevNull = breakdown.some(b => b.revenueEur == null)
+  const anyNetNull = breakdown.some(b => b.netOwnerPayoutEur == null)
   const totals = {
     confirmed: breakdown.reduce((a, b) => a + b.confirmed, 0),
     cancelled: breakdown.reduce((a, b) => a + b.cancelled, 0),
     nights: breakdown.reduce((a, b) => a + b.nights, 0),
     revenueEur: anyRevNull ? null : Math.round(breakdown.reduce((a, b) => a + (b.revenueEur ?? 0), 0) * 100) / 100,
+    netOwnerPayoutEur: anyNetNull ? null : Math.round(breakdown.reduce((a, b) => a + (b.netOwnerPayoutEur ?? 0), 0) * 100) / 100,
   }
   return { breakdown, reconciliation, totals }
 }

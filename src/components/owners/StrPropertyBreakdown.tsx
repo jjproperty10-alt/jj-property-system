@@ -22,6 +22,7 @@ export function StrPropertyBreakdown({ cockpit }: { cockpit: OwnerStrCockpit }) 
               <th className="px-3 py-2 font-medium text-right" dir="ltr">Cancelled</th>
               <th className="px-3 py-2 font-medium text-right" dir="ltr">Nights</th>
               <th className="px-3 py-2 font-medium text-right" dir="ltr">Revenue</th>
+              <th className="px-3 py-2 font-medium text-right" dir="ltr">Net Payout</th>
               <th className="px-3 py-2 font-medium" dir="ltr">Next Check-in</th>
               <th className="px-3 py-2 font-medium">Status</th>
             </tr>
@@ -35,6 +36,11 @@ export function StrPropertyBreakdown({ cockpit }: { cockpit: OwnerStrCockpit }) 
                 <td className="px-3 py-2 text-right text-gray-700" dir="ltr">{b.nights}</td>
                 <td className="px-3 py-2 text-right" dir="ltr">
                   {b.revenueEur != null ? <MoneyValue amount={b.revenueEur} size="sm" /> : <UnknownValue reason="Revenue unknown" />}
+                </td>
+                <td className="px-3 py-2 text-right" dir="ltr">
+                  {b.netOwnerPayoutEur != null
+                    ? <MoneyValue amount={b.netOwnerPayoutEur} size="sm" />
+                    : <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-0.5 font-medium">Needs Review</span>}
                 </td>
                 <td className="px-3 py-2 text-gray-600" dir="ltr">{fmtDate(b.nextCheckIn)}</td>
                 <td className="px-3 py-2">
@@ -53,6 +59,7 @@ export function StrPropertyBreakdown({ cockpit }: { cockpit: OwnerStrCockpit }) 
                 <td className="px-3 py-2 text-right" dir="ltr">{t.cancelled}</td>
                 <td className="px-3 py-2 text-right" dir="ltr">{t.nights}</td>
                 <td className="px-3 py-2 text-right" dir="ltr">{t.revenueEur != null ? <MoneyValue amount={t.revenueEur} size="sm" /> : '—'}</td>
+                <td className="px-3 py-2 text-right" dir="ltr">{t.netOwnerPayoutEur != null ? <MoneyValue amount={t.netOwnerPayoutEur} size="sm" /> : 'Needs Review'}</td>
                 <td className="px-3 py-2"></td>
                 <td className="px-3 py-2"></td>
               </tr>
