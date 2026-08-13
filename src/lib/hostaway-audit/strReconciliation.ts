@@ -16,6 +16,7 @@ export type ReconciliationStatus =
   | 'variance'
   | 'missing_in_jj'          // Hostaway evidence exists; JJ ledger has nothing yet (needs manual entry)
   | 'missing_in_hostaway'    // JJ ledger exists; no Hostaway evidence to corroborate
+  | 'aggregate_only'         // JJ records this income as a multi-month aggregate — no monthly attribution
   | 'insufficient_evidence'; // neither side usable
 
 export type EvidenceConfidence = 'high' | 'medium' | 'none';
@@ -32,6 +33,13 @@ export interface StrPeriodEvidence {
   readonly hostawayConfidence: EvidenceConfidence;
   /** JJ ledger amount for the period (e.g. Platform Income); null if none recorded */
   readonly jjAmount: number | null;
+  /**
+   * True when the JJ Platform Income covering this month is a MULTI-MONTH aggregate row (its recorded
+   * period spans beyond the selected month). When true we never compute a monthly variance — the JJ
+   * figure represents several months and cannot be attributed to one. Detected upstream via the
+   * existing description period parser; no allocation/splitting is ever performed.
+   */
+  readonly jjIsAggregate?: boolean;
 }
 
 export interface ReconciliationResult {
@@ -77,6 +85,15 @@ export function reconcileStrPeriod(
   if (!e.serviceEngagementId || e.serviceEngagementId.trim() === '') {
     return { ...base, variance: null, status: 'insufficient_evidence', confidence: 'none',
       needsReviewReason: 'No active airbnb_str service engagement for this property/period.' };
+  }
+
+  // Aggregate-only: JJ evidence for this month exists ONLY inside a multi-month aggregate row.
+  // We acknowledge the evidence but never compare a multi-month figure against one month of Hostaway,
+  // and never fabricate a monthly portion. Applies whether or not this month has Hostaway activity.
+  if (e.jjIsAggregate) {
+    return { ...base, variance: null, status: 'aggregate_only',
+      confidence: e.hostawayConfidence,
+      needsReviewReason: 'JJ records this STR income as a multi-month aggregate. Monthly reconciliation is not available.' };
   }
 
   const hasH = e.hostawayAmount !== null;

@@ -12,6 +12,8 @@ export interface StrPeriodInput {
   readonly hostawayAmount: number | null;
   readonly hostawayConfidence: 'high' | 'medium' | 'low' | 'none';
   readonly jjAmount: number | null;
+  /** True when the JJ Platform Income covering this month is a multi-month aggregate (no monthly attribution). */
+  readonly jjIsAggregate?: boolean;
   /** P4: deterministic period attribution of the JJ ledger row (read-only). */
   readonly attribution?: PeriodAttribution;
 }
@@ -27,6 +29,7 @@ export interface StrReconciliationSummary {
   readonly variance: number;
   readonly missingInJj: number;
   readonly missingInHostaway: number;
+  readonly aggregateOnly: number;
   readonly insufficient: number;
   readonly multiPeriodAggregate: number;
   readonly periodUnresolved: number;
@@ -54,7 +57,8 @@ export function buildStrReconciliation(
   const results: StrReconciliationPeriod[] = periods.map((p) => {
     const r = reconcileStrPeriod(
       { propertyId, serviceEngagementId, period: p.period,
-        hostawayAmount: p.hostawayAmount, hostawayConfidence: mapConfidence(p.hostawayConfidence), jjAmount: p.jjAmount },
+        hostawayAmount: p.hostawayAmount, hostawayConfidence: mapConfidence(p.hostawayConfidence), jjAmount: p.jjAmount,
+        jjIsAggregate: p.jjIsAggregate },
       toleranceEur,
     );
     return { ...r, attributionMethod: p.attribution?.method ?? null, attributionReason: p.attribution?.reviewReason ?? null };
@@ -72,6 +76,7 @@ export function buildStrReconciliation(
       variance: count('variance'),
       missingInJj: count('missing_in_jj'),
       missingInHostaway: count('missing_in_hostaway'),
+      aggregateOnly: count('aggregate_only'),
       insufficient: count('insufficient_evidence'),
       multiPeriodAggregate: results.filter((r) => r.attributionReason === 'multi_period_aggregate').length,
       periodUnresolved: results.filter((r) => r.attributionReason === 'period_unresolved' || r.attributionReason === 'missing_period_metadata').length,

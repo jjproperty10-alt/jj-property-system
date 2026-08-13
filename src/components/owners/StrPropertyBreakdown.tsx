@@ -21,7 +21,7 @@ export function StrPropertyBreakdown({ cockpit }: { cockpit: OwnerStrCockpit }) 
               <th className="px-3 py-2 font-medium text-right" dir="ltr">Confirmed</th>
               <th className="px-3 py-2 font-medium text-right" dir="ltr">Cancelled</th>
               <th className="px-3 py-2 font-medium text-right" dir="ltr">Nights</th>
-              <th className="px-3 py-2 font-medium text-right" dir="ltr">Revenue</th>
+              <th className="px-3 py-2 font-medium text-right" dir="ltr">Net Platform Payout</th>
               <th className="px-3 py-2 font-medium text-right" dir="ltr">Net Payout</th>
               <th className="px-3 py-2 font-medium" dir="ltr">Next Check-in</th>
               <th className="px-3 py-2 font-medium">Status</th>

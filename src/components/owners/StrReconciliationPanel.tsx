@@ -9,6 +9,7 @@ const STATUS_LABEL: Record<string, string> = {
   variance: 'Variance',
   missing_in_jj: 'Missing in JJ',
   missing_in_hostaway: 'Missing in Hostaway',
+  aggregate_only: 'Aggregate only',
   insufficient_evidence: 'Needs Review',
 };
 

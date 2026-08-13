@@ -9,6 +9,7 @@ import 'server-only';
 import { createServiceClient } from '@/lib/supabase';
 import {
   PropertyAuditService, buildStrReconciliation, resolveActiveStrEngagement, classifyStrPeriodAttribution,
+  parsePeriodFromDescription,
 } from '@/lib/hostaway-audit';
 import type { StrPeriodInput, StrReconciliationDTO, StrEngagementRow } from '@/lib/hostaway-audit';
 
@@ -54,20 +55,58 @@ export async function getStrReconciliation(input: OwnerStrAuditInput): Promise<S
   // using engine-computed totals only (no local arithmetic — G3-5). This makes the panel follow
   // the same period as the Reservations screen and surfaces Hostaway-only activity as
   // "Missing in JJ / Needs Review" instead of hiding it behind an empty period list.
+  // Aggregate-aware JJ coverage: fetch ALL Platform Income rows for this property (any transaction
+  // date) and classify each by its RECORDED period (existing description parser, reused — no second
+  // parser, no splitting). A row whose period spans beyond the selected month is a MULTI-MONTH
+  // aggregate that must never be compared against one month of Hostaway payout.
+  const { data: piRows } = await sb.from('transactions')
+    .select('date, description, amount_eur')
+    .eq('property_name', jjPropertyName)
+    .eq('category', 'Airbnb')
+    .eq('subcategory', 'Platform Income')
+    .or('review_status.eq.active,review_status.is.null');
+
+  let monthSpecificSum = 0, monthSpecificCount = 0;
+  let aggregateSum = 0, aggregateCount = 0;
+  for (const t of piRows ?? []) {
+    const parsed = parsePeriodFromDescription((t.description as string | null) ?? null);
+    const from = parsed?.from ?? String(t.date);   // ISO 'YYYY-MM-DD' — lexical compare is date-correct
+    const to = parsed?.to ?? String(t.date);
+    const overlaps = from <= input.endDate && to >= input.startDate;
+    if (!overlaps) continue;
+    const amt = Number(t.amount_eur) || 0;
+    const spansBeyondMonth = from < input.startDate || to > input.endDate;
+    if (spansBeyondMonth) { aggregateSum += amt; aggregateCount++; }
+    else { monthSpecificSum += amt; monthSpecificCount++; }
+  }
+
   const periods: StrPeriodInput[] = [];
   if (res.success && res.audit) {
     const s = res.audit.summary;
-    const jjHasPlatformIncome = s.jjPeriodAggregateCount > 0;   // # of JJ Platform Income rows
     const hasHostawayActivity = s.revenueEligibleReservations > 0;
-    if (hasHostawayActivity || jjHasPlatformIncome) {
+
+    // Month-specific JJ evidence wins (normal reconciliation). Otherwise, if only aggregate evidence
+    // covers this month, mark aggregate_only. Otherwise there is genuinely no JJ evidence (missing).
+    let jjAmount: number | null = null;
+    let jjIsAggregate = false;
+    if (aggregateCount > 0) {
+      // A month touched by a multi-month aggregate cannot be cleanly reconciled monthly — even if a
+      // month-specific row also exists, part of the month's income may live in the aggregate. Show
+      // aggregate_only rather than risk a misleading variance. Never split.
+      jjAmount = Math.round((aggregateSum + monthSpecificSum) * 100) / 100;   // context only, never compared
+      jjIsAggregate = true;
+    } else if (monthSpecificCount > 0) {
+      jjAmount = Math.round(monthSpecificSum * 100) / 100;   // genuinely month-specific → normal reconciliation
+    }
+
+    if (hasHostawayActivity || monthSpecificCount > 0 || aggregateCount > 0) {
       const label = periodWindowLabel(input.startDate, input.endDate);
       periods.push({
         period: label,
         hostawayAmount: s.hostawayTotalPayout.amount,               // engine (authoritative), null if unknown
         hostawayConfidence: s.hostawayTotalPayout.confidence,
-        // null when JJ has NO Platform Income evidence in the window (P-ARCH-1: unknown != 0),
-        // else the engine-computed period total.
-        jjAmount: jjHasPlatformIncome ? s.jjPlatformIncomeTotal : null,
+        jjAmount,
+        jjIsAggregate,
         attribution: classifyStrPeriodAttribution(input.startDate, input.endDate, label),
       });
     }
