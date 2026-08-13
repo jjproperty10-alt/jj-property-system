@@ -1,4 +1,4 @@
-import { composeOwnerStrStatement, type StatementReservationEvidence, type StatementExtra, type ComposeInput } from '../ownerStrStatement'
+import { composeOwnerStrStatement, isOwnerStatementExtra, RESERVATION_CHAIN_SUBCATEGORIES, NON_EXTRA_SUBCATEGORIES, type StatementReservationEvidence, type StatementExtra, type ComposeInput } from '../ownerStrStatement'
 
 const base = (over: Partial<ComposeInput> = {}): ComposeInput => ({
   ownerName: 'Orit Rob', properties: ['Orit Rob Pingodes'],
@@ -67,5 +67,49 @@ describe('composeOwnerStrStatement', () => {
     expect(s.provenanceNote).toMatch(/Hostaway reservation evidence/)
     expect(s.provenanceNote).toMatch(/JJ policy/)
     expect(s.provenanceNote).toMatch(/never zero/i)
+  })
+})
+
+describe('Decision B — Expenses & Extras exclusion (no double-count)', () => {
+  it('excludes reservation-chain deductions and income/settlement subcategories', () => {
+    expect(isOwnerStatementExtra('Cleaning')).toBe(false)
+    expect(isOwnerStatementExtra('Management Fee')).toBe(false)
+    expect(isOwnerStatementExtra('Platform Income')).toBe(false)
+    expect(isOwnerStatementExtra('Client Payment')).toBe(false)
+    expect(RESERVATION_CHAIN_SUBCATEGORIES.has('Cleaning')).toBe(true)
+    expect(RESERVATION_CHAIN_SUBCATEGORIES.has('Management Fee')).toBe(true)
+    expect(NON_EXTRA_SUBCATEGORIES.has('Platform Income')).toBe(true)
+  })
+  it('keeps genuine owner-cost subcategories', () => {
+    expect(isOwnerStatementExtra('Electricity')).toBe(true)
+    expect(isOwnerStatementExtra('Water')).toBe(true)
+    expect(isOwnerStatementExtra('Repairs')).toBe(true)
+    expect(isOwnerStatementExtra('Software/Hostaway')).toBe(true)
+  })
+  it('statement total is unaffected by Cleaning/Mgmt because they never reach extras (composer sums only what it is given)', () => {
+    // Simulate the service post-filter: Cleaning/Mgmt already removed, only a real owner cost remains.
+    const s = composeOwnerStrStatement(base({
+      reservations: [airbnbRes()],
+      extras: [{ name: 'Electricity', date: '2026-08-05', subcategory: 'Electricity', propertyName: 'Orit Rob Pingodes', amountEur: -25, provenance: 'jj_transaction' }],
+    }))
+    expect(s.expensesExtrasTotalEur).toBe(-25)
+    expect(s.statementTotalEur).toBe(620.58) // 645.58 net - 25, Cleaning/Mgmt NOT re-subtracted
+  })
+})
+
+describe('Decision A — Booking Needs Review stays visible', () => {
+  it('booking reservation with null tax is present in activity with net null (not hidden, not €0)', () => {
+    const s = composeOwnerStrStatement(base({ ownerName: 'Tamir', properties: ['Tamir Dekelia'], reservations: [bookingRes()] }))
+    expect(s.activity).toHaveLength(1)
+    expect(s.activity[0].reservationId).toBe('b1')
+    expect(s.activity[0].line.netOwnerPayout.value).toBeNull()
+    expect(s.activity[0].line.gross.value).toBe(906.17) // known values preserved
+  })
+})
+
+describe('aggregate flag passthrough (composer honors service-detected aggregate)', () => {
+  it('carries jjPlatformIncomeIsAggregate into reconciliation', () => {
+    const s = composeOwnerStrStatement(base({ reservations: [airbnbRes()], jjPlatformIncomeInPeriodEur: 5000, jjPlatformIncomeIsAggregate: true }))
+    expect(s.reconciliation.jjPlatformIncomeIsAggregate).toBe(true)
   })
 })
