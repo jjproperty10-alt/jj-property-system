@@ -33,7 +33,10 @@ const S = StyleSheet.create({
   finalWrap: { marginTop: 14, alignSelf: 'flex-end', width: '48%' },
   finalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 },
   finalTotal: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5, borderTopWidth: 1.5, borderColor: C.navy, marginTop: 2 },
-  note: { fontSize: 6.5, color: C.gray, marginTop: 18, lineHeight: 1.4 },
+  note: { fontSize: 6.5, color: C.gray, marginTop: 12, lineHeight: 1.4 },
+  calcBox: { marginTop: 18, padding: 8, backgroundColor: '#F5F7FA', borderRadius: 3 },
+  calcHead: { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: C.navy, marginBottom: 4, textTransform: 'uppercase' },
+  calcT: { fontSize: 6.8, color: C.gray, lineHeight: 1.5 },
 })
 
 // Activity columns: Check-in | Check-out | Guest | Listing | Channel | Gross | Platform | Cleaning | Mgmt | Taxes | Net
@@ -113,18 +116,21 @@ export function OwnerStrStatementPdf({ data }: { data: OwnerStrStatement }) {
           <>
             <Text style={S.section}>Expenses & Extras</Text>
             <View style={S.th}>
-              <Text style={[S.thT, { width: '22%' }]}>Name</Text>
-              <Text style={[S.thT, { width: '13%' }]}>Date</Text>
-              <Text style={[S.thT, { width: '25%' }]}>Category</Text>
-              <Text style={[S.thT, { width: '25%' }]}>Listing</Text>
+              <Text style={[S.thT, { width: '20%' }]}>Name</Text>
+              <Text style={[S.thT, { width: '12%' }]}>Date</Text>
+              <Text style={[S.thT, { width: '20%' }]}>Category</Text>
+              <Text style={[S.thT, { width: '20%' }]}>Listing</Text>
+              <Text style={[S.thT, { width: '13%' }]}>Reservation</Text>
               <Text style={[S.thT, { width: '15%' }, S.right]}>Amount</Text>
             </View>
             {data.expensesExtras.map((e, i) => (
               <View key={i} style={S.tr} wrap={false}>
-                <Text style={[S.cell, { width: '22%' }]}>{e.name}</Text>
-                <Text style={[S.cell, { width: '13%' }]}>{e.date}</Text>
-                <Text style={[S.cell, { width: '25%' }]}>{e.subcategory}</Text>
-                <Text style={[S.cell, { width: '25%' }]}>{e.propertyName}</Text>
+                <Text style={[S.cell, { width: '20%' }]}>{e.name}</Text>
+                <Text style={[S.cell, { width: '12%' }]}>{e.date}</Text>
+                <Text style={[S.cell, { width: '20%' }]}>{e.subcategory}</Text>
+                <Text style={[S.cell, { width: '20%' }]}>{e.propertyName}</Text>
+                {/* Reservation linkage: JJ ledger extras carry no reservation id — shown as em dash, never fabricated. */}
+                <Text style={[S.cell, { width: '13%' }]}>{e.reservationId ?? '\u2014'}</Text>
                 <Text style={[S.cell, { width: '15%' }, S.right]}>{fmtSigned(e.amountEur)}</Text>
               </View>
             ))}
@@ -142,6 +148,16 @@ export function OwnerStrStatementPdf({ data }: { data: OwnerStrStatement }) {
           <View style={S.finalTotal}><Text style={S.totalT}>Statement total</Text><Text style={[S.totalT, data.statementTotalEur == null ? S.review : {}]}>{money(data.statementTotalEur)}</Text></View>
         </View>
 
+        {/* Revenue Calculation Overview — explicit per-line formula chain (report transparency). */}
+        <View style={S.calcBox}>
+          <Text style={S.calcHead}>Revenue Calculation Overview</Text>
+          <Text style={S.calcT}>Gross · Platform Fees · Cleaning · Taxes are Hostaway reservation evidence (source of truth).</Text>
+          <Text style={S.calcT}>Platform Fees = Airbnb host fee, or Booking channel commission (channel-aware).</Text>
+          <Text style={S.calcT}>Management Fee = 20% x (Total Payout - Cleaning - Taxes) — JJ report policy, not a bank charge.</Text>
+          <Text style={S.calcT}>Net Owner Payout = Total Payout - Cleaning - Management Fee - Taxes.</Text>
+          <Text style={S.calcT}>Expenses & Extras = JJ ledger only; Cleaning & Management Fee are excluded here (already in the line above) to avoid double-counting.</Text>
+          <Text style={S.calcT}>Statement Total = Net Owner Payout - Expenses & Extras. Unknown values show Needs Review, never zero.</Text>
+        </View>
         <Text style={S.note}>{data.provenanceNote}</Text>
       </Page>
     </Document>
