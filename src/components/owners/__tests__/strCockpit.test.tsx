@@ -45,11 +45,11 @@ describe('STR cockpit components', () => {
     expect(find(t, 'str-attention-clear').length).toBe(1)
   })
 
-  it('KPI row shows Revenue + derived ADR, Occupancy stays Unknown', () => {
+  it('KPI row shows Net Platform Payout + derived ADR, Occupancy stays Unknown', () => {
     const t = renderer.create(<StrKpiRow cockpit={cockpit} />)
     const s = flat(t)
     expect(find(t, 'str-kpi-row').length).toBe(1)
-    expect(s).toContain('Revenue'); expect(s).toContain('ADR'); expect(s).toContain('Occupancy')
+    expect(s).toContain('Net Platform Payout'); expect(s).toContain('ADR'); expect(s).toContain('Occupancy')
   })
   it('breakdown Net Payout: value when reliable, Needs Review (not 0) when null', () => {
     const t = renderer.create(<StrPropertyBreakdown cockpit={cockpit} />)
