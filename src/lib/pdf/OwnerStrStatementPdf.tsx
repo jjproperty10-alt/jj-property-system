@@ -63,7 +63,7 @@ const S = StyleSheet.create({
   metricValue: { fontSize: 15, fontWeight: 'bold', color: C.navy, marginTop: 6 },
 
   th: { flexDirection: 'row', backgroundColor: C.head, paddingVertical: 5, paddingHorizontal: 2, borderTopWidth: 1, borderBottomWidth: 1, borderColor: C.line },
-  thT: { fontSize: 6.5, fontWeight: 'bold', color: C.gray, textTransform: 'uppercase', letterSpacing: 0.3 },
+  thT: { fontSize: 6.5, fontWeight: 'bold', color: C.gray, textTransform: 'uppercase', letterSpacing: 0.3, paddingRight: 3 },
   tr: { flexDirection: 'row', paddingVertical: 4, paddingHorizontal: 2, borderBottomWidth: 1, borderColor: C.lineSoft },
   cell: { fontSize: 7.5, color: C.text },
   cellMuted: { fontSize: 7.5, color: C.grayMid },
@@ -106,7 +106,7 @@ const S = StyleSheet.create({
  */
 
 // Activity columns: Check-in | Check-out | Guest | Listing | Channel | Gross | Platform | Cleaning | Mgmt | Taxes | Net
-const W = ['8%', '8%', '13%', '13%', '7%', '9%', '9%', '8%', '8%', '7%', '12%'] as const
+const W = ['8%', '9%', '11%', '13%', '8%', '9%', '9%', '8%', '8%', '7%', '12%'] as const
 
 const money = (v: number | null) => (v == null ? '—' : fmt(v))
 
