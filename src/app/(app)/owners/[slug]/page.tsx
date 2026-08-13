@@ -313,7 +313,7 @@ export default async function OwnerWorkspacePage({
               <div className="text-xs text-gray-500">Printable STR statement (PDF) for {resBounds.label}.</div>
             </div>
             <a
-              href={`/owners/${slug}/statement?period=${resMonth}`}
+              href={`/owners/${slug}/statement/pdf?period=${resMonth}`}
               target="_blank"
               rel="noopener noreferrer"
               data-testid="download-statement-link"
