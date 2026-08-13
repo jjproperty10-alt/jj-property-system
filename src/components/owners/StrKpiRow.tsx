@@ -14,7 +14,7 @@ export function StrKpiRow({ cockpit }: { cockpit: OwnerStrCockpit }) {
     <section aria-labelledby="str-kpi-heading" data-testid="str-kpi-row">
       <h2 id="str-kpi-heading" className="sr-only">Period KPIs</h2>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <KpiCard label="Revenue" value={t.revenueEur != null ? <MoneyValue amount={t.revenueEur} size="lg" /> : <UnknownValue reason="Revenue not available" />} />
+        <KpiCard label="Net Platform Payout" value={t.revenueEur != null ? <MoneyValue amount={t.revenueEur} size="lg" /> : <UnknownValue reason="Revenue not available" />} />
         <KpiCard label="Confirmed" value={num(t.confirmed)} />
         <KpiCard label="Cancelled" value={num(t.cancelled)} />
         <KpiCard label="Nights" value={num(t.nights)} />
