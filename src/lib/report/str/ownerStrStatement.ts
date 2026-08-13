@@ -16,6 +16,24 @@ export interface StatementReservationEvidence extends StrLineEvidence {
   readonly nights: number
 }
 
+/**
+ * Non-extra income/settlement subcategories — handled via reconciliation, never owner charges.
+ */
+export const NON_EXTRA_SUBCATEGORIES: ReadonlySet<string> = new Set(['Platform Income', 'Client Payment'])
+/**
+ * Reservation-chain deductions already applied inside the certified per-reservation Net calculation
+ * (Net = Total Payout - Cleaning - Management Fee - Taxes). Re-adding them to Expenses & Extras would
+ * double-count (Decision B, proven in the accuracy audit). KNOWN LIMITATION: subcategory-based — a
+ * future genuinely SEPARATE Cleaning/Management charge (different business meaning than the
+ * reservation's own) must be distinguished EXPLICITLY (e.g. reservationId / dedicated flag), never
+ * inferred from subcategory alone.
+ */
+export const RESERVATION_CHAIN_SUBCATEGORIES: ReadonlySet<string> = new Set(['Cleaning', 'Management Fee'])
+/** True when a JJ ledger row (category=Airbnb) belongs in owner-facing Expenses & Extras. */
+export function isOwnerStatementExtra(subcategory: string): boolean {
+  return !NON_EXTRA_SUBCATEGORIES.has(subcategory) && !RESERVATION_CHAIN_SUBCATEGORIES.has(subcategory)
+}
+
 export interface StatementExtra {
   readonly name: string
   readonly date: string
@@ -24,6 +42,12 @@ export interface StatementExtra {
   /** Owner-facing amount, signed: negative = charge to owner, positive = credit. From JJ transactions. */
   readonly amountEur: number
   readonly provenance: 'jj_transaction'
+  /**
+   * Explicit reservation linkage for a genuinely SEPARATE charge (not a reservation-chain deduction).
+   * JJ ledger extras carry none today → null (rendered as em dash). Reserved for the known-limitation
+   * follow-up: a future standalone Cleaning/Management charge distinguished by business meaning.
+   */
+  readonly reservationId?: string | null
 }
 
 export interface StatementActivityRow {
