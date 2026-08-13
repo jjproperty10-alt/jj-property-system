@@ -6,6 +6,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   variance:              { label: 'Variance',         cls: 'text-amber-700 bg-amber-50 border-amber-200' },
   missing_in_jj:         { label: 'Missing in JJ',    cls: 'text-blue-700 bg-blue-50 border-blue-200' },
   missing_in_hostaway:   { label: 'Missing in Hostaway', cls: 'text-blue-700 bg-blue-50 border-blue-200' },
+  aggregate_only:        { label: 'Aggregate only',    cls: 'text-indigo-700 bg-indigo-50 border-indigo-200' },
   insufficient_evidence: { label: 'Needs Review',     cls: 'text-gray-600 bg-gray-50 border-gray-200' },
   no_activity:           { label: 'No activity',      cls: 'text-gray-500 bg-gray-50 border-gray-200' },
   no_engagement:         { label: 'No engagement',    cls: 'text-gray-500 bg-gray-50 border-gray-200' },
