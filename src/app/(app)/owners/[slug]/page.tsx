@@ -39,6 +39,7 @@ import { StrNeedsAttention } from '@/components/owners/StrNeedsAttention'
 import { StrPropertyBreakdown } from '@/components/owners/StrPropertyBreakdown'
 import { StrReconciliationTable } from '@/components/owners/StrReconciliationTable'
 import { ReservationsPeriodNav } from '@/components/owners/ReservationsPeriodNav'
+import { RangeStatementPicker } from '@/components/owners/RangeStatementPicker'
 import { selectStrProperties } from '@/lib/owners/selectStrProperties'
 import { buildOwnerStrCockpit } from '@/lib/owners/ownerStrCockpit'
 import { DocumentsTab } from '@/components/owners/tabs/DocumentsTab'
@@ -341,6 +342,7 @@ export default async function OwnerWorkspacePage({
               Generate / Download Statement
             </a>
           </div>
+          <RangeStatementPicker slug={slug} defaultMonth={resMonth} />
           <ReservationsPeriodNav
             selectedLabel={resBounds.label}
             prevHref={resHref(addMonths(resMonth, -1))}
