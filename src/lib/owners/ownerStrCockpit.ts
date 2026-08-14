@@ -10,6 +10,7 @@ import { createServiceClient } from '@/lib/supabase'
 import { PropertyAuditService, isRevenueEligible } from '@/lib/hostaway-audit'
 import { getStrReconciliationByName } from './ownerStrAuditAdapter'
 import { buildStrStatementLine, type StrLineEvidence } from '@/lib/report/str/strStatementLine'
+import { isTaxVerifiedZero } from '@/lib/report/str/taxEvidence'
 
 export interface StrPropertyBreakdown {
   readonly propertyId: string
@@ -17,7 +18,7 @@ export interface StrPropertyBreakdown {
   readonly confirmed: number
   readonly cancelled: number
   readonly nights: number
-  readonly revenueEur: number | null   // Hostaway payout evidence (engine)
+  readonly revenueEur: number | null   // Net Platform Payout = Gross - Platform Fees (statement-consistent)
   /** Derived Net Owner Payout (certified statement line logic). null = Needs Review (never 0). */
   readonly netOwnerPayoutEur: number | null
   readonly nextCheckIn: string | null
@@ -67,7 +68,6 @@ export async function buildOwnerStrCockpit(input: OwnerStrCockpitInput): Promise
       const s = res.audit.summary
       confirmed = s.confirmedReservations + s.modifiedReservations
       cancelled = s.cancelledReservations
-      revenueEur = s.hostawayTotalPayout.amount
       for (const r of res.audit.reservations) {
         if (!isRevenueEligible(r.status)) continue
         nights += r.nights ?? 0
@@ -75,7 +75,11 @@ export async function buildOwnerStrCockpit(input: OwnerStrCockpitInput): Promise
       }
       // Derived Net Owner Payout — certified statement line logic. Any unknown input (e.g. Booking
       // tax) => property net is Needs Review (null), never fabricated.
+      // Net Platform Payout (Gross - Platform Fees) AND Net Owner Payout, both derived from the SAME
+      // certified statement line so the cockpit and the Owner Statement PDF always agree — including the
+      // Booking payment fee now folded into Platform Fees. Unknown inputs => Needs Review (null), never 0.
       let netSum = 0, netKnown = true, anyEligible = false
+      let payoutSum = 0, payoutKnown = true
       for (const r of res.audit.reservations) {
         if (!isRevenueEligible(r.status)) continue
         anyEligible = true
@@ -90,12 +94,18 @@ export async function buildOwnerStrCockpit(input: OwnerStrCockpitInput): Promise
           platformFeesSource: hostFee != null ? 'hostaway:airbnbListingHostFee' : commission != null ? 'hostaway:channelCommissionAmount' : 'hostaway:none',
           cleaningEur: f.cleaningFee ?? null,
           taxesEur: f.taxAmount ?? null,
+          taxVerifiedZeroEvidence: isTaxVerifiedZero(String(r.channel), p.name, r.checkIn),
           platformPayoutEvidenceEur: f.payout?.amount ?? null,
         }
-        const v = buildStrStatementLine(ev).netOwnerPayout.value
+        const line = buildStrStatementLine(ev)
+        const g = line.gross.value, pf = line.platformFees.value
+        const pp = g != null && pf != null ? Math.round((g - pf) * 100) / 100 : null
+        if (pp == null) payoutKnown = false; else payoutSum += pp
+        const v = line.netOwnerPayout.value
         if (v == null) netKnown = false; else netSum += v
       }
       netOwnerPayoutEur = anyEligible && netKnown ? Math.round(netSum * 100) / 100 : null
+      revenueEur = anyEligible && payoutKnown ? Math.round(payoutSum * 100) / 100 : null
     }
     breakdown.push({
       propertyId: p.id, propertyName: p.name, confirmed, cancelled, nights, revenueEur,
