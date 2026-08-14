@@ -165,7 +165,7 @@ export function buildStrStatementLine(
   const taxes: StatementAmount = taxesKnown
     ? { value: ev.taxesEur, provenance: 'hostaway', source: 'hostaway:taxAmount' }
     : taxVerifiedZero
-      ? { value: 0, provenance: 'hostaway', source: 'hostaway_statement:verified_zero_tax' }
+      ? { value: 0, provenance: 'hostaway', source: 'booking_account_policy_verified_zero' }
       : { value: null, provenance: 'unknown', source: 'hostaway:taxAmount(null)' }
   if (!taxCertain) reasons.push('tax_unknown')
   if (ev.grossEur == null) reasons.push('gross_unknown')
