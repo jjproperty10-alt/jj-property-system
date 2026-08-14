@@ -62,7 +62,7 @@ describe('buildStrStatementLine — decisions A & B', () => {
     // platformFees 187.87; totalPayout 943.84; mgmt=0.20*(943.84-50)=178.77; net=943.84-50-178.77=715.07
     expect(l.taxes.value).toBe(0)
     expect(l.taxes.provenance).toBe('hostaway')
-    expect(l.taxes.source).toContain('verified_zero_tax')
+    expect(l.taxes.source).toContain('booking_account_policy_verified_zero')
     expect(l.managementFee.value).toBe(178.77)
     expect(l.netOwnerPayout.value).toBe(715.07)
     expect(l.needsReview).toBe(false)
