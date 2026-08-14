@@ -212,7 +212,7 @@ describe('fetchOwnerFinancial', () => {
     expect(rows[0].description).toBe('Rent')
   })
 
-  it('excludes reference display group rows', async () => {
+  it('keeps reference display group rows but flags them with isReference', async () => {
     const referenceRow = makeRow({ id: 'ref-1', display_group: 'reference', description: 'Contract value', amount_eur: 50000, client_amount: 50000 })
     const incomeRow    = makeRow({ id: 'inc-1', display_group: 'income', description: 'Platform Income', amount_eur: 1200, client_amount: 1200 })
 
@@ -225,8 +225,11 @@ describe('fetchOwnerFinancial', () => {
     const result = await fetchOwnerFinancial({ properties: ['Villa Mazotos'] })
     const rows = result.sections[0]?.rows ?? []
 
-    expect(rows).toHaveLength(1)
-    expect(rows[0].description).toBe('Platform Income')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].isReference).toBe(true)
+    expect(rows[0].description).toBe('Contract value')
+    expect(rows[1].isReference).toBe(false)
+    expect(rows[1].description).toBe('Platform Income')
   })
 
   it('maps display_group to OwnerFinancialRowDTO.displayGroup correctly', async () => {
@@ -753,6 +756,190 @@ describe('fetchOwnerFinancial', () => {
       // expensesEur = purchase(70000) + rental(1000) = 71000
       expect(result.position.incomeEur).toBe('4000')
       expect(result.position.expensesEur).toBe('71000')
+    })
+  })
+
+  // ── Hardening: resolveDescription — Fabi staff accommodation ──────────────
+
+  describe('resolveDescription (DS-009B Fabi staff accommodation)', () => {
+    it('labels Duplex Tenant Payment with שכירות as Staff Accommodation — Rent Offset (Fabi)', async () => {
+      const row = makeRow({
+        id: 'fabi-1',
+        subcategory: 'Tenant Payment',
+        description: 'שכירות הדירה למטה',
+        amount_eur: 350,
+        client_amount: 350,
+        display_group: 'income',
+        display_label: 'Tenant Payment',
+      })
+
+      mockFetchRC3Report.mockResolvedValueOnce(
+        makeReport('Uriel Duplex', [
+          makeSection({ account_type: 'rental', account_label: 'Rental', rows: [row] }),
+        ]),
+      )
+
+      const result = await fetchOwnerFinancial({ properties: ['Uriel Duplex'] })
+      const dtoRow = result.sections.find(s => s.type === 'rental')?.rows[0]
+
+      expect(dtoRow).toBeDefined()
+      expect(dtoRow!.description).toBe('Staff Accommodation — Rent Offset (Fabi)')
+    })
+
+    it('labels Duplex Staff Accommodation Rent as Owner Entitlement', async () => {
+      const row = makeRow({
+        id: 'sar-1',
+        subcategory: 'Staff Accommodation Rent',
+        description: 'Staff Accommodation Rent',
+        amount_eur: 1000,
+        client_amount: 1000,
+        display_group: 'income',
+        display_label: 'Staff Accommodation Rent',
+      })
+
+      mockFetchRC3Report.mockResolvedValueOnce(
+        makeReport('Uriel Duplex', [
+          makeSection({ account_type: 'rental', account_label: 'Rental', rows: [row] }),
+        ]),
+      )
+
+      const result = await fetchOwnerFinancial({ properties: ['Uriel Duplex'] })
+      const dtoRow = result.sections.find(s => s.type === 'rental')?.rows[0]
+
+      expect(dtoRow).toBeDefined()
+      expect(dtoRow!.description).toBe('Staff Accommodation Rent — Owner Entitlement')
+    })
+
+    it('does NOT apply Fabi label to non-Duplex properties', async () => {
+      const row = makeRow({
+        id: 'nonfabi-1',
+        subcategory: 'Tenant Payment',
+        description: 'שכירות הדירה למטה',
+        amount_eur: 500,
+        client_amount: 500,
+        display_group: 'income',
+        display_label: 'Tenant Payment',
+      })
+
+      mockFetchRC3Report.mockResolvedValueOnce(
+        makeReport('Villa Mazotos', [
+          makeSection({ account_type: 'rental', account_label: 'Rental', rows: [row] }),
+        ]),
+      )
+
+      const result = await fetchOwnerFinancial({ properties: ['Villa Mazotos'] })
+      const dtoRow = result.sections.find(s => s.type === 'rental')?.rows[0]
+
+      expect(dtoRow!.description).toBe('שכירות הדירה למטה')
+    })
+  })
+
+  // ── Hardening: isReference flag ───────────────────────────────────────────
+
+  describe('isReference flag on rows', () => {
+    it('sets isReference=true for reference display_group rows (shown but flagged)', async () => {
+      // Reference rows ARE filtered out of visible sections (excluded in mapSectionToDTO).
+      // But rows that pass through with other display_groups should have isReference=false.
+      const incomeRow = makeRow({ id: 'inc-ref', display_group: 'income', description: 'Rent', amount_eur: 500, client_amount: 500 })
+      const infoRow   = makeRow({ id: 'info-ref', display_group: 'info', description: 'Tracking', amount_eur: 0, client_amount: 0 })
+
+      mockFetchRC3Report.mockResolvedValueOnce(
+        makeReport('Villa Mazotos', [makeSection({ rows: [incomeRow, infoRow] })]),
+      )
+
+      const result = await fetchOwnerFinancial({ properties: ['Villa Mazotos'] })
+      const rows = result.sections[0]?.rows ?? []
+
+      expect(rows).toHaveLength(2)
+      expect(rows[0].isReference).toBe(false)
+      expect(rows[1].isReference).toBe(false)
+    })
+  })
+
+  // ── Hardening: openingBalanceEur on sections ─────────────────────────────
+
+  describe('openingBalanceEur on sections', () => {
+    it('includes openingBalanceEur when section has non-zero opening_balance', async () => {
+      const section = makeSection({
+        account_type: 'rental',
+        account_label: 'Rental',
+        total_income: 3000,
+        total_expenses: 500,
+        closing_balance: 2800,
+      })
+      // Manually set opening_balance on the section
+      ;(section as { opening_balance: number }).opening_balance = 300
+
+      mockFetchRC3Report.mockResolvedValueOnce(
+        makeReport('Villa Mazotos', [section]),
+      )
+
+      const result = await fetchOwnerFinancial({ properties: ['Villa Mazotos'] })
+      const rentalSection = result.sections.find(s => s.type === 'rental')
+
+      expect(rentalSection).toBeDefined()
+      expect(rentalSection!.openingBalanceEur).toBe('300')
+    })
+
+    it('omits openingBalanceEur when opening_balance is zero', async () => {
+      mockFetchRC3Report.mockResolvedValueOnce(
+        makeReport('Villa Mazotos', [
+          makeSection({ account_type: 'rental', account_label: 'Rental' }),
+        ]),
+      )
+
+      const result = await fetchOwnerFinancial({ properties: ['Villa Mazotos'] })
+      const rentalSection = result.sections.find(s => s.type === 'rental')
+
+      expect(rentalSection).toBeDefined()
+      expect(rentalSection!.openingBalanceEur).toBeUndefined()
+    })
+  })
+
+  // ── Hardening: ownerDirection = 'internal' ───────────────────────────────
+
+  describe('ownerDirection for internal_settled Purchase', () => {
+    it('sets ownerDirection to internal for internal_settled Purchase', async () => {
+      mockFetchRC3Report.mockResolvedValueOnce(
+        makeReport('Uriel Duplex', [
+          makeSection({
+            account_type: 'purchase',
+            account_label: 'Property Purchase',
+            balance_convention: 'client_debt',
+            closing_balance: 130000,
+            total_income: 0,
+          }),
+        ]),
+      )
+
+      const result = await fetchOwnerFinancial({ properties: ['Uriel Duplex'] })
+      const purchaseSection = result.sections.find(s => s.type === 'purchase')
+
+      expect(purchaseSection).toBeDefined()
+      expect(purchaseSection!.ownerDirection).toBe('internal')
+      expect(purchaseSection!.label).toBe('JJ Internal Acquisition — Settled')
+    })
+
+    it('sets ownerDirection to due_to_jj/due_to_you for non-internal Purchase', async () => {
+      mockFetchRC3Report.mockResolvedValueOnce(
+        makeReport('Some Property', [
+          makeSection({
+            account_type: 'purchase',
+            account_label: 'Property Purchase',
+            balance_convention: 'client_debt',
+            closing_balance: 80000,
+            total_income: 0,
+          }),
+        ]),
+      )
+
+      const result = await fetchOwnerFinancial({ properties: ['Some Property'] })
+      const purchaseSection = result.sections.find(s => s.type === 'purchase')
+
+      expect(purchaseSection).toBeDefined()
+      // client_debt with positive closing → normalized = -80000 → due_to_jj
+      expect(purchaseSection!.ownerDirection).toBe('due_to_jj')
+      expect(purchaseSection!.label).toBe('Property Purchase')
     })
   })
 })
