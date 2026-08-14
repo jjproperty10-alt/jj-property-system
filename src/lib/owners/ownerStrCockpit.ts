@@ -10,7 +10,7 @@ import { createServiceClient } from '@/lib/supabase'
 import { PropertyAuditService, isRevenueEligible } from '@/lib/hostaway-audit'
 import { getStrReconciliationByName } from './ownerStrAuditAdapter'
 import { buildStrStatementLine, type StrLineEvidence } from '@/lib/report/str/strStatementLine'
-import { isTaxVerifiedZero } from '@/lib/report/str/taxEvidence'
+import { isBookingAccountVerifiedZero } from '@/lib/report/str/bookingTaxPolicy'
 import { getAuthoritativeStatementLine } from '@/lib/report/str/statementEvidence'
 
 export interface StrPropertyBreakdown {
@@ -95,7 +95,7 @@ export async function buildOwnerStrCockpit(input: OwnerStrCockpitInput): Promise
           platformFeesSource: hostFee != null ? 'hostaway:airbnbListingHostFee' : commission != null ? 'hostaway:channelCommissionAmount' : 'hostaway:none',
           cleaningEur: f.cleaningFee ?? null,
           taxesEur: f.taxAmount ?? null,
-          taxVerifiedZeroEvidence: isTaxVerifiedZero(String(r.channel), p.name, r.checkIn),
+          taxVerifiedZeroEvidence: isBookingAccountVerifiedZero(String(r.channel), f.taxAmount ?? null, r.checkIn),
           authoritativeLine: getAuthoritativeStatementLine(r.hostawayReservationId, p.name, r.checkIn) ?? undefined,
           platformPayoutEvidenceEur: f.payout?.amount ?? null,
         }
