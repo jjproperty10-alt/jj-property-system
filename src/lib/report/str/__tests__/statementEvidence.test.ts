@@ -18,6 +18,13 @@ describe('getAuthoritativeStatementLine', () => {
     expect(l!.taxesEur).toBe(44.92)
     expect(l!.netOwnerPayoutEur).toBe(311.32)
   })
+  it('returns the Hostaway line for Booking-Engine reservation 60765379 in Tamir Dekelia June (tax NOT zero)', () => {
+    const l = getAuthoritativeStatementLine('60765379', 'Tamir Dekelia', '2026-06-11')
+    expect(l).not.toBeNull()
+    expect(l!.platformFeesEur).toBe(4.4)
+    expect(l!.taxesEur).toBe(8.76)
+    expect(l!.netOwnerPayoutEur).toBe(74.31)
+  })
   it('returns null outside the evidenced reservation/period/property', () => {
     expect(getAuthoritativeStatementLine('63342983', 'Ofri Makarios 5 Floor', '2026-08-01')).toBeNull()
     expect(getAuthoritativeStatementLine('99999999', 'Ofri Makarios 5 Floor', '2026-07-23')).toBeNull()

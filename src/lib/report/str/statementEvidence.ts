@@ -37,6 +37,26 @@ export const STATEMENT_LINE_EVIDENCE: readonly StatementLineEvidenceEntry[] = [
       netOwnerPayoutEur: 311.32, // Hostaway's stated net for this reservation (its owner-facing truth)
     },
   },
+  {
+    // Booking-Engine (JJ's own direct engine) reservation, Tamir Dekelia (TM01 Sea View), check-in
+    // 2026-06-11 (Michaelia Lambrou). Raw is incomplete: totalPrice 166.05, taxAmount null, no
+    // commission/host fee. The Hostaway Owner Statement authoritatively states this line — proving the
+    // channel is NOT zero-tax (Taxes 8.76, Platform 4.40). This is exactly why no blanket
+    // bookingengine/direct zero-tax policy was created. Used verbatim for owner-facing parity.
+    reservationId: '60765379',
+    propertyName: 'Tamir Dekelia',
+    periodStart: '2026-06-01',
+    periodEnd: '2026-06-30',
+    source: 'Hostaway Owner Statement June-August 2026 -- Tamir/TM01 Sea View, 2026-06-11 Michaelia Lambrou (Booking Engine; Taxes 8.76, Platform 4.40) -- approved by Yossi 2026-08',
+    line: {
+      grossEur: 166.05,
+      platformFeesEur: 4.4,
+      cleaningEur: 60.0,
+      managementFeeEur: 18.58,
+      taxesEur: 8.76,
+      netOwnerPayoutEur: 74.31, // Hostaway's stated net for this reservation
+    },
+  },
 ]
 
 /** Authoritative Hostaway statement line for a reservation, when explicit evidence exists. */
