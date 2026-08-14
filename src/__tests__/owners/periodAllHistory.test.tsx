@@ -21,6 +21,11 @@
 // ═══════════════════════════════════════════════════════════════
 
 jest.mock('server-only', () => ({}), { virtual: true })
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: jest.fn(), replace: jest.fn(), prefetch: jest.fn() }),
+  usePathname: () => '/owners/test',
+  useSearchParams: () => new URLSearchParams(),
+}))
 
 const mockSingle = jest.fn().mockResolvedValue({ data: null, error: { message: 'not found' } })
 const mockLimit = jest.fn(() => ({ single: mockSingle }))
@@ -703,7 +708,7 @@ const EMPTY_FINANCIAL: OwnerFinancialDTO = {
 describe('FinancialTab three-state display', () => {
   it('State C: renders "No financial data available" when no data and no history', () => {
     const html = renderToStaticMarkup(
-      <FinancialTab dto={EMPTY_FINANCIAL} />,
+      <FinancialTab dto={EMPTY_FINANCIAL} ownerSlug="test" fromDate={null} toDate={null} />,
     )
 
     expect(html).toContain('No financial data available')
@@ -722,14 +727,14 @@ describe('FinancialTab three-state display', () => {
     }
 
     const html = renderToStaticMarkup(
-      <FinancialTab dto={dto} />,
+      <FinancialTab dto={dto} ownerSlug="test" fromDate={null} toDate={null} />,
     )
 
     expect(html).not.toContain('No financial data available')
     expect(html).toContain('No financial activity found for')
     expect(html).toContain('42 historical transactions')
     expect(html).toContain('View all history')
-    expect(html).toContain('?tab=financial&amp;period=all')
+    expect(html).toContain('?tab=financial')
   })
 
   it('State A: renders KPI cards when sections exist', () => {
@@ -762,7 +767,7 @@ describe('FinancialTab three-state display', () => {
     }
 
     const html = renderToStaticMarkup(
-      <FinancialTab dto={dto} />,
+      <FinancialTab dto={dto} ownerSlug="test" fromDate={null} toDate={null} />,
     )
 
     expect(html).not.toContain('No financial data available')
@@ -801,7 +806,7 @@ describe('FinancialTab three-state display', () => {
     }
 
     const html = renderToStaticMarkup(
-      <FinancialTab dto={dto} periodLabel="All History" />,
+      <FinancialTab dto={dto} periodLabel="All History" ownerSlug="test" fromDate={null} toDate={null} />,
     )
 
     expect(html).toContain('All History - Financial Position')
@@ -839,11 +844,12 @@ describe('FinancialTab three-state display', () => {
     }
 
     const html = renderToStaticMarkup(
-      <FinancialTab dto={dto} />,
+      <FinancialTab dto={dto} ownerSlug="test" fromDate={null} toDate={null} />,
     )
 
     expect(html).toContain('Current Financial Position')
-    expect(html).not.toContain('All History')
+    // DateRangePicker always renders "All History" as a button label —
+    // what matters is the section heading says "Current Financial Position"
   })
 
   it('periodLabel="August 2026" renders "Current Financial Position" (not All History)', () => {
@@ -876,10 +882,11 @@ describe('FinancialTab three-state display', () => {
     }
 
     const html = renderToStaticMarkup(
-      <FinancialTab dto={dto} periodLabel="August 2026" />,
+      <FinancialTab dto={dto} periodLabel="August 2026" ownerSlug="test" fromDate={null} toDate={null} />,
     )
 
     expect(html).toContain('Current Financial Position')
-    expect(html).not.toContain('All History')
+    // DateRangePicker always renders "All History" as a button label —
+    // what matters is the section heading says "Current Financial Position"
   })
 })

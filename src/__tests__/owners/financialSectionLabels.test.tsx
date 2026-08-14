@@ -1,4 +1,11 @@
 /** Financial section header shows Service · Property · Period + owner Direction (QA cleanup). */
+
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: jest.fn(), replace: jest.fn(), prefetch: jest.fn() }),
+  usePathname: () => '/owners/test',
+  useSearchParams: () => new URLSearchParams(),
+}))
+
 import renderer from 'react-test-renderer'
 import { FinancialTab } from '@/components/owners/tabs/FinancialTab'
 import type { OwnerFinancialDTO } from '@/lib/owners/ownerWorkspaceTypes'
@@ -34,7 +41,7 @@ function dto(): OwnerFinancialDTO {
 
 describe('FinancialTab section labels', () => {
   it('renders Service · Property · Period and a Due to You direction badge', () => {
-    const t = renderer.create(<FinancialTab dto={dto()} periodLabel="July 2026" />)
+    const t = renderer.create(<FinancialTab dto={dto()} periodLabel="July 2026" ownerSlug="test" fromDate={null} toDate={null} />)
     const text = flat(t)
     expect(text).toContain('Short-Term Rental')
     expect(text).toContain('Tamir Dekelia')

@@ -422,6 +422,8 @@ export interface OwnerFinancialDTO {
     latestDate: string
     rowCount: number
   } | null
+  /** Per-property grouping with Property Net (multi-property owners) */
+  propertyGroups?: PropertyFinancialGroupDTO[]
 }
 
 /**
@@ -518,6 +520,36 @@ export interface OwnerFinancialSectionDTO {
    * that represent JJ internal acquisition cost, not owner-facing debt).
    */
   displayNote?: string | null
+  /**
+   * Purchase disposition — how this Purchase section relates to the owner-facing Overall Net.
+   * 'internal_settled': JJ internal acquisition settled through Sale — excluded from Overall Net
+   * 'needs_review': Purchase deposit with no settlement evidence — included but flagged
+   */
+  purchaseDisposition?: 'internal_settled' | 'needs_review'
+}
+
+/**
+ * Per-property financial grouping with Property Net.
+ * Renders property-by-property breakdown in the Financial Tab.
+ *
+ * Rule (approved by Yossi, Aug 2026 — Uriel audit):
+ * - Property has BOTH Purchase AND Sale → Purchase is JJ internal acquisition
+ *   settled through Sale → excluded from propertyNet and Overall Net
+ * - Property has Purchase but NO Sale → "Needs Review" — included in nets but flagged
+ */
+export interface PropertyFinancialGroupDTO {
+  propertyName: string
+  sections: OwnerFinancialSectionDTO[]
+  /** Property Net — computed from non-excluded sections only */
+  propertyNet: {
+    netEur: string
+    label: 'due_to_jj' | 'due_to_you' | 'settled'
+    displayAmountEur: string
+  }
+  /** True if this property has a Purchase excluded from Overall Net */
+  hasPurchaseExclusion: boolean
+  /** True if this property has a Needs Review Purchase */
+  hasNeedsReviewPurchase: boolean
 }
 
 export interface OwnerFinancialRowDTO {
