@@ -1,7 +1,7 @@
 import { getAuthoritativeStatementLine, belongsToStatementMonth, STATEMENT_LINE_EVIDENCE } from '../statementEvidence'
 import { buildStrStatementLine, type StrLineEvidence } from '../strStatementLine'
 import { composeOwnerStrStatement, type StatementReservationEvidence } from '../ownerStrStatement'
-import { isTaxVerifiedZero } from '../taxEvidence'
+import { isBookingAccountVerifiedZero } from '../bookingTaxPolicy'
 
 describe('belongsToStatementMonth — arrival-month periodization', () => {
   it('check-in in month belongs; June check-in with July checkout does NOT', () => {
@@ -52,7 +52,7 @@ describe('Ofri/Sky View July 2026 — Hostaway parity, cent-exact', () => {
     reservationId: id, channel: ch, propertyName: P, guestName: 'G', checkIn: ci, checkOut: ci, nights: 1,
     grossEur: gross, platformFeesEur: host ?? comm, platformFeesSource: host != null ? 'hostaway:airbnbListingHostFee' : 'hostaway:channelCommissionAmount',
     cleaningEur: clean, taxesEur: tax,
-    taxVerifiedZeroEvidence: isTaxVerifiedZero(ch, P, ci),
+    taxVerifiedZeroEvidence: isBookingAccountVerifiedZero(ch, tax, ci),
     authoritativeLine: getAuthoritativeStatementLine(id, P, ci) ?? undefined,
     platformPayoutEvidenceEur: null,
   })
