@@ -48,6 +48,23 @@ export interface StrLineEvidence {
    * then, tax is a VERIFIED zero. It NEVER turns a bare null into 0 without that explicit evidence.
    */
   readonly taxVerifiedZeroEvidence?: boolean
+  /**
+   * Authoritative Hostaway Owner Statement line (approved 2026-08). When the raw reservation payload
+   * is incomplete/inconsistent and the Hostaway Owner Statement explicitly states the owner-facing
+   * line for this reservation/period, that stated line is authoritative and used VERBATIM (bypassing
+   * the JJ chain). Narrow + explicit + source-attributed. Never a silent generic override.
+   */
+  readonly authoritativeLine?: AuthoritativeStatementLine
+}
+
+/** Verbatim owner-facing line as stated by an authoritative Hostaway Owner Statement. */
+export interface AuthoritativeStatementLine {
+  readonly grossEur: number
+  readonly platformFeesEur: number
+  readonly cleaningEur: number
+  readonly managementFeeEur: number
+  readonly taxesEur: number
+  readonly netOwnerPayoutEur: number
 }
 
 export interface StrStatementLine {
@@ -94,6 +111,27 @@ export function buildStrStatementLine(
 ): StrStatementLine {
   const rate = opts.managementRate ?? JJ_STR_MANAGEMENT_FEE_RATE
   const reasons: string[] = []
+
+  // Authoritative Hostaway Owner Statement line — used verbatim (the statement is the owner-facing
+  // truth when raw is incomplete/inconsistent). All amounts provenance 'hostaway' with an explicit
+  // statement source tag; never Needs Review.
+  if (ev.authoritativeLine) {
+    const a = ev.authoritativeLine
+    const amt = (value: number, src: string): StatementAmount => ({ value, provenance: 'hostaway', source: `hostaway_statement:${src}` })
+    return {
+      reservationId: ev.reservationId,
+      channel: ev.channel,
+      gross: amt(a.grossEur, 'gross'),
+      platformFees: amt(a.platformFeesEur, 'platform_fees'),
+      cleaning: amt(a.cleaningEur, 'cleaning'),
+      managementFee: amt(a.managementFeeEur, 'management_fee'),
+      taxes: amt(a.taxesEur, 'taxes'),
+      netOwnerPayout: amt(a.netOwnerPayoutEur, 'net_owner_payout'),
+      platformPayoutEvidence: amt(roundEur(a.grossEur - a.platformFeesEur), 'total_payout'),
+      needsReview: false,
+      reviewReasons: [],
+    }
+  }
 
   const gross: StatementAmount = { value: ev.grossEur, provenance: ev.grossEur == null ? 'unknown' : 'hostaway', source: 'hostaway:totalPrice' }
 
