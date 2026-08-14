@@ -52,8 +52,20 @@ function makeRC3Section(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function makeRC3Report(sections = [makeRC3Section()]) {
-  return { accounts: sections }
+function makeRC3Report(sections = [makeRC3Section()], reportingName = 'Oshrit Deklia') {
+  const hasPurchase = sections.some(s => s.account_type === 'purchase')
+  const hasSale = sections.some(s => s.account_type === 'sale')
+  const hasRenovation = sections.some(s => s.account_type === 'renovation')
+  return {
+    reporting_name: reportingName,
+    from_date: null,
+    to_date: null,
+    generated_at: new Date().toISOString(),
+    accounts: sections,
+    has_purchase: hasPurchase,
+    has_sale: hasSale,
+    has_renovation: hasRenovation,
+  }
 }
 
 // ─── Regression: Amounts preserved ──────────────────────────────────────────
@@ -213,7 +225,7 @@ describe('Oshrit PR B — Purchase label for NEEDS_REVIEW', () => {
     mockSingle.mockResolvedValue({ data: null, error: { message: 'not found' } })
   })
 
-  test('Purchase section labeled "JJ Internal Acquisition" for Oshrit', async () => {
+  test('Purchase section labeled "Property Purchase" with needs_review note for Oshrit', async () => {
     mockFetchRC3Report.mockResolvedValue(makeRC3Report([
       makeRC3Section({
         account_type: 'purchase',
@@ -226,12 +238,13 @@ describe('Oshrit PR B — Purchase label for NEEDS_REVIEW', () => {
     const result = await fetchOwnerFinancial({ properties: ['Oshrit Deklia'] })
     const purchase = result.sections.find(s => s.type === 'purchase')
     expect(purchase).toBeDefined()
-    expect(purchase!.label).toBe('JJ Internal Acquisition — Not Owner-Facing')
+    // NEEDS_REVIEW keeps original label (not relabeled like internal_settled)
+    expect(purchase!.label).toBe('Property Purchase')
     expect(purchase!.displayNote).toBeTruthy()
-    expect(purchase!.displayNote).toContain('acquisition cost')
+    expect(purchase!.displayNote).toContain('Needs Review')
   })
 
-  test('Purchase section keeps original label for non-NEEDS_REVIEW properties', async () => {
+  test('Purchase section gets needs_review displayNote for non-registered properties', async () => {
     mockFetchRC3Report.mockResolvedValue(makeRC3Report([
       makeRC3Section({
         account_type: 'purchase',
@@ -239,13 +252,15 @@ describe('Oshrit PR B — Purchase label for NEEDS_REVIEW', () => {
         total_expenses: 100000,
         closing_balance: 100000,
       }),
-    ]))
+    ], 'Liora Anafotia 101'))
 
     const result = await fetchOwnerFinancial({ properties: ['Liora Anafotia 101'] })
     const purchase = result.sections.find(s => s.type === 'purchase')
     expect(purchase).toBeDefined()
+    // Properties not in PURCHASE_DISPOSITIONS get 'needs_review' disposition
     expect(purchase!.label).toBe('Property Purchase')
-    expect(purchase!.displayNote).toBeNull()
+    expect(purchase!.displayNote).toBeTruthy()
+    expect(purchase!.displayNote).toContain('Needs Review')
   })
 
   test('€2,620 not exposed — confirmed_duplicate rows excluded by RC3 views', async () => {

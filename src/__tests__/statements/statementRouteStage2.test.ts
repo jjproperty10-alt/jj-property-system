@@ -248,8 +248,11 @@ describe('Stage 2 — component rendering contracts (source audit)', () => {
     source = fs.readFileSync(PAGE_PATH, 'utf-8')
   })
 
-  test('FinancialTab receives dto prop (ownerSlug unnecessary on statement page)', () => {
-    expect(source).toContain('<FinancialTab dto={dto} />')
+  test('FinancialTab receives dto prop with date range defaults', () => {
+    expect(source).toContain('<FinancialTab dto={dto}')
+    // Statement page always passes null dates (all-history) and slug for consistency
+    expect(source).toContain('fromDate={null}')
+    expect(source).toContain('toDate={null}')
   })
 
   test('PartnerReport receives narrowed PartnerFacingStatementDTO', () => {

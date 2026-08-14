@@ -12,13 +12,17 @@ import type { ReactNode } from 'react'
 import { KpiCard, MoneyValue, UnknownValue, EmptyState, DataTable, AttentionBanner } from '@/components/ds'
 import type { DataTableColumn } from '@/components/ds'
 import type { OwnerFinancialDTO, OwnerFinancialRowDTO, OwnerOverallNetDTO, OccupancyPositionDTO, PropertyFinancialGroupDTO } from '@/lib/owners/ownerWorkspaceTypes'
+import { DateRangePicker } from '@/components/owners/DateRangePicker'
 
 export interface FinancialTabProps {
   dto: OwnerFinancialDTO
   periodLabel?: string
+  ownerSlug: string
+  fromDate: string | null
+  toDate: string | null
 }
 
-export function FinancialTab({ dto, periodLabel }: FinancialTabProps) {
+export function FinancialTab({ dto, periodLabel, ownerSlug, fromDate, toDate }: FinancialTabProps) {
   const { position, overallNet, sections, propertyGroups, timeline, occupancyPosition, historicalSummary } = dto
 
   // Three-state financial display:
@@ -31,8 +35,21 @@ export function FinancialTab({ dto, periodLabel }: FinancialTabProps) {
   const summaryUnderReview = overallNet?.reviewStatus === 'needs_review'
   const hasHistoricalOnly = noFinancialData && historicalSummary != null
 
+  // Derive the authoritative closing balance from Overall Net (must reconcile)
+  const closingBalanceFromNet = overallNet && overallNet.reviewStatus !== 'needs_review'
+    ? overallNet.displayAmountEur
+    : null
+
   return (
     <div className="space-y-6">
+
+      {/* Date range picker */}
+      <DateRangePicker
+        ownerSlug={ownerSlug}
+        fromDate={fromDate}
+        toDate={toDate}
+        periodLabel={periodLabel ?? 'All History'}
+      />
 
       {/* Current financial position â only when overallNet provides computed values */}
       {overallNet != null && (
@@ -47,17 +64,16 @@ export function FinancialTab({ dto, periodLabel }: FinancialTabProps) {
               description="The overall position for this owner includes items that are not yet fully reconciled. Category breakdowns are shown below for reference."
             />
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               <MoneyKpi label="Money Received" value={position.incomeEur} />
               <MoneyKpi label="Money Paid (Expenses)" value={position.expensesEur} />
               <MoneyKpi label="Paid to Owner" value={position.paidToOwnerEur} />
               <MoneyKpi label="Net" value={position.netEur} />
-              <MoneyKpi label="Pending" value={position.pendingEur} />
               <KpiCard
                 label="Closing Balance"
                 value={
-                  position.closingBalanceEur != null
-                    ? <MoneyValue amount={parseFloat(position.closingBalanceEur)} size="lg" />
+                  closingBalanceFromNet != null
+                    ? <MoneyValue amount={parseFloat(closingBalanceFromNet)} size="lg" />
                     : <UnknownValue reason="Settlement Engine (RC2) â not yet computed" />
                 }
               />
@@ -571,7 +587,7 @@ function HistoricalAvailability({ summary, periodLabel }: { summary: NonNullable
             <br />Historical activity: {summary.earliestDate} - {summary.latestDate}
           </p>
           <a
-            href="?tab=financial&period=all"
+            href="?tab=financial"
             className="inline-block mt-2 text-sm text-blue-700 font-medium hover:underline"
           >
             View all history

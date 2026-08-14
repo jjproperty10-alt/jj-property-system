@@ -108,9 +108,7 @@ function mapSectionToDTO(
     : section.account_label
 
   const displayNote = isInternalPurchase
-    ? section.total_income > 0
-      ? `JJ Internal Acquisition — acquisition principal excluded from Owner Summary. €${section.total_income.toLocaleString('en', { minimumFractionDigits: 2 })} in Purchase Expenses included as owner-relevant.`
-      : 'This section shows JJ\'s acquisition cost for this property. It has been settled through the Sale account and is excluded from the Owner Summary.'
+    ? 'All Purchase costs are JJ internal acquisition — excluded from Owner Summary.'
     : isNeedsReviewPurchase
       ? `Needs Review — €${Math.abs(section.closing_balance).toLocaleString('en', { minimumFractionDigits: 2 })} purchase with no confirmed settlement mechanism.`
       : null
@@ -173,8 +171,11 @@ function normalizeDepartment(section: RC3AccountSection): OwnerDepartmentBalance
  *
  * Dispositions:
  * - 'internal_settled': JJ acquired the property and resold to client.
- *   Purchase acquisition principal excluded from Owner Summary.
- *   Purchase Expenses (e.g. gardener) preserved as owner-relevant.
+ *   ALL Purchase costs (contract, deposits, payments, AND Purchase Expenses)
+ *   are JJ internal acquisition cost — fully excluded from Owner Summary.
+ *   Business rule: Purchase AND Purchase Expenses belong to JJ's internal
+ *   acquisition side. They remain visible in internal/audit but are NOT
+ *   owner/client charges.
  * - 'needs_review': Purchase exists but no confirmed settlement mechanism.
  *
  * Evidence basis per property:
@@ -182,7 +183,7 @@ function normalizeDepartment(section: RC3AccountSection): OwnerDepartmentBalance
  * - Uriel Studio Kitty: Purchase €75K contract, €75K paid, closing €0. Sale confirmed.
  * - Uriel Kokkines: Purchase €50K contract, €15K paid, closing €35K. Sale confirmed.
  * - Uriel Sharon English Metro: Purchase €235K contract, €30K paid, €250 gardener
- *   expense, closing €205,250. Sale confirmed. €250 Purchase Expense preserved.
+ *   expense, closing €205,250. Sale confirmed. ALL Purchase = JJ internal.
  */
 const PURCHASE_DISPOSITIONS: ReadonlyMap<string, 'internal_settled' | 'needs_review'> = new Map([
   ['Uriel Duplex', 'internal_settled'],
@@ -190,30 +191,6 @@ const PURCHASE_DISPOSITIONS: ReadonlyMap<string, 'internal_settled' | 'needs_rev
   ['Uriel Kokkines', 'internal_settled'],
   ['Uriel Sharon English Metro', 'internal_settled'],
 ])
-
-/**
- * For internal_settled Purchase sections, return a modified section containing
- * only the owner-relevant portion (Purchase Expenses), or null if none exist.
- *
- * Purchase Expenses (gardener, surveyor, etc.) are billed to the client and
- * have positive balance_effect → captured in total_income.
- * Acquisition principal (Contract + Deposits + Payments) is JJ-internal.
- *
- * The modified section has closing_balance = total_income so that
- * computeNetOwnerBalance correctly includes only the owner-relevant amount.
- */
-function getOwnerRelevantPurchaseSection(
-  section: RC3AccountSection,
-): RC3AccountSection | null {
-  if (section.total_income === 0) return null
-  return {
-    ...section,
-    closing_balance: section.total_income,
-    contract_baseline: 0,
-    total_expenses: 0,
-    total_bpo: 0,
-  }
-}
 
 /**
  * Build a disposition map for Purchase sections.
@@ -242,10 +219,10 @@ function buildPurchaseDispositionMap(
 /**
  * Perspective correction — rule-based Purchase exclusion from Overall Net.
  *
- * Excludes Purchase sections from the Overall Net computation when the property
- * has both Purchase AND Sale accounts (disposition = 'internal_settled').
- * This means JJ acquired the property and resold — the Purchase is JJ-internal
- * acquisition cost settled through Sale.
+ * ALL Purchase costs (contract, deposits, payments, AND Purchase Expenses)
+ * for internal_settled properties are fully excluded from the Overall Net
+ * computation. JJ acquired the property and resold — the entire Purchase
+ * is JJ-internal acquisition cost settled through Sale.
  *
  * Purchase sections with disposition = 'needs_review' remain in the net
  * (no confirmed settlement mechanism).
@@ -263,11 +240,10 @@ function applyPerspectiveCorrection(
   for (const report of reports) {
     const disposition = dispositionMap.get(report.reporting_name)
     for (const section of report.accounts) {
-      // Partial exclusion for internal_settled Purchase:
-      // Exclude acquisition principal but preserve Purchase Expenses (total_income).
+      // Full exclusion for internal_settled Purchase:
+      // ALL Purchase costs (contract, deposits, payments, AND Purchase Expenses)
+      // are JJ internal acquisition cost — excluded from Owner Summary.
       if (section.account_type === 'purchase' && disposition === 'internal_settled') {
-        const relevant = getOwnerRelevantPurchaseSection(section)
-        if (relevant) ownerFacing.push(relevant)
         continue
       }
       // Legacy: also exclude Purchase for NEEDS_REVIEW_PROPERTIES (Oshrit occupancy model)
@@ -316,14 +292,12 @@ function buildPropertyGroups(
       mapSectionToDTO(sec, report.reporting_name, disposition)
     )
 
-    // Property Net: partial exclusion for internal_settled Purchase —
-    // exclude acquisition principal, preserve Purchase Expenses (total_income).
+    // Property Net: full exclusion for internal_settled Purchase —
+    // ALL Purchase costs are JJ internal acquisition, excluded from Property Net.
     const netSections: RC3AccountSection[] = []
     for (const sec of report.accounts) {
       if (sec.account_type === 'purchase' && disposition === 'internal_settled') {
-        const relevant = getOwnerRelevantPurchaseSection(sec)
-        if (relevant) netSections.push(relevant)
-        continue
+        continue  // fully excluded from Property Net
       }
       if (sec.account_type === 'purchase' && NEEDS_REVIEW_PROPERTIES.has(report.reporting_name)) {
         continue
@@ -567,7 +541,10 @@ export async function fetchOwnerFinancial(
   // Rule-based Purchase disposition map (replaces hardcoded property sets)
   const dispositionMap = buildPurchaseDispositionMap(reports)
 
-  const position    = composePosition(allSections)
+  // KPIs use owner-facing sections (Purchase excluded for internal_settled properties)
+  // so they reconcile with the Overall Net and Property Net calculations.
+  const ownerFacingSections = applyPerspectiveCorrection(reports, dispositionMap)
+  const position    = composePosition(ownerFacingSections)
   const overallNet  = buildOverallNet(reports, dispositionMap)
   const sections    = reports.flatMap(r =>
     r.accounts.map(sec => mapSectionToDTO(sec, r.reporting_name, dispositionMap.get(r.reporting_name)))

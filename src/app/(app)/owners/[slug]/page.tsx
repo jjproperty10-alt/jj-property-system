@@ -135,10 +135,10 @@ export default async function OwnerWorkspacePage({
   searchParams,
 }: {
   params: { slug: string }
-  searchParams: { tab?: string; period?: string; resMonth?: string }
+  searchParams: { tab?: string; period?: string; from?: string; to?: string; resMonth?: string }
 }) {
   const { slug } = params
-  const { tab: tabParam, period: periodParam, resMonth: resMonthParam } = searchParams
+  const { tab: tabParam, period: periodParam, from: fromParam, to: toParam, resMonth: resMonthParam } = searchParams
 
   // ── VS1: Page-level authentication (fail closed) ──────────────────────────
   // Authenticate ONCE before any data access. This closes security gap E8.
@@ -160,10 +160,22 @@ export default async function OwnerWorkspacePage({
     notFound()
   }
 
-  // Period selection: period=all -> all-time view; otherwise current month
-  const isAllHistory = periodParam === 'all'
+  // Period selection:
+  //   Default = All History (most informative for owners)
+  //   ?from=YYYY-MM-DD&to=YYYY-MM-DD = custom date range (inclusive)
+  //   ?period=month = current month (explicit opt-in)
   const { startDate, endDate, label: currentMonthLabel } = workspace.currentPeriod
-  const periodLabel = isAllHistory ? 'All History' : currentMonthLabel
+  const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+  const hasCustomRange = fromParam && toParam && ISO_DATE_RE.test(fromParam) && ISO_DATE_RE.test(toParam)
+  const isCurrentMonth = periodParam === 'month'
+  const isAllHistory = !hasCustomRange && !isCurrentMonth
+  const financialFromDate = hasCustomRange ? fromParam : isCurrentMonth ? startDate : undefined
+  const financialToDate = hasCustomRange ? toParam : isCurrentMonth ? endDate : undefined
+  const periodLabel = isAllHistory
+    ? 'All History'
+    : hasCustomRange
+      ? `${fromParam} — ${toParam}`
+      : currentMonthLabel
 
   // ── Reservations month selection (independent of the financial period) ──────
   // Probe which months have Hostaway activity, then choose the displayed month:
@@ -190,7 +202,7 @@ export default async function OwnerWorkspacePage({
       getOwnerOverview(slug),
       isAllHistory
         ? getOwnerFinancial(slug)
-        : getOwnerFinancial(slug, startDate, endDate),
+        : getOwnerFinancial(slug, financialFromDate, financialToDate),
       getOwnerReservations(slug, resBounds.start, resBounds.end),
       getOwnerDocuments(slug),
       getOwnerMaintenance(slug),
@@ -302,7 +314,13 @@ export default async function OwnerWorkspacePage({
 
       {/* Tab 2 — Financial */}
       {activeTab === 'financial' && (
-        <FinancialTab dto={financial} periodLabel={periodLabel} />
+        <FinancialTab
+          dto={financial}
+          periodLabel={periodLabel}
+          ownerSlug={slug}
+          fromDate={financialFromDate ?? null}
+          toDate={financialToDate ?? null}
+        />
       )}
 
       {/* Tab 3 — Reservations */}

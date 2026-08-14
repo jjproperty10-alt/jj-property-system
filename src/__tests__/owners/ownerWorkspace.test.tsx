@@ -13,6 +13,12 @@
  * Pattern: renderToStaticMarkup (matches project convention)
  */
 
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: jest.fn(), replace: jest.fn(), prefetch: jest.fn() }),
+  usePathname: () => '/owners/test',
+  useSearchParams: () => new URLSearchParams(),
+}))
+
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { nameToSlug } from '@/lib/owners/ownerWorkspaceUtils'
@@ -157,7 +163,7 @@ describe('Tab visibility matrix — all 7 tabs render without crash', () => {
 
   it('FinancialTab renders with empty DTO', () => {
     const html = renderToStaticMarkup(
-      <FinancialTab dto={EMPTY_FINANCIAL} />,
+      <FinancialTab dto={EMPTY_FINANCIAL} ownerSlug="test" fromDate={null} toDate={null} />,
     )
     expect(html).toBeTruthy()
   })
@@ -350,20 +356,21 @@ describe('AuditTab — correction case visibility', () => {
 describe('FinancialTab — closing balance', () => {
   it('shows explanatory banner when ALL position values are null and no sections', () => {
     // When RC3 not yet connected: single banner replaces the 6 simultaneous UnknownValue cards
-    const html = renderToStaticMarkup(<FinancialTab dto={EMPTY_FINANCIAL} />)
+    const html = renderToStaticMarkup(<FinancialTab dto={EMPTY_FINANCIAL} ownerSlug="test" fromDate={null} toDate={null} />)
     expect(html).toContain('RC3')
   })
 
-  it('shows Settlement Engine / RC2 message when closingBalance is null but other values exist', () => {
-    // When some values are known but closing balance not yet computed → show RC2 unknown
+  it('shows em-dash unknown value when closingBalance is null but other values exist', () => {
+    // P-ARCH-1: Unknown = NULL → em-dash display, not zero
     // overallNet must be non-null so the three-state display machine enters State C (Valid Data)
     const partialDto: OwnerFinancialDTO = {
       ...EMPTY_FINANCIAL,
       overallNet: VALID_OVERALL_NET,
       position: { ...EMPTY_FINANCIAL.position, incomeEur: '1000.00' },
     }
-    const html = renderToStaticMarkup(<FinancialTab dto={partialDto} />)
-    expect(html).toContain('RC2')
+    const html = renderToStaticMarkup(<FinancialTab dto={partialDto} ownerSlug="test" fromDate={null} toDate={null} />)
+    // Null KPI values render as em-dash (—) via UnknownValue component
+    expect(html).toContain('Not yet computed')
   })
 
   it('renders Current Financial Position section heading', () => {
@@ -372,7 +379,7 @@ describe('FinancialTab — closing balance', () => {
       ...EMPTY_FINANCIAL,
       overallNet: VALID_OVERALL_NET,
     }
-    const html = renderToStaticMarkup(<FinancialTab dto={withOverallNet} />)
+    const html = renderToStaticMarkup(<FinancialTab dto={withOverallNet} ownerSlug="test" fromDate={null} toDate={null} />)
     expect(html).toContain('Current Financial Position')
   })
 })

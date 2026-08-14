@@ -198,7 +198,7 @@ async function renderManagementStatement(
             &larr; Back to Financial
           </a>
         </div>
-        <FinancialTab dto={dto} />
+        <FinancialTab dto={dto} ownerSlug={slug} fromDate={null} toDate={null} />
       </div>
     </div>
   )

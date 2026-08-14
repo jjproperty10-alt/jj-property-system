@@ -354,9 +354,10 @@ describe('fetchOwnerFinancial', () => {
 
       const result = await fetchOwnerFinancial({ properties: ['Uriel Sharon English Metro'] })
 
-      // Purchase partially excluded — €250 Purchase Expense preserved
+      // ALL Purchase = JJ internal → fully excluded from owner net
       const deptTypes = result.overallNet!.departments.map(d => d.type)
-      expect(deptTypes).toContain('purchase') // modified section IS included (total_income > 0)
+      expect(deptTypes).not.toContain('purchase')
+      expect(deptTypes).toContain('sale')
     })
 
     it('classifies unlisted property with Purchase as needs_review', async () => {
@@ -404,10 +405,9 @@ describe('fetchOwnerFinancial', () => {
       expect(result.overallNet!.netEur).toBe('5000')
     })
 
-    it('preserves Purchase Expenses in net via modified section (partial exclusion)', async () => {
-      // Sharon: closing_balance = 205250 (includes acquisition principal)
-      //         total_income = 250 (gardener expense billed to client)
-      // After partial exclusion: modified section has closing_balance = 250
+    it('fully excludes ALL Purchase from net for internal_settled (no partial exclusion)', async () => {
+      // Sharon: even though total_income = 250 (gardener expense), ALL Purchase = JJ internal
+      // Purchase is fully excluded from owner net regardless of Purchase Expenses
       mockFetchRC3Report.mockResolvedValueOnce(
         makeReport('Uriel Sharon English Metro', [
           makeSection({
@@ -440,21 +440,19 @@ describe('fetchOwnerFinancial', () => {
 
       const result = await fetchOwnerFinancial({ properties: ['Uriel Sharon English Metro'] })
 
-      // Net = rental(-150 owner_credit → -150) + sale(-40550 client_debt → +40550) + modified_purchase(250 client_debt → -250)
-      // = -150 + 40550 - 250 = 40150
-      // Wait — let me verify: computeNetOwnerBalance:
-      //   owner_credit: net += closing → net += (-150) = -150
-      //   client_debt:  net -= closing → net -= (-40550) = +40550 → cumulative = +40400
-      //   client_debt:  net -= closing → net -= 250 = +40150 → cumulative = 40150
-      // 40150 means Due to You... but let me not hardcode — the key assertion is
-      // that the modified purchase section contributes -250 (not -205250) to net.
+      // Net = rental(-150 owner_credit → -150) + sale(-40550 client_debt → +40550) = 40400
+      // Purchase fully excluded (ALL Purchase = JJ internal)
       expect(result.overallNet).not.toBeNull()
 
-      // The modified purchase section IS present in departments (total_income > 0)
+      // Purchase NOT in departments (full exclusion)
       const purchaseDept = result.overallNet!.departments.find(d => d.type === 'purchase')
-      expect(purchaseDept).toBeDefined()
-      // Modified section closing_balance = 250 (total_income), not 205250
-      expect(purchaseDept!.closingBalanceEur).toBe('250')
+      expect(purchaseDept).toBeUndefined()
+
+      // Net = sale + rental only = 40550 + (-150) = 40400
+      const deptTypes = result.overallNet!.departments.map(d => d.type)
+      expect(deptTypes).toContain('sale')
+      expect(deptTypes).toContain('rental')
+      expect(deptTypes).not.toContain('purchase')
     })
 
     // ── Property groups (per-property net) ──────────────────────────
@@ -491,7 +489,7 @@ describe('fetchOwnerFinancial', () => {
 
     // ── Section DTO: displayNote ────────────────────────────────────
 
-    it('shows partial-exclusion displayNote for internal_settled with Purchase Expenses', async () => {
+    it('shows full-exclusion displayNote for internal_settled even with Purchase Expenses', async () => {
       mockFetchRC3Report.mockResolvedValueOnce(
         makeReport('Uriel Sharon English Metro', [
           makeSection({
@@ -508,9 +506,8 @@ describe('fetchOwnerFinancial', () => {
       const purchaseSection = result.sections.find(s => s.type === 'purchase')
 
       expect(purchaseSection).toBeDefined()
-      expect(purchaseSection!.displayNote).toContain('acquisition principal excluded')
-      expect(purchaseSection!.displayNote).toContain('250')
-      expect(purchaseSection!.displayNote).toContain('Purchase Expenses included')
+      // ALL Purchase = JJ internal — same displayNote regardless of Purchase Expenses
+      expect(purchaseSection!.displayNote).toContain('excluded from Owner Summary')
       expect(purchaseSection!.purchaseDisposition).toBe('internal_settled')
     })
 
@@ -531,8 +528,8 @@ describe('fetchOwnerFinancial', () => {
       const purchaseSection = result.sections.find(s => s.type === 'purchase')
 
       expect(purchaseSection).toBeDefined()
-      expect(purchaseSection!.displayNote).toContain('settled through the Sale account')
-      expect(purchaseSection!.displayNote).toContain('excluded from the Owner Summary')
+      // ALL Purchase = JJ internal — same displayNote for all internal_settled
+      expect(purchaseSection!.displayNote).toContain('excluded from Owner Summary')
       expect(purchaseSection!.purchaseDisposition).toBe('internal_settled')
     })
 
@@ -678,6 +675,84 @@ describe('fetchOwnerFinancial', () => {
       const result = await fetchOwnerFinancial({ properties: ['Oshrit Deklia'] })
 
       expect(result.overallNet).toBeNull()
+    })
+  })
+
+  // ── KPI reconciliation with Purchase exclusion ────────────────────────────
+
+  describe('KPI reconciliation', () => {
+    it('KPIs exclude Purchase sections for internal_settled properties', async () => {
+      mockFetchRC3Report.mockResolvedValueOnce(
+        makeReport('Uriel Duplex', [
+          makeSection({
+            account_type: 'purchase',
+            account_label: 'Property Purchase',
+            balance_convention: 'client_debt',
+            closing_balance: 130000,
+            total_income: 0,
+            total_expenses: 50000,
+            total_bpo: 0,
+          }),
+          makeSection({
+            account_type: 'sale',
+            account_label: 'Property Sale',
+            balance_convention: 'client_debt',
+            closing_balance: -16396,
+            total_income: 0,
+            total_expenses: 16396,
+            total_bpo: 0,
+          }),
+          makeSection({
+            account_type: 'rental',
+            account_label: 'Rental',
+            balance_convention: 'owner_credit',
+            closing_balance: 3000,
+            total_income: 5000,
+            total_expenses: 2000,
+            total_bpo: 3000,
+          }),
+        ]),
+      )
+
+      const result = await fetchOwnerFinancial({ properties: ['Uriel Duplex'] })
+
+      // KPIs should NOT include Purchase section amounts (Purchase = JJ internal)
+      // Only rental + sale contribute to KPIs
+      // incomeEur = rental(5000) + sale(0) = 5000 (purchase excluded)
+      // expensesEur = rental(2000) + sale(16396) = 18396 (purchase excluded)
+      expect(result.position.incomeEur).toBe('5000')
+      expect(result.position.expensesEur).toBe('18396')
+    })
+
+    it('KPIs include Purchase sections for needs_review properties', async () => {
+      mockFetchRC3Report.mockResolvedValueOnce(
+        makeReport('Tamir Dekelia', [
+          makeSection({
+            account_type: 'purchase',
+            account_label: 'Property Purchase',
+            balance_convention: 'client_debt',
+            closing_balance: 180000,
+            total_income: 0,
+            total_expenses: 70000,
+          }),
+          makeSection({
+            account_type: 'rental',
+            account_label: 'Rental',
+            balance_convention: 'owner_credit',
+            closing_balance: 2000,
+            total_income: 4000,
+            total_expenses: 1000,
+          }),
+        ]),
+      )
+
+      const result = await fetchOwnerFinancial({ properties: ['Tamir Dekelia'] })
+
+      // Tamir not in evidence registry → needs_review → Purchase stays in KPIs
+      // incomeEur = purchase(0) + rental(4000) = 4000
+      // expensesEur = purchase(70000) + rental(1000) = 71000
+      expect(result.position.incomeEur).toBe('4000')
+      expect(result.position.expensesEur).toBe('71000')
     })
   })
 })
