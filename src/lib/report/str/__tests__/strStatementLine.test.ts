@@ -36,10 +36,43 @@ describe('buildStrStatementLine — decisions A & B', () => {
 
   it('explicit taxes = 0 (from source) computes cleanly (0 is not Unknown)', () => {
     const l = buildStrStatementLine(booking({ taxesEur: 0, platformPayoutEvidenceEur: 770.24 }))
-    // mgmt = 0.20*(770.24-50-0)=144.05; net = 770.24-50-144.05 = 576.19
-    expect(l.managementFee.value).toBe(144.05)
-    expect(l.netOwnerPayout.value).toBe(576.19)
+    // Booking platform fees = 135.93 + round(906.17*1.6%)=14.50 => 150.43; totalPayout = 755.74
+    // mgmt = 0.20*(755.74-50-0)=141.15; net = 755.74-50-141.15 = 564.59
+    expect(l.platformFees.value).toBe(150.43)
+    expect(l.managementFee.value).toBe(141.15)
+    expect(l.netOwnerPayout.value).toBe(564.59)
     expect(l.needsReview).toBe(false)
+  })
+
+  it('Booking payment fee: platformFees = channelCommission + round(gross x 1.6%), cent-exact', () => {
+    // Real Tamir Dekelia July reservation, matches Hostaway Owner Statement to the cent (187.87).
+    const l = buildStrStatementLine(booking({ grossEur: 1131.71, platformFeesEur: 169.76 }))
+    expect(l.platformFees.value).toBe(187.87)           // 169.76 + round(18.10736)=18.11
+    expect(l.platformFees.source).toContain('booking_payment_fee_1_6pct')
+  })
+
+  it('Airbnb is NEVER charged the Booking payment fee (platformFees = host fee)', () => {
+    const l = buildStrStatementLine(airbnb())
+    expect(l.platformFees.value).toBe(159.03)
+    expect(l.platformFees.source).not.toContain('booking_payment_fee')
+  })
+
+  it('verified-zero tax evidence unblocks a null-tax Booking line (0 is verified, not Unknown)', () => {
+    const l = buildStrStatementLine(booking({ grossEur: 1131.71, platformFeesEur: 169.76, taxVerifiedZeroEvidence: true }))
+    // platformFees 187.87; totalPayout 943.84; mgmt=0.20*(943.84-50)=178.77; net=943.84-50-178.77=715.07
+    expect(l.taxes.value).toBe(0)
+    expect(l.taxes.provenance).toBe('hostaway')
+    expect(l.taxes.source).toContain('verified_zero_tax')
+    expect(l.managementFee.value).toBe(178.77)
+    expect(l.netOwnerPayout.value).toBe(715.07)
+    expect(l.needsReview).toBe(false)
+  })
+
+  it('null tax WITHOUT verified-zero evidence still Needs Review (Unknown != 0)', () => {
+    const l = buildStrStatementLine(booking({ taxVerifiedZeroEvidence: false }))
+    expect(l.taxes.value).toBeNull()
+    expect(l.netOwnerPayout.value).toBeNull()
+    expect(l.reviewReasons).toContain('tax_unknown')
   })
 
   it('platform payout evidence is separate and NEVER the net owner payout', () => {
