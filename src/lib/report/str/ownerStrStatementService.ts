@@ -10,6 +10,7 @@ import { createServiceClient } from '@/lib/supabase'
 import { PropertyAuditService, isRevenueEligible, parsePeriodFromDescription } from '@/lib/hostaway-audit'
 import { maskGuestName } from '@/lib/owners/ownerReservationAdapter'
 import { composeOwnerStrStatement, isOwnerStatementExtra, type OwnerStrStatement, type StatementReservationEvidence, type StatementExtra } from './ownerStrStatement'
+import { isTaxVerifiedZero } from './taxEvidence'
 
 export interface OwnerStrStatementInput {
   readonly ownerName: string
@@ -46,6 +47,8 @@ function toEvidence(propertyName: string, r: any, today: string): StatementReser
     platformFeesSource,
     cleaningEur: f.cleaningFee ?? null,
     taxesEur: f.taxAmount ?? null,               // null stays Unknown (never coerced to 0)
+    // Narrow verified-zero-tax evidence: only Booking periods with an explicit Hostaway statement.
+    taxVerifiedZeroEvidence: isTaxVerifiedZero(String(r.channel), propertyName, r.checkIn),
     platformPayoutEvidenceEur: f.payout?.amount ?? null,
   }
 }
