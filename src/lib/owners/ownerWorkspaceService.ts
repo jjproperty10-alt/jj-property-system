@@ -53,6 +53,7 @@ import { getFinancial } from './ownerFinancialService'
 import { getMaintenanceItems } from './ownerMaintenanceService'
 import type { ReservationActivityDTO } from './ownerReservationService'
 import { getReservations, getReservationActivity } from './ownerReservationService'
+import { selectStrProperties } from './selectStrProperties'
 import { getPortfolio } from './ownerPortfolioAdapter'
 import type {
   OwnersRoomDTO,
@@ -198,28 +199,44 @@ function buildRoomItemsFromIdentities(owners: readonly ResolvedManagedIdentityDT
 export async function resolveOwnerWorkspace(slug: string): Promise<OwnerWorkspaceResolutionResult> {
   const result = await resolveBySlug(slug)
 
+  let entityId: string
+  let displayName: string
+  let properties: string[]
+  let preferredLanguage: 'he' | 'en' | 'ru' | null = null
+  let country: string | null = null
+
   switch (result.status) {
     case 'not_found':
       return { status: 'not_found', slug: result.slug }
     case 'ambiguous':
       return { status: 'ambiguous', slug: result.slug, candidates: result.candidates }
-    case 'relationship_missing':
-      return { status: 'relationship_missing', entityId: result.entityId, displayName: result.displayName }
     case 'source_unavailable':
       return { status: 'source_unavailable', error: result.error }
     case 'resolved':
+      entityId = result.data.identity.entityId
+      displayName = result.data.identity.displayName
+      properties = result.data.managedProperties.map(r => r.propertyName).sort()
+      preferredLanguage = result.data.identity.preferredLanguage
+      country = result.data.identity.country
       break
+    case 'relationship_missing': {
+      // A canonical active entity with an active STR engagement (e.g. an ownership_group) is a valid
+      // owner even without a management_relationship. Resolve it via the STR engagement chain. This
+      // preserves the canonical entity (no duplicate identity, no fake managed_client) and fails
+      // closed: if there is no active STR property, stay relationship_missing.
+      const services = await getOwnerServiceEngagements(slug)
+      const strProps = selectStrProperties(services)
+      if (strProps.length === 0) {
+        return { status: 'relationship_missing', entityId: result.entityId, displayName: result.displayName }
+      }
+      entityId = result.entityId
+      displayName = result.displayName
+      properties = strProps.map(p => p.name).sort()
+      break
+    }
   }
 
-  const { data: resolved } = result
-  const properties = resolved.managedProperties.map(r => r.propertyName).sort()
-  const identity = buildOwnerIdentity(
-    resolved.identity.entityId,
-    resolved.identity.displayName,
-    properties,
-    resolved.identity.preferredLanguage,
-    resolved.identity.country,
-  )
+  const identity = buildOwnerIdentity(entityId, displayName, properties, preferredLanguage, country)
 
   const now = new Date()
   const year = now.getFullYear()
@@ -614,9 +631,17 @@ export async function getOwnerServiceEngagements(
 
   // Resolve slug -> entity identity (reuse G1 canonical service)
   const identity = await resolveBySlug(slug)
-  if (identity.status !== 'resolved') return empty
-
-  const entityId = identity.data.identity.entityId
+  let entityId: string
+  if (identity.status === 'resolved') {
+    entityId = identity.data.identity.entityId
+  } else if (identity.status === 'relationship_missing') {
+    // A canonical entity with STR engagements (e.g. an ownership_group) has no management_relationship
+    // but is still a valid owner. Use its entityId to fetch service engagements. Fail-closed: the
+    // adapter returns empty if there are no engagements.
+    entityId = identity.entityId
+  } else {
+    return empty
+  }
 
   // Delegate to adapter
   const { fetchEntityServiceEngagements } = await import('./ownerServiceEngagementAdapter')
