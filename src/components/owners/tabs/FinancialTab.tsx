@@ -1,8 +1,8 @@
 /**
- * Financial Tab â "Where is the owner's money?"
+ * Financial Tab — "Where is the owner's money?"
  *
  * Rules (OWNER_VERTICAL_SLICE_BRIEF Section 5.2):
- * - All values arrive via props/DTO â no client-side accounting
+ * - All values arrive via props/DTO — no client-side accounting
  * - Cashbox values do NOT appear here (Finance module only)
  * - Null values show UnknownValue, never 0
  * - RC3 engine is source of truth for all amounts
@@ -26,9 +26,9 @@ export function FinancialTab({ dto, periodLabel, ownerSlug, fromDate, toDate }: 
   const { position, overallNet, sections, propertyGroups, timeline, occupancyPosition, historicalSummary } = dto
 
   // Three-state financial display:
-  // A. No Data â overallNet null, no sections, no occupancy â Empty State only
-  // B. Needs Review â overallNet.reviewStatus='needs_review' â warning banner
-  // C. Valid Data â normal 6 KPI cards
+  // A. No Data — overallNet null, no sections, no occupancy → Empty State only
+  // B. Needs Review — overallNet.reviewStatus='needs_review' → warning banner
+  // C. Valid Data — normal 6 KPI cards
   const hasPropertyGroups = propertyGroups != null && propertyGroups.length > 0
   const hasAnyFinancialContent = sections.length > 0 || occupancyPosition != null || hasPropertyGroups
   const noFinancialData = overallNet === null && !hasAnyFinancialContent
@@ -51,7 +51,7 @@ export function FinancialTab({ dto, periodLabel, ownerSlug, fromDate, toDate }: 
         periodLabel={periodLabel ?? 'All History'}
       />
 
-      {/* Current financial position â only when overallNet provides computed values */}
+      {/* Current financial position — only when overallNet provides computed values */}
       {overallNet != null && (
         <section aria-labelledby="fin-position-heading">
           <h2 id="fin-position-heading" className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
@@ -74,7 +74,7 @@ export function FinancialTab({ dto, periodLabel, ownerSlug, fromDate, toDate }: 
                 value={
                   closingBalanceFromNet != null
                     ? <MoneyValue amount={parseFloat(closingBalanceFromNet)} size="lg" />
-                    : <UnknownValue reason="Settlement Engine (RC2) â not yet computed" />
+                    : <UnknownValue reason="Settlement Engine (RC2) — not yet computed" />
                 }
               />
             </div>
@@ -112,7 +112,7 @@ export function FinancialTab({ dto, periodLabel, ownerSlug, fromDate, toDate }: 
 
       {noFinancialData && !hasHistoricalOnly && (
         <EmptyState
-          icon="ð¶"
+          icon="💶"
           title="No financial data available"
           description="Financial data will appear here once RC3 views are connected to this owner."
         />
@@ -130,7 +130,7 @@ export function FinancialTab({ dto, periodLabel, ownerSlug, fromDate, toDate }: 
       {/* Legacy Overall Net (flat view fallback) */}
       {overallNet && !hasPropertyGroups && <OverallNetRelationship overallNet={overallNet} />}
 
-      {/* Occupancy Position â personal occupancy obligations (Oshrit) */}
+      {/* Occupancy Position — personal occupancy obligations (Oshrit) */}
       {occupancyPosition && <OccupancySection position={occupancyPosition} />}
 
       {/* Financial timeline */}
@@ -165,9 +165,9 @@ export function FinancialTab({ dto, periodLabel, ownerSlug, fromDate, toDate }: 
   )
 }
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─────────────────────────────────────────────────────────────
 // Sub-components
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─────────────────────────────────────────────────────────────
 
 function MoneyKpi({ label, value }: { label: string; value: string | null }) {
   return (
@@ -183,10 +183,11 @@ function MoneyKpi({ label, value }: { label: string; value: string | null }) {
 }
 
 function FinancialSection({ section, periodLabel }: { section: OwnerFinancialDTO['sections'][number]; periodLabel?: string }) {
-  const DIR: Record<'due_to_jj' | 'due_to_you' | 'settled', { label: string; cls: string }> = {
+  const DIR: Record<'due_to_jj' | 'due_to_you' | 'settled' | 'internal', { label: string; cls: string }> = {
     due_to_jj:  { label: 'Due to JJ',  cls: 'text-red-700 bg-red-50 border-red-200' },
     due_to_you: { label: 'Due to You', cls: 'text-green-700 bg-green-50 border-green-200' },
     settled:    { label: 'Settled',    cls: 'text-gray-600 bg-gray-50 border-gray-200' },
+    internal:   { label: 'JJ Internal', cls: 'text-blue-700 bg-blue-50 border-blue-200' },
   }
   const dir = section.ownerDirection ? DIR[section.ownerDirection] : null
   const columns: DataTableColumn[] = [
@@ -196,24 +197,31 @@ function FinancialSection({ section, periodLabel }: { section: OwnerFinancialDTO
     { key: 'evidenceRef', label: 'Evidence' },
   ]
 
-  const rows: Record<string, ReactNode>[] = section.rows.map((row: OwnerFinancialRowDTO) => ({
-    date: (
-      <time dateTime={row.date} dir="ltr" className="text-sm text-gray-600">
-        {formatDate(row.date)}
-      </time>
-    ),
-    description: <span className="text-sm text-gray-900">{row.description}</span>,
-    amountEur: row.amountEur != null ? (
-      <MoneyValue amount={parseFloat(row.amountEur)} size="sm" />
-    ) : (
-      <UnknownValue reason="Amount unknown" />
-    ),
-    evidenceRef: row.evidenceRef ? (
-      <a href={row.evidenceRef} className="text-xs text-blue-600 hover:underline">View â</a>
-    ) : (
-      <span className="text-xs text-gray-300">â</span>
-    ),
-  }))
+  const rows: Record<string, ReactNode>[] = section.rows.map((row: OwnerFinancialRowDTO) => {
+    const isRef = row.isReference === true
+    const textCls = isRef ? 'text-sm text-gray-400 italic' : 'text-sm text-gray-900'
+    const dateCls = isRef ? 'text-sm text-gray-400 italic' : 'text-sm text-gray-600'
+    return {
+      date: (
+        <time dateTime={row.date} dir="ltr" className={dateCls}>
+          {formatDate(row.date)}
+        </time>
+      ),
+      description: <span className={textCls}>{row.description}{isRef ? ' (Reference)' : ''}</span>,
+      amountEur: row.amountEur != null ? (
+        <span className={isRef ? 'opacity-50' : ''}>
+          <MoneyValue amount={parseFloat(row.amountEur)} size="sm" />
+        </span>
+      ) : (
+        <UnknownValue reason="Amount unknown" />
+      ),
+      evidenceRef: row.evidenceRef ? (
+        <a href={row.evidenceRef} className="text-xs text-blue-600 hover:underline">View →</a>
+      ) : (
+        <span className="text-xs text-gray-300">{'—'}</span>
+      ),
+    }
+  })
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -236,17 +244,24 @@ function FinancialSection({ section, periodLabel }: { section: OwnerFinancialDTO
                 ? <span className="font-medium text-green-700">Settled · €0</span>
                 : <>Balance: {section.closingBalanceEur != null
                     ? <MoneyValue amount={parseFloat(section.closingBalanceEur)} size="sm" />
-                    : 'â'}</>}
+                    : '—'}</>}
             </span>
           ) : (
             <span className="text-gray-500">
               Net: {section.netEur != null
                 ? <MoneyValue amount={parseFloat(section.netEur)} size="sm" />
-                : 'â'}
+                : '—'}
             </span>
           ))}
         </div>
       </div>
+      {/* Opening balance (visible only when custom date range produces non-zero OB) */}
+      {section.openingBalanceEur != null && parseFloat(section.openingBalanceEur) !== 0 && (
+        <div className="flex items-center justify-between px-4 py-1.5 bg-blue-50 border-b border-blue-100 text-xs text-blue-700">
+          <span>Opening Balance</span>
+          <MoneyValue amount={parseFloat(section.openingBalanceEur)} size="sm" />
+        </div>
+      )}
       {/* Display note (e.g. JJ Internal Acquisition for NEEDS_REVIEW purchase sections) */}
       {section.displayNote && (
         <div className="px-4 py-2 bg-amber-50 border-b border-amber-200 text-xs text-amber-800">
@@ -289,7 +304,7 @@ function OverallNetRelationship({ overallNet }: { overallNet: OwnerOverallNetDTO
         </h2>
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-4">
           <div className="flex items-start gap-3">
-            <span className="text-amber-600 text-lg flex-shrink-0">â </span>
+            <span className="text-amber-600 text-lg flex-shrink-0">⚠</span>
             <div>
               <p className="text-sm font-semibold text-amber-800">Needs Review</p>
               <p className="text-sm text-amber-700 mt-1">
@@ -319,7 +334,7 @@ function OverallNetRelationship({ overallNet }: { overallNet: OwnerOverallNetDTO
                 </span>
                 <span className="text-sm font-medium text-gray-900 tabular-nums" dir="ltr">
                   {dept.label_status === 'settled'
-                    ? 'â¬0'
+                    ? '€0'
                     : <MoneyValue amount={parseFloat(dept.displayAmountEur)} size="sm" />}
                 </span>
               </div>
@@ -339,7 +354,7 @@ function OverallNetRelationship({ overallNet }: { overallNet: OwnerOverallNetDTO
             </span>
             <span className="text-lg font-bold text-gray-900 tabular-nums" dir="ltr">
               {overallNet.label === 'settled'
-                ? 'â¬0'
+                ? '€0'
                 : <MoneyValue amount={parseFloat(overallNet.displayAmountEur)} size="lg" />}
             </span>
           </div>
@@ -350,19 +365,31 @@ function OverallNetRelationship({ overallNet }: { overallNet: OwnerOverallNetDTO
 }
 
 function PropertyGroup({ group, periodLabel }: { group: PropertyFinancialGroupDTO; periodLabel?: string }) {
-  const DIR: Record<'due_to_jj' | 'due_to_you' | 'settled', { label: string; cls: string }> = {
+  const DIR: Record<'due_to_jj' | 'due_to_you' | 'settled' | 'internal', { label: string; cls: string }> = {
     due_to_jj:  { label: 'Due to JJ',  cls: 'text-red-700 bg-red-50 border-red-200' },
     due_to_you: { label: 'Due to You', cls: 'text-green-700 bg-green-50 border-green-200' },
     settled:    { label: 'Settled',    cls: 'text-gray-600 bg-gray-50 border-gray-200' },
+    internal:   { label: 'JJ Internal', cls: 'text-blue-700 bg-blue-50 border-blue-200' },
   }
-  const dir = DIR[group.propertyNet.label]
+  const dir = DIR[group.propertyNet.label] ?? DIR.settled
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden">
-      {/* Property heading */}
-      <div className="px-4 py-3 bg-gray-100 border-b border-gray-200">
+    <details open className="border border-gray-200 rounded-lg overflow-hidden group/prop">
+      {/* Property heading — click to collapse/expand */}
+      <summary className="px-4 py-3 bg-gray-100 border-b border-gray-200 cursor-pointer list-none flex items-center justify-between [&::-webkit-details-marker]:hidden">
         <h3 className="text-sm font-bold text-gray-900">{group.propertyName}</h3>
-      </div>
+        <div className="flex items-center gap-3">
+          <span className={`text-xs border rounded px-2 py-0.5 font-medium ${dir.cls}`}>
+            {dir.label}
+          </span>
+          <span className="text-sm font-bold text-gray-900 tabular-nums" dir="ltr">
+            {group.propertyNet.label === 'settled'
+              ? '€0'
+              : <MoneyValue amount={parseFloat(group.propertyNet.displayAmountEur)} size="sm" />}
+          </span>
+          <span className="text-gray-400 text-xs transition-transform group-open/prop:rotate-180">▼</span>
+        </div>
+      </summary>
 
       {/* Category sections within property */}
       <div className="space-y-0 divide-y divide-gray-100">
@@ -398,7 +425,7 @@ function PropertyGroup({ group, periodLabel }: { group: PropertyFinancialGroupDT
           </span>
         </div>
       </div>
-    </div>
+    </details>
   )
 }
 
@@ -496,19 +523,19 @@ function OccupancySection({ position }: { position: OccupancyPositionDTO }) {
   return (
     <section aria-labelledby="fin-occupancy-heading">
       <h2 id="fin-occupancy-heading" className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-        Personal Occupancy â {position.propertyName}
+        Personal Occupancy — {position.propertyName}
       </h2>
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
         {/* Summary header */}
         <div className="px-4 py-3 bg-blue-50 border-b border-blue-200">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-blue-600 text-sm">ð </span>
+            <span className="text-blue-600 text-sm">🏠</span>
             <span className="text-sm font-semibold text-blue-900">
-              â¬{position.monthlyAmountEur}/month since {formatDate(position.effectiveFrom)}
+              €{position.monthlyAmountEur}/month since {formatDate(position.effectiveFrom)}
             </span>
           </div>
           <p className="text-xs text-blue-700">
-            Economic bearer: Yossi (personal obligation â not JJ company expense)
+            Economic bearer: Yossi (personal obligation — not JJ company expense)
           </p>
         </div>
 
@@ -543,17 +570,17 @@ function OccupancySection({ position }: { position: OccupancyPositionDTO }) {
           <div className="flex gap-4 text-sm">
             {parseFloat(position.settledByJjEur) > 0 && (
               <span className="text-gray-700">
-                JJ: <span className="font-medium tabular-nums" dir="ltr">â¬{position.settledByJjEur}</span>
+                JJ: <span className="font-medium tabular-nums" dir="ltr">€{position.settledByJjEur}</span>
               </span>
             )}
             {parseFloat(position.settledByJacobEur) > 0 && (
               <span className="text-gray-700">
-                Jacob: <span className="font-medium tabular-nums" dir="ltr">â¬{position.settledByJacobEur}</span>
+                Jacob: <span className="font-medium tabular-nums" dir="ltr">€{position.settledByJacobEur}</span>
               </span>
             )}
             {parseFloat(position.settledByYossiEur) > 0 && (
               <span className="text-gray-700">
-                Yossi: <span className="font-medium tabular-nums" dir="ltr">â¬{position.settledByYossiEur}</span>
+                Yossi: <span className="font-medium tabular-nums" dir="ltr">€{position.settledByYossiEur}</span>
               </span>
             )}
           </div>
@@ -562,7 +589,7 @@ function OccupancySection({ position }: { position: OccupancyPositionDTO }) {
         {/* Needs Review guard */}
         <div className="px-4 py-3 bg-amber-50 border-t border-amber-200">
           <div className="flex items-start gap-2">
-            <span className="text-amber-600 text-sm flex-shrink-0">â </span>
+            <span className="text-amber-600 text-sm flex-shrink-0">⚠</span>
             <p className="text-xs text-amber-700">
               Occupancy obligations are tracked but not yet integrated into the settlement engine.
               Outstanding amounts are not subtracted from the Overall Net until the partner

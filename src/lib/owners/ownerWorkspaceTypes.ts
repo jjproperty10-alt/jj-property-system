@@ -503,11 +503,13 @@ export interface OwnerFinancialSectionDTO {
   /** Property this section belongs to (multi-property owners need attribution). */
   propertyName?: string | null
   /** Owner-facing direction for this section (convention-aware, from closing balance). Display only. */
-  ownerDirection?: 'due_to_jj' | 'due_to_you' | 'settled'
+  ownerDirection?: 'due_to_jj' | 'due_to_you' | 'settled' | 'internal'
   ownerDirectionAmountEur?: EuroAmount
   incomeEur: EuroAmount
   expensesEur: EuroAmount
   netEur: EuroAmount
+  /** Engine-computed opening balance for this section (non-zero when custom date range) */
+  openingBalanceEur?: EuroAmount
   /** Engine-computed closing balance for this section */
   closingBalanceEur: EuroAmount
   /** Balance convention: 'client_debt' or 'owner_credit' */
@@ -561,6 +563,8 @@ export interface OwnerFinancialRowDTO {
   amountEur: EuroAmount
   /** Source evidence reference */
   evidenceRef: string | null
+  /** True for contract/reference rows (balance_effect=0, shown for explainability) */
+  isReference?: boolean
 }
 
 export interface FinancialTimelineItemDTO {

@@ -71,14 +71,41 @@ function mapDisplayGroup(dg: DisplayGroup): 'income' | 'expense' | 'payment' | '
   }
 }
 
-function mapRowToDTO(row: RC3AccountRow): OwnerFinancialRowDTO {
+/**
+ * Override descriptions for known semantic patterns.
+ * DS-009B: Fabi staff accommodation in Uriel Duplex —
+ * Tenant Payment rows with description 'שכירות הדירה למטה' are staff accommodation offsets.
+ */
+function resolveDescription(row: RC3AccountRow, propertyName?: string | null): string {
+  const base = row.description ?? row.display_label ?? row.subcategory ?? ''
+  // DS-009B: Fabi staff accommodation rent in Duplex
+  if (
+    propertyName &&
+    propertyName.toLowerCase().includes('duplex') &&
+    row.subcategory === 'Tenant Payment' &&
+    (base.includes('שכירות הדירה למטה') || base.includes('Staff Accommodation'))
+  ) {
+    return 'Staff Accommodation — Rent Offset (Fabi)'
+  }
+  if (
+    propertyName &&
+    propertyName.toLowerCase().includes('duplex') &&
+    row.display_label === 'Staff Accommodation Rent'
+  ) {
+    return 'Staff Accommodation Rent — Owner Entitlement'
+  }
+  return base
+}
+
+function mapRowToDTO(row: RC3AccountRow, propertyName?: string | null): OwnerFinancialRowDTO {
   return {
     id:           row.id,
     date:         row.date,
-    description:  row.description ?? row.display_label ?? row.subcategory ?? '',
+    description:  resolveDescription(row, propertyName),
     displayGroup: mapDisplayGroup(row.display_group),
     amountEur:    toEur(row.client_amount),
     evidenceRef:  null,
+    isReference:  row.display_group === 'reference',
   }
 }
 
@@ -91,7 +118,7 @@ function mapSectionToDTO(
     ? section.closing_balance
     : -section.closing_balance
   const visibleRows = section.rows.filter(
-    r => !r.is_platform_tracking && r.display_group !== 'reference',
+    r => !r.is_platform_tracking,
   )
 
   // Purchase sections: label based on disposition from rule engine
@@ -119,12 +146,13 @@ function mapSectionToDTO(
     incomeEur:          toEur(section.total_income),
     expensesEur:        toEur(section.total_expenses),
     netEur:             toEur(section.total_income - section.total_expenses),
+    openingBalanceEur:  section.opening_balance !== 0 ? toEur(section.opening_balance) : undefined,
     closingBalanceEur:  toEur(section.closing_balance),
     balanceConvention:  section.balance_convention,
     propertyName:       propertyName ?? null,
-    ownerDirection:     netLabel(normalized),
-    ownerDirectionAmountEur: toEur(Math.abs(normalized)),
-    rows:               visibleRows.map(mapRowToDTO),
+    ownerDirection:     isInternalPurchase ? 'internal' : netLabel(normalized),
+    ownerDirectionAmountEur: isInternalPurchase ? toEur(Math.abs(normalized)) : toEur(Math.abs(normalized)),
+    rows:               visibleRows.map(r => mapRowToDTO(r, propertyName)),
     displayNote,
     purchaseDisposition: purchaseDisposition ?? undefined,
   }
