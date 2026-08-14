@@ -41,6 +41,13 @@ export interface StrLineEvidence {
   readonly taxesEur: number | null
   /** Platform payout evidence only (totalPrice - platform fee). NEVER the net owner payout. */
   readonly platformPayoutEvidenceEur: number | null
+  /**
+   * Narrow evidence override (approved 2026-08): when `taxesEur` is null, tax normally stays
+   * Unknown/Needs Review (Unknown != 0). This flag is set ONLY when an authoritative Hostaway
+   * Owner Statement for this reservation's period explicitly proves Taxes = €0.00 — then, and only
+   * then, tax is a VERIFIED zero. It NEVER turns a bare null into 0 without that explicit evidence.
+   */
+  readonly taxVerifiedZeroEvidence?: boolean
 }
 
 export interface StrStatementLine {
@@ -67,6 +74,15 @@ export function roundEur(n: number): number {
 export const JJ_STR_MANAGEMENT_FEE_RATE = 0.20
 
 /**
+ * Booking.com payment/facilitation fee ("Payments by Booking.com"), 1.6% of gross.
+ * PROVEN cent-exact per-reservation against Hostaway's own Owner Statements (Tamir July + August 2026):
+ * Hostaway Platform Fees = channelCommissionAmount (15%) + round(gross x 1.6%). This is a REAL platform
+ * fee charged by Booking.com — evidenced by Hostaway, applied only to the `booking` channel. Airbnb and
+ * direct channels are unaffected. Report calculation only — never creates/mutates transactions.
+ */
+export const JJ_BOOKING_PAYMENT_FEE_RATE = 0.016
+
+/**
  * Build one statement line from Hostaway evidence + JJ policy.
  * managementRate defaults to the approved 20%. `hostawayManagementFee` is accepted for the future
  * case where Hostaway starts providing it (today it is always null) — when present it is compared,
@@ -80,7 +96,21 @@ export function buildStrStatementLine(
   const reasons: string[] = []
 
   const gross: StatementAmount = { value: ev.grossEur, provenance: ev.grossEur == null ? 'unknown' : 'hostaway', source: 'hostaway:totalPrice' }
-  const platformFees: StatementAmount = { value: ev.platformFeesEur, provenance: ev.platformFeesEur == null ? 'unknown' : 'hostaway', source: ev.platformFeesSource }
+
+  // Platform Fees: channel commission (Hostaway evidence) PLUS, for Booking.com only, the proven 1.6%
+  // Booking payment fee. Verified cent-exact against Hostaway Owner Statements. Airbnb/direct untouched.
+  const isBooking = ev.channel === 'booking'
+  const bookingPaymentFee =
+    isBooking && ev.grossEur != null ? roundEur(ev.grossEur * JJ_BOOKING_PAYMENT_FEE_RATE) : null
+  const platformFeesValue =
+    ev.platformFeesEur != null && bookingPaymentFee != null
+      ? roundEur(ev.platformFeesEur + bookingPaymentFee)
+      : ev.platformFeesEur
+  const platformFeesSource =
+    bookingPaymentFee != null && ev.platformFeesEur != null
+      ? `${ev.platformFeesSource}+jj_derived:booking_payment_fee_1_6pct`
+      : ev.platformFeesSource
+  const platformFees: StatementAmount = { value: platformFeesValue, provenance: platformFeesValue == null ? 'unknown' : 'hostaway', source: platformFeesSource }
   const cleaning: StatementAmount = { value: ev.cleaningEur, provenance: ev.cleaningEur == null ? 'unknown' : 'hostaway', source: 'hostaway:cleaningFee' }
   const platformPayoutEvidence: StatementAmount = {
     value: ev.platformPayoutEvidenceEur,
@@ -88,24 +118,30 @@ export function buildStrStatementLine(
     source: 'hostaway:platform_payout_evidence',
   }
 
-  // Taxes: null stays Unknown/Needs Review — never coerced to 0.
+  // Taxes: an explicit source value is used as-is. A bare null stays Unknown/Needs Review (Unknown != 0)
+  // UNLESS an authoritative Hostaway statement explicitly proves Taxes = €0.00 for the period (verified
+  // zero). Only these two cases make tax "certain"; a bare null with no evidence never becomes 0.
   const taxesKnown = ev.taxesEur != null
+  const taxVerifiedZero = ev.taxesEur == null && ev.taxVerifiedZeroEvidence === true
+  const taxCertain = taxesKnown || taxVerifiedZero
   const taxes: StatementAmount = taxesKnown
     ? { value: ev.taxesEur, provenance: 'hostaway', source: 'hostaway:taxAmount' }
-    : { value: null, provenance: 'unknown', source: 'hostaway:taxAmount(null)' }
-  if (!taxesKnown) reasons.push('tax_unknown')
+    : taxVerifiedZero
+      ? { value: 0, provenance: 'hostaway', source: 'hostaway_statement:verified_zero_tax' }
+      : { value: null, provenance: 'unknown', source: 'hostaway:taxAmount(null)' }
+  if (!taxCertain) reasons.push('tax_unknown')
   if (ev.grossEur == null) reasons.push('gross_unknown')
-  if (ev.platformFeesEur == null) reasons.push('platform_fees_unknown')
+  if (platformFeesValue == null) reasons.push('platform_fees_unknown')
   if (ev.cleaningEur == null) reasons.push('cleaning_unknown')
 
   // Total Payout = Gross - Platform Fees (evidence spine for the derived chain)
   const totalPayout =
-    ev.grossEur != null && ev.platformFeesEur != null ? roundEur(ev.grossEur - ev.platformFeesEur) : null
+    ev.grossEur != null && platformFeesValue != null ? roundEur(ev.grossEur - platformFeesValue) : null
 
   // Management Fee (decision A): JJ-derived 20% x (Total Payout - Cleaning - Taxes).
   // Requires Total Payout, Cleaning, AND Taxes to be known — otherwise Unknown/Needs Review.
   let managementFee: StatementAmount
-  const canComputeMgmt = totalPayout != null && ev.cleaningEur != null && taxesKnown
+  const canComputeMgmt = totalPayout != null && ev.cleaningEur != null && taxCertain
   if (opts.hostawayManagementFee != null) {
     managementFee = { value: roundEur(opts.hostawayManagementFee), provenance: 'hostaway', source: 'hostaway:managementFee' }
     if (canComputeMgmt) {
@@ -124,7 +160,7 @@ export function buildStrStatementLine(
   }
 
   // Net Owner Payout (decision B): Total Payout - Cleaning - Management Fee - Taxes.
-  const canComputeNet = totalPayout != null && ev.cleaningEur != null && managementFee.value != null && taxesKnown
+  const canComputeNet = totalPayout != null && ev.cleaningEur != null && managementFee.value != null && taxCertain
   const netOwnerPayout: StatementAmount = canComputeNet
     ? {
         value: roundEur(totalPayout! - ev.cleaningEur! - managementFee.value! - (ev.taxesEur ?? 0)),
