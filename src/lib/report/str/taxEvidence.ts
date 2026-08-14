@@ -26,6 +26,13 @@ export const VERIFIED_ZERO_TAX_REGISTER: readonly VerifiedZeroTaxPeriod[] = [
     periodEnd: '2026-07-31',
     source: 'Hostaway Owner Statement July 2026 (Total taxes €0.00) — approved by Yossi 2026-08',
   },
+  {
+    channel: 'booking',
+    propertyNames: ['Ofri Makarios 5 Floor'],
+    periodStart: '2026-07-01',
+    periodEnd: '2026-07-31',
+    source: 'Hostaway Owner Statement July 2026 — Ofri/Sky View Booking rows show Taxes €0.00 — approved by Yossi 2026-08',
+  },
 ]
 
 /**

@@ -11,6 +11,7 @@ import { PropertyAuditService, isRevenueEligible } from '@/lib/hostaway-audit'
 import { getStrReconciliationByName } from './ownerStrAuditAdapter'
 import { buildStrStatementLine, type StrLineEvidence } from '@/lib/report/str/strStatementLine'
 import { isTaxVerifiedZero } from '@/lib/report/str/taxEvidence'
+import { getAuthoritativeStatementLine } from '@/lib/report/str/statementEvidence'
 
 export interface StrPropertyBreakdown {
   readonly propertyId: string
@@ -95,6 +96,7 @@ export async function buildOwnerStrCockpit(input: OwnerStrCockpitInput): Promise
           cleaningEur: f.cleaningFee ?? null,
           taxesEur: f.taxAmount ?? null,
           taxVerifiedZeroEvidence: isTaxVerifiedZero(String(r.channel), p.name, r.checkIn),
+          authoritativeLine: getAuthoritativeStatementLine(r.hostawayReservationId, p.name, r.checkIn) ?? undefined,
           platformPayoutEvidenceEur: f.payout?.amount ?? null,
         }
         const line = buildStrStatementLine(ev)

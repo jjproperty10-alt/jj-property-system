@@ -11,6 +11,7 @@ import { PropertyAuditService, isRevenueEligible, parsePeriodFromDescription } f
 import { maskGuestName } from '@/lib/owners/ownerReservationAdapter'
 import { composeOwnerStrStatement, isOwnerStatementExtra, type OwnerStrStatement, type StatementReservationEvidence, type StatementExtra } from './ownerStrStatement'
 import { isTaxVerifiedZero } from './taxEvidence'
+import { getAuthoritativeStatementLine, belongsToStatementMonth } from './statementEvidence'
 
 export interface OwnerStrStatementInput {
   readonly ownerName: string
@@ -49,6 +50,8 @@ function toEvidence(propertyName: string, r: any, today: string): StatementReser
     taxesEur: f.taxAmount ?? null,               // null stays Unknown (never coerced to 0)
     // Narrow verified-zero-tax evidence: only Booking periods with an explicit Hostaway statement.
     taxVerifiedZeroEvidence: isTaxVerifiedZero(String(r.channel), propertyName, r.checkIn),
+    // Authoritative Hostaway statement line (verbatim) when raw is incomplete/inconsistent.
+    authoritativeLine: getAuthoritativeStatementLine(r.hostawayReservationId, propertyName, r.checkIn) ?? undefined,
     platformPayoutEvidenceEur: f.payout?.amount ?? null,
   }
 }
@@ -66,6 +69,9 @@ export async function buildOwnerStrStatement(input: OwnerStrStatementInput): Pro
     if (!res.success || !res.audit) continue
     for (const r of res.audit.reservations) {
       if (!isRevenueEligible(r.status)) continue
+      // Owner Statement periodization follows Hostaway: a reservation belongs to the statement month
+      // by ARRIVAL/check-in date (NOT overlap). The operational Reservations cockpit keeps overlap.
+      if (!belongsToStatementMonth(r.checkIn, input.startDate, input.endDate)) continue
       reservations.push(toEvidence(p.name, r, today))
     }
   }
