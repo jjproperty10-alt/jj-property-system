@@ -11,7 +11,7 @@
 import type { ReactNode } from 'react'
 import { KpiCard, MoneyValue, UnknownValue, EmptyState, DataTable, AttentionBanner } from '@/components/ds'
 import type { DataTableColumn } from '@/components/ds'
-import type { OwnerFinancialDTO, OwnerFinancialRowDTO, OwnerOverallNetDTO, OccupancyPositionDTO } from '@/lib/owners/ownerWorkspaceTypes'
+import type { OwnerFinancialDTO, OwnerFinancialRowDTO, OwnerOverallNetDTO, OccupancyPositionDTO, PropertyFinancialGroupDTO } from '@/lib/owners/ownerWorkspaceTypes'
 
 export interface FinancialTabProps {
   dto: OwnerFinancialDTO
@@ -19,13 +19,14 @@ export interface FinancialTabProps {
 }
 
 export function FinancialTab({ dto, periodLabel }: FinancialTabProps) {
-  const { position, overallNet, sections, timeline, occupancyPosition, historicalSummary } = dto
+  const { position, overallNet, sections, propertyGroups, timeline, occupancyPosition, historicalSummary } = dto
 
   // Three-state financial display:
   // A. No Data â overallNet null, no sections, no occupancy â Empty State only
   // B. Needs Review â overallNet.reviewStatus='needs_review' â warning banner
   // C. Valid Data â normal 6 KPI cards
-  const hasAnyFinancialContent = sections.length > 0 || occupancyPosition != null
+  const hasPropertyGroups = propertyGroups != null && propertyGroups.length > 0
+  const hasAnyFinancialContent = sections.length > 0 || occupancyPosition != null || hasPropertyGroups
   const noFinancialData = overallNet === null && !hasAnyFinancialContent
   const summaryUnderReview = overallNet?.reviewStatus === 'needs_review'
   const hasHistoricalOnly = noFinancialData && historicalSummary != null
@@ -65,8 +66,22 @@ export function FinancialTab({ dto, periodLabel }: FinancialTabProps) {
         </section>
       )}
 
-      {/* Sections breakdown */}
-      {sections.length > 0 && (
+      {/* Property-grouped breakdown (per-property with Property Net) */}
+      {hasPropertyGroups && (
+        <section aria-labelledby="fin-properties-heading">
+          <h2 id="fin-properties-heading" className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+            Breakdown by Property
+          </h2>
+          <div className="space-y-6">
+            {propertyGroups!.map(group => (
+              <PropertyGroup key={group.propertyName} group={group} periodLabel={periodLabel} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Flat sections fallback (when propertyGroups not available) */}
+      {!hasPropertyGroups && sections.length > 0 && (
         <section aria-labelledby="fin-sections-heading">
           <h2 id="fin-sections-heading" className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
             Breakdown by Category
@@ -91,8 +106,13 @@ export function FinancialTab({ dto, periodLabel }: FinancialTabProps) {
         <HistoricalAvailability summary={historicalSummary!} periodLabel={periodLabel ?? 'this period'} />
       )}
 
-      {/* Overall Net Relationship */}
-      {overallNet && <OverallNetRelationship overallNet={overallNet} />}
+      {/* Owner Summary (property-grouped view with per-property nets) */}
+      {overallNet && hasPropertyGroups && (
+        <OwnerSummary overallNet={overallNet} propertyGroups={propertyGroups!} />
+      )}
+
+      {/* Legacy Overall Net (flat view fallback) */}
+      {overallNet && !hasPropertyGroups && <OverallNetRelationship overallNet={overallNet} />}
 
       {/* Occupancy Position â personal occupancy obligations (Oshrit) */}
       {occupancyPosition && <OccupancySection position={occupancyPosition} />}
@@ -304,6 +324,147 @@ function OverallNetRelationship({ overallNet }: { overallNet: OwnerOverallNetDTO
             <span className="text-lg font-bold text-gray-900 tabular-nums" dir="ltr">
               {overallNet.label === 'settled'
                 ? 'â¬0'
+                : <MoneyValue amount={parseFloat(overallNet.displayAmountEur)} size="lg" />}
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function PropertyGroup({ group, periodLabel }: { group: PropertyFinancialGroupDTO; periodLabel?: string }) {
+  const DIR: Record<'due_to_jj' | 'due_to_you' | 'settled', { label: string; cls: string }> = {
+    due_to_jj:  { label: 'Due to JJ',  cls: 'text-red-700 bg-red-50 border-red-200' },
+    due_to_you: { label: 'Due to You', cls: 'text-green-700 bg-green-50 border-green-200' },
+    settled:    { label: 'Settled',    cls: 'text-gray-600 bg-gray-50 border-gray-200' },
+  }
+  const dir = DIR[group.propertyNet.label]
+
+  return (
+    <div className="border border-gray-200 rounded-lg overflow-hidden">
+      {/* Property heading */}
+      <div className="px-4 py-3 bg-gray-100 border-b border-gray-200">
+        <h3 className="text-sm font-bold text-gray-900">{group.propertyName}</h3>
+      </div>
+
+      {/* Category sections within property */}
+      <div className="space-y-0 divide-y divide-gray-100">
+        {group.sections.map(section => (
+          <FinancialSection
+            key={`${section.type}-${group.propertyName}`}
+            section={section}
+            periodLabel={periodLabel}
+          />
+        ))}
+      </div>
+
+      {/* Property Net footer */}
+      <div className={`flex items-center justify-between px-4 py-3 border-t-2 border-gray-300 ${
+        group.propertyNet.label === 'due_to_jj' ? 'bg-red-50' :
+        group.propertyNet.label === 'due_to_you' ? 'bg-green-50' : 'bg-gray-50'
+      }`}>
+        <span className="text-sm font-semibold text-gray-800">Property Net</span>
+        <div className="flex items-center gap-3">
+          {group.hasPurchaseExclusion && (
+            <span className="text-xs text-gray-500 italic">Purchase excluded (JJ internal)</span>
+          )}
+          {group.hasNeedsReviewPurchase && (
+            <span className="text-xs text-amber-700 font-medium">Needs Review</span>
+          )}
+          <span className={`text-xs border rounded px-2 py-0.5 font-medium ${dir.cls}`}>
+            {dir.label}
+          </span>
+          <span className="text-sm font-bold text-gray-900 tabular-nums" dir="ltr">
+            {group.propertyNet.label === 'settled'
+              ? '€0'
+              : <MoneyValue amount={parseFloat(group.propertyNet.displayAmountEur)} size="sm" />}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function OwnerSummary({ overallNet, propertyGroups }: { overallNet: OwnerOverallNetDTO; propertyGroups: PropertyFinancialGroupDTO[] }) {
+  const labelText: Record<OwnerOverallNetDTO['label'], string> = {
+    due_to_jj:  'Due to JJ',
+    due_to_you: 'Due to You',
+    settled:    'Settled',
+  }
+
+  const labelColor: Record<OwnerOverallNetDTO['label'], string> = {
+    due_to_jj:  'text-red-700 bg-red-50 border-red-200',
+    due_to_you: 'text-green-700 bg-green-50 border-green-200',
+    settled:    'text-gray-700 bg-gray-50 border-gray-200',
+  }
+
+  // Production guard: needs_review banner
+  if (overallNet.reviewStatus === 'needs_review') {
+    return (
+      <section aria-labelledby="fin-summary-heading">
+        <h2 id="fin-summary-heading" className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+          Owner Summary
+        </h2>
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-4">
+          <div className="flex items-start gap-3">
+            <span className="text-amber-600 text-lg flex-shrink-0">{'⚠'} </span>
+            <div>
+              <p className="text-sm font-semibold text-amber-800">Needs Review</p>
+              <p className="text-sm text-amber-700 mt-1">
+                {overallNet.reviewReason ?? 'The amounts shown for this owner are incomplete and under review.'}
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section aria-labelledby="fin-summary-heading">
+      <h2 id="fin-summary-heading" className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+        Owner Summary
+      </h2>
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        {/* Per-property net lines */}
+        <div className="divide-y divide-gray-100">
+          {propertyGroups.map(group => (
+            <div key={group.propertyName} className="flex items-center justify-between px-4 py-3">
+              <span className="text-sm text-gray-700">{group.propertyName}</span>
+              <div className="flex items-center gap-2">
+                {group.hasPurchaseExclusion && (
+                  <span className="text-xs text-gray-400 italic">Purchase excl.</span>
+                )}
+                {group.hasNeedsReviewPurchase && (
+                  <span className="text-xs text-amber-600 font-medium">Needs Review</span>
+                )}
+                <span className={`text-xs px-2 py-0.5 rounded border ${labelColor[group.propertyNet.label]}`}>
+                  {labelText[group.propertyNet.label]}
+                </span>
+                <span className="text-sm font-medium text-gray-900 tabular-nums" dir="ltr">
+                  {group.propertyNet.label === 'settled'
+                    ? '€0'
+                    : <MoneyValue amount={parseFloat(group.propertyNet.displayAmountEur)} size="sm" />}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Overall net summary */}
+        <div className={`flex items-center justify-between px-4 py-4 border-t-2 border-gray-300 ${
+          overallNet.label === 'due_to_jj' ? 'bg-red-50' :
+          overallNet.label === 'due_to_you' ? 'bg-green-50' : 'bg-gray-50'
+        }`}>
+          <span className="text-sm font-semibold text-gray-900">Overall Net</span>
+          <div className="flex items-center gap-3">
+            <span className={`text-sm font-semibold px-3 py-1 rounded-full border ${labelColor[overallNet.label]}`}>
+              {labelText[overallNet.label]}
+            </span>
+            <span className="text-lg font-bold text-gray-900 tabular-nums" dir="ltr">
+              {overallNet.label === 'settled'
+                ? '€0'
                 : <MoneyValue amount={parseFloat(overallNet.displayAmountEur)} size="lg" />}
             </span>
           </div>
