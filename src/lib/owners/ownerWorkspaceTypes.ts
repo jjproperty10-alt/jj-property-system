@@ -1711,7 +1711,8 @@ export interface OwnerLtrStatementDTO {
   // Section 4: Tenant Charges relevant to owner (P5 authority)
   readonly tenantChargesRelevantToOwner: readonly TenantChargeLineDTO[]
 
-  // Section 5: Deposit Held (P3 authority) — informational, NOT income
+  // Section 5: Deposit Received (P3 authority) — informational, NOT income
+  // Label is "Deposit Received" until P3 lifecycle proves current held state
   // V1.2 Correction 5: custodian removed (P-ARCH-6 — JJ/Yossi/Jacob/Anastasia is internal)
   readonly depositHeld: {
     readonly amount: EuroAmount
