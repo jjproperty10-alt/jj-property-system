@@ -67,11 +67,44 @@ interface RentalContractRow {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function computePeriod(periodParam: string | undefined): {
+function computePeriod(params: {
+  period?: string
+  from?: string
+  to?: string
+}): {
   periodStart: string
   periodEnd: string
   periodLabel: string
 } {
+  const { period: periodParam, from: fromParam, to: toParam } = params
+
+  // ── Custom From/To: ?from=YYYY-MM-DD&to=YYYY-MM-DD ──────────────────────
+  // Takes priority over ?period when both from and to are provided.
+  // Opening Balance = activity before `from`. Period Activity = from..to.
+  // Closing = Opening + Period Activity.
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/
+  if (fromParam && toParam && dateRe.test(fromParam) && dateRe.test(toParam)) {
+    return {
+      periodStart: fromParam,
+      periodEnd: toParam,
+      periodLabel: `${fromParam} — ${toParam}`,
+    }
+  }
+
+  // ── All History: ?period=all ─────────────────────────────────────────────
+  if (periodParam === 'all') {
+    const now = new Date()
+    const y = now.getFullYear()
+    const m = String(now.getMonth() + 1).padStart(2, '0')
+    const d = String(now.getDate()).padStart(2, '0')
+    return {
+      periodStart: '2000-01-01',
+      periodEnd: `${y}-${m}-${d}`,
+      periodLabel: 'All History',
+    }
+  }
+
+  // ── Specific month: ?period=YYYY-MM ──────────────────────────────────────
   let year: number
   let month: number
 
@@ -106,7 +139,7 @@ export const dynamic = 'force-dynamic'
 
 interface PageProps {
   params: { slug: string }
-  searchParams: { period?: string; property?: string }
+  searchParams: { period?: string; property?: string; from?: string; to?: string }
 }
 
 export default async function OwnerLtrStatementPage({ params, searchParams }: PageProps) {
@@ -222,7 +255,11 @@ export default async function OwnerLtrStatementPage({ params, searchParams }: Pa
   const propertyName = pdRow.display_name ?? pdRow.canonical_name ?? pdRow.property_name
 
   // ── Step 6: Compute period ──────────────────────────────────────────────
-  const { periodStart, periodEnd, periodLabel } = computePeriod(sp.period)
+  const { periodStart, periodEnd, periodLabel } = computePeriod({
+    period: sp.period,
+    from: sp.from,
+    to: sp.to,
+  })
 
   // ── Step 7: Fetch statement ─────────────────────────────────────────────
   const statement = await fetchOwnerLtrStatement({

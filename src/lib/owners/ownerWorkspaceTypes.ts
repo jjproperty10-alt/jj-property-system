@@ -1715,7 +1715,7 @@ export interface OwnerLtrStatementDTO {
   // V1.2 Correction 5: custodian removed (P-ARCH-6 — JJ/Yossi/Jacob/Anastasia is internal)
   readonly depositHeld: {
     readonly amount: EuroAmount
-    readonly status: string  // 'held' | 'partially_applied' | 'fully_applied' | 'refunded'
+    readonly status: string  // 'received' (RC3 only) | 'held' | 'partially_applied' | 'fully_applied' | 'refunded' (P3 lifecycle)
   } | null
 
   // Section 6: Owner Payments (RC3 BPO rows) — settlement, NOT expense
