@@ -44,6 +44,14 @@ const BALANCE_DIRECTION_MAP: Record<BalanceDirection, { token: StatusToken; labe
   balanced: { token: 'completed', label: 'Balanced' },
 }
 
+const FEE_TYPE_LABELS: Record<string, string> = {
+  fixed_amount: 'Fixed Amount',
+  percentage_of_rent: 'Percentage of Rent',
+  percentage: 'Percentage of Rent',
+  one_month_rent: 'One Month Rent',
+  no_fee: 'No Fee',
+}
+
 const RENT_STATUS_MAP: Record<string, { token: StatusToken; label: string }> = {
   paid: { token: 'completed', label: 'Paid' },
   partial: { token: 'pending', label: 'Partial' },
@@ -192,7 +200,7 @@ function ManagementFeeSection({
     <div>
       <SectionHeader title="Management Fee" />
       <div className="text-xs text-gray-500 mb-2">
-        {managementFee.feeType} {managementFee.periodLabel ? `· ${managementFee.periodLabel}` : ''}
+        {FEE_TYPE_LABELS[managementFee.feeType] ?? managementFee.feeType} {managementFee.periodLabel ? `· ${managementFee.periodLabel}` : ''}
       </div>
       <div className="space-y-1">
         <SummaryRow label="Due" amount={parseAmount(managementFee.due)} />
@@ -363,7 +371,7 @@ function DepositSection({
 
   return (
     <div>
-      <SectionHeader title="Deposit Held" />
+      <SectionHeader title="Deposit Received" />
       <div className="flex justify-between items-center py-1">
         <span className="text-gray-600">
           Security deposit
