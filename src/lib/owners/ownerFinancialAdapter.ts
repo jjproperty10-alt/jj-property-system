@@ -364,21 +364,39 @@ function emptyPosition(): OwnerFinancialDTO['position'] {
 /**
  * Compose owner-level financial position from RC3 engine section aggregates.
  *
- * Only uses engine-computed totals (total_income, total_expenses, total_bpo,
- * closing_balance). Never sums individual transaction amounts.
+ * Net and Closing Balance use computeNetOwnerBalance — the same canonical
+ * function used by Overall Net / Owner Summary — ensuring top KPIs always
+ * reconcile with the Owner Summary display.
+ *
+ * Income and Expenses sum only from owner_credit sections (rental, airbnb)
+ * where total_income/total_expenses represent actual operational cash flows.
+ * client_debt sections (purchase, sale, renovation) include contract reference
+ * values that do not represent actual money movement and would inflate KPIs.
+ *
+ * BPO (Bank Payments to Owner) sums across all sections since it always
+ * represents actual money paid regardless of balance_convention.
  */
 function composePosition(sections: RC3AccountSection[]): OwnerFinancialDTO['position'] {
-  const incomeEur         = sections.reduce((s, a) => s + a.total_income,     0)
-  const expensesEur       = sections.reduce((s, a) => s + a.total_expenses,   0)
-  const paidToOwnerEur    = sections.reduce((s, a) => s + a.total_bpo,        0)
-  const closingBalanceEur = sections.reduce((s, a) => s + a.closing_balance,  0)
+  // Canonical net — matches Owner Summary (computeNetOwnerBalance uses
+  // closing_balance + balance_convention sign correction)
+  const net = computeNetOwnerBalance(sections)
+
+  // Operational income/expenses — only owner_credit sections have meaningful
+  // raw totals (rental income, airbnb payouts, cleaning costs, etc.)
+  const operational     = sections.filter(s => s.balance_convention === 'owner_credit')
+  const incomeEur       = operational.reduce((s, a) => s + a.total_income,   0)
+  const expensesEur     = operational.reduce((s, a) => s + a.total_expenses, 0)
+
+  // BPO from all sections — actual money paid to owner
+  const paidToOwnerEur  = sections.reduce((s, a) => s + a.total_bpo,         0)
+
   return {
     incomeEur:         toEur(incomeEur),
     expensesEur:       toEur(expensesEur),
-    netEur:            toEur(incomeEur - expensesEur),
+    netEur:            toEur(net),
     paidToOwnerEur:    toEur(paidToOwnerEur),
     pendingEur:        null,                           // RC2 scope — Settlement Engine
-    closingBalanceEur: toEur(closingBalanceEur),
+    closingBalanceEur: toEur(net),
   }
 }
 

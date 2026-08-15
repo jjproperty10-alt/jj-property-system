@@ -189,7 +189,7 @@ describe('fetchOwnerFinancial', () => {
 
     expect(result.position.incomeEur).toBe('5000')            // 3000 + 2000
     expect(result.position.expensesEur).toBe('800')           // 500 + 300
-    expect(result.position.netEur).toBe('4200')               // 5000 - 800
+    expect(result.position.netEur).toBe('5800')               // computeNetOwnerBalance: 3500 + 2300 (both owner_credit)
     expect(result.position.paidToOwnerEur).toBe('4200')       // 2500 + 1700
     expect(result.position.closingBalanceEur).toBe('5800')    // 3500 + 2300
     expect(result.position.pendingEur).toBeNull()             // RC2 scope
@@ -719,12 +719,14 @@ describe('fetchOwnerFinancial', () => {
 
       const result = await fetchOwnerFinancial({ properties: ['Uriel Duplex'] })
 
-      // KPIs should NOT include Purchase section amounts (Purchase = JJ internal)
-      // Only rental + sale contribute to KPIs
-      // incomeEur = rental(5000) + sale(0) = 5000 (purchase excluded)
-      // expensesEur = rental(2000) + sale(16396) = 18396 (purchase excluded)
+      // KPIs derive income/expenses from owner_credit sections only (rental, airbnb).
+      // client_debt sections (purchase, sale, renovation) include contract reference
+      // values that inflate raw totals — their impact is captured via
+      // computeNetOwnerBalance in position.netEur instead.
+      // incomeEur = rental(5000) only (sale is client_debt → excluded from KPI)
+      // expensesEur = rental(2000) only (sale is client_debt → excluded from KPI)
       expect(result.position.incomeEur).toBe('5000')
-      expect(result.position.expensesEur).toBe('18396')
+      expect(result.position.expensesEur).toBe('2000')
     })
 
     it('KPIs include Purchase sections for needs_review properties', async () => {
@@ -751,11 +753,12 @@ describe('fetchOwnerFinancial', () => {
 
       const result = await fetchOwnerFinancial({ properties: ['Tamir Dekelia'] })
 
-      // Tamir not in evidence registry → needs_review → Purchase stays in KPIs
-      // incomeEur = purchase(0) + rental(4000) = 4000
-      // expensesEur = purchase(70000) + rental(1000) = 71000
+      // KPIs derive income/expenses from owner_credit sections only (rental, airbnb).
+      // Purchase (client_debt) excluded from KPI raw totals regardless of disposition.
+      // incomeEur = rental(4000) only
+      // expensesEur = rental(1000) only
       expect(result.position.incomeEur).toBe('4000')
-      expect(result.position.expensesEur).toBe('71000')
+      expect(result.position.expensesEur).toBe('1000')
     })
   })
 

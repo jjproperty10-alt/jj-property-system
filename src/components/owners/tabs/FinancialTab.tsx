@@ -207,7 +207,7 @@ function FinancialSection({ section, periodLabel }: { section: OwnerFinancialDTO
           {formatDate(row.date)}
         </time>
       ),
-      description: <span className={textCls}>{row.description}{isRef ? ' (Reference)' : ''}</span>,
+      description: <span className={textCls}>{row.description}</span>,
       amountEur: row.amountEur != null ? (
         <span className={isRef ? 'opacity-50' : ''}>
           <MoneyValue amount={parseFloat(row.amountEur)} size="sm" />
