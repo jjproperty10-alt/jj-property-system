@@ -97,15 +97,86 @@ function resolveDescription(row: RC3AccountRow, propertyName?: string | null): s
   return base
 }
 
-function mapRowToDTO(row: RC3AccountRow, propertyName?: string | null): OwnerFinancialRowDTO {
+// ─── Rental Presentation Groups ──────────────────────────────────────────────
+
+/**
+ * Presentation grouping for Rental Management subcategories.
+ *
+ * ~11 logical groups for readability. Presentation only — no arithmetic change.
+ * Subgroup totals must reconcile to the canonical section subtotal.
+ *
+ * Any subcategory not in this map falls into 'Other'.
+ */
+const RENTAL_PRESENTATION_GROUPS: Record<string, string> = {
+  // Rent Income
+  'Tenant Payment':             'Rent Income',
+  'Client Payment':             'Rent Income',
+  'Staff Accommodation Rent':   'Rent Income',
+  // Owner Payments
+  'Bank Payment to Owner':      'Owner Payments',
+  // Management Fees
+  'Management Fee':             'Management Fees',
+  // Deposits
+  'Deposit':                    'Deposits',
+  'Deposit refund':             'Deposits',
+  // Utilities
+  'Water':                      'Utilities',
+  'Water bill':                 'Utilities',
+  'Electricity bill':           'Utilities',
+  'Electricity':                'Utilities',
+  // Maintenance & Repairs
+  'Repairs':                    'Maintenance & Repairs',
+  'Repair':                     'Maintenance & Repairs',
+  'Plumber':                    'Maintenance & Repairs',
+  'Minor Renovation':           'Maintenance & Repairs',
+  'Workers':                    'Maintenance & Repairs',
+  'Key Duplication':            'Maintenance & Repairs',
+  'Materials':                  'Maintenance & Repairs',
+  // Cleaning
+  'Cleaning':                   'Cleaning',
+  // Furnishing & Equipment
+  'Furniture':                  'Furnishing & Equipment',
+  'Electrical Appliances':      'Furnishing & Equipment',
+  'Curtains':                   'Furnishing & Equipment',
+  'Kitchen':                    'Furnishing & Equipment',
+  // Property Costs
+  'HOA':                        'Property Costs',
+  'Pool Service':               'Property Costs',
+  'Property insurance':         'Property Costs',
+  'Insurance':                  'Property Costs',
+  // Marketing
+  'Bazaraki':                   'Marketing',
+  // Other — fallback (not listed; anything not mapped goes here)
+  'Design':                     'Other',
+  'Other':                      'Other',
+  'Consumable Supplies':        'Other',
+}
+
+/**
+ * Resolve the presentation group for a row based on its subcategory.
+ * Only applied to rental/management sections.
+ */
+function resolveRentalPresentationGroup(subcategory: string | null): string {
+  if (!subcategory) return 'Other'
+  return RENTAL_PRESENTATION_GROUPS[subcategory] ?? 'Other'
+}
+
+function mapRowToDTO(
+  row: RC3AccountRow,
+  propertyName?: string | null,
+  sectionType?: string,
+): OwnerFinancialRowDTO {
+  const isRental = sectionType === 'rental'
   return {
-    id:           row.id,
-    date:         row.date,
-    description:  resolveDescription(row, propertyName),
-    displayGroup: mapDisplayGroup(row.display_group),
-    amountEur:    toEur(row.client_amount),
-    evidenceRef:  null,
-    isReference:  row.display_group === 'reference',
+    id:                row.id,
+    date:              row.date,
+    description:       resolveDescription(row, propertyName),
+    displayGroup:      mapDisplayGroup(row.display_group),
+    amountEur:         toEur(row.client_amount),
+    evidenceRef:       null,
+    isReference:       row.display_group === 'reference',
+    subcategory:       isRental ? (row.subcategory ?? null) : undefined,
+    presentationGroup: isRental ? resolveRentalPresentationGroup(row.subcategory ?? null) : undefined,
   }
 }
 
@@ -152,7 +223,7 @@ function mapSectionToDTO(
     propertyName:       propertyName ?? null,
     ownerDirection:     isInternalPurchase ? 'internal' : netLabel(normalized),
     ownerDirectionAmountEur: isInternalPurchase ? toEur(Math.abs(normalized)) : toEur(Math.abs(normalized)),
-    rows:               visibleRows.map(r => mapRowToDTO(r, propertyName)),
+    rows:               visibleRows.map(r => mapRowToDTO(r, propertyName, section.account_type)),
     displayNote,
     purchaseDisposition: purchaseDisposition ?? undefined,
   }
@@ -192,40 +263,28 @@ function normalizeDepartment(section: RC3AccountSection): OwnerDepartmentBalance
 }
 
 /**
- * Evidence-driven Purchase disposition registry.
+ * Purchase disposition — ALL Purchase = JJ internal acquisition.
  *
- * Each entry is backed by Yossi's locked audit decision (August 2026).
- * Properties NOT in this map that have Purchase sections get 'needs_review'.
+ * Locked business decision (Yossi, August 2026):
+ * JJ acquires properties and resells/assigns to clients. ALL Purchase costs
+ * (contracts, deposits, payments, AND Purchase Expenses) across ALL managed
+ * properties are JJ-internal acquisition cost — fully excluded from Owner
+ * Summary and Overall Net.
  *
- * Dispositions:
- * - 'internal_settled': JJ acquired the property and resold to client.
- *   ALL Purchase costs (contract, deposits, payments, AND Purchase Expenses)
- *   are JJ internal acquisition cost — fully excluded from Owner Summary.
- *   Business rule: Purchase AND Purchase Expenses belong to JJ's internal
- *   acquisition side. They remain visible in internal/audit but are NOT
- *   owner/client charges.
- * - 'needs_review': Purchase exists but no confirmed settlement mechanism.
+ * The Purchase section remains visible per-property for audit transparency
+ * but is excluded from owner-facing balance computations.
  *
- * Evidence basis per property:
- * - Uriel Duplex: Purchase €165K contract, €35K paid, closing €130K. Sale confirmed.
- * - Uriel Studio Kitty: Purchase €75K contract, €75K paid, closing €0. Sale confirmed.
- * - Uriel Kokkines: Purchase €50K contract, €15K paid, closing €35K. Sale confirmed.
- * - Uriel Sharon English Metro: Purchase €235K contract, €30K paid, €250 gardener
- *   expense, closing €205,250. Sale confirmed. ALL Purchase = JJ internal.
+ * Previous implementation had a per-property registry (PURCHASE_DISPOSITIONS)
+ * covering only 4 Uriel properties. Spec correction: the business rule applies
+ * universally — there is no property where Purchase is an owner charge.
  */
-const PURCHASE_DISPOSITIONS: ReadonlyMap<string, 'internal_settled' | 'needs_review'> = new Map([
-  ['Uriel Duplex', 'internal_settled'],
-  ['Uriel Studio Kitty', 'internal_settled'],
-  ['Uriel Kokkines', 'internal_settled'],
-  ['Uriel Sharon English Metro', 'internal_settled'],
-])
 
 /**
  * Build a disposition map for Purchase sections.
  *
- * Uses evidence-driven PURCHASE_DISPOSITIONS registry (Yossi's locked audit
- * decisions). Properties with Purchase sections not in the registry get
- * 'needs_review'. Properties without Purchase sections are not in the map.
+ * ALL Purchase = JJ internal acquisition (Yossi's locked business decision).
+ * Every property with a Purchase section gets 'internal_settled'.
+ * Properties without Purchase sections are not in the map.
  */
 function buildPurchaseDispositionMap(
   reports: RC3PropertyReport[],
@@ -233,13 +292,7 @@ function buildPurchaseDispositionMap(
   const map = new Map<string, 'internal_settled' | 'needs_review'>()
   for (const report of reports) {
     if (!report.has_purchase) continue
-    const locked = PURCHASE_DISPOSITIONS.get(report.reporting_name)
-    if (locked) {
-      map.set(report.reporting_name, locked)
-    } else {
-      // Unlisted property with Purchase section → needs_review
-      map.set(report.reporting_name, 'needs_review')
-    }
+    map.set(report.reporting_name, 'internal_settled')
   }
   return map
 }
@@ -268,14 +321,9 @@ function applyPerspectiveCorrection(
   for (const report of reports) {
     const disposition = dispositionMap.get(report.reporting_name)
     for (const section of report.accounts) {
-      // Full exclusion for internal_settled Purchase:
-      // ALL Purchase costs (contract, deposits, payments, AND Purchase Expenses)
-      // are JJ internal acquisition cost — excluded from Owner Summary.
+      // ALL Purchase = JJ internal acquisition — excluded from Owner Summary.
+      // Universal rule: every property with Purchase gets internal_settled.
       if (section.account_type === 'purchase' && disposition === 'internal_settled') {
-        continue
-      }
-      // Legacy: also exclude Purchase for NEEDS_REVIEW_PROPERTIES (Oshrit occupancy model)
-      if (section.account_type === 'purchase' && NEEDS_REVIEW_PROPERTIES.has(report.reporting_name)) {
         continue
       }
       ownerFacing.push(section)
@@ -320,14 +368,10 @@ function buildPropertyGroups(
       mapSectionToDTO(sec, report.reporting_name, disposition)
     )
 
-    // Property Net: full exclusion for internal_settled Purchase —
-    // ALL Purchase costs are JJ internal acquisition, excluded from Property Net.
+    // Property Net: ALL Purchase = JJ internal acquisition, excluded from Property Net.
     const netSections: RC3AccountSection[] = []
     for (const sec of report.accounts) {
       if (sec.account_type === 'purchase' && disposition === 'internal_settled') {
-        continue  // fully excluded from Property Net
-      }
-      if (sec.account_type === 'purchase' && NEEDS_REVIEW_PROPERTIES.has(report.reporting_name)) {
         continue
       }
       netSections.push(sec)
