@@ -1,8 +1,9 @@
 /**
- * Identity Resolver Service — G1B Canonical Identity Resolution
+ * Identity Resolver Service — Canonical Identity Resolution
  *
  * Constitutional basis: ADR-006 (R7 Identity Resolution)
  * Approved: Yossi 24 July 2026 — G1B scope
+ * Identity switch: H.3 (Agent 3, 15 Aug 2026) — registry.parties is canonical WHO authority
  *
  * This is the ONLY authorized mechanism for resolving business identity
  * and property associations. After G1B, no component may:
@@ -10,9 +11,18 @@
  *   - Use hardcoded owner lists (KNOWN_OWNERS)
  *   - Construct identity from transaction data
  *
- * Data sources:
- *   - lifecycle.entity_identity (WHO)
- *   - lifecycle.management_relationship (WHAT JJ manages for them)
+ * Identity authority model (post H.3 switch):
+ *   - WHO: registry.parties (canonical party authority, via enrichIdentityWithParty)
+ *   - WHAT: lifecycle.management_relationship (business-state: property associations)
+ *   - CONTACT DATA: lifecycle.entity_identity (email, phone, language — fallback source)
+ *
+ * Query path:
+ *   lifecycle.entity_identity (contact data + entity_id bridge)
+ *   → enrichIdentityWithParty (resolve_party_id RPC → registry.parties)
+ *   → lifecycle.management_relationship (property associations via entity_id)
+ *
+ * Every owner with an approved bridge emits source='registry.parties' + partyId.
+ * Owners without a bridge emit source='lifecycle.entity_identity' (fail-closed, never dropped).
  *
  * Verification model:
  *   - Only 'verified' relationships appear in the Owner Room
@@ -23,6 +33,7 @@
  *   - Unknown slug → not_found (no fallback to scanning)
  *   - Duplicate slug → ambiguous (caller must resolve)
  *   - DB unavailable → source_unavailable (no silent empty result)
+ *   - Party bridge missing → lifecycle identity preserved (never drop an owner)
  *
  * server-only: must never be imported into Client Components.
  */
@@ -126,6 +137,44 @@ function mapRelationship(row: RelationshipRow): ManagementRelationshipDTO {
     validTo: row.valid_to ?? null,
     verificationStatus:
       row.verification_status === 'verified' ? 'verified' : 'pending_verification',
+  }
+}
+
+/**
+ * H.3 canonical party enrichment.
+ * Re-sources WHO to the canonical registry party using the existing bridge
+ * public.resolve_party_id (lifecycle entity_identity → registry.parties). Reused, not duplicated.
+ *
+ * Fail-closed: if the party is not resolved/approved, the lifecycle identity is returned
+ * unchanged — an owner is NEVER dropped. displayName/canonicalSlug are preserved (party
+ * canonical_name == lifecycle canonical_name for all current owners, verified 2026-08-15),
+ * so existing Owner Room URLs stay byte-stable. Relationships remain lifecycle-sourced.
+ */
+async function enrichIdentityWithParty(
+  sb: ReturnType<typeof createServiceClient>,
+  identity: CanonicalEntityIdentityDTO,
+): Promise<CanonicalEntityIdentityDTO> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (sb as any).rpc('resolve_party_id', {
+      p_entity_identity_id: identity.entityId,
+    })
+    if (error) throw error
+    const row = (Array.isArray(data) ? data[0] : data) as
+      | { canonical_id: string | null; mapping_status: string | null }
+      | undefined
+    if (!row || row.mapping_status !== 'approved' || !row.canonical_id) {
+      return identity // fail-closed: keep lifecycle identity, never drop an owner
+    }
+    return {
+      ...identity,
+      source: 'registry.parties',
+      partyId: row.canonical_id,
+      legacySource: 'lifecycle.entity_identity',
+    }
+  } catch (err) {
+    console.error('[identityResolver] resolve_party_id enrichment failed:', err)
+    return identity // fail-closed
   }
 }
 
@@ -305,8 +354,14 @@ export async function getAllVerifiedOwners(): Promise<{
     draftOwners = []
   }
 
+  // H.3: enrich WHO with canonical registry party (relationships preserved, fail-closed).
+  // Preserves owner set/order/slug — only adds partyId + source='registry.parties'.
+  const enrichedOwners = await Promise.all(
+    owners.map(async (o) => ({ ...o, identity: await enrichIdentityWithParty(sb, o.identity) })),
+  )
+
   return {
-    owners: Object.freeze(owners),
+    owners: Object.freeze(enrichedOwners),
     pendingRelationships: Object.freeze(pending),
     draftOwners: Object.freeze(draftOwners),
     counts: {
@@ -408,8 +463,10 @@ export async function resolveBySlug(slug: string): Promise<IdentityResolutionRes
   }
 
   const relationships = relRows.map(mapRelationship)
+  // H.3: enrich WHO with canonical registry party (fail-closed; slug/displayName preserved).
+  const enrichedEntity = await enrichIdentityWithParty(sb, entity)
   return {
     status: 'resolved',
-    data: buildResolved(entity, relationships),
+    data: buildResolved(enrichedEntity, relationships),
   }
 }

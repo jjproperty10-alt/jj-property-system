@@ -9,6 +9,14 @@
  *
  * After G1B, no component may resolve identity by scanning
  * payer/payee or using hardcoded lists.
+ *
+ * 2026-08-15 (Agent 3, Decision H.3): canonical party authority is
+ * `registry.parties`. `CanonicalEntityIdentityDTO.source` is widened to allow
+ * `'registry.parties'` while remaining backward compatible with the current
+ * lifecycle-sourced value. `partyId` / `legacySource` are additive provenance
+ * fields — they preserve traceability during the controlled migration and are
+ * never required. No behavioural change: the current resolver still emits
+ * `source: 'lifecycle.entity_identity'` until the Owner-Room switch is approved.
  */
 
 // ─────────────────────────────────────────────────────────────
@@ -22,7 +30,17 @@ export interface CanonicalEntityIdentityDTO {
   readonly entityKind: 'person' | 'company'
   readonly aliases: readonly string[]
   readonly status: 'active' | 'inactive'
-  readonly source: 'lifecycle.entity_identity'
+  /**
+   * Origin of this canonical identity.
+   * - 'registry.parties'        → canonical party spine (H.3 target authority)
+   * - 'lifecycle.entity_identity' → current/legacy lifecycle representation
+   */
+  readonly source: 'registry.parties' | 'lifecycle.entity_identity'
+
+  /** Canonical registry party id, when known/bridged (H.3). Null/undefined until resolved. */
+  readonly partyId?: string | null
+  /** Legacy/lifecycle representation retained for traceability after convergence. */
+  readonly legacySource?: 'lifecycle.entity_identity' | null
 
   // P1 contact fields — all nullable (P-ARCH-1: unknown = null)
   readonly contactEmail: string | null

@@ -5,13 +5,14 @@
  * property with an active rental contract.
  *
  * Architecture:
- *   authenticateStatementUser() → resolve slug → find service_engagements
- *   → find active rental_contract → resolve property_name via canonical bridge
+ *   authenticateStatementUser() → resolveBySlug (canonical identity)
+ *   → find service_engagements → find active rental_contract
+ *   → resolve property_name via canonical bridge
  *   → fetchOwnerLtrStatement() → OwnerLtrStatement UI
  *
  * Resolution chain:
  *   1. Auth: staff-only via authenticateStatementUser() (fail-closed)
- *   2. Identity: slug → entity_identity via nameToSlug matching (G1 pattern)
+ *   2. Identity: slug → resolveBySlug (canonical: registry.parties → lifecycle bridge)
  *   3. Service Engagements: entity → service_engagements (management_ltr, active)
  *   4. Contract: SE → rental_contracts (status = 'active')
  *   5. Property Name: property_id → property_definitions (canonical bridge, FK-backed)
@@ -26,25 +27,22 @@
  *   P-ARCH-6: Owner NEVER sees JJ internals
  *   P-LEDGER-6: owner-facing amounts = COALESCE(client_charge, amount_eur)
  *
+ * Identity switch (H.3): Uses resolveBySlug() — canonical party resolution
+ * via registry.parties. No inline lifecycle queries. Fail-closed.
+ *
  * server-only — must never be imported into Client Components.
  */
 
 import 'server-only'
 import { notFound } from 'next/navigation'
 import { authenticateStatementUser } from '@/lib/statements/statementAuthService'
+import { resolveBySlug } from '@/lib/identity'
 import { createServiceClient } from '@/lib/supabase'
-import { nameToSlug } from '@/lib/owners/ownerWorkspaceUtils'
 import { fetchOwnerLtrStatement } from '@/lib/owners/ownerLtrStatementAdapter'
 import { OwnerLtrStatement } from '@/components/owners/OwnerLtrStatement'
 import { PrintButton } from './PrintButton'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
-
-interface EntityRow {
-  id: string
-  canonical_name: string
-  status: string
-}
 
 interface ServiceEngagementRow {
   id: string
@@ -156,31 +154,21 @@ export default async function OwnerLtrStatementPage({ params, searchParams }: Pa
     notFound()
   }
 
-  // ── Step 2: Resolve entity identity (G1 pattern) ────────────────────────
+  // ── Step 2: Resolve entity identity (canonical — H.3 switch) ────────────
+  // Uses resolveBySlug: registry.parties (canonical WHO) → lifecycle bridge.
+  // Fail-closed: not_found / ambiguous / relationship_missing / source_unavailable → 404.
+  const identityResult = await resolveBySlug(slug)
+
+  if (identityResult.status !== 'resolved') {
+    notFound()
+  }
+
+  const entity = {
+    id: identityResult.data.identity.entityId,
+    canonical_name: identityResult.data.identity.displayName,
+  }
+
   const sb = createServiceClient()
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: entityData, error: entityError } = await (sb as any)
-    .schema('lifecycle')
-    .from('entity_identity')
-    .select('id, canonical_name, status')
-
-  if (entityError || !entityData) {
-    notFound()
-  }
-
-  const entities = (entityData as EntityRow[]).filter(
-    e => nameToSlug(e.canonical_name) === slug,
-  )
-
-  if (entities.length !== 1) {
-    notFound()
-  }
-
-  const entity = entities[0]
-  if (entity.status !== 'active') {
-    notFound()
-  }
 
   // ── Step 3: Find active LTR service engagements ─────────────────────────
   // Query by canonical property_id UUID — never by property_name text
