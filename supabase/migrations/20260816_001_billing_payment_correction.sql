@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS statements.payment_allocations (
 
   -- Scope: which statement series this allocation belongs to
   series_id               UUID NOT NULL
-                            REFERENCES statements.statement_series(id),
+                            REFERENCES statements.statement_series(series_id),
 
   -- The payment row (payer=Client/Tenant, typically subcategory in
   -- ('Purchase Payment','Rent Payment','Bank Payment to Owner','Client Payment'))
@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS statements.correction_cases (
 
   -- Scope: which statement series this correction belongs to
   series_id               UUID NOT NULL
-                            REFERENCES statements.statement_series(id),
+                            REFERENCES statements.statement_series(series_id),
 
   -- The original transaction being corrected
   original_transaction_id UUID NOT NULL,
