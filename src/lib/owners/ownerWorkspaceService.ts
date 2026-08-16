@@ -331,11 +331,34 @@ export async function getOwnerFinancial(
     }
   }
 
+  // PR #166 Gap C+D: Resolve seriesId for billing state wiring.
+  // When statement_series has rows for this owner, enables billing/payment state
+  // resolution on every financial row. When empty (current production), gracefully null.
+  let seriesId: string | undefined
+  try {
+    const sb = createServiceClient()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await (sb as any)
+      .schema('statements')
+      .from('statement_series')
+      .select('series_id')
+      .eq('owner_party_id', workspace.identity.id)
+      .eq('series_status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(1)
+    if (data && data.length > 0) {
+      seriesId = String(data[0].series_id)
+    }
+  } catch {
+    // statement_series not populated — seriesId stays undefined, billing states skipped
+  }
+
   try {
     return await getFinancial({
       properties: workspace.identity.properties,
       fromDate: startDate,
       toDate: endDate,
+      seriesId,
     })
   } catch (err) {
     console.error(

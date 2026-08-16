@@ -21,6 +21,8 @@ import type {
   ReportPresentationConfigDTO,
 } from '@/lib/owners/ownerWorkspaceTypes'
 import { DateRangePicker } from '@/components/owners/DateRangePicker'
+import { BillingToggleButton } from '@/components/owners/BillingToggleButton'
+import { ReportActionsBar } from '@/components/owners/ReportActionsBar'
 
 export interface FinancialTabProps {
   dto: OwnerFinancialDTO
@@ -59,6 +61,17 @@ export function FinancialTab({ dto, periodLabel, ownerSlug, fromDate, toDate }: 
         toDate={toDate}
         periodLabel={periodLabel ?? 'All History'}
       />
+
+      {/* PR #166 Gap I+M — Download PDF / Print buttons */}
+      <div className="flex items-center justify-end">
+        <ReportActionsBar
+          ownerSlug={ownerSlug}
+          lang={reportConfig?.language ?? 'en'}
+          reportType="full"
+          fromDate={fromDate}
+          toDate={toDate}
+        />
+      </div>
 
       {/* PR #166 — Financial Alerts */}
       {alerts != null && alerts.length > 0 && <AlertsBanner alerts={alerts} />}
@@ -292,9 +305,19 @@ function renderRowRecord(row: OwnerFinancialRowDTO): Record<string, ReactNode> {
     ) : (
       <span className="text-xs text-gray-300">{'—'}</span>
     ),
-    // PR #166 — Billing state badge (visible only when billingState is populated)
+    // PR #166 — Billing state badge + include/exclude toggle
     ...(row.billingState ? {
-      billingState: <BillingStateBadge state={row.billingState} />,
+      billingState: (
+        <span className="inline-flex items-center gap-1.5">
+          <BillingStateBadge state={row.billingState} />
+          {row.billingState.draftLineId && (
+            <BillingToggleButton
+              draftLineId={row.billingState.draftLineId}
+              currentlyIncluded={row.billingState.billingState !== 'excluded'}
+            />
+          )}
+        </span>
+      ),
     } : {}),
   }
 }
@@ -788,26 +811,43 @@ function AlertsBanner({ alerts }: { alerts: readonly FinancialAlertDTO[] }) {
 }
 
 function BillingStateBadge({ state }: { state: BillingStateDTO }) {
-  const styles: Record<string, string> = {
+  const billingStyles: Record<string, string> = {
     unbilled:  'bg-gray-100 text-gray-600',
     pending:   'bg-yellow-100 text-yellow-700',
     presented: 'bg-blue-100 text-blue-700',
-    billed:    'bg-green-100 text-green-700',
     excluded:  'bg-red-100 text-red-600',
   }
-  const labels: Record<string, string> = {
+  const billingLabels: Record<string, string> = {
     unbilled:  'Unbilled',
     pending:   'Pending',
     presented: 'Presented',
-    billed:    'Billed',
     excluded:  'Excluded',
+  }
+  const paymentStyles: Record<string, string> = {
+    unpaid:         'bg-orange-100 text-orange-700',
+    partially_paid: 'bg-amber-100 text-amber-700',
+    paid:           'bg-green-100 text-green-700',
+  }
+  const paymentLabels: Record<string, string> = {
+    unpaid:         'Unpaid',
+    partially_paid: 'Partial',
+    paid:           'Paid',
   }
 
   return (
-    <span className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded ${
-      styles[state.state] ?? styles.unbilled
-    }`}>
-      {labels[state.state] ?? state.state}
+    <span className="inline-flex gap-1">
+      <span className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded ${
+        billingStyles[state.billingState] ?? billingStyles.unbilled
+      }`}>
+        {billingLabels[state.billingState] ?? state.billingState}
+      </span>
+      {state.paymentState && (
+        <span className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded ${
+          paymentStyles[state.paymentState] ?? ''
+        }`}>
+          {paymentLabels[state.paymentState] ?? state.paymentState}
+        </span>
+      )}
     </span>
   )
 }
@@ -834,7 +874,7 @@ function PaymentAllocationPanel({ summary }: { summary: PaymentAllocationSummary
           </div>
           <div className="bg-white px-4 py-3 text-center">
             <div className="text-xs text-gray-500 mb-1">Fully Covered</div>
-            <div className="text-sm font-semibold text-gray-900">{summary.fullyAllocatedCount}</div>
+            <div className="text-sm font-semibold text-gray-900">{summary.fullyAllocatedCount ?? '—'}</div>
           </div>
         </div>
         {summary.allocations.length > 0 && (

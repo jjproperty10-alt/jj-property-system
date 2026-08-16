@@ -1805,39 +1805,58 @@ export interface OwnerLtrStatementDTO {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ─── Billing State (COMPUTED — no table) ─────────────────────────────────────
-// Derived from statement lifecycle:
-//   Unbilled: no draft_line exists for this transaction
-//   Pending: draft_line exists with includeInStatement=true, no sent_snapshot
-//   Presented: included in a sent_statement_snapshot
-//   Billed: presented + payment allocated against it
-//   Excluded: draft_line exists with includeInStatement=false
+// Billing and Payment are TWO SEPARATE LIFECYCLES (Gap A correction).
+//
+// Billing lifecycle (statement-driven):
+//   unbilled → pending → presented → excluded
+//   Derived from: statement_draft_lines + sent_entry_snapshots
+//
+// Payment lifecycle (allocation-driven):
+//   unpaid → partially_paid → paid
+//   Derived from: payment_allocations against the charge amount
+//
+// These are independent dimensions. A charge can be:
+//   - presented + unpaid (billed but not yet collected)
+//   - presented + partially_paid (partially collected)
+//   - presented + paid (fully collected)
+//   - excluded + unpaid (excluded from statement, no payment)
 
 /**
- * Billing lifecycle state — computed from statement infrastructure.
- * NOT stored in a table. Resolved by billingStateResolver at query time.
+ * Billing lifecycle state — WHERE is this charge in the statement workflow?
+ * NOT stored in a table. Resolved at query time from statement infrastructure.
  */
 export type BillingState =
   | 'unbilled'       // no draft_line exists for this row
   | 'pending'        // draft_line with includeInStatement=true, not yet sent
   | 'presented'      // included in sent_statement_snapshot
-  | 'billed'         // presented AND has payment allocation
   | 'excluded'       // draft_line with includeInStatement=false
 
 /**
- * Per-row billing state resolution.
- * Computed by billingStateResolver from statement lifecycle.
+ * Payment lifecycle state — HOW MUCH of this charge has been collected?
+ * Derived from payment_allocations against the charge's owner-facing amount.
+ */
+export type PaymentState =
+  | 'unpaid'           // no allocation exists for this charge
+  | 'partially_paid'   // some allocation, but less than full charge
+  | 'paid'             // allocations >= charge amount
+
+/**
+ * Per-row billing + payment state resolution.
+ * Billing and payment are independent dimensions (Gap A).
  */
 export interface BillingStateDTO {
-  /** Current computed state */
-  readonly state: BillingState
+  /** Current billing lifecycle state */
+  readonly billingState: BillingState
+  /** Current payment lifecycle state (null = unknown — requires charge context, P-ARCH-1) */
+  readonly paymentState: PaymentState | null
   /** Which draft line controls include/exclude (null if unbilled) */
   readonly draftLineId: string | null
   /** Which sent snapshot this row appears in (null if not yet presented) */
   readonly snapshotId: string | null
-  /** How much has been allocated against this row's charge */
-  readonly allocatedAmountEur: EuroAmount
-  /** Remaining unallocated charge (charge - allocated) */
-  readonly remainingEur: EuroAmount
+  /** How much has been allocated against this row's charge (null = unknown, P-ARCH-1) */
+  readonly allocatedAmountEur: EuroAmount | null
+  /** Remaining unallocated charge (null = unknown — requires charge amount context, P-ARCH-1) */
+  readonly remainingEur: EuroAmount | null
   /** Can this row be re-proposed to the next statement? */
   readonly canRepropose: boolean
   /** Timestamp of last state transition */
@@ -1877,20 +1896,20 @@ export interface PaymentAllocationDTO {
  * Aggregates allocation state across all charges.
  */
 export interface PaymentAllocationSummaryDTO {
-  /** Total charges in the series */
-  readonly totalChargesEur: EuroAmount
+  /** Total charges in the series (null = unknown — no charge context provided, P-ARCH-1) */
+  readonly totalChargesEur: EuroAmount | null
   /** Total allocated (sum of all allocations) */
   readonly totalAllocatedEur: EuroAmount
-  /** Remaining unallocated charges */
-  readonly remainingUnallocatedEur: EuroAmount
-  /** Unallocated payment surplus (payments exceed charges) */
-  readonly surplusEur: EuroAmount
-  /** Count of charges fully covered */
-  readonly fullyAllocatedCount: number
+  /** Remaining unallocated charges (null = unknown — requires charge context, P-ARCH-1) */
+  readonly remainingUnallocatedEur: EuroAmount | null
+  /** Unallocated payment surplus (null = unknown — requires charge context, P-ARCH-1) */
+  readonly surplusEur: EuroAmount | null
+  /** Count of charges fully covered (null = unknown — requires charge amounts, P-ARCH-1) */
+  readonly fullyAllocatedCount: number | null
   /** Count of charges partially covered */
   readonly partiallyAllocatedCount: number
-  /** Count of charges with zero allocation */
-  readonly unallocatedCount: number
+  /** Count of charges with zero allocation (null = unknown — requires full charge list, P-ARCH-1) */
+  readonly unallocatedCount: number | null
   /** Individual allocations for drill-down */
   readonly allocations: readonly PaymentAllocationDTO[]
 }
@@ -1989,6 +2008,10 @@ export type AlertCategory =
   | 'missing_charge'            // expected charge not found
   | 'amount_mismatch'           // client_charge vs amount_eur anomaly
   | 'unallocated_payment'       // payment received with no charge allocation
+  | 'unallocated_payments'      // aggregate: payments with remaining balance
+  | 'unbilled_charges'          // charges not in any draft
+  | 'billed_unpaid'             // in draft but no payment allocated
+  | 'open_corrections'          // active correction cases needing resolution
   | 'overdue_charge'            // charge outstanding beyond threshold
   | 'cross_property_offset'     // cross-property settlement detected (RC2)
   | 'stale_data'                // source data freshness concern
