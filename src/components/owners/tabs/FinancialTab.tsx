@@ -11,7 +11,15 @@
 import type { ReactNode } from 'react'
 import { KpiCard, MoneyValue, UnknownValue, EmptyState, DataTable, AttentionBanner } from '@/components/ds'
 import type { DataTableColumn } from '@/components/ds'
-import type { OwnerFinancialDTO, OwnerFinancialRowDTO, OwnerOverallNetDTO, OccupancyPositionDTO, PropertyFinancialGroupDTO, JjInternalViewDTO, JjInternalSectionDTO, JjInternalRowDTO } from '@/lib/owners/ownerWorkspaceTypes'
+import type {
+  OwnerFinancialDTO, OwnerFinancialRowDTO, OwnerOverallNetDTO,
+  OccupancyPositionDTO, PropertyFinancialGroupDTO,
+  JjInternalViewDTO, JjInternalSectionDTO, JjInternalRowDTO,
+  // PR #166 Consolidation types
+  FinancialAlertDTO, FinancialCorrectionCaseDTO,
+  PaymentAllocationSummaryDTO, BillingStateDTO,
+  ReportPresentationConfigDTO,
+} from '@/lib/owners/ownerWorkspaceTypes'
 import { DateRangePicker } from '@/components/owners/DateRangePicker'
 
 export interface FinancialTabProps {
@@ -23,7 +31,8 @@ export interface FinancialTabProps {
 }
 
 export function FinancialTab({ dto, periodLabel, ownerSlug, fromDate, toDate }: FinancialTabProps) {
-  const { position, overallNet, sections, propertyGroups, timeline, occupancyPosition, historicalSummary } = dto
+  const { position, overallNet, sections, propertyGroups, timeline, occupancyPosition, historicalSummary,
+    alerts, reportConfig, paymentSummary, openCorrectionCases } = dto
 
   // Three-state financial display:
   // A. No Data — overallNet null, no sections, no occupancy → Empty State only
@@ -50,6 +59,17 @@ export function FinancialTab({ dto, periodLabel, ownerSlug, fromDate, toDate }: 
         toDate={toDate}
         periodLabel={periodLabel ?? 'All History'}
       />
+
+      {/* PR #166 — Financial Alerts */}
+      {alerts != null && alerts.length > 0 && <AlertsBanner alerts={alerts} />}
+
+      {/* PR #166 — Report language indicator */}
+      {reportConfig && reportConfig.language !== 'en' && (
+        <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded px-3 py-1.5 border border-gray-200" dir={reportConfig.isRtl ? 'rtl' : 'ltr'}>
+          <span>{reportConfig.language === 'he' ? '🇮🇱' : '🌍'}</span>
+          <span>Report language: {reportConfig.language === 'he' ? 'Hebrew (RTL)' : String(reportConfig.language).toUpperCase()}</span>
+        </div>
+      )}
 
       {/* Current financial position — only when overallNet provides computed values */}
       {overallNet != null && (
@@ -129,6 +149,16 @@ export function FinancialTab({ dto, periodLabel, ownerSlug, fromDate, toDate }: 
 
       {/* Legacy Overall Net (flat view fallback) */}
       {overallNet && !hasPropertyGroups && <OverallNetRelationship overallNet={overallNet} />}
+
+      {/* PR #166 — Payment Allocations */}
+      {paymentSummary && paymentSummary.totalAllocatedEur !== '0' && (
+        <PaymentAllocationPanel summary={paymentSummary} />
+      )}
+
+      {/* PR #166 — Open Correction Cases */}
+      {openCorrectionCases && openCorrectionCases.length > 0 && (
+        <CorrectionCasesPanel cases={openCorrectionCases} />
+      )}
 
       {/* Occupancy Position — personal occupancy obligations (Oshrit) */}
       {occupancyPosition && <OccupancySection position={occupancyPosition} />}
@@ -236,7 +266,20 @@ function renderRowRecord(row: OwnerFinancialRowDTO): Record<string, ReactNode> {
         {formatDate(row.date)}
       </time>
     ),
-    description: <span className={textCls}>{row.description}</span>,
+    description: (
+      <span className={textCls}>
+        {row.description}
+        {/* PR #166 — Margin cross-reference: links owner-facing row to JJ Internal analysis */}
+        {row.marginEur != null && (
+          <span
+            className="ml-1.5 inline-flex items-center gap-0.5 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-px cursor-help"
+            title={`Actual cost: €${parseFloat(row.actualCostEur as string).toFixed(2)} · Margin: €${parseFloat(row.marginEur as string).toFixed(2)} — see JJ Internal section below`}
+          >
+            <span aria-hidden="true">△</span>Margin
+          </span>
+        )}
+      </span>
+    ),
     amountEur: row.amountEur != null ? (
       <span className={isRef ? 'opacity-50' : ''}>
         <MoneyValue amount={parseFloat(row.amountEur)} size="sm" />
@@ -249,6 +292,10 @@ function renderRowRecord(row: OwnerFinancialRowDTO): Record<string, ReactNode> {
     ) : (
       <span className="text-xs text-gray-300">{'—'}</span>
     ),
+    // PR #166 — Billing state badge (visible only when billingState is populated)
+    ...(row.billingState ? {
+      billingState: <BillingStateBadge state={row.billingState} />,
+    } : {}),
   }
 }
 
@@ -704,6 +751,168 @@ function HistoricalAvailability({ summary, periodLabel }: { summary: NonNullable
   )
 }
 
+// ─────────────────────────────────────────────────────────────
+// PR #166 — New sub-components
+// ─────────────────────────────────────────────────────────────
+
+function AlertsBanner({ alerts }: { alerts: readonly FinancialAlertDTO[] }) {
+  const severityStyles: Record<string, string> = {
+    critical: 'bg-red-50 border-red-300 text-red-800',
+    warning: 'bg-amber-50 border-amber-300 text-amber-800',
+    info: 'bg-blue-50 border-blue-200 text-blue-800',
+  }
+  const severityIcons: Record<string, string> = {
+    critical: '🔴',
+    warning: '⚠',
+    info: 'ℹ',
+  }
+
+  return (
+    <div className="space-y-2">
+      {alerts.map((alert, idx) => (
+        <div
+          key={alert.id ?? idx}
+          className={`flex items-start gap-2 px-3 py-2 border rounded text-xs ${
+            severityStyles[alert.severity] ?? severityStyles.info
+          }`}
+        >
+          <span className="flex-shrink-0">{severityIcons[alert.severity] ?? 'ℹ'}</span>
+          <div>
+            <span className="font-medium">{alert.message}</span>
+            {alert.suggestedAction && <span className="ml-1 text-gray-600">— {alert.suggestedAction}</span>}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function BillingStateBadge({ state }: { state: BillingStateDTO }) {
+  const styles: Record<string, string> = {
+    unbilled:  'bg-gray-100 text-gray-600',
+    pending:   'bg-yellow-100 text-yellow-700',
+    presented: 'bg-blue-100 text-blue-700',
+    billed:    'bg-green-100 text-green-700',
+    excluded:  'bg-red-100 text-red-600',
+  }
+  const labels: Record<string, string> = {
+    unbilled:  'Unbilled',
+    pending:   'Pending',
+    presented: 'Presented',
+    billed:    'Billed',
+    excluded:  'Excluded',
+  }
+
+  return (
+    <span className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded ${
+      styles[state.state] ?? styles.unbilled
+    }`}>
+      {labels[state.state] ?? state.state}
+    </span>
+  )
+}
+
+function PaymentAllocationPanel({ summary }: { summary: PaymentAllocationSummaryDTO }) {
+  return (
+    <section aria-labelledby="fin-payments-heading">
+      <h2 id="fin-payments-heading" className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+        Payment Allocations
+      </h2>
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="grid grid-cols-3 gap-px bg-gray-100">
+          <div className="bg-white px-4 py-3 text-center">
+            <div className="text-xs text-gray-500 mb-1">Total Allocated</div>
+            <div className="text-sm font-semibold text-gray-900 tabular-nums" dir="ltr">
+              <MoneyValue amount={parseFloat(summary.totalAllocatedEur ?? '0')} size="sm" />
+            </div>
+          </div>
+          <div className="bg-white px-4 py-3 text-center">
+            <div className="text-xs text-gray-500 mb-1">Unallocated</div>
+            <div className="text-sm font-semibold text-amber-700 tabular-nums" dir="ltr">
+              <MoneyValue amount={parseFloat(summary.remainingUnallocatedEur ?? '0')} size="sm" />
+            </div>
+          </div>
+          <div className="bg-white px-4 py-3 text-center">
+            <div className="text-xs text-gray-500 mb-1">Fully Covered</div>
+            <div className="text-sm font-semibold text-gray-900">{summary.fullyAllocatedCount}</div>
+          </div>
+        </div>
+        {summary.allocations.length > 0 && (
+          <details className="border-t border-gray-200">
+            <summary className="px-4 py-2 text-xs text-gray-500 cursor-pointer hover:bg-gray-50">
+              View {summary.allocations.length} allocation{summary.allocations.length !== 1 ? 's' : ''}
+            </summary>
+            <div className="divide-y divide-gray-100">
+              {summary.allocations.map(alloc => (
+                <div key={alloc.id} className="flex items-center justify-between px-4 py-2 text-xs">
+                  <div>
+                    <span className="text-gray-600">{alloc.allocationMethod.toUpperCase()}</span>
+                    {alloc.notes && <span className="ml-2 text-gray-400">{alloc.notes}</span>}
+                  </div>
+                  <span className="font-medium tabular-nums text-gray-900" dir="ltr">
+                    <MoneyValue amount={parseFloat(alloc.allocatedAmountEur ?? '0')} size="sm" />
+                  </span>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function CorrectionCasesPanel({ cases }: { cases: readonly FinancialCorrectionCaseDTO[] }) {
+  const statusStyles: Record<string, string> = {
+    open:          'bg-yellow-100 text-yellow-800',
+    under_review:  'bg-blue-100 text-blue-800',
+    approved:      'bg-green-100 text-green-800',
+    rejected:      'bg-red-100 text-red-800',
+    applied:       'bg-gray-100 text-gray-800',
+    void:          'bg-gray-100 text-gray-500',
+  }
+  const priorityIcons: Record<string, string> = {
+    urgent: '🔴',
+    high: '🟠',
+    normal: '🟡',
+    low: '⚪',
+  }
+
+  return (
+    <section aria-labelledby="fin-corrections-heading">
+      <h2 id="fin-corrections-heading" className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+        Correction Cases ({cases.length} open)
+      </h2>
+      <div className="bg-white border border-gray-200 rounded-lg divide-y divide-gray-100 overflow-hidden">
+        {cases.map(c => (
+          <div key={c.id} className="px-4 py-3">
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs">{priorityIcons[c.priority] ?? '🟡'}</span>
+                <span className="text-sm font-medium text-gray-900">{c.description}</span>
+              </div>
+              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                statusStyles[c.status] ?? statusStyles.open
+              }`}>
+                {c.status.replace('_', ' ')}
+              </span>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-gray-500">
+              <span>Type: {c.correctionType.replace(/_/g, ' ')}</span>
+              {c.originalAmountEur != null && c.correctedAmountEur != null && (
+                <span dir="ltr">
+                  €{parseFloat(c.originalAmountEur).toFixed(2)} → €{parseFloat(c.correctedAmountEur).toFixed(2)}
+                </span>
+              )}
+              <time dateTime={c.openedAt}>{formatDate(c.openedAt.slice(0, 10))}</time>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 function JjInternalSection({ view }: { view: JjInternalViewDTO }) {
   return (
     <section aria-labelledby="jj-internal-heading" className="bg-amber-50 border border-amber-200 rounded-lg p-4 mt-4">
@@ -711,7 +920,8 @@ function JjInternalSection({ view }: { view: JjInternalViewDTO }) {
         JJ Internal — Margin Analysis
       </h2>
       <p className="text-xs text-amber-600 mb-3">
-        {view.rowsWithMargin} of {view.totalRows} rows have a margin (client charge differs from actual cost)
+        {view.rowsWithMargin} of {view.totalRows} rows have a margin (client charge differs from actual cost).
+        {' '}Rows with margins are tagged with a <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-px">△Margin</span> badge in the sections above.
       </p>
       <div className="flex items-baseline gap-2 mb-4">
         <span className="text-sm text-amber-800 font-medium">Total Margin:</span>

@@ -426,6 +426,18 @@ export interface OwnerFinancialDTO {
   } | null
   /** Per-property grouping with Property Net (multi-property owners) */
   propertyGroups?: PropertyFinancialGroupDTO[]
+
+  // ── PR #166 Consolidation additions ──
+
+  /** In-memory computed financial alerts (RC1 scope — not persistent).
+   *  Duplicate candidates, amount mismatches, unallocated payments, etc. */
+  alerts?: readonly FinancialAlertDTO[]
+  /** Report presentation configuration (language, RTL, display preferences) */
+  reportConfig?: ReportPresentationConfigDTO | null
+  /** Payment allocation summary for the owner's statement series */
+  paymentSummary?: PaymentAllocationSummaryDTO | null
+  /** Open correction cases requiring attention */
+  openCorrectionCases?: readonly FinancialCorrectionCaseDTO[]
 }
 
 /**
@@ -577,6 +589,9 @@ export interface OwnerFinancialRowDTO {
   actualCostEur?: EuroAmount
   /** JJ Internal: margin = client_charge - amount_eur */
   marginEur?: EuroAmount
+  /** Billing lifecycle state — computed from statement infrastructure.
+   *  null when owner has no statement series or billing is not yet resolved. */
+  billingState?: BillingStateDTO | null
 }
 
 export interface FinancialTimelineItemDTO {
@@ -1769,4 +1784,274 @@ export interface OwnerLtrStatementDTO {
 
   // Presentation
   readonly presentationOverrides: readonly string[]  // IDs of deferred items
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PR #166 CONSOLIDATION — Billing, Payment Allocation, Corrections, Alerts
+//
+// Constitutional:
+//   P-ARCH-1: NULL = Unknown. Never 0 or placeholder.
+//   P-ARCH-4: correction_events are append-only.
+//   P-ARCH-5: statements schema isolation — no FK to public.transactions.
+//   P-LEDGER-1: Cash Reality ≠ Economic Allocation ≠ Settlement Counterparty.
+//   P-LEDGER-6: Owner-facing amounts = COALESCE(client_charge, amount_eur).
+//   D4: JJ is the settlement boundary.
+//
+// KEY ARCHITECTURAL DECISION (discovered in consolidation):
+//   Billing state is COMPUTED from the statement lifecycle — NOT a separate table.
+//   Existing statement_draft_lines.includeInStatement = include/exclude toggle.
+//   Existing sent_statement_snapshots = "Presented/Billed" proof.
+//   Only TWO new tables: payment_allocations + correction_cases (in statements schema).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Billing State (COMPUTED — no table) ─────────────────────────────────────
+// Derived from statement lifecycle:
+//   Unbilled: no draft_line exists for this transaction
+//   Pending: draft_line exists with includeInStatement=true, no sent_snapshot
+//   Presented: included in a sent_statement_snapshot
+//   Billed: presented + payment allocated against it
+//   Excluded: draft_line exists with includeInStatement=false
+
+/**
+ * Billing lifecycle state — computed from statement infrastructure.
+ * NOT stored in a table. Resolved by billingStateResolver at query time.
+ */
+export type BillingState =
+  | 'unbilled'       // no draft_line exists for this row
+  | 'pending'        // draft_line with includeInStatement=true, not yet sent
+  | 'presented'      // included in sent_statement_snapshot
+  | 'billed'         // presented AND has payment allocation
+  | 'excluded'       // draft_line with includeInStatement=false
+
+/**
+ * Per-row billing state resolution.
+ * Computed by billingStateResolver from statement lifecycle.
+ */
+export interface BillingStateDTO {
+  /** Current computed state */
+  readonly state: BillingState
+  /** Which draft line controls include/exclude (null if unbilled) */
+  readonly draftLineId: string | null
+  /** Which sent snapshot this row appears in (null if not yet presented) */
+  readonly snapshotId: string | null
+  /** How much has been allocated against this row's charge */
+  readonly allocatedAmountEur: EuroAmount
+  /** Remaining unallocated charge (charge - allocated) */
+  readonly remainingEur: EuroAmount
+  /** Can this row be re-proposed to the next statement? */
+  readonly canRepropose: boolean
+  /** Timestamp of last state transition */
+  readonly lastTransitionAt: ISOTimestamp | null
+}
+
+// ─── Payment Allocation ──────────────────────────────────────────────────────
+// Maps to statements.payment_allocations table.
+// Links payment transactions to charge transactions (partial allocation supported).
+
+/**
+ * How an allocation was determined.
+ * 'fifo' = automatic oldest-first allocation.
+ * 'manual' = user explicitly assigned the allocation.
+ */
+export type AllocationMethod = 'fifo' | 'manual'
+
+/**
+ * A single payment-to-charge allocation record.
+ * One payment can be split across multiple charges.
+ * One charge can receive from multiple payments.
+ */
+export interface PaymentAllocationDTO {
+  readonly id: string
+  readonly seriesId: string
+  readonly paymentTransactionId: string
+  readonly chargeTransactionId: string
+  readonly allocatedAmountEur: EuroAmount
+  readonly allocationMethod: AllocationMethod
+  readonly allocatedBy: string | null
+  readonly allocatedAt: ISOTimestamp
+  readonly notes: string | null
+}
+
+/**
+ * Payment allocation summary for a statement series.
+ * Aggregates allocation state across all charges.
+ */
+export interface PaymentAllocationSummaryDTO {
+  /** Total charges in the series */
+  readonly totalChargesEur: EuroAmount
+  /** Total allocated (sum of all allocations) */
+  readonly totalAllocatedEur: EuroAmount
+  /** Remaining unallocated charges */
+  readonly remainingUnallocatedEur: EuroAmount
+  /** Unallocated payment surplus (payments exceed charges) */
+  readonly surplusEur: EuroAmount
+  /** Count of charges fully covered */
+  readonly fullyAllocatedCount: number
+  /** Count of charges partially covered */
+  readonly partiallyAllocatedCount: number
+  /** Count of charges with zero allocation */
+  readonly unallocatedCount: number
+  /** Individual allocations for drill-down */
+  readonly allocations: readonly PaymentAllocationDTO[]
+}
+
+// ─── Correction Cases (Financial Tab) ────────────────────────────────────────
+// Maps to statements.correction_cases + correction_events tables.
+// DISTINCT from CorrectionCaseDTO in Audit Tab (line ~809) which is about
+// statement-level corrections. This is about individual transaction corrections.
+
+/**
+ * Correction type — what kind of correction is needed.
+ */
+export type FinancialCorrectionType =
+  | 'amount_correction'      // wrong amount recorded
+  | 'reclassification'       // wrong category/subcategory
+  | 'duplicate_resolution'   // confirmed duplicate handling
+  | 'missing_charge'         // charge that should exist but doesn't
+  | 'disputed_charge'        // owner disputes a charge
+  | 'description_fix'        // wrong description/notes
+  | 'date_correction'        // wrong date recorded
+
+/**
+ * Correction case lifecycle.
+ * Terminal states: 'applied' and 'void' — no further transitions allowed.
+ */
+export type FinancialCorrectionStatus =
+  | 'open'                   // newly created, awaiting review
+  | 'under_review'           // being investigated
+  | 'approved'               // correction approved, pending application
+  | 'rejected'               // correction rejected with reason
+  | 'applied'                // correction has been applied (terminal)
+  | 'void'                   // case voided / superseded (terminal)
+
+export type CorrectionPriority = 'low' | 'normal' | 'high' | 'urgent'
+
+/**
+ * Full correction case for Financial Tab display.
+ * Includes original/corrected values and event history.
+ */
+export interface FinancialCorrectionCaseDTO {
+  readonly id: string
+  readonly seriesId: string
+  readonly originalTransactionId: string
+  readonly correctionType: FinancialCorrectionType
+  readonly status: FinancialCorrectionStatus
+  readonly description: string
+  readonly priority: CorrectionPriority
+  // Original and proposed values
+  readonly originalAmountEur: EuroAmount | null
+  readonly correctedAmountEur: EuroAmount | null
+  readonly originalFieldValues: Record<string, unknown> | null
+  readonly correctedFieldValues: Record<string, unknown> | null
+  // Lifecycle
+  readonly openedBy: string | null
+  readonly openedAt: ISOTimestamp
+  readonly resolvedBy: string | null
+  readonly resolvedAt: ISOTimestamp | null
+  readonly resolutionNotes: string | null
+  // Applied result
+  readonly appliedTransactionId: string | null
+  readonly appliedAt: ISOTimestamp | null
+  // Event history (append-only per P-ARCH-4)
+  readonly events: readonly FinancialCorrectionEventDTO[]
+}
+
+/**
+ * Immutable event in a correction case lifecycle (append-only).
+ */
+export interface FinancialCorrectionEventDTO {
+  readonly id: string
+  readonly caseId: string
+  readonly eventType: string
+  readonly performedBy: string | null
+  readonly notes: string | null
+  readonly metadata: Record<string, unknown> | null
+  readonly createdAt: ISOTimestamp
+}
+
+// ─── Financial Alerts ────────────────────────────────────────────────────────
+// In-memory computed alerts (RC1 scope — no persistent table).
+// RC2 will add persistent accounting_alerts table + alert workflow.
+
+/**
+ * Alert severity determines UI treatment.
+ * 'error' = blocks statement finalization.
+ * 'warning' = allows finalization but requires acknowledgment.
+ * 'info' = informational only.
+ */
+export type AlertSeverity = 'error' | 'warning' | 'info'
+
+/**
+ * Alert categories map to different analysis domains.
+ */
+export type AlertCategory =
+  | 'duplicate_candidate'       // potential duplicate rows detected
+  | 'missing_charge'            // expected charge not found
+  | 'amount_mismatch'           // client_charge vs amount_eur anomaly
+  | 'unallocated_payment'       // payment received with no charge allocation
+  | 'overdue_charge'            // charge outstanding beyond threshold
+  | 'cross_property_offset'     // cross-property settlement detected (RC2)
+  | 'stale_data'                // source data freshness concern
+  | 'reconciliation_gap'        // RC3 vs Hostaway discrepancy
+  | 'correction_pending'        // open correction case on this row
+
+/**
+ * A computed financial alert for a specific owner/property context.
+ */
+export interface FinancialAlertDTO {
+  readonly id: string
+  readonly severity: AlertSeverity
+  readonly category: AlertCategory
+  /** Human-readable alert message */
+  readonly message: string
+  /** Which transaction(s) this alert relates to */
+  readonly relatedTransactionIds: readonly string[]
+  /** Which property this alert relates to (null = owner-level) */
+  readonly propertyName: string | null
+  /** Suggested action text */
+  readonly suggestedAction: string | null
+  /** Can this alert be dismissed? (info=yes, error=no, warning=depends) */
+  readonly dismissible: boolean
+  /** Has the user acknowledged this alert? */
+  readonly acknowledged: boolean
+  /** When this alert was computed */
+  readonly computedAt: ISOTimestamp
+}
+
+// ─── Report Presentation Config ──────────────────────────────────────────────
+// Controls language, RTL, and presentation overrides for rendered reports.
+// Stored per-owner in statement_series or per-session for preview.
+
+/**
+ * Supported report languages.
+ * Default is 'en'. Hebrew requires RTL layout.
+ */
+export type ReportLanguage = 'en' | 'he'
+
+/**
+ * Report presentation configuration.
+ * Controls rendering only — NEVER changes financial truth.
+ * Concept D from Phase B architecture: "Report Presentation".
+ */
+export interface ReportPresentationConfigDTO {
+  /** Report language (default: 'en') */
+  readonly language: ReportLanguage
+  /** RTL layout required (derived from language, but explicit for rendering) */
+  readonly isRtl: boolean
+  /** Custom report title override (null = default) */
+  readonly titleOverride: string | null
+  /** Custom header text (company branding) */
+  readonly headerText: string | null
+  /** Custom footer text (disclaimers, contact) */
+  readonly footerText: string | null
+  /** Show JJ Internal margin column? (JJ staff only — P-ARCH-6) */
+  readonly showInternalMargin: boolean
+  /** Show payment allocation details? */
+  readonly showPaymentAllocations: boolean
+  /** Show billing state badges? */
+  readonly showBillingState: boolean
+  /** Date format preference */
+  readonly dateFormat: 'dd/mm/yyyy' | 'yyyy-mm-dd' | 'mm/dd/yyyy'
+  /** Currency display format */
+  readonly currencyFormat: 'symbol' | 'code' | 'none'
 }

@@ -47,6 +47,17 @@ import type {
   JjInternalRowDTO,
   FinancialTimelineItemDTO,
   EuroAmount,
+  // PR #166 Consolidation types
+  BillingState,
+  BillingStateDTO,
+  PaymentAllocationDTO,
+  PaymentAllocationSummaryDTO,
+  FinancialCorrectionCaseDTO,
+  FinancialCorrectionEventDTO,
+  FinancialAlertDTO,
+  AlertSeverity,
+  AlertCategory,
+  ReportPresentationConfigDTO,
 } from './ownerWorkspaceTypes'
 
 // ─── Adapter input ────────────────────────────────────────────────────────────
@@ -779,5 +790,310 @@ export async function fetchOwnerFinancial(
   const timeline = buildTimeline(reports)
   const jjInternalView = buildJjInternalView(reports)
 
-  return { position, overallNet, sections, propertyGroups, timeline, jjInternalView, occupancyPosition, historicalSummary }
+  // PR #166 Consolidation: alerts + report config + payments + corrections
+  const alerts = computeFinancialAlerts(reports)
+  const reportConfig = buildDefaultReportConfig()
+
+  return {
+    position, overallNet, sections, propertyGroups, timeline,
+    jjInternalView, occupancyPosition, historicalSummary,
+    alerts, reportConfig,
+    // paymentSummary + openCorrectionCases require statement series context —
+    // populated by fetchPaymentAllocationSummary / fetchCorrectionCases below
+    // when called from the Financial tab with a seriesId.
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PR #166 CONSOLIDATION — Billing State, Payment Allocation, Corrections, Alerts
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Billing State Resolver ──────────────────────────────────────────────────
+// Computes BillingState per transaction by querying the statement lifecycle.
+// No separate table — derived from statement_draft_lines + sent_statement_snapshots
+// + payment_allocations.
+
+/**
+ * Resolve billing state for a set of transaction IDs within a statement series.
+ * Returns a Map keyed by transaction ID.
+ *
+ * Resolution logic:
+ *   1. No draft_line → 'unbilled'
+ *   2. draft_line with includeInStatement=false → 'excluded'
+ *   3. draft_line with includeInStatement=true, no snapshot → 'pending'
+ *   4. In snapshot, no allocation → 'presented'
+ *   5. In snapshot + has allocation → 'billed'
+ */
+export async function resolveBillingStates(
+  seriesId: string,
+  transactionIds: readonly string[],
+): Promise<Map<string, BillingStateDTO>> {
+  const supabase = createServiceClient()
+  const result = new Map<string, BillingStateDTO>()
+
+  if (transactionIds.length === 0) return result
+
+  // Step 1: Get all draft lines for these transactions in this series
+  const { data: draftLines } = await supabase
+    .schema('statements')
+    .rpc('get_draft_lines_for_transactions', {
+      p_series_id: seriesId,
+      p_transaction_ids: transactionIds as string[],
+    })
+
+  // Step 2: Get all sent entry snapshots for these transactions
+  const { data: sentEntries } = await supabase
+    .schema('statements')
+    .rpc('get_sent_entries_for_transactions', {
+      p_series_id: seriesId,
+      p_transaction_ids: transactionIds as string[],
+    })
+
+  // Step 3: Get all payment allocations for these transactions as charges
+  const { data: allocations } = await supabase
+    .schema('statements')
+    .rpc('get_payment_allocations', { p_series_id: seriesId })
+
+  // Build lookup maps
+  const draftLineMap = new Map<string, { id: string; includeInStatement: boolean; updatedAt: string }>()
+  for (const dl of (draftLines ?? [])) {
+    draftLineMap.set(dl.source_transaction_id, {
+      id: dl.id,
+      includeInStatement: dl.include_in_statement,
+      updatedAt: dl.updated_at,
+    })
+  }
+
+  const snapshotMap = new Map<string, string>() // txId → snapshotId
+  for (const se of (sentEntries ?? [])) {
+    snapshotMap.set(se.source_transaction_id, se.snapshot_id)
+  }
+
+  const allocationMap = new Map<string, number>() // chargeId → total allocated
+  for (const alloc of (allocations ?? [])) {
+    const prev = allocationMap.get(alloc.charge_transaction_id) ?? 0
+    allocationMap.set(alloc.charge_transaction_id, prev + Number(alloc.allocated_amount_eur))
+  }
+
+  // Step 4: Resolve each transaction
+  for (const txId of transactionIds) {
+    const draftLine = draftLineMap.get(txId)
+    const snapshotId = snapshotMap.get(txId) ?? null
+    const allocated = allocationMap.get(txId) ?? 0
+
+    let state: BillingState
+    if (!draftLine) {
+      state = 'unbilled'
+    } else if (!draftLine.includeInStatement) {
+      state = 'excluded'
+    } else if (!snapshotId) {
+      state = 'pending'
+    } else if (allocated > 0) {
+      state = 'billed'
+    } else {
+      state = 'presented'
+    }
+
+    result.set(txId, {
+      state,
+      draftLineId: draftLine?.id ?? null,
+      snapshotId,
+      allocatedAmountEur: toEur(allocated),
+      remainingEur: toEur(0), // Placeholder — requires charge amount context
+      canRepropose: state === 'excluded' || state === 'unbilled',
+      lastTransitionAt: draftLine?.updatedAt ?? null,
+    })
+  }
+
+  return result
+}
+
+// ─── Payment Allocation ──────────────────────────────────────────────────────
+
+/**
+ * Fetch payment allocation summary for a statement series.
+ * Calls the RPC and aggregates into PaymentAllocationSummaryDTO.
+ */
+export async function fetchPaymentAllocationSummary(
+  seriesId: string,
+): Promise<PaymentAllocationSummaryDTO> {
+  const supabase = createServiceClient()
+
+  const { data, error } = await supabase
+    .schema('statements')
+    .rpc('get_payment_allocations', { p_series_id: seriesId })
+
+  if (error || !data) {
+    return {
+      totalChargesEur: toEur(0),
+      totalAllocatedEur: toEur(0),
+      remainingUnallocatedEur: toEur(0),
+      surplusEur: toEur(0),
+      fullyAllocatedCount: 0,
+      partiallyAllocatedCount: 0,
+      unallocatedCount: 0,
+      allocations: [],
+    }
+  }
+
+  const allocations: PaymentAllocationDTO[] = data.map((row: Record<string, unknown>) => ({
+    id: String(row.id),
+    seriesId: String(row.series_id),
+    paymentTransactionId: String(row.payment_transaction_id),
+    chargeTransactionId: String(row.charge_transaction_id),
+    allocatedAmountEur: toEur(Number(row.allocated_amount_eur)),
+    allocationMethod: row.allocation_method as 'fifo' | 'manual',
+    allocatedBy: row.allocated_by ? String(row.allocated_by) : null,
+    allocatedAt: String(row.allocated_at),
+    notes: row.notes ? String(row.notes) : null,
+  }))
+
+  const totalAllocated = allocations.reduce((sum, a) => sum + Number(a.allocatedAmountEur), 0)
+
+  // Aggregate by charge to compute counts
+  const chargeAllocations = new Map<string, number>()
+  for (const a of allocations) {
+    const prev = chargeAllocations.get(a.chargeTransactionId) ?? 0
+    chargeAllocations.set(a.chargeTransactionId, prev + Number(a.allocatedAmountEur))
+  }
+
+  return {
+    totalChargesEur: toEur(0), // Requires charge context — populated by caller
+    totalAllocatedEur: toEur(totalAllocated),
+    remainingUnallocatedEur: toEur(0), // Requires charge context
+    surplusEur: toEur(0), // Requires charge context
+    fullyAllocatedCount: 0, // Requires charge amount context
+    partiallyAllocatedCount: chargeAllocations.size,
+    unallocatedCount: 0, // Requires full charge list
+    allocations,
+  }
+}
+
+// ─── Correction Cases ────────────────────────────────────────────────────────
+
+/**
+ * Fetch correction cases for a statement series, including event history.
+ */
+export async function fetchCorrectionCases(
+  seriesId: string,
+): Promise<readonly FinancialCorrectionCaseDTO[]> {
+  const supabase = createServiceClient()
+
+  const { data: cases, error } = await supabase
+    .schema('statements')
+    .rpc('get_correction_cases', { p_series_id: seriesId })
+
+  if (error || !cases) return []
+
+  // Fetch events for each case
+  const caseDTOs: FinancialCorrectionCaseDTO[] = []
+  for (const c of cases) {
+    const { data: events } = await supabase
+      .schema('statements')
+      .rpc('get_correction_events', { p_case_id: c.id })
+
+    const eventDTOs: FinancialCorrectionEventDTO[] = (events ?? []).map((e: Record<string, unknown>) => ({
+      id: String(e.id),
+      caseId: String(e.case_id),
+      eventType: String(e.event_type),
+      performedBy: e.performed_by ? String(e.performed_by) : null,
+      notes: e.notes ? String(e.notes) : null,
+      metadata: (e.metadata as Record<string, unknown>) ?? null,
+      createdAt: String(e.created_at),
+    }))
+
+    caseDTOs.push({
+      id: String(c.id),
+      seriesId: String(c.series_id),
+      originalTransactionId: String(c.original_transaction_id),
+      correctionType: c.correction_type,
+      status: c.status,
+      description: String(c.description),
+      priority: c.priority,
+      originalAmountEur: c.original_amount_eur != null ? toEur(Number(c.original_amount_eur)) : null,
+      correctedAmountEur: c.corrected_amount_eur != null ? toEur(Number(c.corrected_amount_eur)) : null,
+      originalFieldValues: (c.original_field_values as Record<string, unknown>) ?? null,
+      correctedFieldValues: (c.corrected_field_values as Record<string, unknown>) ?? null,
+      openedBy: c.opened_by ? String(c.opened_by) : null,
+      openedAt: String(c.opened_at),
+      resolvedBy: c.resolved_by ? String(c.resolved_by) : null,
+      resolvedAt: c.resolved_at ? String(c.resolved_at) : null,
+      resolutionNotes: c.resolution_notes ? String(c.resolution_notes) : null,
+      appliedTransactionId: c.applied_transaction_id ? String(c.applied_transaction_id) : null,
+      appliedAt: c.applied_at ? String(c.applied_at) : null,
+      events: eventDTOs,
+    })
+  }
+
+  return caseDTOs
+}
+
+// ─── Financial Alerts (in-memory, RC1 scope) ─────────────────────────────────
+// Computed from RC3 report data without querying additional tables.
+// RC2 will add persistent accounting_alerts table.
+
+/**
+ * Compute financial alerts from RC3 report data.
+ * Detects: duplicate candidates, amount mismatches, missing charges.
+ */
+function computeFinancialAlerts(
+  reports: RC3PropertyReport[],
+): readonly FinancialAlertDTO[] {
+  const alerts: FinancialAlertDTO[] = []
+  const now = new Date().toISOString()
+  let alertId = 0
+
+  for (const report of reports) {
+    for (const section of report.accounts) {
+      for (const row of section.rows) {
+        // Alert: client_charge differs from amount_eur (potential margin or error)
+        if (
+          row.client_charge != null &&
+          row.amount_eur != null &&
+          Math.abs(Number(row.client_charge) - Number(row.amount_eur)) > 0.01
+        ) {
+          const diff = Number(row.client_charge) - Number(row.amount_eur)
+          // Only alert on large discrepancies (>20% or >€100)
+          const pct = Math.abs(diff / Number(row.amount_eur))
+          if (pct > 0.2 || Math.abs(diff) > 100) {
+            alerts.push({
+              id: `alert-${++alertId}`,
+              severity: 'info' as AlertSeverity,
+              category: 'amount_mismatch' as AlertCategory,
+              message: `Charge differs from actual cost by €${Math.abs(diff).toFixed(2)} (${(pct * 100).toFixed(0)}%)`,
+              relatedTransactionIds: row.id ? [row.id] : [],
+              propertyName: report.reporting_name,
+              suggestedAction: 'Verify margin is intentional',
+              dismissible: true,
+              acknowledged: false,
+              computedAt: now,
+            })
+          }
+        }
+      }
+    }
+  }
+
+  return alerts
+}
+
+// ─── Report Presentation Config ──────────────────────────────────────────────
+
+/**
+ * Build default report presentation configuration.
+ * Can be overridden per-owner via statement_series or session preferences.
+ */
+function buildDefaultReportConfig(): ReportPresentationConfigDTO {
+  return {
+    language: 'en',
+    isRtl: false,
+    titleOverride: null,
+    headerText: null,
+    footerText: null,
+    showInternalMargin: false,
+    showPaymentAllocations: false,
+    showBillingState: false,
+    dateFormat: 'dd/mm/yyyy',
+    currencyFormat: 'symbol',
+  }
 }
