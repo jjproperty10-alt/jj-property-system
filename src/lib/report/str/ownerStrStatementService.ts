@@ -12,6 +12,7 @@ import { maskGuestName } from '@/lib/owners/ownerReservationAdapter'
 import { composeOwnerStrStatement, isOwnerStatementExtra, type OwnerStrStatement, type StatementReservationEvidence, type StatementExtra } from './ownerStrStatement'
 import { isBookingAccountVerifiedZero } from './bookingTaxPolicy'
 import { getAuthoritativeStatementLine, belongsToStatementMonth } from './statementEvidence'
+import { getHistoricalChannelEvidence } from './historicalChannelEvidence'
 
 export interface OwnerStrStatementInput {
   readonly ownerName: string
@@ -73,6 +74,19 @@ export async function buildOwnerStrStatement(input: OwnerStrStatementInput): Pro
       // by ARRIVAL/check-in date (NOT overlap). The operational Reservations cockpit keeps overlap.
       if (!belongsToStatementMonth(r.checkIn, input.startDate, input.endDate)) continue
       reservations.push(toEvidence(p.name, r, today))
+    }
+  }
+
+  // 1b) Historical channel evidence — recovered Booking/Airbnb reservations for properties whose STR
+  //     channel data did NOT come through Hostaway (e.g. a deleted Hostaway listing). Same
+  //     StatementReservationEvidence shape, same arrival-month periodization. Purely additive:
+  //     Hostaway-mapped properties have no rows here, so their statements are unchanged. Provenance is
+  //     preserved as airbnb/booking (never hostaway); buildStrStatementLine still derives Mgmt Fee/Net.
+  for (const p of input.properties) {
+    const hist = await getHistoricalChannelEvidence(sb, p.id, p.name, today)
+    for (const ev of hist) {
+      if (!belongsToStatementMonth(ev.checkIn, input.startDate, input.endDate)) continue
+      reservations.push(ev)
     }
   }
 
