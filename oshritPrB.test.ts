@@ -12,8 +12,8 @@
  *
  * Also tests new display behavior:
  * - Sale header shows closingBalanceEur (not netEur) as primary
- * - Purchase section labeled "JJ Internal Acquisition" for NEEDS_REVIEW
- * - displayNote present on purchase sections for NEEDS_REVIEW properties
+ * - Purchase section labeled "JJ Internal Acquisition — Settled" (universal rule)
+ * - displayNote present on purchase sections for internal_settled properties
  */
 
 jest.mock('server-only', () => ({}), { virtual: true })
@@ -239,9 +239,9 @@ describe('Oshrit PR B — Purchase label for NEEDS_REVIEW', () => {
     const purchase = result.sections.find(s => s.type === 'purchase')
     expect(purchase).toBeDefined()
     // NEEDS_REVIEW keeps original label (not relabeled like internal_settled)
-    expect(purchase!.label).toBe('Property Purchase')
+    expect(purchase!.label).toBe('JJ Internal Acquisition — Settled')
     expect(purchase!.displayNote).toBeTruthy()
-    expect(purchase!.displayNote).toContain('Needs Review')
+    expect(purchase!.displayNote).toContain('JJ internal acquisition')
   })
 
   test('Purchase section gets needs_review displayNote for non-registered properties', async () => {
@@ -258,9 +258,9 @@ describe('Oshrit PR B — Purchase label for NEEDS_REVIEW', () => {
     const purchase = result.sections.find(s => s.type === 'purchase')
     expect(purchase).toBeDefined()
     // Properties not in PURCHASE_DISPOSITIONS get 'needs_review' disposition
-    expect(purchase!.label).toBe('Property Purchase')
+    expect(purchase!.label).toBe('JJ Internal Acquisition — Settled')
     expect(purchase!.displayNote).toBeTruthy()
-    expect(purchase!.displayNote).toContain('Needs Review')
+    expect(purchase!.displayNote).toContain('JJ internal acquisition')
   })
 
   test('€2,620 not exposed — confirmed_duplicate rows excluded by RC3 views', async () => {

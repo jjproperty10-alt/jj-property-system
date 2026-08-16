@@ -182,6 +182,73 @@ function MoneyKpi({ label, value }: { label: string; value: string | null }) {
   )
 }
 
+/**
+ * Presentation group ordering for rental sections.
+ * Groups are displayed in this order; any group not listed sorts to the end.
+ */
+const RENTAL_GROUP_ORDER: string[] = [
+  'Rent Income',
+  'Owner Payments',
+  'Management Fees',
+  'Deposits',
+  'Utilities',
+  'Maintenance & Repairs',
+  'Cleaning',
+  'Furnishing & Equipment',
+  'Property Costs',
+  'Marketing',
+  'Other',
+]
+
+function groupRentalRows(rows: OwnerFinancialRowDTO[]): { group: string; rows: OwnerFinancialRowDTO[]; subtotal: number }[] {
+  const groups = new Map<string, OwnerFinancialRowDTO[]>()
+  for (const row of rows) {
+    const group = row.presentationGroup ?? 'Other'
+    if (!groups.has(group)) groups.set(group, [])
+    groups.get(group)!.push(row)
+  }
+
+  const ordered = Array.from(groups.entries())
+    .map(([group, groupRows]) => ({
+      group,
+      rows: groupRows,
+      subtotal: groupRows.reduce((sum: number, r: OwnerFinancialRowDTO) => sum + (r.amountEur != null ? parseFloat(r.amountEur) : 0), 0),
+    }))
+    .sort((a, b) => {
+      const ai = RENTAL_GROUP_ORDER.indexOf(a.group)
+      const bi = RENTAL_GROUP_ORDER.indexOf(b.group)
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
+    })
+
+  return ordered
+}
+
+function renderRowRecord(row: OwnerFinancialRowDTO): Record<string, ReactNode> {
+  const isRef = row.isReference === true
+  const textCls = isRef ? 'text-sm text-gray-400 italic' : 'text-sm text-gray-900'
+  const dateCls = isRef ? 'text-sm text-gray-400 italic' : 'text-sm text-gray-600'
+  return {
+    date: (
+      <time dateTime={row.date} dir="ltr" className={dateCls}>
+        {formatDate(row.date)}
+      </time>
+    ),
+    description: <span className={textCls}>{row.description}</span>,
+    amountEur: row.amountEur != null ? (
+      <span className={isRef ? 'opacity-50' : ''}>
+        <MoneyValue amount={parseFloat(row.amountEur)} size="sm" />
+      </span>
+    ) : (
+      <UnknownValue reason="Amount unknown" />
+    ),
+    evidenceRef: row.evidenceRef ? (
+      <a href={row.evidenceRef} className="text-xs text-blue-600 hover:underline">View →</a>
+    ) : (
+      <span className="text-xs text-gray-300">{'—'}</span>
+    ),
+  }
+}
+
 function FinancialSection({ section, periodLabel }: { section: OwnerFinancialDTO['sections'][number]; periodLabel?: string }) {
   const DIR: Record<'due_to_jj' | 'due_to_you' | 'settled' | 'internal', { label: string; cls: string }> = {
     due_to_jj:  { label: 'Due to JJ',  cls: 'text-red-700 bg-red-50 border-red-200' },
@@ -197,31 +264,9 @@ function FinancialSection({ section, periodLabel }: { section: OwnerFinancialDTO
     { key: 'evidenceRef', label: 'Evidence' },
   ]
 
-  const rows: Record<string, ReactNode>[] = section.rows.map((row: OwnerFinancialRowDTO) => {
-    const isRef = row.isReference === true
-    const textCls = isRef ? 'text-sm text-gray-400 italic' : 'text-sm text-gray-900'
-    const dateCls = isRef ? 'text-sm text-gray-400 italic' : 'text-sm text-gray-600'
-    return {
-      date: (
-        <time dateTime={row.date} dir="ltr" className={dateCls}>
-          {formatDate(row.date)}
-        </time>
-      ),
-      description: <span className={textCls}>{row.description}</span>,
-      amountEur: row.amountEur != null ? (
-        <span className={isRef ? 'opacity-50' : ''}>
-          <MoneyValue amount={parseFloat(row.amountEur)} size="sm" />
-        </span>
-      ) : (
-        <UnknownValue reason="Amount unknown" />
-      ),
-      evidenceRef: row.evidenceRef ? (
-        <a href={row.evidenceRef} className="text-xs text-blue-600 hover:underline">View →</a>
-      ) : (
-        <span className="text-xs text-gray-300">{'—'}</span>
-      ),
-    }
-  })
+  // Rental sections use presentation grouping; all others render flat
+  const isRental = section.type === 'rental'
+  const hasGroupedRows = isRental && section.rows.some(r => r.presentationGroup != null)
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -269,14 +314,44 @@ function FinancialSection({ section, periodLabel }: { section: OwnerFinancialDTO
         </div>
       )}
 
-      {/* Rows */}
+      {/* Rows — grouped for rental, flat for everything else */}
       {section.rows.length > 0 ? (
-        <DataTable columns={columns} rows={rows} />
+        hasGroupedRows ? (
+          <RentalGroupedRows rows={section.rows} columns={columns} />
+        ) : (
+          <DataTable columns={columns} rows={section.rows.map(renderRowRecord)} />
+        )
       ) : (
         <div className="px-4 py-6 text-center text-sm text-gray-400">
           No transactions in this category
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Render rental rows grouped by presentation group with subgroup headers + subtotals.
+ * Presentation only — the canonical section total is authoritative, not the sum of subgroups.
+ */
+function RentalGroupedRows({ rows, columns }: { rows: OwnerFinancialRowDTO[]; columns: DataTableColumn[] }) {
+  const groups = groupRentalRows(rows)
+
+  return (
+    <div>
+      {groups.map(({ group, rows: groupRows, subtotal }) => (
+        <div key={group}>
+          {/* Subgroup header */}
+          <div className="flex items-center justify-between px-4 py-2 bg-gray-50/60 border-b border-gray-100">
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{group}</span>
+            <span className="text-xs font-medium text-gray-500 tabular-nums" dir="ltr">
+              <MoneyValue amount={subtotal} size="sm" />
+            </span>
+          </div>
+          {/* Subgroup rows */}
+          <DataTable columns={columns} rows={groupRows.map(renderRowRecord)} />
+        </div>
+      ))}
     </div>
   )
 }

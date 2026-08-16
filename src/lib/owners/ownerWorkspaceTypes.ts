@@ -565,6 +565,12 @@ export interface OwnerFinancialRowDTO {
   evidenceRef: string | null
   /** True for contract/reference rows (balance_effect=0, shown for explainability) */
   isReference?: boolean
+  /** Original RC3 subcategory — used for presentation grouping in rental sections */
+  subcategory?: string | null
+  /** Presentation group label — groups related subcategories for readability.
+   *  Presentation only — no arithmetic change. Subgroup totals must reconcile
+   *  to the canonical section subtotal. */
+  presentationGroup?: string | null
 }
 
 export interface FinancialTimelineItemDTO {
