@@ -42,6 +42,10 @@ import type {
   OwnerDepartmentBalanceDTO,
   OccupancyPositionDTO,
   PropertyFinancialGroupDTO,
+  JjInternalViewDTO,
+  JjInternalSectionDTO,
+  JjInternalRowDTO,
+  FinancialTimelineItemDTO,
   EuroAmount,
 } from './ownerWorkspaceTypes'
 
@@ -167,6 +171,8 @@ function mapRowToDTO(
   sectionType?: string,
 ): OwnerFinancialRowDTO {
   const isRental = sectionType === 'rental'
+  // Margin: present only when client_charge differs from actual cost
+  const hasMargin = row.client_charge != null && row.client_charge !== row.amount_eur
   return {
     id:                row.id,
     date:              row.date,
@@ -177,6 +183,8 @@ function mapRowToDTO(
     isReference:       row.display_group === 'reference',
     subcategory:       isRental ? (row.subcategory ?? null) : undefined,
     presentationGroup: isRental ? resolveRentalPresentationGroup(row.subcategory ?? null) : undefined,
+    actualCostEur:     hasMargin ? toEur(row.amount_eur) : undefined,
+    marginEur:         hasMargin ? toEur(row.client_amount - row.amount_eur) : undefined,
   }
 }
 
@@ -574,6 +582,121 @@ async function fetchHistoricalSummary(
   }
 }
 
+// ─── JJ Internal View — Margin Analysis ─────────────────────────────────────
+
+/**
+ * Build JJ Internal margin view from RC3 reports.
+ *
+ * Shows rows where client_charge differs from amount_eur.
+ * Margin = client_amount − amount_eur (what JJ earns above actual cost).
+ * Never shown in owner-facing views — JJ management only.
+ */
+function buildJjInternalView(
+  reports: RC3PropertyReport[],
+): JjInternalViewDTO | null {
+  const sections: JjInternalSectionDTO[] = []
+  let totalMargin = 0
+  let rowsWithMargin = 0
+  let totalRows = 0
+
+  for (const report of reports) {
+    for (const account of report.accounts) {
+      const marginRows: JjInternalRowDTO[] = []
+      for (const row of account.rows) {
+        totalRows++
+        if (row.client_charge != null && row.client_charge !== row.amount_eur) {
+          const margin = row.client_amount - row.amount_eur
+          totalMargin += margin
+          rowsWithMargin++
+          marginRows.push({
+            id: row.id,
+            date: row.date,
+            description: row.description ?? row.subcategory ?? '',
+            subcategory: row.subcategory ?? null,
+            actualCostEur: toEur(row.amount_eur),
+            clientChargeEur: toEur(row.client_amount),
+            marginEur: toEur(margin),
+          })
+        }
+      }
+      if (marginRows.length > 0) {
+        const sectionMargin = marginRows.reduce(
+          (sum, r) => sum + parseFloat(r.marginEur as string), 0
+        )
+        sections.push({
+          propertyName: report.reporting_name,
+          accountType: account.account_type,
+          accountLabel: account.account_label,
+          totalMarginEur: toEur(sectionMargin),
+          rows: marginRows,
+        })
+      }
+    }
+  }
+
+  if (rowsWithMargin === 0) return null
+
+  return {
+    totalMarginEur: toEur(totalMargin),
+    rowsWithMargin,
+    totalRows,
+    sections,
+  }
+}
+
+// ─── Financial Timeline ─────────────────────────────────────────────────────
+
+/**
+ * Build a financial timeline from RC3 reports.
+ *
+ * Selects significant events: BPO payments (money actually paid to owner),
+ * plus the most recent transactions, ordered chronologically.
+ */
+function buildTimeline(
+  reports: RC3PropertyReport[],
+): FinancialTimelineItemDTO[] {
+  const items: FinancialTimelineItemDTO[] = []
+
+  for (const report of reports) {
+    for (const account of report.accounts) {
+      for (const row of account.rows) {
+        if (row.is_platform_tracking) continue
+        if (row.display_group === 'reference') continue
+
+        // BPO payments are always significant timeline events
+        if (row.is_bpo) {
+          items.push({
+            id: row.id,
+            label: `Payment to Owner — ${report.reporting_name}`,
+            date: row.date,
+            amountEur: toEur(row.client_amount),
+            type: 'payment',
+          })
+          continue
+        }
+
+        // Large transactions (>€1,000) are significant
+        if (Math.abs(row.client_amount) >= 1000 && row.is_balance_affecting) {
+          const type: FinancialTimelineItemDTO['type'] =
+            row.display_group === 'income' ? 'income' :
+            row.display_group === 'expense' ? 'expense' : 'income'
+          items.push({
+            id: row.id,
+            label: `${row.description ?? row.subcategory ?? account.account_label} — ${report.reporting_name}`,
+            date: row.date,
+            amountEur: toEur(row.client_amount),
+            type,
+          })
+        }
+      }
+    }
+  }
+
+  // Sort chronologically descending (most recent first), limit to 20
+  items.sort((a, b) => b.date.localeCompare(a.date))
+  return items.slice(0, 20)
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -653,5 +776,8 @@ export async function fetchOwnerFinancial(
       'reflected in the accounting engine. The amounts shown are incomplete.'
   }
 
-  return { position, overallNet, sections, propertyGroups, timeline: [], occupancyPosition, historicalSummary }
+  const timeline = buildTimeline(reports)
+  const jjInternalView = buildJjInternalView(reports)
+
+  return { position, overallNet, sections, propertyGroups, timeline, jjInternalView, occupancyPosition, historicalSummary }
 }

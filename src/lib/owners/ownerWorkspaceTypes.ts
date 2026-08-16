@@ -414,6 +414,8 @@ export interface OwnerFinancialDTO {
   overallNet: OwnerOverallNetDTO | null
   sections: OwnerFinancialSectionDTO[]
   timeline: FinancialTimelineItemDTO[]
+  /** JJ Internal margin analysis — rows where client_charge differs from amount_eur */
+  jjInternalView?: JjInternalViewDTO | null
   /** Occupancy position — personal occupancy obligations (Oshrit only for now) */
   occupancyPosition?: OccupancyPositionDTO | null
   /** Historical data summary for three-state display (State B) */
@@ -571,6 +573,10 @@ export interface OwnerFinancialRowDTO {
    *  Presentation only — no arithmetic change. Subgroup totals must reconcile
    *  to the canonical section subtotal. */
   presentationGroup?: string | null
+  /** JJ Internal: actual cost when client_charge differs from amount_eur */
+  actualCostEur?: EuroAmount
+  /** JJ Internal: margin = client_charge - amount_eur */
+  marginEur?: EuroAmount
 }
 
 export interface FinancialTimelineItemDTO {
@@ -579,6 +585,33 @@ export interface FinancialTimelineItemDTO {
   date: ISODate
   amountEur: EuroAmount
   type: 'income' | 'expense' | 'payment' | 'opening' | 'closing'
+}
+
+// ─── JJ Internal Margin Analysis ───
+
+export interface JjInternalViewDTO {
+  totalMarginEur: EuroAmount
+  rowsWithMargin: number
+  totalRows: number
+  sections: JjInternalSectionDTO[]
+}
+
+export interface JjInternalSectionDTO {
+  propertyName: string
+  accountType: string
+  accountLabel: string
+  totalMarginEur: EuroAmount
+  rows: JjInternalRowDTO[]
+}
+
+export interface JjInternalRowDTO {
+  id: string
+  date: string
+  description: string
+  subcategory: string | null
+  actualCostEur: EuroAmount
+  clientChargeEur: EuroAmount
+  marginEur: EuroAmount
 }
 
 // ─────────────────────────────────────────────────────────────

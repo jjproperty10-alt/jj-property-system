@@ -11,7 +11,7 @@
 import type { ReactNode } from 'react'
 import { KpiCard, MoneyValue, UnknownValue, EmptyState, DataTable, AttentionBanner } from '@/components/ds'
 import type { DataTableColumn } from '@/components/ds'
-import type { OwnerFinancialDTO, OwnerFinancialRowDTO, OwnerOverallNetDTO, OccupancyPositionDTO, PropertyFinancialGroupDTO } from '@/lib/owners/ownerWorkspaceTypes'
+import type { OwnerFinancialDTO, OwnerFinancialRowDTO, OwnerOverallNetDTO, OccupancyPositionDTO, PropertyFinancialGroupDTO, JjInternalViewDTO, JjInternalSectionDTO, JjInternalRowDTO } from '@/lib/owners/ownerWorkspaceTypes'
 import { DateRangePicker } from '@/components/owners/DateRangePicker'
 
 export interface FinancialTabProps {
@@ -161,6 +161,9 @@ export function FinancialTab({ dto, periodLabel, ownerSlug, fromDate, toDate }: 
           </div>
         </section>
       )}
+
+      {/* JJ Internal — Margin Analysis (never owner-facing) */}
+      {dto.jjInternalView && <JjInternalSection view={dto.jjInternalView} />}
     </div>
   )
 }
@@ -269,9 +272,9 @@ function FinancialSection({ section, periodLabel }: { section: OwnerFinancialDTO
   const hasGroupedRows = isRental && section.rows.some(r => r.presentationGroup != null)
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      {/* Section header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
+    <details className="bg-white border border-gray-200 rounded-lg overflow-hidden group/section">
+      {/* Section header — summary-first: shows totals even when collapsed */}
+      <summary className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
         <h3 className="text-sm font-semibold text-gray-800 truncate min-w-0">
           {section.label}
           {section.propertyName ? <span className="text-gray-500 font-normal"> · {section.propertyName}</span> : null}
@@ -298,8 +301,9 @@ function FinancialSection({ section, periodLabel }: { section: OwnerFinancialDTO
                 : '—'}
             </span>
           ))}
+          <span className="text-gray-400 text-xs transition-transform group-open/section:rotate-180">▼</span>
         </div>
-      </div>
+      </summary>
       {/* Opening balance (visible only when custom date range produces non-zero OB) */}
       {section.openingBalanceEur != null && parseFloat(section.openingBalanceEur) !== 0 && (
         <div className="flex items-center justify-between px-4 py-1.5 bg-blue-50 border-b border-blue-100 text-xs text-blue-700">
@@ -326,7 +330,7 @@ function FinancialSection({ section, periodLabel }: { section: OwnerFinancialDTO
           No transactions in this category
         </div>
       )}
-    </div>
+    </details>
   )
 }
 
@@ -697,6 +701,54 @@ function HistoricalAvailability({ summary, periodLabel }: { summary: NonNullable
         </div>
       </div>
     </div>
+  )
+}
+
+function JjInternalSection({ view }: { view: JjInternalViewDTO }) {
+  return (
+    <section aria-labelledby="jj-internal-heading" className="bg-amber-50 border border-amber-200 rounded-lg p-4 mt-4">
+      <h2 id="jj-internal-heading" className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-2">
+        JJ Internal — Margin Analysis
+      </h2>
+      <p className="text-xs text-amber-600 mb-3">
+        {view.rowsWithMargin} of {view.totalRows} rows have a margin (client charge differs from actual cost)
+      </p>
+      <div className="flex items-baseline gap-2 mb-4">
+        <span className="text-sm text-amber-800 font-medium">Total Margin:</span>
+        <MoneyValue amount={parseFloat(view.totalMarginEur as string)} size="md" />
+      </div>
+      {view.sections.map((section: JjInternalSectionDTO, idx: number) => (
+        <details key={idx} className="mb-2 last:mb-0">
+          <summary className="cursor-pointer text-sm font-medium text-amber-900 py-1 hover:text-amber-700">
+            {section.propertyName} — {section.accountLabel} (margin: €{parseFloat(section.totalMarginEur as string).toFixed(2)})
+          </summary>
+          <div className="mt-1 ml-2">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-amber-600">
+                  <th className="py-1">Date</th>
+                  <th className="py-1">Description</th>
+                  <th className="py-1 text-right">Actual Cost</th>
+                  <th className="py-1 text-right">Client Charge</th>
+                  <th className="py-1 text-right">Margin</th>
+                </tr>
+              </thead>
+              <tbody>
+                {section.rows.map((row: JjInternalRowDTO) => (
+                  <tr key={row.id} className="border-t border-amber-100">
+                    <td className="py-1" dir="ltr">{formatDate(row.date)}</td>
+                    <td className="py-1">{row.description}</td>
+                    <td className="py-1 text-right" dir="ltr">€{parseFloat(row.actualCostEur as string).toFixed(2)}</td>
+                    <td className="py-1 text-right" dir="ltr">€{parseFloat(row.clientChargeEur as string).toFixed(2)}</td>
+                    <td className="py-1 text-right font-medium" dir="ltr">€{parseFloat(row.marginEur as string).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      ))}
+    </section>
   )
 }
 
