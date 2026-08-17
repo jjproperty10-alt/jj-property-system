@@ -47,6 +47,7 @@ import {
 import {
   getAllVerifiedOwners,
   resolveBySlug,
+  resolvePartyForEntity,
 } from '../identity'
 import type { ResolvedManagedIdentityDTO } from '../identity'
 import { getFinancial } from './ownerFinancialService'
@@ -234,6 +235,13 @@ export async function resolveOwnerWorkspace(slug: string): Promise<OwnerWorkspac
       entityId = result.entityId
       displayName = result.displayName
       properties = strProps.map(p => p.name).sort()
+      // Blocker 2: resolve canonical party ID via existing bridge (resolvePartyForEntity → resolve_party_id RPC).
+      // Without this, partyId falls back to lifecycle UUID in buildOwnerIdentity, which is wrong
+      // for statement_series lookups that require registry.parties.party_id.
+      const partyResolution = await resolvePartyForEntity(entityId)
+      if (partyResolution.status === 'resolved') {
+        partyId = partyResolution.partyId
+      }
       break
     }
   }
