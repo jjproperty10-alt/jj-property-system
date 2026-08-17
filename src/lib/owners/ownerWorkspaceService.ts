@@ -200,6 +200,7 @@ export async function resolveOwnerWorkspace(slug: string): Promise<OwnerWorkspac
   const result = await resolveBySlug(slug)
 
   let entityId: string
+  let partyId: string | null = null  // Blocker 2: canonical registry.parties UUID
   let displayName: string
   let properties: string[]
   let preferredLanguage: 'he' | 'en' | 'ru' | null = null
@@ -214,6 +215,7 @@ export async function resolveOwnerWorkspace(slug: string): Promise<OwnerWorkspac
       return { status: 'source_unavailable', error: result.error }
     case 'resolved':
       entityId = result.data.identity.entityId
+      partyId = result.data.identity.partyId ?? null  // Blocker 2: from enrichIdentityWithParty
       displayName = result.data.identity.displayName
       properties = result.data.managedProperties.map(r => r.propertyName).sort()
       preferredLanguage = result.data.identity.preferredLanguage
@@ -236,7 +238,7 @@ export async function resolveOwnerWorkspace(slug: string): Promise<OwnerWorkspac
     }
   }
 
-  const identity = buildOwnerIdentity(entityId, displayName, properties, preferredLanguage, country)
+  const identity = buildOwnerIdentity(entityId, displayName, properties, preferredLanguage, country, partyId)
 
   const now = new Date()
   const year = now.getFullYear()
@@ -342,7 +344,7 @@ export async function getOwnerFinancial(
       .schema('statements')
       .from('statement_series')
       .select('series_id')
-      .eq('owner_party_id', workspace.identity.id)
+      .eq('owner_party_id', workspace.identity.partyId)
       .eq('series_status', 'active')
       .order('created_at', { ascending: false })
       .limit(1)

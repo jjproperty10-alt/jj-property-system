@@ -26,15 +26,18 @@ export interface ReportActionsBarProps {
   /** Optional date range (ISO YYYY-MM-DD) */
   fromDate?: string | null
   toDate?: string | null
+  /** Property name for multi-property owners (Blocker 5). Omit for single-property owners. */
+  propertyName?: string | null
 }
 
 function buildPdfUrl(props: ReportActionsBarProps): string {
-  const { ownerSlug, lang, reportType, fromDate, toDate } = props
+  const { ownerSlug, lang, reportType, fromDate, toDate, propertyName } = props
   const params = new URLSearchParams()
   if (lang && lang !== 'en') params.set('lang', lang)
   if (reportType && reportType !== 'full') params.set('type', reportType)
   if (fromDate) params.set('from', fromDate)
   if (toDate) params.set('to', toDate)
+  if (propertyName) params.set('property', propertyName)
   const qs = params.toString()
   return `/owners/${ownerSlug}/report/pdf${qs ? `?${qs}` : ''}`
 }

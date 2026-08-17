@@ -225,6 +225,11 @@ export type SourceMode = 'jj' | 'hostaway' | 'compare'
 export interface OwnerIdentityDTO {
   /** Internal UUID from lifecycle.partner_entry or jj_staff_config */
   id: string
+  /** Canonical party UUID from registry.parties (via resolve_party_id).
+   *  Used for statement_series lookups, billing, payment, and correction contexts.
+   *  Falls back to `id` (lifecycle UUID) when no approved party mapping exists.
+   *  Blocker 2 — PR #166 Hard Gap Audit. */
+  partyId: string
   /** URL-safe slug derived from name */
   slug: string
   /** Display name */

@@ -38,8 +38,9 @@ jest.mock('@/lib/owners/ownerWorkspaceFixtures', () => ({
 jest.mock('@/lib/owners/ownerWorkspaceUtils', () => ({
   nameToSlug: (name: string) =>
     name.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, ''),
-  buildOwnerIdentity: (id: string, name: string, properties: string[]) => ({
+  buildOwnerIdentity: (id: string, name: string, properties: string[], _lang?: unknown, _country?: unknown, canonicalPartyId?: string | null) => ({
     id,
+    partyId: canonicalPartyId ?? id,
     slug: name.toLowerCase().replace(/\s+/g, '-'),
     name,
     preferredLanguage: 'en' as const,

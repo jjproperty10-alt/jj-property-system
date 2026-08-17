@@ -63,15 +63,22 @@ export function FinancialTab({ dto, periodLabel, ownerSlug, fromDate, toDate }: 
       />
 
       {/* PR #166 Gap I+M — Download PDF / Print buttons */}
-      <div className="flex items-center justify-end">
-        <ReportActionsBar
-          ownerSlug={ownerSlug}
-          lang={reportConfig?.language ?? 'en'}
-          reportType="full"
-          fromDate={fromDate}
-          toDate={toDate}
-        />
-      </div>
+      {/* Blocker 5: pass propertyName for multi-property owners.
+          Single property → backward compatible (no param needed).
+          Multi-property → each PropertyGroup gets its own download button below;
+          top-level bar renders only for single-property owners. */}
+      {(!hasPropertyGroups || propertyGroups!.length === 1) && (
+        <div className="flex items-center justify-end">
+          <ReportActionsBar
+            ownerSlug={ownerSlug}
+            lang={reportConfig?.language ?? 'en'}
+            reportType="full"
+            fromDate={fromDate}
+            toDate={toDate}
+            propertyName={hasPropertyGroups ? propertyGroups![0].propertyName : null}
+          />
+        </div>
+      )}
 
       {/* PR #166 — Financial Alerts */}
       {alerts != null && alerts.length > 0 && <AlertsBanner alerts={alerts} />}
@@ -123,7 +130,16 @@ export function FinancialTab({ dto, periodLabel, ownerSlug, fromDate, toDate }: 
           </h2>
           <div className="space-y-6">
             {propertyGroups!.map(group => (
-              <PropertyGroup key={group.propertyName} group={group} periodLabel={periodLabel} />
+              <PropertyGroup
+                key={group.propertyName}
+                group={group}
+                periodLabel={periodLabel}
+                ownerSlug={ownerSlug}
+                lang={reportConfig?.language ?? 'en'}
+                reportType="full"
+                fromDate={fromDate}
+                toDate={toDate}
+              />
             ))}
           </div>
         </section>
@@ -330,10 +346,13 @@ function FinancialSection({ section, periodLabel }: { section: OwnerFinancialDTO
     internal:   { label: 'JJ Internal', cls: 'text-blue-700 bg-blue-50 border-blue-200' },
   }
   const dir = section.ownerDirection ? DIR[section.ownerDirection] : null
+  // Blocker 3: Include billingState column when any row has billing data
+  const hasBilling = section.rows.some(r => r.billingState != null)
   const columns: DataTableColumn[] = [
     { key: 'date',        label: 'Date',        dir: 'ltr' },
     { key: 'description', label: 'Description' },
     { key: 'amountEur',   label: 'Amount',      align: 'right', dir: 'ltr' },
+    ...(hasBilling ? [{ key: 'billingState', label: 'Status' }] : []),
     { key: 'evidenceRef', label: 'Evidence' },
   ]
 
@@ -513,7 +532,15 @@ function OverallNetRelationship({ overallNet }: { overallNet: OwnerOverallNetDTO
   )
 }
 
-function PropertyGroup({ group, periodLabel }: { group: PropertyFinancialGroupDTO; periodLabel?: string }) {
+function PropertyGroup({ group, periodLabel, ownerSlug, lang, reportType, fromDate, toDate }: {
+  group: PropertyFinancialGroupDTO
+  periodLabel?: string
+  ownerSlug?: string
+  lang?: string
+  reportType?: string
+  fromDate?: string | null
+  toDate?: string | null
+}) {
   const DIR: Record<'due_to_jj' | 'due_to_you' | 'settled' | 'internal', { label: string; cls: string }> = {
     due_to_jj:  { label: 'Due to JJ',  cls: 'text-red-700 bg-red-50 border-red-200' },
     due_to_you: { label: 'Due to You', cls: 'text-green-700 bg-green-50 border-green-200' },
@@ -574,6 +601,20 @@ function PropertyGroup({ group, periodLabel }: { group: PropertyFinancialGroupDT
           </span>
         </div>
       </div>
+
+      {/* Blocker 5: Per-property PDF download button for multi-property owners */}
+      {ownerSlug && (
+        <div className="flex items-center justify-end px-4 py-2 border-t border-gray-100 bg-white">
+          <ReportActionsBar
+            ownerSlug={ownerSlug}
+            lang={lang}
+            reportType={reportType}
+            fromDate={fromDate}
+            toDate={toDate}
+            propertyName={group.propertyName}
+          />
+        </div>
+      )}
     </details>
   )
 }

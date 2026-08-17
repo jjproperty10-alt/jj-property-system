@@ -342,7 +342,7 @@ describe('OwnerWorkspaceResolutionResult — exhaustive variants', () => {
       status: 'resolved',
       workspace: {
         identity: {
-          id: 'e-001', slug: 'tamir', name: 'Tamir',
+          id: 'e-001', partyId: 'e-001', slug: 'tamir', name: 'Tamir',
           preferredLanguage: 'en', flag: '🌍', initials: 'T',
           avatarColor: '#8b5cf6', since: null,
           primaryProperty: 'Tamir Dekelia', properties: ['Tamir Dekelia'],

@@ -19,6 +19,8 @@ const config: Config = {
   ],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    '^server-only$': '<rootDir>/jest.serverOnly.js',
+    '^@react-pdf/renderer$': '<rootDir>/jest.reactPdfMock.js',
   },
   globals: {
     'ts-jest': {
