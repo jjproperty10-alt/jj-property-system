@@ -4,8 +4,82 @@
  * Rules:
  *  - NEVER modify accounting logic, client_amount, or balance calculations
  *  - Reads computed aggregates from RC3AccountSection only
+ *
+ * Global Owner/Client Perspective Rule (Yossi, August 2026):
+ *   ALL Purchase = JJ internal acquisition. Purchase contributes exactly €0
+ *   to Owner/Client settlement. This is a universal rule — no property exception.
+ *   Purchase sections are COMPLETELY HIDDEN from all owner/client-facing output:
+ *   no summary cards, no detail sections, no transaction rows, no footer/settlement
+ *   aggregation, no PDF output, no Print output, no Client Preview output.
+ *   JJ internal views preserve Purchase data for audit purposes.
+ *
+ *   filterOwnerFacingSections() is the SINGLE authoritative filter.
+ *   Every consumer that computes an owner/client-facing balance MUST use it.
+ *
+ * Constitutional:
+ *   P-LEDGER-6: COALESCE(client_charge, amount_eur) for owner-facing amounts
+ *   P-ARCH-1: NULL = Unknown, never 0
+ *   Section 4 CLAUDE.md: Purchase Contract/Deposit ≠ cash movement
  */
 import type { RC3AccountSection } from './types'
+
+// ─── Global Owner/Client Perspective Filter ──────────────────────────────────
+
+/**
+ * Account types that are JJ-internal and excluded from all owner/client-facing
+ * balance computations.
+ *
+ * Purchase = JJ's acquisition cost. The entire Purchase section (contracts,
+ * deposits, payments, expenses) is JJ-internal — settled through Sale when the
+ * property is resold. It never enters the Owner/Client net position.
+ *
+ * This is the SINGLE source of truth for this business rule. Adding a new
+ * excluded type here automatically propagates to every consumer:
+ * ownerFinancialAdapter, PDF template, Client Report Preview, Settlement Summary.
+ */
+const JJ_INTERNAL_ACCOUNT_TYPES = new Set<string>(['purchase'])
+
+/**
+ * Returns true if this section participates in owner/client-facing balance.
+ * Purchase sections are JJ-internal acquisition cost — excluded from
+ * Owner Summary, Property Net, Overall Net, PDF, and Client Report.
+ */
+export function isOwnerFacingSection(section: RC3AccountSection): boolean {
+  return !JJ_INTERNAL_ACCOUNT_TYPES.has(section.account_type)
+}
+
+/**
+ * Filter RC3 account sections to only those relevant to the Owner/Client
+ * financial position. This is the SINGLE authoritative filter for the
+ * Global Owner/Client Perspective Rule.
+ *
+ * Use this before ANY computation of owner-facing balances:
+ *   - Owner Summary (Overall Net)
+ *   - Property Net
+ *   - PDF hero balance / final summary
+ *   - Client Report Preview dashboard
+ *   - Settlement Summary
+ *
+ * Purchase sections are excluded because they represent JJ's internal
+ * acquisition cost, which contributes €0 to the Owner/Client settlement.
+ * They remain visible in per-property detail for audit transparency.
+ */
+export function filterOwnerFacingSections(
+  accounts: RC3AccountSection[],
+): RC3AccountSection[] {
+  return accounts.filter(isOwnerFacingSection)
+}
+
+/**
+ * Compute net owner balance from owner-facing sections only.
+ * Convenience wrapper: filterOwnerFacingSections + computeNetOwnerBalance.
+ *
+ * Use this when you have raw RC3 accounts and need the owner-facing net
+ * in a single call. Purchase is automatically excluded.
+ */
+export function computeOwnerFacingNet(accounts: RC3AccountSection[]): number {
+  return computeNetOwnerBalance(filterOwnerFacingSections(accounts))
+}
 
 /**
  * Account types included in the Executive Summary's operational KPIs.

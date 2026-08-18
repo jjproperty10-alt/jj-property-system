@@ -38,7 +38,7 @@ import {
   t, type Lang, type LabelKey,
 } from '@/lib/report/labels'
 import { groupExpenses } from '@/lib/report/expenseGroups'
-import { computeOperationalKPIs, computeNetOwnerBalance } from '@/lib/report/executiveSummary'
+import { computeOperationalKPIs, computeNetOwnerBalance, filterOwnerFacingSections } from '@/lib/report/executiveSummary'
 import { ReportScopeSelector } from '@/components/report/ReportScopeSelector'
 import type { ReportScope } from '@/lib/report/reportScope'
 import { isScopeValid, defaultScope } from '@/lib/report/reportScope'
@@ -550,8 +550,9 @@ function PremiumSummary({ report, lang }: { report: RC3PropertyReport; lang: Lan
           </div>
         </div>
       )}
+      {/* Module cards — Purchase excluded (JJ internal acquisition, Global Owner/Client Perspective Rule) */}
       <div className="flex flex-wrap gap-3">
-        {report.accounts.map(acc => (
+        {filterOwnerFacingSections(report.accounts).map(acc => (
           <M2ModuleCard key={acc.account_type} section={acc} lang={lang} />
         ))}
       </div>
@@ -1110,8 +1111,8 @@ function ClientReportRC3Content() {
     ? `JJ_${reportTypeSlug}_${report.reporting_name.replace(/\s+/g, '_')}_${report.from_date || 'all'}_to_${report.to_date || 'all'}.pdf`
     : 'report.pdf'
 
-  // Filter sections by report type — pure display layer, no accounting changes
-  const visibleAccounts = report ? filterSectionsByReportType(report.accounts, reportType) : []
+  // Filter sections by report type + exclude Purchase (JJ internal, Global Owner/Client Perspective Rule)
+  const visibleAccounts = report ? filterOwnerFacingSections(filterSectionsByReportType(report.accounts, reportType)) : []
   const filteredReport = report ? { ...report, accounts: visibleAccounts } : null
 
   const isRTL = lang === 'he'
@@ -1245,7 +1246,7 @@ function ClientReportRC3Content() {
         {multiReports.length > 0 && !loading && (
           <div className="space-y-6">
             {multiReports.map(mr => {
-              const mrAccounts = filterSectionsByReportType(mr.accounts, reportType)
+              const mrAccounts = filterOwnerFacingSections(filterSectionsByReportType(mr.accounts, reportType))
               const mrFiltered = { ...mr, accounts: mrAccounts }
               return (
                 <div key={mr.reporting_name}>
