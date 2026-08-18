@@ -16,11 +16,11 @@
  * FIXTURE_STATEMENT_STATUS    → when statement_series is wired per-owner
  *                               (statements schema, future backend PR)
  * FIXTURE_CLOSING_BALANCE_EUR → when Settlement Engine RC2 is implemented
- * FIXTURE_OWNER_BALANCE_EUR   → when Partner Capital engine computes per-owner balance
+ * FIXTURE_OWNER_BALANCE_EUR   → REPLACED by Settlement Engine V1.2 (ownerSettlementAdapter)
  * FIXTURE_OPEN_CORRECTIONS    → when corrections module is wired
  * FIXTURE_UPCOMING_COUNT      → when upcoming_events is wired to statements schema
  * FIXTURE_PRIORITY_GROUP      → when real priority routing is implemented
- * FIXTURE_BALANCE_DIRECTION   → when owner balance polarity is engine-computed
+ * FIXTURE_BALANCE_DIRECTION   → REPLACED by Settlement Engine V1.2 (ownerSettlementAdapter)
  * ─────────────────────────────────────────────────────────────────
  */
 

@@ -218,6 +218,26 @@ export type UpcomingEventSource =
 /** Source mode for Hostaway / JJ comparison */
 export type SourceMode = 'jj' | 'hostaway' | 'compare'
 
+
+/**
+ * Settlement result for an owner — V1.2 wiring.
+ * UI renders only — no recalculation permitted.
+ */
+export interface OwnerSettlementDTO {
+  /** Direction from JJ's perspective, derived from net_jj_settlement sign */
+  balanceDirection: 'jj_owes_owner' | 'owner_owes_jj' | 'balanced'
+  /** Absolute balance amount in EUR (always positive or null) */
+  balanceEur: EuroAmount
+  /** Raw signed net_jj_settlement from engine. Positive = client owes JJ. */
+  netJjSettlement: EuroAmount
+  /** Temporal certification status */
+  temporalStatus: 'green' | 'yellow'
+  /** If yellow, human-readable reason */
+  temporalReason: string | null
+  /** Number of classified transaction rows in settlement */
+  totalRows: number
+}
+
 // ─────────────────────────────────────────────────────────────
 // OWNER IDENTITY
 // ─────────────────────────────────────────────────────────────
@@ -303,6 +323,8 @@ export interface OwnerRoomItemDTO {
   associatedPropertyCount: number
   /** PR #4: true if entity was created via wizard (jj_relationships, not management_relationship) */
   isDraft: boolean
+  /** Settlement temporal certification. Yellow = balance not fully certified due to ownership transition. */
+  temporalStatus?: 'green' | 'yellow'
 }
 
 export interface OwnersRoomDTO {
