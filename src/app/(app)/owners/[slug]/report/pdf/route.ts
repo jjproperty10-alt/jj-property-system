@@ -48,8 +48,25 @@ let _fontsRegistered = false
 function registerPdfFonts() {
   if (_fontsRegistered) return
   const fontDir = path.join(process.cwd(), 'public', 'fonts')
-  const regularData = fs.readFileSync(path.join(fontDir, 'Heebo-Regular.ttf'))
-  const boldData = fs.readFileSync(path.join(fontDir, 'Heebo-Bold.ttf'))
+  const regularPath = path.join(fontDir, 'Heebo-Regular.ttf')
+  const boldPath = path.join(fontDir, 'Heebo-Bold.ttf')
+
+  // Verify files exist before reading (diagnostic for serverless debugging)
+  if (!fs.existsSync(regularPath) || !fs.existsSync(boldPath)) {
+    const cwd = process.cwd()
+    const cwdContents = fs.existsSync(cwd) ? fs.readdirSync(cwd).slice(0, 20) : ['CWD_NOT_FOUND']
+    const publicExists = fs.existsSync(path.join(cwd, 'public'))
+    const fontsExists = fs.existsSync(fontDir)
+    throw new Error(
+      `Font files not found in serverless bundle. ` +
+      `cwd=${cwd}, public=${publicExists}, fonts_dir=${fontsExists}, ` +
+      `regular=${fs.existsSync(regularPath)}, bold=${fs.existsSync(boldPath)}, ` +
+      `cwd_listing=[${cwdContents.join(',')}]`
+    )
+  }
+
+  const regularData = fs.readFileSync(regularPath)
+  const boldData = fs.readFileSync(boldPath)
   Font.register({
     family: 'Heebo',
     fonts: [
@@ -162,6 +179,7 @@ function applyStatementExclusions(
 // ─── Route handler ───────────────────────────────────────────────────────────
 
 export async function GET(req: Request, { params }: { params: { slug: string } }) {
+  try {
   const auth = await authenticateStatementUser()
   if (!auth.ok) {
     return new Response('Unauthorized', { status: auth.error === 'NO_SESSION' ? 401 : 403 })
@@ -285,4 +303,13 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
       'Cache-Control': 'no-store',
     },
   })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    const name = err instanceof Error ? err.name : 'Unknown'
+    console.error('[PDF Route Error]', name, message)
+    return new Response(
+      JSON.stringify({ error: 'PDF generation failed', type: name, detail: message }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } },
+    )
+  }
 }
