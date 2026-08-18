@@ -21,7 +21,9 @@
  *   Client-facing report = RC3 financial truth + statement presentation decisions
  */
 import React from 'react'
-import { renderToBuffer } from '@react-pdf/renderer'
+import fs from 'fs'
+import path from 'path'
+import { renderToBuffer, Font } from '@react-pdf/renderer'
 import { authenticateStatementUser } from '@/lib/statements/statementAuthService'
 import { getOwnerWorkspace } from '@/lib/owners/ownerWorkspaceService'
 import { fetchRC3Report } from '@/lib/report/fetchReport'
@@ -35,6 +37,28 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+/* ─── Font registration (serverless-compatible) ──────────────────────────── */
+// Fonts are read from the filesystem at cold-start and embedded as data URIs.
+// This avoids HTTP round-trips to the deployment origin, which would fail on
+// auth-protected Vercel Preview deployments (the serverless function doesn't
+// carry browser auth cookies). fs.readFileSync triggers @vercel/nft file
+// tracing, so the font files are bundled into the serverless function.
+let _fontsRegistered = false
+function registerPdfFonts() {
+  if (_fontsRegistered) return
+  const fontDir = path.join(process.cwd(), 'public', 'fonts')
+  const regularData = fs.readFileSync(path.join(fontDir, 'Heebo-Regular.ttf'))
+  const boldData = fs.readFileSync(path.join(fontDir, 'Heebo-Bold.ttf'))
+  Font.register({
+    family: 'Heebo',
+    fonts: [
+      { src: `data:font/ttf;base64,${regularData.toString('base64')}` },
+      { src: `data:font/ttf;base64,${boldData.toString('base64')}`, fontWeight: 'bold' },
+    ],
+  })
+  _fontsRegistered = true
+}
 
 // ─── Blocker 4: Statement-aware report filtering ─────────────────────────────
 
@@ -238,6 +262,8 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
   }
 
   // ── Render PDF ─────────────────────────────────────────────────────────────
+  registerPdfFonts()
+
   const element = React.createElement(OwnerSettlementPdfV3, {
     report,
     lang,

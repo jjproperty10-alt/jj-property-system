@@ -24,7 +24,6 @@ import {
   Text,
   View,
   StyleSheet,
-  Font,
 } from '@react-pdf/renderer'
 import { fmt } from './formatters'
 import { isRTL, rtlRowDirection, rtlTextStyle, rtlColumnOrder, rtlAlignEnd } from './rtlHelpers'
@@ -38,16 +37,6 @@ import {
 } from '../report/labels'
 import { groupExpenses } from '../report/expenseGroups'
 import { computeOperationalKPIs, computeNetOwnerBalance } from '../report/executiveSummary'
-
-/* ─── Font ──────────────────────────────────────────────────────────────────── */
-
-Font.register({
-  family: 'Heebo',
-  fonts: [
-    { src: '/fonts/Heebo-Regular.ttf' },
-    { src: '/fonts/Heebo-Bold.ttf', fontWeight: 'bold' },
-  ],
-})
 
 /* ─── Palette ───────────────────────────────────────────────────────────────── */
 
