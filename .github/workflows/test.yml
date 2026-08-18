@@ -17,7 +17,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Run unit tests
-        run: npm test -- --ci --verbose
+        run: npm test -- --ci --verbose --maxWorkers=2 --forceExit
       - name: TypeScript check
         run: npm run typecheck
       - name: Lint — report layer

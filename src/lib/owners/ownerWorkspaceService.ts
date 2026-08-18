@@ -47,6 +47,7 @@ import {
 import {
   getAllVerifiedOwners,
   resolveBySlug,
+  resolvePartyForEntity,
 } from '../identity'
 import type { ResolvedManagedIdentityDTO } from '../identity'
 import { getFinancial } from './ownerFinancialService'
@@ -200,6 +201,7 @@ export async function resolveOwnerWorkspace(slug: string): Promise<OwnerWorkspac
   const result = await resolveBySlug(slug)
 
   let entityId: string
+  let partyId: string | null = null  // Blocker 2: canonical registry.parties UUID
   let displayName: string
   let properties: string[]
   let preferredLanguage: 'he' | 'en' | 'ru' | null = null
@@ -214,6 +216,7 @@ export async function resolveOwnerWorkspace(slug: string): Promise<OwnerWorkspac
       return { status: 'source_unavailable', error: result.error }
     case 'resolved':
       entityId = result.data.identity.entityId
+      partyId = result.data.identity.partyId ?? null  // Blocker 2: from enrichIdentityWithParty
       displayName = result.data.identity.displayName
       properties = result.data.managedProperties.map(r => r.propertyName).sort()
       preferredLanguage = result.data.identity.preferredLanguage
@@ -232,11 +235,18 @@ export async function resolveOwnerWorkspace(slug: string): Promise<OwnerWorkspac
       entityId = result.entityId
       displayName = result.displayName
       properties = strProps.map(p => p.name).sort()
+      // Blocker 2: resolve canonical party ID via existing bridge (resolvePartyForEntity → resolve_party_id RPC).
+      // Without this, partyId falls back to lifecycle UUID in buildOwnerIdentity, which is wrong
+      // for statement_series lookups that require registry.parties.party_id.
+      const partyResolution = await resolvePartyForEntity(entityId)
+      if (partyResolution.status === 'resolved') {
+        partyId = partyResolution.partyId
+      }
       break
     }
   }
 
-  const identity = buildOwnerIdentity(entityId, displayName, properties, preferredLanguage, country)
+  const identity = buildOwnerIdentity(entityId, displayName, properties, preferredLanguage, country, partyId)
 
   const now = new Date()
   const year = now.getFullYear()
@@ -331,11 +341,34 @@ export async function getOwnerFinancial(
     }
   }
 
+  // PR #166 Gap C+D: Resolve seriesId for billing state wiring.
+  // When statement_series has rows for this owner, enables billing/payment state
+  // resolution on every financial row. When empty (current production), gracefully null.
+  let seriesId: string | undefined
+  try {
+    const sb = createServiceClient()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await (sb as any)
+      .schema('statements')
+      .from('statement_series')
+      .select('series_id')
+      .eq('owner_party_id', workspace.identity.partyId)
+      .eq('series_status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(1)
+    if (data && data.length > 0) {
+      seriesId = String(data[0].series_id)
+    }
+  } catch {
+    // statement_series not populated — seriesId stays undefined, billing states skipped
+  }
+
   try {
     return await getFinancial({
       properties: workspace.identity.properties,
       fromDate: startDate,
       toDate: endDate,
+      seriesId,
     })
   } catch (err) {
     console.error(

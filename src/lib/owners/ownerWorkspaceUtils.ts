@@ -126,6 +126,8 @@ export function buildOwnerIdentity(
   canonicalLanguage?: 'he' | 'en' | 'ru' | null,
   /** Canonical country code (ISO 3166-1 alpha-2) from entity_identity. Overrides flag heuristic when present. */
   canonicalCountry?: string | null,
+  /** Canonical party UUID from registry.parties. Falls back to `id` when null/undefined. Blocker 2 fix. */
+  canonicalPartyId?: string | null,
 ): OwnerIdentityDTO {
   const slug = nameToSlug(name)
   // Canonical DB value takes precedence; heuristic is display fallback only
@@ -138,6 +140,7 @@ export function buildOwnerIdentity(
     : detectOwnerFlag(name)
   return {
     id,
+    partyId: canonicalPartyId ?? id,  // Blocker 2: canonical registry UUID; fail-closed to lifecycle id
     slug,
     name,
     preferredLanguage: resolvedLanguage,

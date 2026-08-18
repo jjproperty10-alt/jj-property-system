@@ -42,7 +42,24 @@ import type {
   OwnerDepartmentBalanceDTO,
   OccupancyPositionDTO,
   PropertyFinancialGroupDTO,
+  JjInternalViewDTO,
+  JjInternalSectionDTO,
+  JjInternalRowDTO,
+  FinancialTimelineItemDTO,
   EuroAmount,
+  // PR #166 Consolidation types
+  BillingState,
+  PaymentState,
+  BillingStateDTO,
+  PaymentAllocationDTO,
+  PaymentAllocationSummaryDTO,
+  FinancialCorrectionCaseDTO,
+  FinancialCorrectionEventDTO,
+  FinancialAlertDTO,
+  AlertSeverity,
+  AlertCategory,
+  ReportPresentationConfigDTO,
+  ReportLanguage,
 } from './ownerWorkspaceTypes'
 
 // ─── Adapter input ────────────────────────────────────────────────────────────
@@ -52,6 +69,10 @@ export interface OwnerFinancialAdapterInput {
   readonly properties: readonly string[]
   readonly fromDate?: string   // ISO date e.g. "2026-01-01"
   readonly toDate?: string     // ISO date e.g. "2026-12-31"
+  /** Statement series UUID — when provided, enables billing state resolution,
+   *  payment allocation summary, and correction case retrieval.
+   *  Without this, all rows default to unbilled/null (correct for 0 series). */
+  readonly seriesId?: string
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -167,6 +188,8 @@ function mapRowToDTO(
   sectionType?: string,
 ): OwnerFinancialRowDTO {
   const isRental = sectionType === 'rental'
+  // Margin: present only when client_charge differs from actual cost
+  const hasMargin = row.client_charge != null && row.client_charge !== row.amount_eur
   return {
     id:                row.id,
     date:              row.date,
@@ -177,6 +200,8 @@ function mapRowToDTO(
     isReference:       row.display_group === 'reference',
     subcategory:       isRental ? (row.subcategory ?? null) : undefined,
     presentationGroup: isRental ? resolveRentalPresentationGroup(row.subcategory ?? null) : undefined,
+    actualCostEur:     hasMargin ? toEur(row.amount_eur) : undefined,
+    marginEur:         hasMargin ? toEur(row.client_amount - row.amount_eur) : undefined,
   }
 }
 
@@ -574,6 +599,121 @@ async function fetchHistoricalSummary(
   }
 }
 
+// ─── JJ Internal View — Margin Analysis ─────────────────────────────────────
+
+/**
+ * Build JJ Internal margin view from RC3 reports.
+ *
+ * Shows rows where client_charge differs from amount_eur.
+ * Margin = client_amount − amount_eur (what JJ earns above actual cost).
+ * Never shown in owner-facing views — JJ management only.
+ */
+function buildJjInternalView(
+  reports: RC3PropertyReport[],
+): JjInternalViewDTO | null {
+  const sections: JjInternalSectionDTO[] = []
+  let totalMargin = 0
+  let rowsWithMargin = 0
+  let totalRows = 0
+
+  for (const report of reports) {
+    for (const account of report.accounts) {
+      const marginRows: JjInternalRowDTO[] = []
+      for (const row of account.rows) {
+        totalRows++
+        if (row.client_charge != null && row.client_charge !== row.amount_eur) {
+          const margin = row.client_amount - row.amount_eur
+          totalMargin += margin
+          rowsWithMargin++
+          marginRows.push({
+            id: row.id,
+            date: row.date,
+            description: row.description ?? row.subcategory ?? '',
+            subcategory: row.subcategory ?? null,
+            actualCostEur: toEur(row.amount_eur),
+            clientChargeEur: toEur(row.client_amount),
+            marginEur: toEur(margin),
+          })
+        }
+      }
+      if (marginRows.length > 0) {
+        const sectionMargin = marginRows.reduce(
+          (sum, r) => sum + parseFloat(r.marginEur as string), 0
+        )
+        sections.push({
+          propertyName: report.reporting_name,
+          accountType: account.account_type,
+          accountLabel: account.account_label,
+          totalMarginEur: toEur(sectionMargin),
+          rows: marginRows,
+        })
+      }
+    }
+  }
+
+  if (rowsWithMargin === 0) return null
+
+  return {
+    totalMarginEur: toEur(totalMargin),
+    rowsWithMargin,
+    totalRows,
+    sections,
+  }
+}
+
+// ─── Financial Timeline ─────────────────────────────────────────────────────
+
+/**
+ * Build a financial timeline from RC3 reports.
+ *
+ * Selects significant events: BPO payments (money actually paid to owner),
+ * plus the most recent transactions, ordered chronologically.
+ */
+function buildTimeline(
+  reports: RC3PropertyReport[],
+): FinancialTimelineItemDTO[] {
+  const items: FinancialTimelineItemDTO[] = []
+
+  for (const report of reports) {
+    for (const account of report.accounts) {
+      for (const row of account.rows) {
+        if (row.is_platform_tracking) continue
+        if (row.display_group === 'reference') continue
+
+        // BPO payments are always significant timeline events
+        if (row.is_bpo) {
+          items.push({
+            id: row.id,
+            label: `Payment to Owner — ${report.reporting_name}`,
+            date: row.date,
+            amountEur: toEur(row.client_amount),
+            type: 'payment',
+          })
+          continue
+        }
+
+        // Large transactions (>€1,000) are significant
+        if (Math.abs(row.client_amount) >= 1000 && row.is_balance_affecting) {
+          const type: FinancialTimelineItemDTO['type'] =
+            row.display_group === 'income' ? 'income' :
+            row.display_group === 'expense' ? 'expense' : 'income'
+          items.push({
+            id: row.id,
+            label: `${row.description ?? row.subcategory ?? account.account_label} — ${report.reporting_name}`,
+            date: row.date,
+            amountEur: toEur(row.client_amount),
+            type,
+          })
+        }
+      }
+    }
+  }
+
+  // Sort chronologically descending (most recent first), limit to 20
+  items.sort((a, b) => b.date.localeCompare(a.date))
+  return items.slice(0, 20)
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -586,7 +726,7 @@ async function fetchHistoricalSummary(
 export async function fetchOwnerFinancial(
   input: OwnerFinancialAdapterInput,
 ): Promise<OwnerFinancialDTO> {
-  const { properties, fromDate, toDate } = input
+  const { properties, fromDate, toDate, seriesId } = input
 
   if (properties.length === 0) {
     return { position: emptyPosition(), overallNet: null, sections: [], timeline: [], occupancyPosition: null }
@@ -653,5 +793,564 @@ export async function fetchOwnerFinancial(
       'reflected in the accounting engine. The amounts shown are incomplete.'
   }
 
-  return { position, overallNet, sections, propertyGroups, timeline: [], occupancyPosition, historicalSummary }
+  const timeline = buildTimeline(reports)
+  const jjInternalView = buildJjInternalView(reports)
+
+  // PR #166 Consolidation: report config (alerts computed after billing enrichment)
+  const reportConfig = await buildDefaultReportConfig(seriesId)
+
+  // Wire billing states into rows when seriesId is provided (Gap C)
+  let paymentSummary: PaymentAllocationSummaryDTO | undefined
+  let openCorrectionCases: readonly FinancialCorrectionCaseDTO[] | undefined
+  if (seriesId) {
+    // Collect all transaction IDs from visible rows
+    const allTxIds: string[] = []
+    for (const sec of sections) {
+      for (const row of sec.rows) {
+        if (row.id) allTxIds.push(row.id)
+      }
+    }
+
+    if (allTxIds.length > 0) {
+      const billingStates = await resolveBillingStates(seriesId, allTxIds)
+
+      // Inject billing state into each row
+      for (const sec of sections) {
+        for (const row of sec.rows) {
+          if (row.id) {
+            const state = billingStates.get(row.id)
+            if (state) {
+              // Compute remainingEur using the row's owner-facing amount (P-LEDGER-6)
+              const ownerAmount = Number(row.amountEur ?? 0)
+              const allocated = state.allocatedAmountEur ? Number(state.allocatedAmountEur) : 0
+              const remaining = ownerAmount > 0 && allocated > 0
+                ? toEur(Math.max(0, ownerAmount - allocated))
+                : state.billingState === 'presented' ? row.amountEur : null
+
+              ;(row as unknown as Record<string, unknown>).billingState = {
+                ...state,
+                remainingEur: remaining,
+                // Upgrade to 'paid' if fully allocated (we now have charge context)
+                paymentState: (allocated > 0 && ownerAmount > 0 && allocated >= ownerAmount)
+                  ? 'paid' as PaymentState
+                  : state.paymentState,
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Fetch payment summary and correction cases with series context
+    paymentSummary = await fetchPaymentAllocationSummary(seriesId)
+    openCorrectionCases = await fetchCorrectionCases(seriesId)
+
+    // Enrich payment summary with charge context now that we have sections + billing states
+    if (paymentSummary) {
+      // Collect all chargeable rows (expenses/income that have billing state)
+      const chargeRows = sections
+        .flatMap(s => s.rows)
+        .filter(r => r.displayGroup === 'expense' || r.displayGroup === 'income')
+
+      // P-LEDGER-6: use owner-facing amount (amountEur in rows is already COALESCE'd)
+      const totalCharges = chargeRows.reduce((sum, r) => sum + Math.abs(Number(r.amountEur ?? 0)), 0)
+      const totalAllocated = Number(paymentSummary.totalAllocatedEur ?? 0)
+
+      // Compute per-charge allocation counts from injected billing states
+      let fullyAllocatedCount = 0
+      let unallocatedCount = 0
+      for (const row of chargeRows) {
+        const bs = (row as unknown as Record<string, unknown>).billingState as BillingStateDTO | undefined
+        if (bs) {
+          if (bs.paymentState === 'paid') fullyAllocatedCount++
+          else if (bs.paymentState === 'unpaid' || bs.paymentState === null) unallocatedCount++
+        } else {
+          // No billing state = unbilled = unallocated
+          unallocatedCount++
+        }
+      }
+
+      paymentSummary = {
+        ...paymentSummary,
+        totalChargesEur: totalCharges > 0 ? toEur(totalCharges) : null,
+        remainingUnallocatedEur: totalCharges > 0 ? toEur(Math.max(0, totalCharges - totalAllocated)) : null,
+        surplusEur: totalAllocated > totalCharges ? toEur(totalAllocated - totalCharges) : null,
+        fullyAllocatedCount: chargeRows.length > 0 ? fullyAllocatedCount : null,
+        unallocatedCount: chargeRows.length > 0 ? unallocatedCount : null,
+      }
+    }
+  }
+
+  // Compute alerts AFTER billing enrichment so they reflect real billing/payment state
+  const alerts = computeFinancialAlerts(
+    reports,
+    sections,
+    paymentSummary,
+    openCorrectionCases as readonly FinancialCorrectionCaseDTO[] | null ?? null,
+  )
+
+  return {
+    position, overallNet, sections, propertyGroups, timeline,
+    jjInternalView, occupancyPosition, historicalSummary,
+    alerts, reportConfig,
+    paymentSummary: paymentSummary ?? undefined,
+    openCorrectionCases: openCorrectionCases ?? undefined,
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PR #166 CONSOLIDATION — Billing State, Payment Allocation, Corrections, Alerts
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Billing State Resolver ──────────────────────────────────────────────────
+// Computes BillingState per transaction by querying the statement lifecycle.
+// No separate table — derived from statement_draft_lines + sent_statement_snapshots
+// + payment_allocations.
+
+/**
+ * Resolve billing state for a set of transaction IDs within a statement series.
+ * Returns a Map keyed by transaction ID.
+ *
+ * Billing lifecycle (independent of payment):
+ *   1. No draft_line → 'unbilled'
+ *   2. draft_line with includeInStatement=false → 'excluded'
+ *   3. draft_line with includeInStatement=true, no snapshot → 'pending'
+ *   4. In snapshot → 'presented'
+ *
+ * Payment lifecycle (independent of billing):
+ *   - allocated > 0 → 'partially_paid' (full 'paid' requires charge amount)
+ *   - presented but no allocation → 'unpaid'
+ *   - unbilled/pending/excluded → null (not applicable yet)
+ */
+export async function resolveBillingStates(
+  seriesId: string,
+  transactionIds: readonly string[],
+): Promise<Map<string, BillingStateDTO>> {
+  const supabase = createServiceClient()
+  const result = new Map<string, BillingStateDTO>()
+
+  if (transactionIds.length === 0) return result
+
+  // Step 1: Get all draft lines for these transactions in this series
+  const { data: draftLines } = await supabase
+    .schema('statements')
+    .rpc('get_draft_lines_for_transactions', {
+      p_series_id: seriesId,
+      p_transaction_ids: transactionIds as string[],
+    })
+
+  // Step 2: Get all sent entry snapshots for these transactions
+  const { data: sentEntries } = await supabase
+    .schema('statements')
+    .rpc('get_sent_entries_for_transactions', {
+      p_series_id: seriesId,
+      p_transaction_ids: transactionIds as string[],
+    })
+
+  // Step 3: Get all payment allocations for these transactions as charges
+  const { data: allocations } = await supabase
+    .schema('statements')
+    .rpc('get_payment_allocations', { p_series_id: seriesId })
+
+  // Build lookup maps
+  const draftLineMap = new Map<string, { id: string; includeInStatement: boolean; updatedAt: string }>()
+  for (const dl of (draftLines ?? [])) {
+    draftLineMap.set(dl.source_transaction_id, {
+      id: dl.id,
+      includeInStatement: dl.include_in_statement,
+      updatedAt: dl.updated_at,
+    })
+  }
+
+  const snapshotMap = new Map<string, string>() // txId → snapshotId
+  for (const se of (sentEntries ?? [])) {
+    snapshotMap.set(se.source_transaction_id, se.snapshot_id)
+  }
+
+  const allocationMap = new Map<string, number>() // chargeId → total allocated
+  for (const alloc of (allocations ?? [])) {
+    const prev = allocationMap.get(alloc.charge_transaction_id) ?? 0
+    allocationMap.set(alloc.charge_transaction_id, prev + Number(alloc.allocated_amount_eur))
+  }
+
+  // Step 4: Resolve each transaction
+  for (const txId of transactionIds) {
+    const draftLine = draftLineMap.get(txId)
+    const snapshotId = snapshotMap.get(txId) ?? null
+    const allocated = allocationMap.get(txId) ?? 0
+
+    // Billing lifecycle — independent of payment
+    let billingState: BillingState
+    if (!draftLine) {
+      billingState = 'unbilled'
+    } else if (!draftLine.includeInStatement) {
+      billingState = 'excluded'
+    } else if (!snapshotId) {
+      billingState = 'pending'
+    } else {
+      billingState = 'presented'
+    }
+
+    // Payment lifecycle — independent of billing
+    // P-ARCH-1: paymentState = null when we can't determine (no charge amount context)
+    let paymentState: PaymentState | null = null
+    if (allocated > 0) {
+      // We have allocation data — determine partial vs full
+      // Without the charge amount, we can only say 'partially_paid' conservatively
+      // Full 'paid' determination requires charge amount context from the caller
+      paymentState = 'partially_paid'
+    } else if (billingState === 'presented') {
+      // Presented but no allocation = unpaid
+      paymentState = 'unpaid'
+    }
+    // unbilled/pending/excluded → paymentState remains null (not applicable yet)
+
+    result.set(txId, {
+      billingState,
+      paymentState,
+      draftLineId: draftLine?.id ?? null,
+      snapshotId,
+      allocatedAmountEur: allocated > 0 ? toEur(allocated) : null,
+      remainingEur: null, // P-ARCH-1: requires charge amount context — caller must compute
+      canRepropose: billingState === 'excluded' || billingState === 'unbilled',
+      lastTransitionAt: draftLine?.updatedAt ?? null,
+    })
+  }
+
+  return result
+}
+
+// ─── Payment Allocation ──────────────────────────────────────────────────────
+
+/**
+ * Fetch payment allocation summary for a statement series.
+ * Calls the RPC and aggregates into PaymentAllocationSummaryDTO.
+ */
+export async function fetchPaymentAllocationSummary(
+  seriesId: string,
+): Promise<PaymentAllocationSummaryDTO> {
+  const supabase = createServiceClient()
+
+  const { data, error } = await supabase
+    .schema('statements')
+    .rpc('get_payment_allocations', { p_series_id: seriesId })
+
+  if (error || !data) {
+    return {
+      totalChargesEur: null, // P-ARCH-1: no data — unknown, not zero
+      totalAllocatedEur: toEur(0), // Known: zero allocations exist
+      remainingUnallocatedEur: null, // P-ARCH-1: requires charge context
+      surplusEur: null, // P-ARCH-1: requires charge context
+      fullyAllocatedCount: null, // P-ARCH-1: requires charge amounts
+      partiallyAllocatedCount: 0,
+      unallocatedCount: null, // P-ARCH-1: requires full charge list
+      allocations: [],
+    }
+  }
+
+  const allocations: PaymentAllocationDTO[] = data.map((row: Record<string, unknown>) => ({
+    id: String(row.id),
+    seriesId: String(row.series_id),
+    paymentTransactionId: String(row.payment_transaction_id),
+    chargeTransactionId: String(row.charge_transaction_id),
+    allocatedAmountEur: toEur(Number(row.allocated_amount_eur)),
+    allocationMethod: row.allocation_method as 'fifo' | 'manual',
+    allocatedBy: row.allocated_by ? String(row.allocated_by) : null,
+    allocatedAt: String(row.allocated_at),
+    notes: row.notes ? String(row.notes) : null,
+  }))
+
+  const totalAllocated = allocations.reduce((sum, a) => sum + Number(a.allocatedAmountEur), 0)
+
+  // Aggregate by charge to compute counts
+  const chargeAllocations = new Map<string, number>()
+  for (const a of allocations) {
+    const prev = chargeAllocations.get(a.chargeTransactionId) ?? 0
+    chargeAllocations.set(a.chargeTransactionId, prev + Number(a.allocatedAmountEur))
+  }
+
+  return {
+    totalChargesEur: null, // P-ARCH-1: requires charge context — caller must provide
+    totalAllocatedEur: toEur(totalAllocated),
+    remainingUnallocatedEur: null, // P-ARCH-1: requires charge context
+    surplusEur: null, // P-ARCH-1: requires charge context
+    fullyAllocatedCount: null, // P-ARCH-1: requires charge amounts
+    partiallyAllocatedCount: chargeAllocations.size,
+    unallocatedCount: null, // P-ARCH-1: requires full charge list
+    allocations,
+  }
+}
+
+// ─── Correction Cases ────────────────────────────────────────────────────────
+
+/**
+ * Fetch correction cases for a statement series, including event history.
+ */
+export async function fetchCorrectionCases(
+  seriesId: string,
+): Promise<readonly FinancialCorrectionCaseDTO[]> {
+  const supabase = createServiceClient()
+
+  const { data: cases, error } = await supabase
+    .schema('statements')
+    .rpc('get_correction_cases', { p_series_id: seriesId })
+
+  if (error || !cases) return []
+
+  // Fetch events for each case
+  const caseDTOs: FinancialCorrectionCaseDTO[] = []
+  for (const c of cases) {
+    const { data: events } = await supabase
+      .schema('statements')
+      .rpc('get_correction_events', { p_case_id: c.id })
+
+    const eventDTOs: FinancialCorrectionEventDTO[] = (events ?? []).map((e: Record<string, unknown>) => ({
+      id: String(e.id),
+      caseId: String(e.case_id),
+      eventType: String(e.event_type),
+      performedBy: e.performed_by ? String(e.performed_by) : null,
+      notes: e.notes ? String(e.notes) : null,
+      metadata: (e.metadata as Record<string, unknown>) ?? null,
+      createdAt: String(e.created_at),
+    }))
+
+    caseDTOs.push({
+      id: String(c.id),
+      seriesId: String(c.series_id),
+      originalTransactionId: String(c.original_transaction_id),
+      correctionType: c.correction_type,
+      status: c.status,
+      description: String(c.description),
+      priority: c.priority,
+      originalAmountEur: c.original_amount_eur != null ? toEur(Number(c.original_amount_eur)) : null,
+      correctedAmountEur: c.corrected_amount_eur != null ? toEur(Number(c.corrected_amount_eur)) : null,
+      originalFieldValues: (c.original_field_values as Record<string, unknown>) ?? null,
+      correctedFieldValues: (c.corrected_field_values as Record<string, unknown>) ?? null,
+      openedBy: c.opened_by ? String(c.opened_by) : null,
+      openedAt: String(c.opened_at),
+      resolvedBy: c.resolved_by ? String(c.resolved_by) : null,
+      resolvedAt: c.resolved_at ? String(c.resolved_at) : null,
+      resolutionNotes: c.resolution_notes ? String(c.resolution_notes) : null,
+      appliedTransactionId: c.applied_transaction_id ? String(c.applied_transaction_id) : null,
+      appliedAt: c.applied_at ? String(c.applied_at) : null,
+      events: eventDTOs,
+    })
+  }
+
+  return caseDTOs
+}
+
+// ─── Financial Alerts (in-memory, RC1 scope) ─────────────────────────────────
+// Computed from RC3 report data without querying additional tables.
+// RC2 will add persistent accounting_alerts table.
+
+/**
+ * Compute financial alerts from RC3 report data.
+ * Detects: duplicate candidates, amount mismatches, missing charges.
+ */
+/**
+ * Compute truthful financial alerts from report data + billing context.
+ *
+ * Gap L: Alerts detect real workflow states, not just margin discrepancies:
+ * 1. Amount mismatch (client_charge vs amount_eur >20% or >€100)
+ * 2. Unbilled charges — rows with no draft line (billingState absent)
+ * 3. Billed-but-unpaid — rows in draft but no payment allocation
+ * 4. Unallocated payments — payments with remaining balance
+ * 5. Open correction cases — active cases needing resolution
+ */
+function computeFinancialAlerts(
+  reports: RC3PropertyReport[],
+  sections?: readonly OwnerFinancialSectionDTO[],
+  paymentSummary?: PaymentAllocationSummaryDTO | null,
+  openCorrectionCases?: readonly FinancialCorrectionCaseDTO[] | null,
+): readonly FinancialAlertDTO[] {
+  const alerts: FinancialAlertDTO[] = []
+  const now = new Date().toISOString()
+  let alertId = 0
+
+  // ── 1. Amount mismatch alerts (existing) ──
+  for (const report of reports) {
+    for (const section of report.accounts) {
+      for (const row of section.rows) {
+        if (
+          row.client_charge != null &&
+          row.amount_eur != null &&
+          Math.abs(Number(row.client_charge) - Number(row.amount_eur)) > 0.01
+        ) {
+          const diff = Number(row.client_charge) - Number(row.amount_eur)
+          const pct = Math.abs(diff / Number(row.amount_eur))
+          if (pct > 0.2 || Math.abs(diff) > 100) {
+            alerts.push({
+              id: `alert-${++alertId}`,
+              severity: 'info' as AlertSeverity,
+              category: 'amount_mismatch' as AlertCategory,
+              message: `Charge differs from actual cost by €${Math.abs(diff).toFixed(2)} (${(pct * 100).toFixed(0)}%)`,
+              relatedTransactionIds: row.id ? [row.id] : [],
+              propertyName: report.reporting_name,
+              suggestedAction: 'Verify margin is intentional',
+              dismissible: true,
+              acknowledged: false,
+              computedAt: now,
+            })
+          }
+        }
+      }
+    }
+  }
+
+  // ── 2. Unbilled charges — rows without billing state (no draft line) ──
+  if (sections) {
+    let unbilledCount = 0
+    const unbilledIds: string[] = []
+    for (const sec of sections) {
+      for (const row of sec.rows) {
+        if (row.displayGroup === 'expense' || row.displayGroup === 'income') {
+          const bs = (row as unknown as Record<string, unknown>).billingState as BillingStateDTO | undefined
+          if (!bs || bs.billingState === 'unbilled') {
+            unbilledCount++
+            if (row.id) unbilledIds.push(row.id)
+          }
+        }
+      }
+    }
+    if (unbilledCount > 0) {
+      alerts.push({
+        id: `alert-${++alertId}`,
+        severity: 'warning' as AlertSeverity,
+        category: 'unbilled_charges' as AlertCategory,
+        message: `${unbilledCount} charge${unbilledCount > 1 ? 's' : ''} not yet included in any statement draft`,
+        relatedTransactionIds: unbilledIds.slice(0, 10),
+        propertyName: null,
+        suggestedAction: 'Create or update a statement draft to include these charges',
+        dismissible: true,
+        acknowledged: false,
+        computedAt: now,
+      })
+    }
+
+    // ── 3. Billed-but-unpaid — in draft but no payment allocation ──
+    let unpaidCount = 0
+    const unpaidIds: string[] = []
+    for (const sec of sections) {
+      for (const row of sec.rows) {
+        const bs = (row as unknown as Record<string, unknown>).billingState as BillingStateDTO | undefined
+        if (bs && bs.billingState !== 'unbilled' && (bs.paymentState === 'unpaid' || bs.paymentState === null)) {
+          unpaidCount++
+          if (row.id) unpaidIds.push(row.id)
+        }
+      }
+    }
+    if (unpaidCount > 0) {
+      alerts.push({
+        id: `alert-${++alertId}`,
+        severity: 'info' as AlertSeverity,
+        category: 'billed_unpaid' as AlertCategory,
+        message: `${unpaidCount} billed charge${unpaidCount > 1 ? 's' : ''} awaiting payment allocation`,
+        relatedTransactionIds: unpaidIds.slice(0, 10),
+        propertyName: null,
+        suggestedAction: 'Allocate payments to outstanding charges (manual or FIFO)',
+        dismissible: true,
+        acknowledged: false,
+        computedAt: now,
+      })
+    }
+  }
+
+  // ── 4. Unallocated payments — payments with remaining balance ──
+  if (paymentSummary && paymentSummary.remainingUnallocatedEur != null) {
+    const remaining = Number(paymentSummary.remainingUnallocatedEur)
+    if (remaining > 0.01) {
+      alerts.push({
+        id: `alert-${++alertId}`,
+        severity: 'info' as AlertSeverity,
+        category: 'unallocated_payments' as AlertCategory,
+        message: `€${remaining.toFixed(2)} in payments not yet allocated to specific charges`,
+        relatedTransactionIds: [],
+        propertyName: null,
+        suggestedAction: 'Run FIFO allocation or manually assign payments to charges',
+        dismissible: true,
+        acknowledged: false,
+        computedAt: now,
+      })
+    }
+  }
+
+  // ── 5. Open correction cases ──
+  if (openCorrectionCases && openCorrectionCases.length > 0) {
+    const openCount = openCorrectionCases.filter(c => c.status === 'open' || c.status === 'under_review').length
+    if (openCount > 0) {
+      alerts.push({
+        id: `alert-${++alertId}`,
+        severity: 'warning' as AlertSeverity,
+        category: 'open_corrections' as AlertCategory,
+        message: `${openCount} correction case${openCount > 1 ? 's' : ''} requiring resolution`,
+        relatedTransactionIds: openCorrectionCases
+          .filter(c => c.status === 'open' || c.status === 'under_review')
+          .map(c => c.originalTransactionId)
+          .slice(0, 10),
+        propertyName: null,
+        suggestedAction: 'Review and resolve open correction cases',
+        dismissible: false,
+        acknowledged: false,
+        computedAt: now,
+      })
+    }
+  }
+
+  return alerts
+}
+
+// ─── Report Presentation Config ──────────────────────────────────────────────
+
+/**
+ * Build report presentation configuration.
+ * When seriesId is provided, merges persisted owner preferences from statement_series.
+ * Persisted preferences override defaults (partial merge — only set fields override).
+ * P-ARCH-1: NULL in persisted prefs = use default (not override with null).
+ */
+async function buildDefaultReportConfig(
+  seriesId?: string | null,
+): Promise<ReportPresentationConfigDTO> {
+  const defaults: ReportPresentationConfigDTO = {
+    language: 'en',
+    isRtl: false,
+    titleOverride: null,
+    headerText: null,
+    footerText: null,
+    showInternalMargin: false,
+    showPaymentAllocations: false,
+    showBillingState: false,
+    dateFormat: 'dd/mm/yyyy',
+    currencyFormat: 'symbol',
+  }
+
+  if (!seriesId) return defaults
+
+  try {
+    const db = createServiceClient()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (db as any)
+      .schema('statements')
+      .rpc('get_report_preferences', { p_series_id: seriesId })
+
+    if (error || !data) return defaults
+
+    const stored = data as Record<string, unknown>
+    // Merge: only non-null stored values override defaults
+    return {
+      language: typeof stored.language === 'string' ? stored.language as ReportLanguage : defaults.language,
+      isRtl: typeof stored.isRtl === 'boolean' ? stored.isRtl : defaults.isRtl,
+      titleOverride: stored.titleOverride !== undefined ? (stored.titleOverride as string | null) : defaults.titleOverride,
+      headerText: stored.headerText !== undefined ? (stored.headerText as string | null) : defaults.headerText,
+      footerText: stored.footerText !== undefined ? (stored.footerText as string | null) : defaults.footerText,
+      showInternalMargin: typeof stored.showInternalMargin === 'boolean' ? stored.showInternalMargin : defaults.showInternalMargin,
+      showPaymentAllocations: typeof stored.showPaymentAllocations === 'boolean' ? stored.showPaymentAllocations : defaults.showPaymentAllocations,
+      showBillingState: typeof stored.showBillingState === 'boolean' ? stored.showBillingState : defaults.showBillingState,
+      dateFormat: typeof stored.dateFormat === 'string' ? stored.dateFormat as ReportPresentationConfigDTO['dateFormat'] : defaults.dateFormat,
+      currencyFormat: typeof stored.currencyFormat === 'string' ? stored.currencyFormat as ReportPresentationConfigDTO['currencyFormat'] : defaults.currencyFormat,
+    }
+  } catch {
+    // Silent fallback — preferences are non-critical
+    return defaults
+  }
 }

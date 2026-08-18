@@ -21,7 +21,7 @@ jest.mock('next/navigation', () => ({
 
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { nameToSlug } from '@/lib/owners/ownerWorkspaceUtils'
+import { nameToSlug, buildOwnerIdentity } from '@/lib/owners/ownerWorkspaceUtils'
 import { OverviewTab } from '@/components/owners/tabs/OverviewTab'
 import { FinancialTab } from '@/components/owners/tabs/FinancialTab'
 import { ReservationsTab } from '@/components/owners/tabs/ReservationsTab'
@@ -542,5 +542,40 @@ describe('OverviewTab', () => {
   it('shows owner name in recent activity heading', () => {
     const html = renderToStaticMarkup(<OverviewTab dto={EMPTY_OVERVIEW} ownerName="Avi" />)
     expect(html).toContain('Avi')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────
+// 9. buildOwnerIdentity — canonical party ID regression (Blocker 2)
+// ─────────────────────────────────────────────────────────────
+
+describe('buildOwnerIdentity — canonical partyId', () => {
+  it('uses canonicalPartyId when provided (different from lifecycle id)', () => {
+    const lifecycleId = 'lifecycle-entity-uuid-111'
+    const canonicalPartyId = 'registry-party-uuid-999'
+    const identity = buildOwnerIdentity(lifecycleId, 'Avi', ['Villa Mazotos'], 'en', 'CY', canonicalPartyId)
+
+    // partyId MUST be the canonical registry value, not the lifecycle entity id
+    expect(identity.partyId).toBe(canonicalPartyId)
+    // id remains the lifecycle entity id (used for workspace routing)
+    expect(identity.id).toBe(lifecycleId)
+    // The two must be different in this test — that's the whole point
+    expect(identity.partyId).not.toBe(identity.id)
+  })
+
+  it('falls back to lifecycle id when canonicalPartyId is null', () => {
+    const lifecycleId = 'lifecycle-entity-uuid-222'
+    const identity = buildOwnerIdentity(lifecycleId, 'Oren', ['Villa Mazotos 2'], 'en', 'CY', null)
+
+    expect(identity.partyId).toBe(lifecycleId)
+    expect(identity.id).toBe(lifecycleId)
+  })
+
+  it('falls back to lifecycle id when canonicalPartyId is omitted', () => {
+    const lifecycleId = 'lifecycle-entity-uuid-333'
+    const identity = buildOwnerIdentity(lifecycleId, 'Jacob', ['Tamir Dekelia'])
+
+    expect(identity.partyId).toBe(lifecycleId)
+    expect(identity.id).toBe(lifecycleId)
   })
 })
