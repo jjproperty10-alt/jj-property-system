@@ -340,18 +340,18 @@ function renderRowRecord(row: OwnerFinancialRowDTO): Record<string, ReactNode> {
 
 function FinancialSection({ section, periodLabel }: { section: OwnerFinancialDTO['sections'][number]; periodLabel?: string }) {
   const DIR: Record<'due_to_jj' | 'due_to_you' | 'settled' | 'internal', { label: string; cls: string }> = {
-    due_to_jj:  { label: 'Due to JJ',  cls: 'text-red-700 bg-red-50 border-red-200' },
+    due_to_jj: { label: 'Due to JJ', cls: 'text-red-700 bg-red-50 border-red-200' },
     due_to_you: { label: 'Due to You', cls: 'text-green-700 bg-green-50 border-green-200' },
-    settled:    { label: 'Settled',    cls: 'text-gray-600 bg-gray-50 border-gray-200' },
-    internal:   { label: 'JJ Internal', cls: 'text-blue-700 bg-blue-50 border-blue-200' },
+    settled: { label: 'Settled', cls: 'text-gray-600 bg-gray-50 border-gray-200' },
+    internal: { label: 'JJ Internal', cls: 'text-blue-700 bg-blue-50 border-blue-200' },
   }
   const dir = section.ownerDirection ? DIR[section.ownerDirection] : null
   // Blocker 3: Include billingState column when any row has billing data
   const hasBilling = section.rows.some(r => r.billingState != null)
   const columns: DataTableColumn[] = [
-    { key: 'date',        label: 'Date',        dir: 'ltr' },
+    { key: 'date', label: 'Date', dir: 'ltr' },
     { key: 'description', label: 'Description' },
-    { key: 'amountEur',   label: 'Amount',      align: 'right', dir: 'ltr' },
+    { key: 'amountEur', label: 'Amount', align: 'right', dir: 'ltr' },
     ...(hasBilling ? [{ key: 'billingState', label: 'Status' }] : []),
     { key: 'evidenceRef', label: 'Evidence' },
   ]
@@ -380,8 +380,8 @@ function FinancialSection({ section, periodLabel }: { section: OwnerFinancialDTO
               {section.closingBalanceEur != null && parseFloat(section.closingBalanceEur) === 0
                 ? <span className="font-medium text-green-700">Settled · €0</span>
                 : <>Balance: {section.closingBalanceEur != null
-                    ? <MoneyValue amount={parseFloat(section.closingBalanceEur)} size="sm" />
-                    : '—'}</>}
+                  ? <MoneyValue amount={parseFloat(section.closingBalanceEur)} size="sm" />
+                  : '—'}</>}
             </span>
           ) : (
             <span className="text-gray-500">
@@ -451,15 +451,15 @@ function RentalGroupedRows({ rows, columns }: { rows: OwnerFinancialRowDTO[]; co
 
 function OverallNetRelationship({ overallNet }: { overallNet: OwnerOverallNetDTO }) {
   const labelText: Record<OwnerOverallNetDTO['label'], string> = {
-    due_to_jj:  'Due to JJ',
+    due_to_jj: 'Due to JJ',
     due_to_you: 'Due to You',
-    settled:    'Settled',
+    settled: 'Settled',
   }
 
   const labelColor: Record<OwnerOverallNetDTO['label'], string> = {
-    due_to_jj:  'text-red-700 bg-red-50 border-red-200',
+    due_to_jj: 'text-red-700 bg-red-50 border-red-200',
     due_to_you: 'text-green-700 bg-green-50 border-green-200',
-    settled:    'text-gray-700 bg-gray-50 border-gray-200',
+    settled: 'text-gray-700 bg-gray-50 border-gray-200',
   }
 
   // Production guard: when reviewStatus is set, show a review banner
@@ -542,10 +542,10 @@ function PropertyGroup({ group, periodLabel, ownerSlug, lang, reportType, fromDa
   toDate?: string | null
 }) {
   const DIR: Record<'due_to_jj' | 'due_to_you' | 'settled' | 'internal', { label: string; cls: string }> = {
-    due_to_jj:  { label: 'Due to JJ',  cls: 'text-red-700 bg-red-50 border-red-200' },
+    due_to_jj: { label: 'Due to JJ', cls: 'text-red-700 bg-red-50 border-red-200' },
     due_to_you: { label: 'Due to You', cls: 'text-green-700 bg-green-50 border-green-200' },
-    settled:    { label: 'Settled',    cls: 'text-gray-600 bg-gray-50 border-gray-200' },
-    internal:   { label: 'JJ Internal', cls: 'text-blue-700 bg-blue-50 border-blue-200' },
+    settled: { label: 'Settled', cls: 'text-gray-600 bg-gray-50 border-gray-200' },
+    internal: { label: 'JJ Internal', cls: 'text-blue-700 bg-blue-50 border-blue-200' },
   }
   const dir = DIR[group.propertyNet.label] ?? DIR.settled
 
@@ -621,15 +621,15 @@ function PropertyGroup({ group, periodLabel, ownerSlug, lang, reportType, fromDa
 
 function OwnerSummary({ overallNet, propertyGroups }: { overallNet: OwnerOverallNetDTO; propertyGroups: PropertyFinancialGroupDTO[] }) {
   const labelText: Record<OwnerOverallNetDTO['label'], string> = {
-    due_to_jj:  'Due to JJ',
+    due_to_jj: 'Due to JJ',
     due_to_you: 'Due to You',
-    settled:    'Settled',
+    settled: 'Settled',
   }
 
   const labelColor: Record<OwnerOverallNetDTO['label'], string> = {
-    due_to_jj:  'text-red-700 bg-red-50 border-red-200',
+    due_to_jj: 'text-red-700 bg-red-50 border-red-200',
     due_to_you: 'text-green-700 bg-green-50 border-green-200',
-    settled:    'text-gray-700 bg-gray-50 border-gray-200',
+    settled: 'text-gray-700 bg-gray-50 border-gray-200',
   }
 
   // Production guard: needs_review banner
@@ -853,26 +853,26 @@ function AlertsBanner({ alerts }: { alerts: readonly FinancialAlertDTO[] }) {
 
 function BillingStateBadge({ state }: { state: BillingStateDTO }) {
   const billingStyles: Record<string, string> = {
-    unbilled:  'bg-gray-100 text-gray-600',
-    pending:   'bg-yellow-100 text-yellow-700',
+    unbilled: 'bg-gray-100 text-gray-600',
+    pending: 'bg-yellow-100 text-yellow-700',
     presented: 'bg-blue-100 text-blue-700',
-    excluded:  'bg-red-100 text-red-600',
+    excluded: 'bg-red-100 text-red-600',
   }
   const billingLabels: Record<string, string> = {
-    unbilled:  'Unbilled',
-    pending:   'Pending',
+    unbilled: 'Unbilled',
+    pending: 'Pending',
     presented: 'Presented',
-    excluded:  'Excluded',
+    excluded: 'Excluded',
   }
   const paymentStyles: Record<string, string> = {
-    unpaid:         'bg-orange-100 text-orange-700',
+    unpaid: 'bg-orange-100 text-orange-700',
     partially_paid: 'bg-amber-100 text-amber-700',
-    paid:           'bg-green-100 text-green-700',
+    paid: 'bg-green-100 text-green-700',
   }
   const paymentLabels: Record<string, string> = {
-    unpaid:         'Unpaid',
+    unpaid: 'Unpaid',
     partially_paid: 'Partial',
-    paid:           'Paid',
+    paid: 'Paid',
   }
 
   return (
@@ -945,12 +945,12 @@ function PaymentAllocationPanel({ summary }: { summary: PaymentAllocationSummary
 
 function CorrectionCasesPanel({ cases }: { cases: readonly FinancialCorrectionCaseDTO[] }) {
   const statusStyles: Record<string, string> = {
-    open:          'bg-yellow-100 text-yellow-800',
-    under_review:  'bg-blue-100 text-blue-800',
-    approved:      'bg-green-100 text-green-800',
-    rejected:      'bg-red-100 text-red-800',
-    applied:       'bg-gray-100 text-gray-800',
-    void:          'bg-gray-100 text-gray-500',
+    open: 'bg-yellow-100 text-yellow-800',
+    under_review: 'bg-blue-100 text-blue-800',
+    approved: 'bg-green-100 text-green-800',
+    rejected: 'bg-red-100 text-red-800',
+    applied: 'bg-gray-100 text-gray-800',
+    void: 'bg-gray-100 text-gray-500',
   }
   const priorityIcons: Record<string, string> = {
     urgent: '🔴',

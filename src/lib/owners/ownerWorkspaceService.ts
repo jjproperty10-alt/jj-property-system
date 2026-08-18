@@ -25,6 +25,10 @@
  * Neither function reads pms.* schemas directly (G3-2 resolved).
  * Guest masking applied to historical reservations (G3-19).
  *
+ * Settlement V1.2: Balance direction and overall-net sourced from
+ * v_contact_settlement_summary via ownerSettlementAdapter.
+ * Settlement Engine is sole authority for "who owes whom".
+ *
  * @see ownerWorkspaceFixtures.ts — explicit fixture boundary
  */
 
@@ -56,6 +60,7 @@ import type { ReservationActivityDTO } from './ownerReservationService'
 import { getReservations, getReservationActivity } from './ownerReservationService'
 import { selectStrProperties } from './selectStrProperties'
 import { getPortfolio } from './ownerPortfolioAdapter'
+import { fetchAllSettlements, fetchSettlementByName } from './ownerSettlementAdapter'
 import type {
   OwnersRoomDTO,
   OwnerRoomItemDTO,
@@ -72,6 +77,7 @@ import type {
   TimelineEventDTO,
   HostawayPortfolioSummaryDTO,
   OwnerServiceEngagementsDTO,
+  OwnerSettlementDTO,
   EntityPropertyOption,
   RentalContractDTO,
 } from './ownerWorkspaceTypes'
@@ -87,6 +93,7 @@ import type {
  * - Owner names / properties: `lifecycle.entity_identity` + `lifecycle.management_relationship`
  *   (canonical identity resolution — only verified relationships shown)
  * - Statement status: `statements.statement_series` (if populated)
+ * - Settlement: `v_contact_settlement_summary` via ownerSettlementAdapter (batch)
  *
  * Falls back gracefully when statements schema is empty.
  * If lifecycle schema is unavailable, returns empty list (fail-closed).
@@ -95,7 +102,11 @@ export async function getOwnersRoom(): Promise<OwnersRoomDTO> {
   // G1B: Identity resolution from lifecycle schema (canonical source).
   // Only verified relationships appear in the Owner Room.
   // Pending relationships are available separately but not listed as owners.
-  const { owners, draftOwners } = await getAllVerifiedOwners()
+  // Settlement V1.2: batch-fetch all settlement balances in parallel.
+  const [{ owners, draftOwners }, settlementMap] = await Promise.all([
+    getAllVerifiedOwners(),
+    fetchAllSettlements(),
+  ])
 
   // Fetch statement_series for workflow status
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -110,7 +121,7 @@ export async function getOwnersRoom(): Promise<OwnersRoomDTO> {
   }
 
   // Build room items from resolved identities (verified + draft)
-  const items: OwnerRoomItemDTO[] = buildRoomItemsFromIdentities(owners, seriesData ?? [])
+  const items: OwnerRoomItemDTO[] = buildRoomItemsFromIdentities(owners, seriesData ?? [], settlementMap)
 
   // PR #4: Add draft owners from jj_relationships — separate semantics, isDraft=true
   for (const draft of (draftOwners ?? [])) {
@@ -152,9 +163,12 @@ export async function getOwnersRoom(): Promise<OwnersRoomDTO> {
  * Build room items from canonical resolved identities.
  * G1B: replaces buildPropertyMap + buildRoomItems (payer/payee scanning).
  * Identity comes from lifecycle schema, not from transactions.
+ *
+ * Settlement V1.2: settlementMap provides engine-computed balance direction
+ * and amount. Fixture fallback when settlement data unavailable.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildRoomItemsFromIdentities(owners: readonly ResolvedManagedIdentityDTO[], _seriesData: any[]): OwnerRoomItemDTO[] {
+function buildRoomItemsFromIdentities(owners: readonly ResolvedManagedIdentityDTO[], _seriesData: any[], settlementMap: Map<string, OwnerSettlementDTO>): OwnerRoomItemDTO[] {
   const items: OwnerRoomItemDTO[] = []
 
   for (const owner of owners) {
@@ -165,11 +179,13 @@ function buildRoomItemsFromIdentities(owners: readonly ResolvedManagedIdentityDT
     const configHealth = computeConfigHealth(owner.identity, owner.managedProperties)
     const dedupedProperties = deduplicatePropertyNames(owner.managedProperties)
 
+    const settlement = settlementMap.get(name)
+
     items.push({
       identity,
       statementStatus: FIXTURE_STATEMENT_STATUS,
-      balanceDirection: FIXTURE_BALANCE_DIRECTION,
-      balanceEur: FIXTURE_OWNER_BALANCE_EUR,
+      balanceDirection: settlement?.balanceDirection ?? FIXTURE_BALANCE_DIRECTION,
+      balanceEur: settlement?.balanceEur ?? FIXTURE_OWNER_BALANCE_EUR,
       lastStatementSentAt: null,
       nextActionSummary: null,
       openCorrectionCount: FIXTURE_OPEN_CORRECTIONS,
@@ -178,6 +194,7 @@ function buildRoomItemsFromIdentities(owners: readonly ResolvedManagedIdentityDT
       configHealth,
       associatedPropertyCount: dedupedProperties.length,
       isDraft: false,
+      temporalStatus: settlement?.temporalStatus,
     })
   }
 
@@ -201,7 +218,7 @@ export async function resolveOwnerWorkspace(slug: string): Promise<OwnerWorkspac
   const result = await resolveBySlug(slug)
 
   let entityId: string
-  let partyId: string | null = null  // Blocker 2: canonical registry.parties UUID
+  let partyId: string | null = null // Blocker 2: canonical registry.parties UUID
   let displayName: string
   let properties: string[]
   let preferredLanguage: 'he' | 'en' | 'ru' | null = null
@@ -216,7 +233,7 @@ export async function resolveOwnerWorkspace(slug: string): Promise<OwnerWorkspac
       return { status: 'source_unavailable', error: result.error }
     case 'resolved':
       entityId = result.data.identity.entityId
-      partyId = result.data.identity.partyId ?? null  // Blocker 2: from enrichIdentityWithParty
+      partyId = result.data.identity.partyId ?? null // Blocker 2: from enrichIdentityWithParty
       displayName = result.data.identity.displayName
       properties = result.data.managedProperties.map(r => r.propertyName).sort()
       preferredLanguage = result.data.identity.preferredLanguage
@@ -287,12 +304,22 @@ export async function getOwnerWorkspace(slug: string): Promise<OwnerWorkspaceDTO
 // ─────────────────────────────────────────────────────────────
 
 export async function getOwnerOverview(slug: string): Promise<OwnerOverviewDTO> {
-  const upcoming = await getUpcomingEvents(slug)
+  // Resolve identity to get canonical_name for settlement lookup
+  const result = await resolveBySlug(slug)
+  const canonicalName = result.status === 'resolved'
+    ? result.data.identity.displayName
+    : null
+
+  // Parallel: settlement + upcoming events
+  const [settlement, upcoming] = await Promise.all([
+    canonicalName ? fetchSettlementByName(canonicalName) : Promise.resolve(null),
+    getUpcomingEvents(slug),
+  ])
 
   return {
     financial: {
-      balanceDirection: 'jj_owes_owner',
-      balanceEur: null,
+      balanceDirection: settlement?.balanceDirection ?? 'balanced',
+      balanceEur: settlement?.balanceEur ?? null,
       pendingEur: null,
       lastPaymentAt: null,
       nextPaymentAt: null,
@@ -364,12 +391,24 @@ export async function getOwnerFinancial(
   }
 
   try {
-    return await getFinancial({
+    const financial = await getFinancial({
       properties: workspace.identity.properties,
       fromDate: startDate,
       toDate: endDate,
       seriesId,
     })
+
+    // Settlement V1.2: override closing balance with engine-computed value
+    const canonicalName = workspace.identity.name
+    const settlement = await fetchSettlementByName(canonicalName)
+    if (settlement) {
+      financial.position = {
+        ...financial.position,
+        closingBalanceEur: settlement.netJjSettlement,
+      }
+    }
+
+    return financial
   } catch (err) {
     console.error(
       '[ownerWorkspaceService] getOwnerFinancial: service failed',
@@ -417,13 +456,13 @@ export async function getOwnerReservations(
       period: { startDate, endDate },
       portfolio: {
         totalReservations: 0,
-        occupancyPct:      null,
-        revenueEur:        null,
-        adr:               null,
-        revPar:            null,
-        cancellations:     0,
+        occupancyPct: null,
+        revenueEur: null,
+        adr: null,
+        revPar: null,
+        cancellations: 0,
       },
-      channelMix:   [],
+      channelMix: [],
       reservations: [],
     }
   }
@@ -515,11 +554,11 @@ export async function getOwnerRelationship(slug: string): Promise<OwnerRelations
  * MUST switch on .status before accessing .data.
  *
  * Delegates to ownerAuditAdapter which:
- *   - Resolves identity via G1 identityResolverService
- *   - Bridges to registry.parties via resolve_party_id RPC
- *   - Scopes snapshot queries by owner_party_id (fixes Bug #2)
- *   - Queries evidence by canonical_name (fixes Bug #1)
- *   - Returns explicit failure status on every error (fixes Bug #3)
+ * - Resolves identity via G1 identityResolverService
+ * - Bridges to registry.parties via resolve_party_id RPC
+ * - Scopes snapshot queries by owner_party_id (fixes Bug #2)
+ * - Queries evidence by canonical_name (fixes Bug #1)
+ * - Returns explicit failure status on every error (fixes Bug #3)
  *
  * Gate A–E investigation (2 Aug 2026).
  */
@@ -646,7 +685,7 @@ export async function getHostawayPortfolio(
  * to Owner Workspace via G3 adapter pattern.
  *
  * Architecture: getOwnerServiceEngagements -> ownerServiceEngagementAdapter
- *               -> lifecycle.get_entity_service_engagements RPC
+ * -> lifecycle.get_entity_service_engagements RPC
  *
  * Returns empty OwnerServiceEngagementsDTO when:
  * - Owner slug cannot be resolved (fail-closed)
@@ -718,9 +757,9 @@ export async function getOwnerEntityProperties(
  * Empty object when no management_ltr engagements exist.
  *
  * Three-authority separation:
- *   Service Engagement = what service JJ provides
- *   Rental Contract = who is renting, terms, period (THIS FUNCTION)
- *   Tenant Payment = actual rent money (public.transactions — NOT touched)
+ * Service Engagement = what service JJ provides
+ * Rental Contract = who is renting, terms, period (THIS FUNCTION)
+ * Tenant Payment = actual rent money (public.transactions — NOT touched)
  */
 export async function getOwnerRentalContracts(
   serviceEngagements: OwnerServiceEngagementsDTO,
