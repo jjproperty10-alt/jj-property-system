@@ -15,8 +15,6 @@
  * No accounting logic changed. English output is pixel-stable.
  */
 
-'use client'
-
 import React from 'react'
 import {
   Document,
