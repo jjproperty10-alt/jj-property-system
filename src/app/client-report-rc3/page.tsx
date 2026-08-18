@@ -38,7 +38,12 @@ import {
   t, type Lang, type LabelKey,
 } from '@/lib/report/labels'
 import { groupExpenses } from '@/lib/report/expenseGroups'
-import { computeOperationalKPIs, computeNetOwnerBalance } from '@/lib/report/executiveSummary'
+import {
+  computeOperationalKPIs,
+  computeNetOwnerBalance,
+  filterOwnerFacingSections,
+  computeOwnerFacingNet,
+} from '@/lib/report/executiveSummary'
 import { ReportScopeSelector } from '@/components/report/ReportScopeSelector'
 import type { ReportScope } from '@/lib/report/reportScope'
 import { isScopeValid, defaultScope } from '@/lib/report/reportScope'
@@ -500,7 +505,8 @@ function M2ModuleCard({ section, lang }: { section: RC3AccountSection; lang: Lan
 }
 
 function PremiumSummary({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
-  const netOwnerBalance = computeNetOwnerBalance(report.accounts)
+  // Global Owner/Client Perspective Rule: exclude Purchase (JJ internal acquisition)
+  const netOwnerBalance = computeOwnerFacingNet(report.accounts)
   const { income: opIncome, expenses: opExpenses, transfers: opTransfers, hasOperational } =
     computeOperationalKPIs(report.accounts)
   const absNet = Math.abs(netOwnerBalance)
@@ -562,7 +568,9 @@ function PremiumSummary({ report, lang }: { report: RC3PropertyReport; lang: Lan
 /* ─── Final Summary ───────────────────────────────────────────────────────────── */
 
 function FinalSummary({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
-  const { totalIncome, totalExpenses, totalTransfers, netOwnerBalance } = computeDashboard(report.accounts)
+  // Global Owner/Client Perspective Rule: exclude Purchase (JJ internal acquisition)
+  const ownerFacingAccounts = filterOwnerFacingSections(report.accounts)
+  const { totalIncome, totalExpenses, totalTransfers, netOwnerBalance } = computeDashboard(ownerFacingAccounts)
 
   let balLabel: string
   let balColor: string
