@@ -1158,7 +1158,7 @@ export async function fetchCorrectionCases(
  * 4. Unallocated payments — payments with remaining balance
  * 5. Open correction cases — active cases needing resolution
  */
-function computeFinancialAlerts(
+export function computeFinancialAlerts(
   reports: RC3PropertyReport[],
   sections?: readonly OwnerFinancialSectionDTO[],
   paymentSummary?: PaymentAllocationSummaryDTO | null,
@@ -1168,33 +1168,54 @@ function computeFinancialAlerts(
   const now = new Date().toISOString()
   let alertId = 0
 
-  // ── 1. Amount mismatch alerts (existing) ──
-  for (const report of reports) {
-    for (const section of report.accounts) {
-      for (const row of section.rows) {
-        if (
-          row.client_charge != null &&
-          row.amount_eur != null &&
-          Math.abs(Number(row.client_charge) - Number(row.amount_eur)) > 0.01
-        ) {
+  // ── 1. Margin / amount-mismatch — ONE consolidated JJ-internal summary alert ──
+  // Section 8 (Owner/Client Financial Closure): never one-alert-per-row, never
+  // "Infinity%". A row counts as a margin difference when the client charge
+  // differs from actual cost (amount_eur) beyond the threshold. When actual cost
+  // is 0 the percentage is undefined — we still count the row, but never render a
+  // ratio, and surface a business-safe "actual cost not recorded" note instead.
+  // Individual cases live in the "JJ Internal — Margin Analysis" drill-down.
+  {
+    const marginTxIds: string[] = []
+    let missingActualCost = 0
+    for (const report of reports) {
+      for (const section of report.accounts) {
+        for (const row of section.rows) {
+          if (row.client_charge == null || row.amount_eur == null) continue
           const diff = Number(row.client_charge) - Number(row.amount_eur)
-          const pct = Math.abs(diff / Number(row.amount_eur))
+          if (Math.abs(diff) <= 0.01) continue
+          const actual = Number(row.amount_eur)
+          if (actual === 0) {
+            // Actual cost not recorded — percentage is not meaningful. Count it,
+            // but never compute a ratio (avoids "Infinity%").
+            missingActualCost++
+            if (row.id) marginTxIds.push(row.id)
+            continue
+          }
+          const pct = Math.abs(diff / actual)
           if (pct > 0.2 || Math.abs(diff) > 100) {
-            alerts.push({
-              id: `alert-${++alertId}`,
-              severity: 'info' as AlertSeverity,
-              category: 'amount_mismatch' as AlertCategory,
-              message: `Charge differs from actual cost by €${Math.abs(diff).toFixed(2)} (${(pct * 100).toFixed(0)}%)`,
-              relatedTransactionIds: row.id ? [row.id] : [],
-              propertyName: report.reporting_name,
-              suggestedAction: 'Verify margin is intentional',
-              dismissible: true,
-              acknowledged: false,
-              computedAt: now,
-            })
+            if (row.id) marginTxIds.push(row.id)
           }
         }
       }
+    }
+    const marginCount = marginTxIds.length
+    if (marginCount > 0) {
+      const suffix = missingActualCost > 0
+        ? ` (${missingActualCost} with actual cost not recorded)`
+        : ''
+      alerts.push({
+        id: `alert-${++alertId}`,
+        severity: 'info' as AlertSeverity,
+        category: 'amount_mismatch' as AlertCategory,
+        message: `${marginCount} transaction${marginCount === 1 ? ' has' : 's have'} margin differences${suffix}`,
+        relatedTransactionIds: marginTxIds.slice(0, 10),
+        propertyName: null,
+        suggestedAction: 'Review in JJ Internal — Margin Analysis',
+        dismissible: true,
+        acknowledged: false,
+        computedAt: now,
+      })
     }
   }
 
