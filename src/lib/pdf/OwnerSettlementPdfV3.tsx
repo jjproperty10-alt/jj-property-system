@@ -34,7 +34,7 @@ import {
   t, type Lang, type LabelKey,
 } from '../report/labels'
 import { groupExpenses } from '../report/expenseGroups'
-import { computeOperationalKPIs, computeNetOwnerBalance } from '../report/executiveSummary'
+import { computeOperationalKPIs, computeNetOwnerBalance, filterOwnerFacingSections } from '../report/executiveSummary'
 
 /* ─── Palette ───────────────────────────────────────────────────────────────── */
 
@@ -586,9 +586,9 @@ function PremiumSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: 
           </View>
         </View>
       )}
-      {/* Module cards */}
+      {/* Module cards — Purchase excluded (JJ internal acquisition, Global Owner/Client Perspective Rule) */}
       <View style={[{ flexDirection: 'row', flexWrap: 'wrap' }, rtlRowDirection(lang)]}>
-        {report.accounts.map((acc, i) => {
+        {filterOwnerFacingSections(report.accounts).map((acc, i) => {
           const accColor = M2_PDF_COLORS[acc.account_type] ?? '#334155'
           const balLabel = getBalLabel(acc, lang)
           const absBalance = Math.abs(acc.closing_balance)
@@ -1035,8 +1035,8 @@ export function OwnerSettlementPdfV3({ report, lang = 'en', reportType = 'full' 
         {/* M2: Premium Executive Summary */}
         <PremiumSummaryPdf report={filteredReport} lang={lang} />
 
-        {/* One section per account */}
-        {filteredReport.accounts.map(acc => (
+        {/* One section per account — Purchase excluded (JJ internal, Global Owner/Client Perspective Rule) */}
+        {filterOwnerFacingSections(filteredReport.accounts).map(acc => (
           <AccountBlock key={acc.account_type} section={acc} lang={lang} />
         ))}
 
