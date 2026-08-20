@@ -29,7 +29,13 @@ DECLARE
   v_current_status TEXT;
   v_event_type TEXT;
 BEGIN
-  PERFORM statements.require_jj_staff();
+  -- Staff gate. The deployed body called statements.require_jj_staff() (no-arg,
+  -- statements schema), but that function does NOT exist in the database - the
+  -- only guard is public.require_jj_staff(text[]). The deployed call was a
+  -- dangling reference that raised at runtime. Fixed here to the guard every
+  -- other statements RPC uses, with the same roles as apply_correction_case
+  -- (ceo, finance_admin) so the whole correction subsystem is gated identically.
+  PERFORM public.require_jj_staff(ARRAY['ceo','finance_admin']);
 
   -- HARD BLOCK: 'applied' and applied_transaction_id are owned exclusively by
   -- statements.apply_correction_case. This RPC can never mark a case applied.
