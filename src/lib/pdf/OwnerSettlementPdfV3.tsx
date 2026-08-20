@@ -34,7 +34,8 @@ import {
   t, type Lang, type LabelKey,
 } from '../report/labels'
 import { groupExpenses } from '../report/expenseGroups'
-import { computeOperationalKPIs, computeNetOwnerBalance, filterOwnerFacingSections } from '../report/executiveSummary'
+import { computeOperationalKPIs, filterOwnerFacingSections } from '../report/executiveSummary'
+import { getOwnerClientReport } from '../report/ownerClientReport'
 
 /* ─── Palette ───────────────────────────────────────────────────────────────── */
 
@@ -536,7 +537,10 @@ const M2_PDF_COLORS: Record<string, string> = {
 }
 
 function PremiumSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
-  const net = computeNetOwnerBalance(report.accounts)
+  // G6: hero net comes from the canonical owner/client composition contract
+  // (Purchase-filtered), so PDF net reconciles exactly with the Owner Workspace
+  // Property/Overall Net. Do NOT recompute over raw report.accounts here.
+  const net = getOwnerClientReport(report).overallNet
   const { income: opIncome, expenses: opExpenses, transfers: opTransfers, hasOperational } =
     computeOperationalKPIs(report.accounts)
   const absNet = Math.abs(net)
