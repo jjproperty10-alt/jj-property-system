@@ -13,6 +13,7 @@ const read = (f: string) => readFileSync(join(DIR, f), 'utf8')
 const M1 = '20260820_001_baseline_deployed_corrections_and_statements.sql'
 const M2 = '20260820_002_apply_correction_case_insert_only.sql'
 const M3 = '20260820_003_transactions_financial_truth_protection.sql'
+const M4 = '20260820_004_transition_correction_case_no_applied.sql'
 
 describe('001 baseline is verification-only (not a mutating "no-op")', () => {
   const sql = read(M1)
@@ -65,6 +66,38 @@ describe('002 apply_correction_case is approved-gated, case-anchored, strict', (
   test('never updates or deletes the original (INSERT-only into public.transactions)', () => {
     expect(sql).not.toMatch(/UPDATE\s+public\.transactions/i)
     expect(sql).not.toMatch(/DELETE\s+FROM\s+public\.transactions/i)
+  })
+  test('value-binds each correcting row to the approved case (not just authorises)', () => {
+    // a forward row uses corrected_field_values as the expected value...
+    expect(sql).toMatch(/corrected_field_values->>v_field/)
+    // ...otherwise the original value; and it RAISES on any mismatch.
+    expect(sql).toMatch(/v_orig_json->>v_field/)
+    expect(sql).toMatch(/does not match the .* for this approved case/)
+    // every bindable field is checked, including the descriptive ones.
+    for (const field of ['property_id', 'category', 'subcategory', 'description', 'payer', 'payee', 'date']) {
+      expect(sql).toContain(`'${field}'`)
+    }
+  })
+})
+
+describe('004 transition_correction_case can never reach applied', () => {
+  const sql = read(M4)
+  test('hard-blocks a transition to applied', () => {
+    expect(sql).toMatch(/p_new_status\s*=\s*'applied'/)
+    expect(sql).toMatch(/RAISE EXCEPTION '\[denied\][^']*applied/)
+  })
+  test('rejects any caller-supplied applied_transaction_id', () => {
+    expect(sql).toMatch(/p_applied_tx_id IS NOT NULL/)
+    expect(sql).toMatch(/applied_transaction_id may only be set by/)
+  })
+  test('restricts targets to the four non-applied statuses', () => {
+    expect(sql).toMatch(/p_new_status NOT IN \('under_review','approved','rejected','void'\)/)
+  })
+  test('does not touch applied_transaction_id / applied_at in the UPDATE', () => {
+    // the UPDATE sets status/resolved_*/notes/updated_at, never applied_* columns
+    const update = sql.slice(sql.indexOf('UPDATE statements.correction_cases'))
+    expect(update).not.toMatch(/applied_transaction_id\s*=/)
+    expect(update).not.toMatch(/applied_at\s*=/)
   })
 })
 
