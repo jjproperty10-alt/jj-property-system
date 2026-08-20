@@ -51,26 +51,47 @@ describe('current period draft lines = balance-affecting only', () => {
 })
 
 describe('re-proposal feeds the next draft', () => {
-  test('re-proposed obligations become included lines with remaining amounts', () => {
-    const lines = reproposedDraftLines(reproposal([B, C]), { remainingByTxId: { [B]: 250, [C]: null } })
-    expect(lines.map(l => l.sourceTransactionId)).toEqual([B, C])
+  test('known remaining -> line; UNKNOWN remaining -> unresolved (never a EUR 0 line)', () => {
+    const { lines, unresolved } = reproposedDraftLines(reproposal([B, C]), { remainingByTxId: { [B]: 250, [C]: null } })
+    expect(lines.map(l => l.sourceTransactionId)).toEqual([B])
     expect(lines[0]).toMatchObject({ releaseAmountEur: 250, includeInStatement: true, origin: 'reproposed' })
-    // unknown remaining -> 0, surfaced not dropped
-    expect(lines[1].releaseAmountEur).toBe(0)
+    // P-ARCH-1: unknown remaining must NOT become a 0 line; it is surfaced as unresolved
+    expect(unresolved).toEqual([{ transactionId: C, reason: 'unknown_remaining_amount' }])
+    expect(lines.some(l => l.releaseAmountEur === 0)).toBe(false)
   })
 
   test('planNextDraftLines merges current + re-proposed, deduped (current wins)', () => {
     const rows = [disp({ transactionId: A, clientAmountEur: 500 }), disp({ transactionId: B, clientAmountEur: 300 })]
     const rp = reproposal([B, C]) // B already in current period -> deduped out
-    const lines = planNextDraftLines(rows, rp, { remainingByTxId: { [C]: 90 } })
-    expect(lines.map(l => l.sourceTransactionId)).toEqual([A, B, C])
-    expect(lines.find(l => l.sourceTransactionId === B)!.origin).toBe('current_period')
-    expect(lines.find(l => l.sourceTransactionId === C)!.origin).toBe('reproposed')
+    const plan = planNextDraftLines(rows, rp, { remainingByTxId: { [C]: 90 } })
+    expect(plan.lines.map(l => l.sourceTransactionId)).toEqual([A, B, C])
+    expect(plan.lines.find(l => l.sourceTransactionId === B)!.origin).toBe('current_period')
+    expect(plan.lines.find(l => l.sourceTransactionId === C)!.origin).toBe('reproposed')
+    expect(plan.canFinalize).toBe(true)
+    expect(plan.unresolved).toEqual([])
   })
 
-  test('empty re-proposal -> just current period', () => {
+  test('unknown-remaining re-proposal blocks finalization', () => {
+    const rows = [disp({ transactionId: A, clientAmountEur: 500 })]
+    const plan = planNextDraftLines(rows, reproposal([C]), { remainingByTxId: { [C]: null } })
+    expect(plan.lines.map(l => l.sourceTransactionId)).toEqual([A]) // C is NOT a line
+    expect(plan.unresolved).toEqual([{ transactionId: C, reason: 'unknown_remaining_amount' }])
+    expect(plan.canFinalize).toBe(false)
+    expect(plan.lines.some(l => l.releaseAmountEur === 0)).toBe(false)
+  })
+
+  test('an unknown-remaining obligation already covered by the current period is resolved', () => {
+    const rows = [disp({ transactionId: C, clientAmountEur: 300 })]
+    const plan = planNextDraftLines(rows, reproposal([C]), { remainingByTxId: { [C]: null } })
+    expect(plan.unresolved).toEqual([])
+    expect(plan.canFinalize).toBe(true)
+  })
+
+  test('empty re-proposal -> just current period, finalizable', () => {
     const rows = [disp({ transactionId: A })]
-    expect(planNextDraftLines(rows, reproposal([])).map(l => l.sourceTransactionId)).toEqual([A])
+    const plan = planNextDraftLines(rows, reproposal([]))
+    expect(plan.lines.map(l => l.sourceTransactionId)).toEqual([A])
+    expect(plan.canFinalize).toBe(true)
   })
 })
 
@@ -93,7 +114,7 @@ describe('snapshot entries freeze balance-affecting classification verbatim', ()
 describe('draft line totals', () => {
   test('counts + release total by origin', () => {
     const rows = [disp({ transactionId: A, clientAmountEur: 500 })]
-    const lines = planNextDraftLines(rows, reproposal([C]), { remainingByTxId: { [C]: 100 } })
-    expect(draftLineTotals(lines)).toEqual({ lineCount: 2, currentPeriodCount: 1, reproposedCount: 1, totalReleaseEur: 600 })
+    const plan = planNextDraftLines(rows, reproposal([C]), { remainingByTxId: { [C]: 100 } })
+    expect(draftLineTotals(plan.lines)).toEqual({ lineCount: 2, currentPeriodCount: 1, reproposedCount: 1, totalReleaseEur: 600 })
   })
 })
