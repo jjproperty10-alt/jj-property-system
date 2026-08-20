@@ -368,9 +368,18 @@ export interface ApplyCorrectionCaseInput {
   original: OriginalTxRow | null
 }
 
+export interface ApplyCorrectionCaseResult {
+  ok: true
+  /** First inserted correcting transaction id (kept for backward compatibility). */
+  primaryAppliedTransactionId: string
+  /** ALL correcting transaction ids created, in sequence order. */
+  appliedTransactionIds: string[]
+  insertedCount: number
+}
+
 export async function applyCorrectionCaseAction(
   input: ApplyCorrectionCaseInput,
-): Promise<{ ok: true; appliedTransactionId: string } | { ok: false; error: string }> {
+): Promise<ApplyCorrectionCaseResult | { ok: false; error: string }> {
   const auth = await authenticateStatementUser()
   if (!auth.ok) return { ok: false, error: 'You must be signed in' }
   if (!input || !input.caseId || !isValidUUID(input.caseId)) {
@@ -378,6 +387,7 @@ export async function applyCorrectionCaseAction(
   }
 
   // Build the complete INSERT rows (append-only), failing fast on an incoherent plan.
+  // The DB independently re-validates against the approved case (does not trust these).
   let rows
   try {
     rows = buildCorrectionInsertRows(input.plan, input.original)
@@ -395,7 +405,23 @@ export async function applyCorrectionCaseAction(
       console.error('[billingActions] applyCorrectionCase RPC error:', error)
       return { ok: false, error: error.message ?? 'Database error' }
     }
-    return { ok: true, appliedTransactionId: String(data) }
+    // RPC returns jsonb { primary_transaction_id, applied_transaction_ids[], inserted_count }.
+    const result = (data ?? {}) as {
+      primary_transaction_id?: string
+      applied_transaction_ids?: string[]
+      inserted_count?: number
+    }
+    const ids = Array.isArray(result.applied_transaction_ids) ? result.applied_transaction_ids.map(String) : []
+    const primary = result.primary_transaction_id ? String(result.primary_transaction_id) : (ids[0] ?? '')
+    if (!primary) {
+      return { ok: false, error: 'apply_correction_case returned no applied transaction id' }
+    }
+    return {
+      ok: true,
+      primaryAppliedTransactionId: primary,
+      appliedTransactionIds: ids,
+      insertedCount: typeof result.inserted_count === 'number' ? result.inserted_count : ids.length,
+    }
   } catch (err) {
     console.error('[billingActions] applyCorrectionCase unexpected error:', err)
     return { ok: false, error: 'Unexpected error' }
