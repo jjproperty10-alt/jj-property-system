@@ -31,6 +31,54 @@ type Ok<T> = { ok: true } & T
 type OkVoid = { ok: true }
 type Err = { ok: false; error: string }
 
+// ─── Validation vocab (must match the deployed send_statement/set_draft_status RPCs) ───
+const ALLOWED_LANGUAGES = new Set(['he', 'en'])
+const ALLOWED_BALANCE_DIRECTIONS = new Set(['owner_credit', 'client_debt'])
+const ALLOWED_STATEMENT_TYPES = new Set(['owner_statement', 'client_report', 'investor_statement', 'partner_statement'])
+const ALLOWED_BALANCE_EFFECTS = new Set(['income', 'expense', 'payment_out', 'tracking_only', 'needs_review', 'contract_value'])
+export type DraftStatus = 'draft' | 'ready_to_send'
+const ALLOWED_DRAFT_STATUSES = new Set<DraftStatus>(['draft', 'ready_to_send'])
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+function isIsoDate(v: unknown): boolean {
+  return typeof v === 'string' && ISO_DATE.test(v) && !Number.isNaN(Date.parse(v))
+}
+function isFiniteNum(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v)
+}
+
+/** Validate the send_statement payload before it reaches the DB. Returns an error string or null. */
+function validateSendPayload(payload: SendStatementPayload): string | null {
+  if (!payload || !isValidUUID(payload.draftId)) return 'Invalid draft ID'
+  if (!isIsoDate(payload.periodStart) || !isIsoDate(payload.periodEnd)) return 'periodStart/periodEnd must be ISO dates (YYYY-MM-DD)'
+  if (payload.periodStart > payload.periodEnd) return 'periodStart must not be after periodEnd'
+  if (!ALLOWED_STATEMENT_TYPES.has(payload.statementType)) return `Invalid statementType "${payload.statementType}"`
+  if (!ALLOWED_LANGUAGES.has(payload.language)) return `Invalid language "${payload.language}" (allowed: he, en)`
+  if (payload.balanceDirection !== null && !ALLOWED_BALANCE_DIRECTIONS.has(payload.balanceDirection)) {
+    return `Invalid balanceDirection "${payload.balanceDirection}"`
+  }
+  if (payload.expectedClosingBalanceEur !== null && !isFiniteNum(payload.expectedClosingBalanceEur)) {
+    return 'expectedClosingBalanceEur must be null or a finite number'
+  }
+  if (payload.ownershipPercentage !== null && !isFiniteNum(payload.ownershipPercentage)) {
+    return 'ownershipPercentage must be null or a finite number'
+  }
+  if (!Array.isArray(payload.entries) || payload.entries.length === 0) return 'send requires at least one snapshot entry'
+  const seen = new Set<string>()
+  for (let i = 0; i < payload.entries.length; i++) {
+    const e = payload.entries[i]
+    if (!e || !isValidUUID(e.source_transaction_id)) return `entry ${i}: invalid source_transaction_id`
+    if (seen.has(e.source_transaction_id)) return `entry ${i}: duplicate source_transaction_id ${e.source_transaction_id}`
+    seen.add(e.source_transaction_id)
+    if (!isFiniteNum(e.released_amount_eur)) return `entry ${i}: released_amount_eur must be a finite number`
+    if (!isFiniteNum(e.signed_balance_effect_eur)) return `entry ${i}: signed_balance_effect_eur must be a finite number`
+    if (typeof e.is_balance_affecting !== 'boolean') return `entry ${i}: is_balance_affecting must be boolean`
+    if (typeof e.is_bpo !== 'boolean') return `entry ${i}: is_bpo must be boolean`
+    if (!ALLOWED_BALANCE_EFFECTS.has(e.balance_effect)) return `entry ${i}: invalid balance_effect "${e.balance_effect}"`
+  }
+  return null
+}
+
 /** Create a fresh draft for a series. Returns the new draft id. */
 export async function createStatementDraftAction(
   seriesId: string,
@@ -122,15 +170,18 @@ export async function removeDraftLineAction(
   }
 }
 
-/** Set draft status (draft lifecycle transitions). */
+/** Set draft status. Only the non-terminal 'draft' | 'ready_to_send' transitions are
+ *  permitted here (cancel/send are separate RPCs) - matches the deployed set_draft_status. */
 export async function setDraftStatusAction(
   draftId: string,
-  newStatus: string,
+  newStatus: DraftStatus,
 ): Promise<OkVoid | Err> {
   const auth = await authenticateStatementUser()
   if (!auth.ok) return { ok: false, error: 'You must be signed in' }
   if (!draftId || !isValidUUID(draftId)) return { ok: false, error: 'Invalid draft ID' }
-  if (!newStatus || typeof newStatus !== 'string') return { ok: false, error: 'Invalid status' }
+  if (!ALLOWED_DRAFT_STATUSES.has(newStatus)) {
+    return { ok: false, error: `Invalid draft status "${String(newStatus)}" (allowed: draft, ready_to_send)` }
+  }
 
   const db = createServiceClient()
   try {
@@ -174,10 +225,10 @@ export async function sendStatementAction(
 ): Promise<Ok<{ snapshotId: string }> | Err> {
   const auth = await authenticateStatementUser()
   if (!auth.ok) return { ok: false, error: 'You must be signed in' }
-  if (!payload || !isValidUUID(payload.draftId)) return { ok: false, error: 'Invalid draft ID' }
-  if (!Array.isArray(payload.entries) || payload.entries.length === 0) {
-    return { ok: false, error: 'send requires at least one snapshot entry' }
-  }
+  // Strict client-side validation; the DB send_statement independently re-validates
+  // and reconciles (entries must match draft lines, closing balance must reconcile).
+  const invalid = validateSendPayload(payload)
+  if (invalid) return { ok: false, error: invalid }
 
   const db = createServiceClient()
   try {
