@@ -35,7 +35,7 @@ import {
 } from '../report/labels'
 import { groupExpenses } from '../report/expenseGroups'
 import { computeOperationalKPIs, filterOwnerFacingSections } from '../report/executiveSummary'
-import { getOwnerClientReport } from '../report/ownerClientReport'
+import { getOwnerClientReport, getPortfolioOwnerNet } from '../report/ownerClientReport'
 
 /* ─── Palette ───────────────────────────────────────────────────────────────── */
 
@@ -1022,8 +1022,42 @@ export interface OwnerSettlementPdfV3Props {
   reportType?: ReportType
 }
 
-export function OwnerSettlementPdfV3({ report, lang = 'en', reportType = 'full' }: OwnerSettlementPdfV3Props) {
+/**
+ * G1: one property's page. Extracted from OwnerSettlementPdfV3 so both the
+ * single-property document and the multi-property Full Owner Report render the
+ * identical per-property content. Purchase excluded via filterOwnerFacingSections.
+ */
+export function OwnerPropertyPage({
+  report,
+  lang,
+  reportType = 'full',
+}: {
+  report: RC3PropertyReport
+  lang: Lang
+  reportType?: ReportType
+}) {
   const filteredReport = { ...report, accounts: filterSectionsByReportType(report.accounts, reportType) }
+  const reportTypeLabel = reportType === 'periodic' ? t('reportTypePeriodic', lang) : t('reportTypeFull', lang)
+  return (
+    <Page size="A4" style={s.page}>
+      <DocHeader report={filteredReport} lang={lang} reportTypeLabel={reportTypeLabel} />
+      <MetaBlock report={filteredReport} lang={lang} />
+
+      {/* M2: Premium Executive Summary */}
+      <PremiumSummaryPdf report={filteredReport} lang={lang} />
+
+      {/* One section per account — Purchase excluded (JJ internal, Global Owner/Client Perspective Rule) */}
+      {filterOwnerFacingSections(filteredReport.accounts).map(acc => (
+        <AccountBlock key={acc.account_type} section={acc} lang={lang} />
+      ))}
+
+      <FinalSummaryPdf report={filteredReport} lang={lang} />
+      <DocFooter report={filteredReport} lang={lang} />
+    </Page>
+  )
+}
+
+export function OwnerSettlementPdfV3({ report, lang = 'en', reportType = 'full' }: OwnerSettlementPdfV3Props) {
   const reportTypeLabel = reportType === 'periodic' ? t('reportTypePeriodic', lang) : t('reportTypeFull', lang)
 
   return (
@@ -1032,21 +1066,100 @@ export function OwnerSettlementPdfV3({ report, lang = 'en', reportType = 'full' 
       author="JJ Property 10"
       creator="JJ Property 10 Platform (RC3 V3)"
     >
-      <Page size="A4" style={s.page}>
-        <DocHeader report={filteredReport} lang={lang} reportTypeLabel={reportTypeLabel} />
-        <MetaBlock report={filteredReport} lang={lang} />
+      <OwnerPropertyPage report={report} lang={lang} reportType={reportType} />
+    </Document>
+  )
+}
+/* ─── G1: Full Owner Report (multi-property) ───────────────────────────────── */
 
-        {/* M2: Premium Executive Summary */}
-        <PremiumSummaryPdf report={filteredReport} lang={lang} />
+function ownerNetLabel(net: number, lang: Lang): string {
+  return Math.abs(net) < 0.005
+    ? t('balSettled', lang)
+    : net > 0
+      ? t('balPayableToYou', lang)
+      : t('balPayableByYou', lang)
+}
 
-        {/* One section per account — Purchase excluded (JJ internal, Global Owner/Client Perspective Rule) */}
-        {filterOwnerFacingSections(filteredReport.accounts).map(acc => (
-          <AccountBlock key={acc.account_type} section={acc} lang={lang} />
+/**
+ * G1: Owner Summary page — each property's owner-facing net (Purchase excluded)
+ * + the Overall Net. Uses the canonical G1/G6 composition; no accounting recompute.
+ */
+export function OwnerSummaryPage({ reports, lang }: { reports: RC3PropertyReport[]; lang: Lang }) {
+  const views = reports.map(getOwnerClientReport)
+  const overall = getPortfolioOwnerNet(reports)
+  const title = lang === 'he' ? 'סיכום בעלים' : 'Owner Summary'
+  const overallLabel = lang === 'he' ? 'נטו כולל' : 'Overall Net'
+  return (
+    <Page size="A4" style={s.page}>
+      <View style={{ marginBottom: 12 }}>
+        <Text style={[{ fontSize: 16, fontWeight: 'bold' }, rtlTextStyle(lang)]}>{title}</Text>
+      </View>
+      <View style={{ borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 4 }}>
+        {views.map((v, i) => (
+          <View
+            key={v.reporting_name}
+            style={[
+              {
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                paddingVertical: 6,
+                paddingHorizontal: 10,
+                borderBottomWidth: i < views.length - 1 ? 1 : 0,
+                borderBottomColor: '#f1f5f9',
+              },
+              rtlRowDirection(lang),
+            ]}
+          >
+            <Text style={[{ fontSize: 11 }, rtlTextStyle(lang)]}>{v.reporting_name}</Text>
+            <Text style={{ fontSize: 11 }}>{ownerNetLabel(v.overallNet, lang)} {fmt(Math.abs(v.overallNet))}</Text>
+          </View>
         ))}
+        <View
+          style={[
+            {
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              paddingVertical: 8,
+              paddingHorizontal: 10,
+              borderTopWidth: 2,
+              borderTopColor: '#cbd5e1',
+              backgroundColor: '#f8fafc',
+            },
+            rtlRowDirection(lang),
+          ]}
+        >
+          <Text style={[{ fontSize: 12, fontWeight: 'bold' }, rtlTextStyle(lang)]}>{overallLabel}</Text>
+          <Text style={{ fontSize: 12, fontWeight: 'bold' }}>{ownerNetLabel(overall, lang)} {fmt(Math.abs(overall))}</Text>
+        </View>
+      </View>
+    </Page>
+  )
+}
 
-        <FinalSummaryPdf report={filteredReport} lang={lang} />
-        <DocFooter report={filteredReport} lang={lang} />
-      </Page>
+export interface OwnerPortfolioPdfProps {
+  reports: RC3PropertyReport[]
+  lang?: Lang
+  reportType?: ReportType
+}
+
+/**
+ * G1: Full Owner Report across one or many properties. Owner Summary page (when
+ * >1 property) + one page per property (identical per-property content to the
+ * single-property document). Purchase excluded everywhere; nets reconcile with
+ * the Owner Workspace via the canonical composition.
+ */
+export function OwnerPortfolioPdf({ reports, lang = 'en', reportType = 'full' }: OwnerPortfolioPdfProps) {
+  const reportTypeLabel = reportType === 'periodic' ? t('reportTypePeriodic', lang) : t('reportTypeFull', lang)
+  return (
+    <Document
+      title={`JJ ${reportTypeLabel} — Owner Portfolio`}
+      author="JJ Property 10"
+      creator="JJ Property 10 Platform (RC3 V3)"
+    >
+      {reports.length > 1 && <OwnerSummaryPage reports={reports} lang={lang} />}
+      {reports.map(r => (
+        <OwnerPropertyPage key={r.reporting_name} report={r} lang={lang} reportType={reportType} />
+      ))}
     </Document>
   )
 }

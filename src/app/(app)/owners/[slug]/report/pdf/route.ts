@@ -28,7 +28,7 @@ import { authenticateStatementUser } from '@/lib/statements/statementAuthService
 import { getOwnerWorkspace } from '@/lib/owners/ownerWorkspaceService'
 import { fetchRC3Report } from '@/lib/report/fetchReport'
 import { createServiceClient } from '@/lib/supabase'
-import { OwnerSettlementPdfV3 } from '@/lib/pdf/OwnerSettlementPdfV3'
+import { OwnerSettlementPdfV3, OwnerPortfolioPdf } from '@/lib/pdf/OwnerSettlementPdfV3'
 import type { Lang } from '@/lib/report/labels'
 import type { ReportType } from '@/lib/report/reportTypes'
 import type { RC3PropertyReport, RC3AccountSection } from '@/lib/report/types'
@@ -208,11 +208,16 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
     return new Response('No properties found for this owner', { status: 404 })
   }
 
-  // ── Blocker 5: Property selection ──────────────────────────────────────────
-  // Determine which properties to fetch reports for
+  // ── G1: Property selection (Full Owner Report) ─────────────────────────────
+  // Determine which properties to fetch reports for.
+  //   ?property=Name  → that single property (validated)
+  //   ?property=all   → the full owner report across all properties
+  //   (omitted)       → single-property owner: that property (backward compatible)
+  //                     multi-property owner: FULL owner report (all properties) —
+  //                     no longer a 400. This is G1: one report for the whole owner.
   let targetProperties: string[]
-  if (propertyParam) {
-    // Explicit property selection — verify it exists in the owner's property list
+  if (propertyParam && propertyParam.toLowerCase() !== 'all') {
+    // Explicit single-property selection — verify it exists in the owner's list
     if (!properties.includes(propertyParam)) {
       return new Response(JSON.stringify({
         error: 'Property not found for this owner',
@@ -221,15 +226,9 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
       }), { status: 404, headers: { 'Content-Type': 'application/json' } })
     }
     targetProperties = [propertyParam]
-  } else if (properties.length === 1) {
-    // Single property — backward compatible, no param needed
-    targetProperties = properties
   } else {
-    // Multiple properties, no selection — return 400 listing available properties
-    return new Response(JSON.stringify({
-      error: 'Multiple properties found. Specify ?property=PropertyName to select one.',
-      available: properties,
-    }), { status: 400, headers: { 'Content-Type': 'application/json' } })
+    // ?property=all, or omitted → every property the owner has (portfolio report).
+    targetProperties = properties
   }
 
   // Fetch RC3 report for the selected property
@@ -254,39 +253,42 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
     return new Response('No financial data found for this owner', { status: 404 })
   }
 
-  // At this point we have exactly one report (Blocker 5 guarantees single property)
-  let report = reports[0]
-
-  // ── Blocker 4: Apply statement Include/Exclude decisions ───────────────────
-  // Collect all transaction IDs from the report
+  // ── Blocker 4 / G1: Apply statement Include/Exclude decisions per property ──
+  // Collect all transaction IDs across every property report.
   const allTxIds: string[] = []
-  for (const section of report.accounts) {
-    for (const row of section.rows) {
-      if (row.id) allTxIds.push(row.id)
+  for (const rep of reports) {
+    for (const section of rep.accounts) {
+      for (const row of section.rows) {
+        if (row.id) allTxIds.push(row.id)
+      }
     }
   }
 
-  // Resolve exclusions using the canonical partyId (Blocker 2)
+  // Resolve exclusions once using the canonical partyId (Blocker 2).
   const excludedIds = await resolveExcludedTransactionIds(
     workspace.identity.partyId,
     allTxIds,
   )
 
-  // Apply exclusions — filter rows + recompute aggregates
-  report = applyStatementExclusions(report, excludedIds)
+  // Apply exclusions to EACH report, then drop reports emptied by exclusions.
+  const finalReports = reports
+    .map(rep => applyStatementExclusions(rep, excludedIds))
+    .filter(rep => rep.accounts.length > 0)
 
-  if (report.accounts.length === 0) {
-    return new Response('All financial data for this property has been excluded from the statement', { status: 404 })
+  if (finalReports.length === 0) {
+    return new Response('All financial data for this owner has been excluded from the statement', { status: 404 })
   }
 
   // ── Render PDF ─────────────────────────────────────────────────────────────
+  // G1: single property → single-property document (backward compatible).
+  //     multiple properties → Full Owner Report (Owner Summary + per-property).
   registerPdfFonts()
 
-  const element = React.createElement(OwnerSettlementPdfV3, {
-    report,
-    lang,
-    reportType,
-  }) as unknown as React.ReactElement
+  const element = (
+    finalReports.length === 1
+      ? React.createElement(OwnerSettlementPdfV3, { report: finalReports[0], lang, reportType })
+      : React.createElement(OwnerPortfolioPdf, { reports: finalReports, lang, reportType })
+  ) as unknown as React.ReactElement
 
   const buffer = await renderToBuffer(element as any)
 
