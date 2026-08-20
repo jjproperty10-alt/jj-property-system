@@ -28,9 +28,10 @@ import type { ReproposalResult } from './reproposal'
 export interface NextDraftOptions {
   /**
    * Remaining owed amount per re-proposed transaction id (EUR). Sourced from the
-   * prior cycle's BillingStateDTO.remainingEur. Missing/invalid -> the obligation
-   * is still re-added but with releaseAmountEur 0 (surfaced for the reviewer to set),
-   * never silently dropped.
+   * prior cycle's BillingStateDTO.remainingEur. If a re-proposed obligation's
+   * remaining is UNKNOWN (missing / null / non-finite), it is NOT turned into a
+   * line - P-ARCH-1: Unknown != 0. It is surfaced as UNRESOLVED and blocks
+   * finalization until a real amount is provided.
    */
   readonly remainingByTxId?: Readonly<Record<string, number | null>>
   /** Notes to attach to re-proposed lines (defaults to a stable marker). */
@@ -40,6 +41,21 @@ export interface NextDraftOptions {
 /** A draft line plus its provenance (current period vs re-proposed prior obligation). */
 export interface PlannedDraftLine extends DraftLineInput {
   readonly origin: 'current_period' | 'reproposed'
+}
+
+/** A re-proposed obligation that cannot be turned into a line yet. */
+export interface UnresolvedObligation {
+  readonly transactionId: string
+  readonly reason: 'unknown_remaining_amount'
+}
+
+/** Result of planning the next draft's lines, with unresolved obligations surfaced. */
+export interface NextDraftPlan {
+  readonly lines: PlannedDraftLine[]
+  /** Re-proposed obligations whose remaining amount is unknown; MUST be resolved before finalize. */
+  readonly unresolved: UnresolvedObligation[]
+  /** False when any obligation is unresolved (finalization is blocked). */
+  readonly canFinalize: boolean
 }
 
 /** Balance-affecting rows of the current period become included draft lines. */
@@ -58,40 +74,60 @@ export function currentPeriodDraftLines(rows: readonly TransactionDisposition[])
   return out
 }
 
-/** Re-proposed prior obligations (from computeReproposal) become included draft lines. */
+/**
+ * Re-proposed prior obligations (from computeReproposal). Those with a KNOWN finite
+ * remaining amount become included lines; those with an UNKNOWN remaining are surfaced
+ * as `unresolved` and are NEVER emitted as a EUR 0 line (P-ARCH-1: Unknown != 0).
+ */
 export function reproposedDraftLines(
   reproposal: ReproposalResult,
   options: NextDraftOptions = {},
-): PlannedDraftLine[] {
+): { lines: PlannedDraftLine[]; unresolved: UnresolvedObligation[] } {
   const remaining = options.remainingByTxId ?? {}
   const note = options.reproposedLineNote ?? 're-proposed: obligation left open on a prior statement'
-  return reproposal.reproposal.map(txId => {
+  const lines: PlannedDraftLine[] = []
+  const unresolved: UnresolvedObligation[] = []
+  for (const txId of reproposal.reproposal) {
     const amt = remaining[txId]
-    return {
-      sourceTransactionId: txId,
-      releaseAmountEur: typeof amt === 'number' && Number.isFinite(amt) ? amt : 0,
-      includeInStatement: true,
-      lineNotes: note,
-      origin: 'reproposed' as const,
+    if (typeof amt === 'number' && Number.isFinite(amt)) {
+      lines.push({
+        sourceTransactionId: txId,
+        releaseAmountEur: amt,
+        includeInStatement: true,
+        lineNotes: note,
+        origin: 'reproposed',
+      })
+    } else {
+      unresolved.push({ transactionId: txId, reason: 'unknown_remaining_amount' })
     }
-  })
+  }
+  return { lines, unresolved }
 }
 
 /**
  * Plan the next draft's full line set: current-period balance-affecting rows PLUS
- * re-proposed prior obligations, deduped by source transaction id (current period
- * wins if a tx appears in both). Deterministic and order-stable: current-period
- * lines first (input order), then re-proposed lines (re-proposal order).
+ * re-proposed prior obligations with a KNOWN remaining, deduped by source transaction
+ * id (current period wins if a tx appears in both). Re-proposed obligations with an
+ * unknown remaining are returned as `unresolved` and set `canFinalize=false` - they
+ * must be resolved to a real amount before the draft can be finalized. Deterministic
+ * and order-stable: current-period lines first, then re-proposed lines.
  */
 export function planNextDraftLines(
   rows: readonly TransactionDisposition[],
   reproposal: ReproposalResult,
   options: NextDraftOptions = {},
-): PlannedDraftLine[] {
+): NextDraftPlan {
   const current = currentPeriodDraftLines(rows)
   const seen = new Set(current.map(l => l.sourceTransactionId))
-  const reproposed = reproposedDraftLines(reproposal, options).filter(l => !seen.has(l.sourceTransactionId))
-  return [...current, ...reproposed]
+  const rep = reproposedDraftLines(reproposal, options)
+  const reproposed = rep.lines.filter(l => !seen.has(l.sourceTransactionId))
+  // An obligation already covered by a current-period line is resolved, not blocking.
+  const unresolved = rep.unresolved.filter(u => !seen.has(u.transactionId))
+  return {
+    lines: [...current, ...reproposed],
+    unresolved,
+    canFinalize: unresolved.length === 0,
+  }
 }
 
 /**
