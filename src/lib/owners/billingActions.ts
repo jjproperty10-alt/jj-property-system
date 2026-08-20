@@ -303,18 +303,45 @@ export async function openCorrectionCaseAction(
   }
 }
 
+/**
+ * The ONLY statuses reachable through transition_correction_case.
+ *
+ * `applied` is deliberately excluded: a case may become `applied` ONLY through
+ * `applyCorrectionCaseAction` -> `statements.apply_correction_case`, which
+ * INSERTs the correcting transaction(s) and writes the complete lineage. There
+ * is no path to `applied` (and no way to set applied_transaction_id) through
+ * this transition action, matching the DB guard in migration 004. `open` is the
+ * creation state and is not a transition target either.
+ */
+export type TransitionableCorrectionStatus = Exclude<
+  FinancialCorrectionStatus,
+  'applied' | 'open'
+>
+
+const TRANSITIONABLE_STATUSES: readonly TransitionableCorrectionStatus[] = [
+  'under_review',
+  'approved',
+  'rejected',
+  'void',
+]
+
 export interface TransitionCorrectionCaseInput {
   caseId: string
-  /** DB-aligned lifecycle vocabulary (statements.correction_cases status CHECK). */
-  newStatus: FinancialCorrectionStatus
+  /**
+   * DB-aligned lifecycle vocabulary, minus the applied path. `applied` is owned
+   * exclusively by apply_correction_case; it can never be reached from here.
+   */
+  newStatus: TransitionableCorrectionStatus
   notes?: string
-  /** The corrected transaction id to record when transitioning to 'applied'. */
-  appliedTransactionId?: string
 }
 
 /**
- * Transition a correction case to a new status.
+ * Transition a correction case to a new (non-applied) status.
  * Each transition is recorded as an immutable event.
+ *
+ * This action can NEVER mark a case `applied` or set applied_transaction_id;
+ * that is only possible via applyCorrectionCaseAction. The runtime guard below
+ * fails closed even if a caller bypasses the type with a loose cast.
  */
 export async function transitionCorrectionCaseAction(
   input: TransitionCorrectionCaseInput,
@@ -324,6 +351,18 @@ export async function transitionCorrectionCaseAction(
 
   if (!input.caseId || !isValidUUID(input.caseId)) {
     return { ok: false, error: 'Invalid case ID' }
+  }
+
+  // Fail closed: only the four non-applied targets are permitted here. This
+  // rejects 'applied' (and any other value) before it can reach the database,
+  // mirroring the hard block in statements.transition_correction_case.
+  if (!TRANSITIONABLE_STATUSES.includes(input.newStatus)) {
+    return {
+      ok: false,
+      error:
+        'A correction case can only be applied through apply_correction_case; ' +
+        'transition allows under_review, approved, rejected, or void.',
+    }
   }
 
   const db = createServiceClient()
@@ -336,7 +375,8 @@ export async function transitionCorrectionCaseAction(
         p_case_id: input.caseId,
         p_new_status: input.newStatus,
         p_notes: input.notes ?? null,
-        p_applied_tx_id: input.appliedTransactionId ?? null,
+        // p_applied_tx_id intentionally omitted: applied_transaction_id is set
+        // ONLY by apply_correction_case. The DB rejects a non-null value here.
       })
 
     if (error) {
