@@ -29,7 +29,13 @@ DECLARE
   v_current_status TEXT;
   v_event_type TEXT;
 BEGIN
-  PERFORM statements.require_jj_staff();
+  -- Staff gate. The deployed body called statements.require_jj_staff() (no-arg,
+  -- statements schema), but that function does NOT exist in the database - the
+  -- only guard is public.require_jj_staff(text[]). The deployed call was a
+  -- dangling reference that raised at runtime. Fixed here to the guard every
+  -- other statements RPC uses, with the same roles as apply_correction_case
+  -- (ceo, finance_admin) so the whole correction subsystem is gated identically.
+  PERFORM public.require_jj_staff(ARRAY['ceo','finance_admin']);
 
   -- HARD BLOCK: 'applied' and applied_transaction_id are owned exclusively by
   -- statements.apply_correction_case. This RPC can never mark a case applied.
@@ -56,7 +62,12 @@ BEGIN
     RAISE EXCEPTION 'Cannot transition from terminal status: %', v_current_status;
   END IF;
 
+  -- correction_events.event_type vocabulary uses 'voided' (not 'void'); map the
+  -- status value to the event value so a void transition can append its event.
+  -- (Deployed body set event_type := p_new_status verbatim, so 'void' violated
+  -- the correction_events CHECK and every void transition failed - fixed here.)
   v_event_type := p_new_status;
+  IF p_new_status = 'void' THEN v_event_type := 'voided'; END IF;
 
   UPDATE statements.correction_cases
      SET status = p_new_status,

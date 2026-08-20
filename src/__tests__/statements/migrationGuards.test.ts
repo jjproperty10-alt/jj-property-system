@@ -14,6 +14,7 @@ const M1 = '20260820_001_baseline_deployed_corrections_and_statements.sql'
 const M2 = '20260820_002_apply_correction_case_insert_only.sql'
 const M3 = '20260820_003_transactions_financial_truth_protection.sql'
 const M4 = '20260820_004_transition_correction_case_no_applied.sql'
+const M5 = '20260820_005_fix_open_correction_case_guard.sql'
 
 describe('001 baseline is verification-only (not a mutating "no-op")', () => {
   const sql = read(M1)
@@ -93,11 +94,37 @@ describe('004 transition_correction_case can never reach applied', () => {
   test('restricts targets to the four non-applied statuses', () => {
     expect(sql).toMatch(/p_new_status NOT IN \('under_review','approved','rejected','void'\)/)
   })
+  test('maps void status to the voided event_type (events CHECK requires voided)', () => {
+    expect(sql).toMatch(/p_new_status = 'void' THEN v_event_type := 'voided'/)
+  })
   test('does not touch applied_transaction_id / applied_at in the UPDATE', () => {
     // the UPDATE sets status/resolved_*/notes/updated_at, never applied_* columns
     const update = sql.slice(sql.indexOf('UPDATE statements.correction_cases'))
     expect(update).not.toMatch(/applied_transaction_id\s*=/)
     expect(update).not.toMatch(/applied_at\s*=/)
+  })
+  test('guards with the guard that actually exists, not the dangling statements one', () => {
+    // ignore the word appearing inside explanatory SQL comments
+    const ddl = sql.split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')
+    // must NOT call the non-existent statements.require_jj_staff()
+    expect(ddl).not.toMatch(/statements\.require_jj_staff\s*\(/)
+    // must call public.require_jj_staff(ARRAY[...])
+    expect(ddl).toMatch(/public\.require_jj_staff\s*\(\s*ARRAY\[/)
+  })
+})
+
+describe('005 fixes the dangling guard on open_correction_case', () => {
+  const sql = read(M5)
+  test('re-creates open_correction_case', () => {
+    expect(sql).toMatch(/CREATE OR REPLACE FUNCTION statements\.open_correction_case/)
+  })
+  test('replaces the dangling statements.require_jj_staff() with public.require_jj_staff(ARRAY[...])', () => {
+    expect(sql).not.toMatch(/PERFORM\s+statements\.require_jj_staff\s*\(/)
+    expect(sql).toMatch(/public\.require_jj_staff\s*\(\s*ARRAY\[/)
+  })
+  test('preserves the case-insert + opened-event behaviour', () => {
+    expect(sql).toMatch(/INSERT INTO statements\.correction_cases/)
+    expect(sql).toMatch(/'opened'/)
   })
 })
 
