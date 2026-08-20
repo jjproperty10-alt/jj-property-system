@@ -88,4 +88,26 @@ describe('fail-closed', () => {
     const plan = buildCorrectionPlan(null, { kind: 'append', effectiveDate: '2026-04-01', newValues: { amount_eur: 5, category: '' } })
     expect(() => buildCorrectionInsertRows(plan, null)).toThrow(CorrectionInsertError)
   })
+
+  test('missing date fails closed', () => {
+    // hand-craft a plan whose entry has an empty date (bypass builder defaulting)
+    const plan = buildCorrectionPlan(ORIG_SRC, { kind: 'reverse' })
+    const broken = { ...plan, entries: [{ ...plan.entries[0], date: '' }] }
+    expect(() => buildCorrectionInsertRows(broken, ORIG_TX)).toThrow(CorrectionInsertError)
+  })
+
+  test('non-finite amount fails closed (P-ARCH-1: Unknown != 0)', () => {
+    const plan = buildCorrectionPlan(ORIG_SRC, { kind: 'reverse' })
+    const nan = { ...plan, entries: [{ ...plan.entries[0], amount_eur: Number.NaN }] }
+    expect(() => buildCorrectionInsertRows(nan, ORIG_TX)).toThrow(CorrectionInsertError)
+    const inf = { ...plan, entries: [{ ...plan.entries[0], amount_eur: Infinity }] }
+    expect(() => buildCorrectionInsertRows(inf, ORIG_TX)).toThrow(CorrectionInsertError)
+  })
+
+  test('invalid role fails closed', () => {
+    const plan = buildCorrectionPlan(ORIG_SRC, { kind: 'reverse' })
+    const bad = { ...plan, entries: [{ ...plan.entries[0], role: 'bogus' }] }
+    // @ts-expect-error deliberately invalid role
+    expect(() => buildCorrectionInsertRows(bad, ORIG_TX)).toThrow(CorrectionInsertError)
+  })
 })
