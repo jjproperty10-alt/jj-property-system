@@ -62,7 +62,12 @@ BEGIN
     RAISE EXCEPTION 'Cannot transition from terminal status: %', v_current_status;
   END IF;
 
+  -- correction_events.event_type vocabulary uses 'voided' (not 'void'); map the
+  -- status value to the event value so a void transition can append its event.
+  -- (Deployed body set event_type := p_new_status verbatim, so 'void' violated
+  -- the correction_events CHECK and every void transition failed - fixed here.)
   v_event_type := p_new_status;
+  IF p_new_status = 'void' THEN v_event_type := 'voided'; END IF;
 
   UPDATE statements.correction_cases
      SET status = p_new_status,
