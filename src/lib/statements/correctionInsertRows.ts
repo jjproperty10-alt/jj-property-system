@@ -77,9 +77,23 @@ export function buildCorrectionInsertRows(
   if (original && plan.original_transaction_id && plan.original_transaction_id !== original.id) {
     throw new CorrectionInsertError('original row id does not match the plan original_transaction_id')
   }
-  return plan.entries.map((e: CorrectionEntry) => {
+  const VALID_ROLES = new Set(['reversal', 'replacement', 'rebook', 'append'])
+  return plan.entries.map((e: CorrectionEntry, i: number) => {
+    if (!VALID_ROLES.has(e.role)) {
+      throw new CorrectionInsertError(`row ${i}: invalid role "${String(e.role)}"`)
+    }
+    if (!e.date || String(e.date).trim() === '') {
+      throw new CorrectionInsertError(`row ${i}: a date is required`)
+    }
+    // P-ARCH-1: amount must be a finite number; never coerce Unknown to 0.
+    if (typeof e.amount_eur !== 'number' || !Number.isFinite(e.amount_eur)) {
+      throw new CorrectionInsertError(`row ${i}: amount_eur must be a finite number (Unknown != 0)`)
+    }
+    if (e.client_charge !== null && (typeof e.client_charge !== 'number' || !Number.isFinite(e.client_charge))) {
+      throw new CorrectionInsertError(`row ${i}: client_charge must be null or a finite number`)
+    }
     const category = (e.category || original?.category || '').trim()
-    if (!category) throw new CorrectionInsertError('a non-empty category is required for the correcting row')
+    if (!category) throw new CorrectionInsertError(`row ${i}: a non-empty category is required for the correcting row`)
     return {
       role: e.role,
       corrects_transaction_id: e.original_transaction_id ?? (original ? original.id : null),
