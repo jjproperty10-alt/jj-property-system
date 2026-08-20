@@ -20,6 +20,17 @@
 import { authenticateStatementUser } from '@/lib/statements/statementAuthService'
 import { createServiceClient } from '@/lib/supabase'
 import { isValidUUID } from '@/lib/owners/validation'
+import type {
+  FinancialCorrectionType,
+  FinancialCorrectionStatus,
+  CorrectionPriority,
+} from '@/lib/owners/ownerWorkspaceTypes'
+import {
+  buildCorrectionInsertRows,
+  CorrectionInsertError,
+  type OriginalTxRow,
+} from '@/lib/statements/correctionInsertRows'
+import type { CorrectionPlan } from '@/lib/statements/correctionPlan'
 
 // ─── Toggle Draft Line Inclusion ─────────────────────────────
 
@@ -229,11 +240,16 @@ export async function fifoAllocatePaymentAction(
 export interface OpenCorrectionCaseInput {
   seriesId: string
   originalTransactionId: string
-  correctionType: 'amount_error' | 'categorization_error' | 'duplicate' | 'missing_charge' | 'other'
+  /** DB-aligned vocabulary (statements.correction_cases CHECK); reuses FinancialCorrectionType. */
+  correctionType: FinancialCorrectionType
   description: string
-  priority?: 'low' | 'medium' | 'high' | 'critical'
+  /** DB-aligned vocabulary: 'low' | 'normal' | 'high' | 'urgent'. */
+  priority?: CorrectionPriority
   originalAmountEur?: number
   correctedAmountEur?: number
+  /** Optional JSONB snapshots stored on the case (original/corrected field values). */
+  originalFields?: Record<string, unknown> | null
+  correctedFields?: Record<string, unknown> | null
 }
 
 /**
@@ -263,13 +279,16 @@ export async function openCorrectionCaseAction(
     const { data, error } = await (db as any)
       .schema('statements')
       .rpc('open_correction_case', {
+        // Param names match the deployed statements.open_correction_case signature.
         p_series_id: input.seriesId,
-        p_original_transaction_id: input.originalTransactionId,
+        p_original_tx_id: input.originalTransactionId,
         p_correction_type: input.correctionType,
         p_description: input.description.trim(),
-        p_priority: input.priority ?? 'medium',
-        p_original_amount_eur: input.originalAmountEur ?? null,
-        p_corrected_amount_eur: input.correctedAmountEur ?? null,
+        p_original_amount: input.originalAmountEur ?? null,
+        p_corrected_amount: input.correctedAmountEur ?? null,
+        p_priority: input.priority ?? 'normal',
+        p_original_fields: input.originalFields ?? null,
+        p_corrected_fields: input.correctedFields ?? null,
       })
 
     if (error) {
@@ -284,15 +303,45 @@ export async function openCorrectionCaseAction(
   }
 }
 
+/**
+ * The ONLY statuses reachable through transition_correction_case.
+ *
+ * `applied` is deliberately excluded: a case may become `applied` ONLY through
+ * `applyCorrectionCaseAction` -> `statements.apply_correction_case`, which
+ * INSERTs the correcting transaction(s) and writes the complete lineage. There
+ * is no path to `applied` (and no way to set applied_transaction_id) through
+ * this transition action, matching the DB guard in migration 004. `open` is the
+ * creation state and is not a transition target either.
+ */
+export type TransitionableCorrectionStatus = Exclude<
+  FinancialCorrectionStatus,
+  'applied' | 'open'
+>
+
+const TRANSITIONABLE_STATUSES: readonly TransitionableCorrectionStatus[] = [
+  'under_review',
+  'approved',
+  'rejected',
+  'void',
+]
+
 export interface TransitionCorrectionCaseInput {
   caseId: string
-  newStatus: 'investigating' | 'resolved' | 'applied' | 'rejected'
+  /**
+   * DB-aligned lifecycle vocabulary, minus the applied path. `applied` is owned
+   * exclusively by apply_correction_case; it can never be reached from here.
+   */
+  newStatus: TransitionableCorrectionStatus
   notes?: string
 }
 
 /**
- * Transition a correction case to a new status.
+ * Transition a correction case to a new (non-applied) status.
  * Each transition is recorded as an immutable event.
+ *
+ * This action can NEVER mark a case `applied` or set applied_transaction_id;
+ * that is only possible via applyCorrectionCaseAction. The runtime guard below
+ * fails closed even if a caller bypasses the type with a loose cast.
  */
 export async function transitionCorrectionCaseAction(
   input: TransitionCorrectionCaseInput,
@@ -302,6 +351,18 @@ export async function transitionCorrectionCaseAction(
 
   if (!input.caseId || !isValidUUID(input.caseId)) {
     return { ok: false, error: 'Invalid case ID' }
+  }
+
+  // Fail closed: only the four non-applied targets are permitted here. This
+  // rejects 'applied' (and any other value) before it can reach the database,
+  // mirroring the hard block in statements.transition_correction_case.
+  if (!TRANSITIONABLE_STATUSES.includes(input.newStatus)) {
+    return {
+      ok: false,
+      error:
+        'A correction case can only be applied through apply_correction_case; ' +
+        'transition allows under_review, approved, rejected, or void.',
+    }
   }
 
   const db = createServiceClient()
@@ -314,6 +375,8 @@ export async function transitionCorrectionCaseAction(
         p_case_id: input.caseId,
         p_new_status: input.newStatus,
         p_notes: input.notes ?? null,
+        // p_applied_tx_id intentionally omitted: applied_transaction_id is set
+        // ONLY by apply_correction_case. The DB rejects a non-null value here.
       })
 
     if (error) {
@@ -324,6 +387,83 @@ export async function transitionCorrectionCaseAction(
     return { ok: true }
   } catch (err) {
     console.error('[billingActions] transitionCorrectionCase unexpected error:', err)
+    return { ok: false, error: 'Unexpected error' }
+  }
+}
+
+// ─── Apply a correction by INSERT (append-only model) (Item 1) ─────────────
+//
+// Append-only correction path: from a G7 CorrectionPlan + the original row, build
+// the complete correcting public.transactions rows and hand them to the new atomic
+// RPC statements.apply_correction_case, which INSERTs them (NEVER updates/deletes
+// the original), records applied_transaction_id, appends a correction event, and
+// marks the case 'applied'. History stays immutable; the audit trail is the case +
+// event log + the append-only transactions themselves. The prior in-place RPC
+// (public.apply_transaction_correction) is deprecated by this package's migration.
+
+export interface ApplyCorrectionCaseInput {
+  caseId: string
+  plan: CorrectionPlan
+  /** The original transaction row (metadata inheritance); null only for a standalone append. */
+  original: OriginalTxRow | null
+}
+
+export interface ApplyCorrectionCaseResult {
+  ok: true
+  /** First inserted correcting transaction id (kept for backward compatibility). */
+  primaryAppliedTransactionId: string
+  /** ALL correcting transaction ids created, in sequence order. */
+  appliedTransactionIds: string[]
+  insertedCount: number
+}
+
+export async function applyCorrectionCaseAction(
+  input: ApplyCorrectionCaseInput,
+): Promise<ApplyCorrectionCaseResult | { ok: false; error: string }> {
+  const auth = await authenticateStatementUser()
+  if (!auth.ok) return { ok: false, error: 'You must be signed in' }
+  if (!input || !input.caseId || !isValidUUID(input.caseId)) {
+    return { ok: false, error: 'Invalid case ID' }
+  }
+
+  // Build the complete INSERT rows (append-only), failing fast on an incoherent plan.
+  // The DB independently re-validates against the approved case (does not trust these).
+  let rows
+  try {
+    rows = buildCorrectionInsertRows(input.plan, input.original)
+  } catch (e) {
+    if (e instanceof CorrectionInsertError) return { ok: false, error: e.message }
+    return { ok: false, error: 'Invalid correction plan' }
+  }
+
+  const db = createServiceClient()
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (db as any).schema('statements')
+      .rpc('apply_correction_case', { p_case_id: input.caseId, p_rows: rows })
+    if (error) {
+      console.error('[billingActions] applyCorrectionCase RPC error:', error)
+      return { ok: false, error: error.message ?? 'Database error' }
+    }
+    // RPC returns jsonb { primary_transaction_id, applied_transaction_ids[], inserted_count }.
+    const result = (data ?? {}) as {
+      primary_transaction_id?: string
+      applied_transaction_ids?: string[]
+      inserted_count?: number
+    }
+    const ids = Array.isArray(result.applied_transaction_ids) ? result.applied_transaction_ids.map(String) : []
+    const primary = result.primary_transaction_id ? String(result.primary_transaction_id) : (ids[0] ?? '')
+    if (!primary) {
+      return { ok: false, error: 'apply_correction_case returned no applied transaction id' }
+    }
+    return {
+      ok: true,
+      primaryAppliedTransactionId: primary,
+      appliedTransactionIds: ids,
+      insertedCount: typeof result.inserted_count === 'number' ? result.inserted_count : ids.length,
+    }
+  } catch (err) {
+    console.error('[billingActions] applyCorrectionCase unexpected error:', err)
     return { ok: false, error: 'Unexpected error' }
   }
 }
