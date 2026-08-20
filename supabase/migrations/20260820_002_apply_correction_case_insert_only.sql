@@ -58,6 +58,7 @@ DECLARE
   v_actor       UUID;
   v_case        statements.correction_cases%ROWTYPE;
   v_orig        public.transactions%ROWTYPE;
+  v_orig_json   JSONB;
   v_has_orig    BOOLEAN;
   v_row         JSONB;
   v_new_id      UUID;
@@ -67,9 +68,12 @@ DECLARE
   v_role        TEXT;
   v_amount      NUMERIC(12,2);
   v_sum         NUMERIC(12,2) := 0;
-  v_prop        UUID;
-  v_allow_prop  BOOLEAN;
-  v_allow_party BOOLEAN;
+  v_field       TEXT;
+  v_is_forward  BOOLEAN;
+  v_authorised  BOOLEAN;
+  v_submitted   TEXT;
+  v_expected    TEXT;
+  v_src_label   TEXT;
 BEGIN
   -- Governed: only CEO / finance admin may apply.
   v_actor := public.require_jj_staff(ARRAY['ceo','finance_admin']);
@@ -100,9 +104,10 @@ BEGIN
       p_case_id, v_case.correction_type;
   END IF;
 
-  -- Does the APPROVED case explicitly authorise property / party reassignment?
-  v_allow_prop  := (v_case.corrected_field_values ? 'property_id') OR (v_case.corrected_field_values ? 'property_name');
-  v_allow_party := (v_case.corrected_field_values ? 'payer') OR (v_case.corrected_field_values ? 'payee');
+  -- Snapshot the canonical original as jsonb for field-by-field value binding.
+  IF v_has_orig THEN
+    v_orig_json := to_jsonb(v_orig);
+  END IF;
 
   -- (C) Validate + insert each row; build lineage.
   FOR v_row IN SELECT * FROM jsonb_array_elements(p_rows) LOOP
@@ -139,20 +144,35 @@ BEGIN
     END;
 
     IF v_role <> 'append' THEN
-      -- property_id must match original unless the case authorises a change.
-      IF NOT v_allow_prop THEN
-        v_prop := NULLIF(v_row->>'property_id','')::UUID;
-        IF v_prop IS DISTINCT FROM v_orig.property_id THEN
-          RAISE EXCEPTION '[integrity] row %: property_id % != original % and the case does not authorise property reassignment.',
-            v_seq, v_prop, v_orig.property_id;
+      -- VALUE BINDING: every bindable field of a correcting row must equal EITHER
+      -- the approved value (corrected_field_values[field]) - only on a forward row
+      -- (replacement/rebook) for a field the case explicitly authorises to change -
+      -- OR the ORIGINAL value otherwise. This rejects a caller who submits a value
+      -- different from what the approved case authorised (e.g. an approved A->B
+      -- property change cannot be applied as A->C), and rejects any unauthorised
+      -- change to category/date/description/subcategory/payer/payee.
+      FOREACH v_field IN ARRAY ARRAY['property_id','property_name','category','subcategory','description','payer','payee','date'] LOOP
+        v_is_forward := (v_role IN ('replacement','rebook'));
+        v_authorised := (v_case.corrected_field_values ? v_field);
+        v_submitted  := v_row->>v_field;
+        IF v_is_forward AND v_authorised THEN
+          v_expected := v_case.corrected_field_values->>v_field;
+          v_src_label := 'approved corrected value';
+        ELSE
+          v_expected := v_orig_json->>v_field;
+          v_src_label := 'original value';
         END IF;
-      END IF;
-      -- payer/payee must match original unless the case authorises a change.
-      IF NOT v_allow_party THEN
-        IF (v_row->>'payer') IS DISTINCT FROM v_orig.payer OR (v_row->>'payee') IS DISTINCT FROM v_orig.payee THEN
-          RAISE EXCEPTION '[integrity] row %: payer/payee change is not authorised by the case.', v_seq;
+        -- normalise empty string to NULL for uuid property_id so '' and NULL match.
+        IF v_field = 'property_id' THEN
+          v_submitted := NULLIF(v_submitted, '');
+          v_expected  := NULLIF(v_expected, '');
         END IF;
-      END IF;
+        IF v_submitted IS DISTINCT FROM v_expected THEN
+          RAISE EXCEPTION '[integrity] row %: field "%" submitted "%" does not match the % "%" for this approved case.',
+            v_seq, v_field, v_submitted, v_src_label, v_expected;
+        END IF;
+      END LOOP;
+
       -- reversal must negate the original amount exactly.
       IF v_role = 'reversal' AND v_amount IS DISTINCT FROM (-1 * v_orig.amount_eur) THEN
         RAISE EXCEPTION '[integrity] row %: reversal amount % must equal negated original % .', v_seq, v_amount, (-1 * v_orig.amount_eur);
