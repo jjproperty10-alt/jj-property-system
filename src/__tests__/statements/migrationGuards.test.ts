@@ -94,6 +94,9 @@ describe('004 transition_correction_case can never reach applied', () => {
   test('restricts targets to the four non-applied statuses', () => {
     expect(sql).toMatch(/p_new_status NOT IN \('under_review','approved','rejected','void'\)/)
   })
+  test('maps void status to the voided event_type (events CHECK requires voided)', () => {
+    expect(sql).toMatch(/p_new_status = 'void' THEN v_event_type := 'voided'/)
+  })
   test('does not touch applied_transaction_id / applied_at in the UPDATE', () => {
     // the UPDATE sets status/resolved_*/notes/updated_at, never applied_* columns
     const update = sql.slice(sql.indexOf('UPDATE statements.correction_cases'))
