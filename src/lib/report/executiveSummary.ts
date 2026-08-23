@@ -21,7 +21,28 @@
  *   P-ARCH-1: NULL = Unknown, never 0
  *   Section 4 CLAUDE.md: Purchase Contract/Deposit ≠ cash movement
  */
-import type { RC3AccountSection } from './types'
+import type { BalanceConvention } from './types'
+
+/**
+ * Structural param types (server-boundary repair 2026-08-23).
+ *
+ * These helpers only read account AGGREGATES, so their parameters are typed
+ * structurally rather than to the raw RC3AccountSection. This lets both the
+ * raw RC3AccountSection (server-side callers, e.g. the PDF) AND the client-safe
+ * ClientReportSection DTO (the /client-report-rc3 screen) be passed without
+ * exposing raw row fields. RC3AccountSection is a superset, so it remains
+ * assignable — existing callers are unaffected.
+ */
+interface OwnerFacingAggregate {
+  account_type:       string
+  balance_convention: BalanceConvention
+  closing_balance:    number
+}
+interface OperationalAggregate extends OwnerFacingAggregate {
+  total_income:   number
+  total_expenses: number
+  total_bpo:      number
+}
 
 // ─── Global Owner/Client Perspective Filter ──────────────────────────────────
 
@@ -44,7 +65,7 @@ const JJ_INTERNAL_ACCOUNT_TYPES = new Set<string>(['purchase'])
  * Purchase sections are JJ-internal acquisition cost — excluded from
  * Owner Summary, Property Net, Overall Net, PDF, and Client Report.
  */
-export function isOwnerFacingSection(section: RC3AccountSection): boolean {
+export function isOwnerFacingSection<T extends { account_type: string }>(section: T): boolean {
   return !JJ_INTERNAL_ACCOUNT_TYPES.has(section.account_type)
 }
 
@@ -64,9 +85,9 @@ export function isOwnerFacingSection(section: RC3AccountSection): boolean {
  * acquisition cost, which contributes €0 to the Owner/Client settlement.
  * They remain visible in per-property detail for audit transparency.
  */
-export function filterOwnerFacingSections(
-  accounts: RC3AccountSection[],
-): RC3AccountSection[] {
+export function filterOwnerFacingSections<T extends { account_type: string }>(
+  accounts: T[],
+): T[] {
   return accounts.filter(isOwnerFacingSection)
 }
 
@@ -77,7 +98,7 @@ export function filterOwnerFacingSections(
  * Use this when you have raw RC3 accounts and need the owner-facing net
  * in a single call. Purchase is automatically excluded.
  */
-export function computeOwnerFacingNet(accounts: RC3AccountSection[]): number {
+export function computeOwnerFacingNet<T extends OwnerFacingAggregate>(accounts: T[]): number {
   return computeNetOwnerBalance(filterOwnerFacingSections(accounts))
 }
 
@@ -106,7 +127,7 @@ export interface OperationalKPIs {
   hasOperational: boolean
 }
 
-export function computeOperationalKPIs(accounts: RC3AccountSection[]): OperationalKPIs {
+export function computeOperationalKPIs(accounts: OperationalAggregate[]): OperationalKPIs {
   const opAccounts = accounts.filter(a => OPERATIONAL_ACCOUNT_TYPES.has(a.account_type))
   let income = 0, expenses = 0, transfers = 0, netBalance = 0
   for (const acc of opAccounts) {
@@ -119,7 +140,7 @@ export function computeOperationalKPIs(accounts: RC3AccountSection[]): Operation
   return { income, expenses, transfers, netBalance, hasOperational: opAccounts.length > 0 }
 }
 
-export function computeNetOwnerBalance(accounts: RC3AccountSection[]): number {
+export function computeNetOwnerBalance(accounts: OwnerFacingAggregate[]): number {
   let net = 0
   for (const acc of accounts) {
     if (acc.balance_convention === 'owner_credit') { net += acc.closing_balance }

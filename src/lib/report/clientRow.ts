@@ -17,7 +17,7 @@
  *   const rows: ClientDisplayRow[] = section.rows.map(toClientRow)
  */
 
-import type { RC3AccountRow, DisplayGroup } from './types'
+import type { DisplayGroup } from './types'
 
 export interface ClientDisplayRow {
   /** Transaction UUID -- used as React key */
@@ -37,16 +37,18 @@ export interface ClientDisplayRow {
 }
 
 /**
- * Convert a full RC3AccountRow to the client-safe DTO.
+ * Convert a display-capable row to the client-safe DTO.
  *
- * Only approved display fields are copied.
- * Forbidden fields (description, notes, k_note, payer, payee, amount_eur,
- * client_charge, and internal flags) are structurally excluded.
+ * The parameter is typed structurally (ClientDisplayRow) so BOTH the raw
+ * RC3AccountRow (server-side) and the already-client-safe ClientReportRow DTO
+ * satisfy it. Only approved display fields are copied; forbidden fields
+ * (description, notes, k_note, payer, payee, amount_eur, client_charge, and
+ * internal flags) are never referenced here.
  *
  * This function is the single authorized boundary between the full internal
  * row model and the client-facing presentation layer.
  */
-export function toClientRow(row: RC3AccountRow): ClientDisplayRow {
+export function toClientRow(row: ClientDisplayRow): ClientDisplayRow {
   return {
     id:            row.id,
     date:          row.date,
