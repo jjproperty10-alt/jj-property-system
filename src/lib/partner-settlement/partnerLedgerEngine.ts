@@ -24,6 +24,7 @@ import {
 import { withinPerTransactionCap, isEqualizationSymmetric } from './invariants'
 import { equalizationHeadline, symmetryResidual, roundEur, type Headline } from './partnerReportBFormulas'
 import { resolvePartnerSplit, type PartnerSplit } from './ownershipRules'
+import { classifyPropertyScope, type PropertyScopeSets } from './scope'
 import type {
   PartnerAccountComponent, PartnerCurrentAccount, PartnerTxClass,
   ClassificationSummaryRow, PartnerPropertyPosition, UnresolvedItem,
@@ -115,16 +116,16 @@ export function classifyLine(
         'movement to/from a cash custodian — not a partner account; settlement uncertified'))
   }
 
-  // Identity ambiguity in a settlement-sensitive role → UNRESOLVED, never guessed.
-  // (A partner is present, but the counterparty is a non-empty name we cannot map
-  //  confidently, in a Transfer/JJ context where mis-resolution would change the class.)
-  if ((payerPartner || payeePartner)) {
-    const other = payerPartner ? payee : payer
-    const ambiguous = other.role === 'EXTERNAL' && !other.confident && (other.raw ?? '').trim() !== ''
-    if (ambiguous && tx.category === 'Transfer') {
+  // Identity ambiguity in a settlement-sensitive Transfer → UNRESOLVED, never guessed
+  // and never silently dropped. Fires when a partner OR JJ is paired with an ambiguous
+  // (non-empty, unresolved-by-canonical-source) counterparty.
+  if (tx.category === 'Transfer' && (payer.ambiguous || payee.ambiguous)) {
+    const known = payerPartner || payeePartner || payer.role === 'JJ' || payee.role === 'JJ'
+    if (known) {
+      const amb = payer.ambiguous ? payer : payee
       return done('UNRESOLVED', null, 0, 0, false,
         unresolved('IDENTITY_UNRESOLVED', tx,
-          `counterparty "${other.raw}" could not be resolved to a partner/JJ/custodian in a Transfer`))
+          `counterparty "${amb.raw}" could not be resolved to a canonical party in a Transfer`))
     }
   }
 
@@ -203,6 +204,13 @@ export interface PartnerLedgerOptions {
   readonly approvedCapitalTxIds?: ReadonlySet<string>
   /** resolves a whole-property Yossi/Jacob split for a property (capital allocation) */
   readonly splitFor?: (propertyName: string | null) => PartnerSplit
+  /**
+   * Approved property scope (QA #185-3). When provided, client-management-only property
+   * transactions are EXCLUDED from all totals and unrecognised non-null property names
+   * become PROPERTY_SCOPE_UNRESOLVED. When omitted, no scope filtering is applied.
+   */
+  readonly propertyScope?: PropertyScopeSets
+  /** count of client-scope transactions excluded (transparency) */
 }
 
 export interface PartnerLedgerResult {
@@ -213,6 +221,10 @@ export interface PartnerLedgerResult {
   readonly interPartnerTransferNetEur: number // signed Jacob-owes-Yossi from certified direct transfers
   readonly capitalEqualizationNetEur: number  // signed Jacob-owes-Yossi from certified capital
   readonly capViolations: number
+  /** client-scope transactions excluded from all totals (QA #185-3) */
+  readonly clientExcludedCount: number
+  /** unrecognised non-null property transactions surfaced as PROPERTY_SCOPE_UNRESOLVED */
+  readonly propertyScopeUnresolvedCount: number
   readonly unresolved: readonly UnresolvedItem[]
 }
 
@@ -237,6 +249,8 @@ export function buildPartnerLedger(
   let capViolations = 0
   let interPartnerTransferNet = 0
   let capitalNet = 0
+  let clientExcludedCount = 0
+  let propertyScopeUnresolvedCount = 0
 
   // Layer-A component accumulation: partner → class → {sum, count}
   const compByPartner = new Map<Partner, Map<PartnerTxClass, { sum: number; count: number; certified: boolean }>>()
@@ -254,6 +268,24 @@ export function buildPartnerLedger(
   }
 
   for (const tx of txns) {
+    // Property scope enforcement (QA #185-3): client-only excluded entirely; unknown
+    // non-null property → PROPERTY_SCOPE_UNRESOLVED (never silently included); null
+    // (general partner movement) and in-scope proceed.
+    if (opts.propertyScope) {
+      const scope = classifyPropertyScope(tx.propertyName, opts.propertyScope)
+      if (scope === 'CLIENT_EXCLUDE') { clientExcludedCount += 1; continue }
+      if (scope === 'UNKNOWN') {
+        propertyScopeUnresolvedCount += 1
+        unresolvedItems.push({
+          kind: 'PROPERTY_SCOPE_UNRESOLVED',
+          ref: `${tx.date} · ${tx.propertyName} · ${tx.payer.canonical ?? tx.payer.raw ?? '?'}→${tx.payee.canonical ?? tx.payee.raw ?? '?'}`,
+          reason: `property "${tx.propertyName}" is not in the approved partner scope (partnership/jj/jj_company) and is not a known client property — excluded from totals`,
+          amountEur: tx.amountEur,
+          sourceRef: { system: 'public.transactions', ref: tx.id },
+        })
+        continue
+      }
+    }
     const split = opts.splitFor ? opts.splitFor(tx.propertyName) : undefined
     const line = classifyLine(tx, { approvedCapitalTxIds: opts.approvedCapitalTxIds, split })
     lines.push(line)
@@ -338,6 +370,8 @@ export function buildPartnerLedger(
     interPartnerTransferNetEur: roundEur(interPartnerTransferNet),
     capitalEqualizationNetEur: roundEur(capitalNet),
     capViolations,
+    clientExcludedCount,
+    propertyScopeUnresolvedCount,
     unresolved: unresolvedItems,
   }
 }

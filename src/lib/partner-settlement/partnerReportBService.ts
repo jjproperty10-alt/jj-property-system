@@ -18,7 +18,7 @@ import { createServiceClient } from '@/lib/supabase'
 import { readCashboxes } from './adapters/cashboxReader'
 import { readReceivables } from './adapters/receivablesReader'
 import { readOwnership } from './adapters/ownershipReader'
-import { readPartnerScopeProperties } from './adapters/propertyReader'
+import { readPartnerScopeProperties, readPropertyScopeSets } from './adapters/propertyReader'
 import { readPropertyAccounts } from './adapters/accountReaders'
 import { readPartnerLedger } from './adapters/transactionsReader'
 import { buildPartnerLedger } from './partnerLedgerEngine'
@@ -39,13 +39,40 @@ export interface BuildOptions {
 export async function buildPartnerReportB(opts: BuildOptions): Promise<PartnerReportB> {
   const { periodStart, periodEnd, generatedAt } = opts
 
-  const [cashboxes, receivables, ownershipByProp, properties, ledgerTxns] = await Promise.all([
+  const [cashboxes, receivables, ownershipByProp, properties, ledgerRead, scopeSets] = await Promise.all([
     readCashboxes(),
     readReceivables(),
     readOwnership(),
     readPartnerScopeProperties(),
     readPartnerLedger(periodStart, periodEnd),
+    readPropertyScopeSets(),
   ])
+
+  const unresolved: UnresolvedItem[] = []
+
+  // Fail-closed source blockers (QA #185-1/2): a ledger/exclusions/identity source
+  // failure blocks certification and is surfaced traceably — never a silent zero.
+  for (const f of ledgerRead.sourceFailures) {
+    unresolved.push({
+      kind: f.kind,
+      ref: f.kind === 'IDENTITY_SOURCE_UNAVAILABLE' ? 'registry.parties'
+        : f.kind === 'EXCLUSIONS_SOURCE_UNAVAILABLE' ? 'transaction_exclusions' : 'public.transactions',
+      reason: f.reason,
+      sourceRef: { system: 'partner-settlement/transactionsReader' },
+    })
+  }
+
+  // Property scope (QA #185-3). If the scope source is unavailable, fail closed with
+  // EMPTY sets so no client/unknown property transaction can be silently included.
+  const effectiveScope = scopeSets ?? { partner: new Set<string>(), client: new Set<string>() }
+  if (scopeSets == null) {
+    unresolved.push({
+      kind: 'PROPERTY_SCOPE_UNRESOLVED',
+      ref: 'property_definitions',
+      reason: 'property scope source unavailable — scope cannot be enforced; failing closed',
+      sourceRef: { system: 'property_definitions' },
+    })
+  }
 
   // ── Runtime partner-ledger engine (Layer A + classification + per-property) ──────
   // Ownership split resolver (whole-property) from confirmed canonical shares +
@@ -58,9 +85,8 @@ export async function buildPartnerReportB(opts: BuildOptions): Promise<PartnerRe
       : []
     return resolvePartnerSplit(propertyName ?? '', shares)
   }
-  const engine = buildPartnerLedger(ledgerTxns, { splitFor })
+  const engine = buildPartnerLedger(ledgerRead.txns, { splitFor, propertyScope: effectiveScope })
 
-  const unresolved: UnresolvedItem[] = []
   const propertyViews: PropertyView[] = []
 
   const propList = opts.maxProperties ? properties.slice(0, opts.maxProperties) : properties

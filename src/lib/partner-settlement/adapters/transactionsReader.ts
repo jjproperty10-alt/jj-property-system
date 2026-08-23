@@ -2,21 +2,38 @@
  * @module partner-settlement/adapters/transactionsReader
  * @description READ-ONLY canonical transaction reader for the partner report (Stage 2).
  *
- * Reads public.transactions with the repository's established certified-read predicate
- * (is_deleted IS NOT TRUE AND review_status active/null AND not actively excluded — see
- * ledgerRowFilter for the single source of truth) and returns only partner-relevant,
- * normalized rows. Pure filtering/normalization lives in ../ledgerRowFilter.ts so it is
- * unit-testable without server-only.
+ * FAIL-CLOSED (QA #185-1): checks errors from BOTH the transactions and the
+ * transaction_exclusions queries. It NEVER continues with an empty exclusion set (which
+ * would let excluded transactions slip in) and NEVER returns an empty ledger that could
+ * be mistaken for a valid zero result — a source failure yields a traceable blocker.
  *
- * READ-ONLY: only .select() is used. NEVER insert/update/delete/upsert/rpc. The
- * Transaction Register workstream is not touched.
+ * CANONICAL IDENTITY (QA #185-2): payer/payee are resolved through the canonical party
+ * authority (registry.parties) via a directory built read-only here and injected into
+ * the pure normalizer; if the identity source is unavailable it blocks, too.
+ *
+ * READ-ONLY: only .select() is used. NEVER insert/update/delete/upsert/rpc against the
+ * ledger. The Transaction Register workstream is not touched.
  */
 
 import 'server-only'
 import { createServiceClient } from '@/lib/supabase'
-import { toPartnerLedger, type RawLedgerRow, type NormalizedPartnerTx } from '../ledgerRowFilter'
+import {
+  buildLedgerFromSources, distinctPartyNames,
+  type RawLedgerRow, type NormalizedPartnerTx,
+} from '../ledgerRowFilter'
+import { buildIdentityDirectory } from './identityDirectoryReader'
 
-export async function readPartnerLedger(fromDate?: string, toDate?: string): Promise<NormalizedPartnerTx[]> {
+export type LedgerReadFailureKind =
+  | 'LEDGER_SOURCE_UNAVAILABLE'
+  | 'EXCLUSIONS_SOURCE_UNAVAILABLE'
+  | 'IDENTITY_SOURCE_UNAVAILABLE'
+
+export interface PartnerLedgerReadResult {
+  readonly txns: readonly NormalizedPartnerTx[]
+  readonly sourceFailures: readonly { readonly kind: LedgerReadFailureKind; readonly reason: string }[]
+}
+
+export async function readPartnerLedger(fromDate?: string, toDate?: string): Promise<PartnerLedgerReadResult> {
   const db = createServiceClient()
 
   let q = db
@@ -24,20 +41,36 @@ export async function readPartnerLedger(fromDate?: string, toDate?: string): Pro
     .select('id, date, property_name, category, subcategory, payer, payee, amount_eur, is_deleted, review_status')
   if (fromDate) q = q.gte('date', fromDate)
   if (toDate) q = q.lte('date', toDate)
-  const { data } = await q
-  const rows = (data as RawLedgerRow[]) ?? []
+  const { data: txData, error: txError } = await q
 
-  // Active transaction_exclusions (certified-read predicate, part 3). Read-only.
-  const activeExcluded = new Set<string>()
-  try {
-    const { data: ex } = await db
-      .from('transaction_exclusions')
-      .select('transaction_id, is_active')
-      .eq('is_active', true)
-    for (const r of ((ex as { transaction_id: string }[]) ?? [])) activeExcluded.add(r.transaction_id)
-  } catch {
-    // exclusions table unavailable — proceed with is_deleted/review_status only.
+  // Fail closed on ledger source.
+  if (txError || txData == null) {
+    return { txns: [], sourceFailures: [{ kind: 'LEDGER_SOURCE_UNAVAILABLE', reason: `transactions query failed: ${String(txError ?? 'null data')}` }] }
   }
 
-  return toPartnerLedger(rows, activeExcluded)
+  // Active exclusions — part 3 of the certified-read predicate. Read-only.
+  const { data: exData, error: exError } = await db
+    .from('transaction_exclusions')
+    .select('transaction_id, is_active')
+    .eq('is_active', true)
+
+  // Fail closed on exclusions source — never continue with an empty exclusion set.
+  if (exError || exData == null) {
+    return { txns: [], sourceFailures: [{ kind: 'EXCLUSIONS_SOURCE_UNAVAILABLE', reason: `transaction_exclusions query failed: ${String(exError ?? 'null data')}` }] }
+  }
+
+  // Canonical identity directory (registry.parties). Fail closed if unavailable.
+  const rows = txData as RawLedgerRow[]
+  const { directory, sourceUnavailable } = await buildIdentityDirectory(distinctPartyNames(rows))
+  if (sourceUnavailable) {
+    return { txns: [], sourceFailures: [{ kind: 'IDENTITY_SOURCE_UNAVAILABLE', reason: 'canonical party authority (registry.parties) unavailable — identities cannot be certified' }] }
+  }
+
+  const read = buildLedgerFromSources(
+    { txData: rows, txError: null, exData: exData as { transaction_id: string }[], exError: null },
+    directory,
+  )
+  // buildLedgerFromSources re-validates the same predicate; map any residual failures.
+  const sourceFailures = read.failures.map(f => ({ kind: f.kind as LedgerReadFailureKind, reason: f.reason }))
+  return { txns: read.txns, sourceFailures }
 }

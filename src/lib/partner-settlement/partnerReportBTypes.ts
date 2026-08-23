@@ -65,6 +65,11 @@ export type UnresolvedKind =
   | 'CUSTODIAN_SETTLEMENT_UNCERTIFIED'
   | 'PER_TRANSACTION_CAP_VIOLATION'
   | 'PROFIT_DISTRIBUTION_UNCERTIFIED'
+  // Stage 2 QA (#185) — fail-closed source + scope blockers
+  | 'LEDGER_SOURCE_UNAVAILABLE'
+  | 'EXCLUSIONS_SOURCE_UNAVAILABLE'
+  | 'IDENTITY_SOURCE_UNAVAILABLE'
+  | 'PROPERTY_SCOPE_UNRESOLVED'
   | 'OTHER'
 
 /** An item that could not be certified. Must NEVER enter certified totals. */

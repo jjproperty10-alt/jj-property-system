@@ -1,5 +1,6 @@
 import {
-  isCertifiedLedgerRow, isPartnerRelevant, toPartnerLedger, type RawLedgerRow,
+  isCertifiedLedgerRow, isPartnerRelevant, toPartnerLedger, buildLedgerFromSources,
+  distinctPartyNames, type RawLedgerRow,
 } from '@/lib/partner-settlement/ledgerRowFilter'
 
 const EMPTY = new Set<string>()
@@ -53,5 +54,51 @@ describe('toPartnerLedger (deleted/reversed/duplicate excluded using certified r
     const out = toPartnerLedger(rows, new Set(['6']))
     expect(out.map(o => o.id).sort()).toEqual(['1', '5'])
     expect(out[0].payer.canonical).toBe('Yossi')
+  })
+})
+
+describe('buildLedgerFromSources — FAIL CLOSED (QA #185-1)', () => {
+  const okRows: RawLedgerRow[] = [row({ id: '1', payer: 'yossi', payee: 'company', amount_eur: 100 })]
+
+  it('transactions source failure → LEDGER_SOURCE_UNAVAILABLE, no rows', () => {
+    const r = buildLedgerFromSources({ txData: null, txError: new Error('boom'), exData: [], exError: null })
+    expect(r.txns).toHaveLength(0)
+    expect(r.failures.map(f => f.kind)).toEqual(['LEDGER_SOURCE_UNAVAILABLE'])
+  })
+
+  it('exclusions source failure → EXCLUSIONS_SOURCE_UNAVAILABLE, and NO ledger is produced', () => {
+    // Even though valid transactions are present, a failed exclusion source must NOT
+    // fall back to an empty exclusion set — excluded txns could otherwise slip in.
+    const r = buildLedgerFromSources({ txData: okRows, txError: null, exData: null, exError: new Error('boom') })
+    expect(r.txns).toHaveLength(0)
+    expect(r.failures.map(f => f.kind)).toEqual(['EXCLUSIONS_SOURCE_UNAVAILABLE'])
+  })
+
+  it('regression: an excluded transaction cannot enter when the exclusion source fails', () => {
+    const rows: RawLedgerRow[] = [
+      row({ id: 'keep', payer: 'yossi', payee: 'company', amount_eur: 100 }),
+      row({ id: 'excluded', payer: 'jacob', payee: 'company', amount_eur: 999 }),
+    ]
+    // exclusion source down → fail closed → NEITHER row is returned (no silent zero either)
+    const r = buildLedgerFromSources({ txData: rows, txError: null, exData: null, exError: new Error('db down') })
+    expect(r.txns).toHaveLength(0)
+    expect(r.failures[0].kind).toBe('EXCLUSIONS_SOURCE_UNAVAILABLE')
+  })
+
+  it('healthy sources → applies exclusions and returns partner rows', () => {
+    const r = buildLedgerFromSources({ txData: okRows, txError: null, exData: [], exError: null })
+    expect(r.failures).toHaveLength(0)
+    expect(r.txns.map(t => t.id)).toEqual(['1'])
+  })
+})
+
+describe('distinctPartyNames', () => {
+  it('returns distinct non-blank payer/payee names', () => {
+    const rows: RawLedgerRow[] = [
+      row({ payer: 'Yossi', payee: 'Company' }),
+      row({ payer: 'yossi', payee: 'Jacob' }),
+      row({ payer: null, payee: '' }),
+    ]
+    expect(distinctPartyNames(rows).map(s => s.toLowerCase()).sort()).toEqual(['company', 'jacob', 'yossi'])
   })
 })
