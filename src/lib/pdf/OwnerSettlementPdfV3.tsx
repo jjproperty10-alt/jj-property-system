@@ -36,6 +36,7 @@ import {
 import { groupExpenses } from '../report/expenseGroups'
 import { computeOperationalKPIs, filterOwnerFacingSections } from '../report/executiveSummary'
 import { getOwnerClientReport, getPortfolioOwnerNet } from '../report/ownerClientReport'
+import { renovationGroupHeaders, splitOperatingIncome, splitOperatingIncomeTotals, computeStatementComponents } from '../report/statementPresentation'
 
 /* ─── Palette ───────────────────────────────────────────────────────────────── */
 
@@ -541,8 +542,15 @@ function PremiumSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: 
   // (Purchase-filtered), so PDF net reconciles exactly with the Owner Workspace
   // Property/Overall Net. Do NOT recompute over raw report.accounts here.
   const net = getOwnerClientReport(report).overallNet
-  const { income: opIncome, expenses: opExpenses, transfers: opTransfers, hasOperational } =
+  const { income: opIncomeRaw, expenses: opExpenses, transfers: opTransfers, hasOperational } =
     computeOperationalKPIs(report.accounts)
+  // #1 — a rental/airbnb "Client Payment" is a cross-property settlement, not operating
+  // income. Separate it here (presentation only) so the Operational Income KPI shows
+  // genuine income and settlements get their own KPI. Balance is unchanged.
+  const opSettlements = report.accounts
+    .filter(a => a.account_type === 'rental' || a.account_type === 'airbnb')
+    .reduce((sum, a) => sum + splitOperatingIncomeTotals(a).crossPropertySettlements, 0)
+  const opIncome = opIncomeRaw - opSettlements
   const absNet = Math.abs(net)
   const heroBg = absNet < 0.005 ? '#334155' : net > 0 ? '#14532d' : '#7f1d1d'
   const heroColor = absNet < 0.005 ? '#ffffff' : net > 0 ? '#86efac' : '#fca5a5'
@@ -579,6 +587,8 @@ function PremiumSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: 
           <View style={[{ flexDirection: 'row' }, rtlRowDirection(lang)]}>
             {([
               { label: t('opIncomeLabel', lang), value: opIncome },
+              // #1 — cross-property settlements are shown separately, never folded into Operational Income
+              ...(Math.abs(opSettlements) >= 0.005 ? [{ label: t('sumCrossProperty', lang), value: opSettlements }] : []),
               { label: t('opExpensesLabel', lang), value: opExpenses },
               { label: t('dashTransfers', lang), value: opTransfers },
             ] as { label: string; value: number }[]).map((kpi, i) => (
@@ -613,13 +623,22 @@ function PremiumSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: 
               { label: t('cardRenovExtras', lang), value: acc.total_income },
               { label: t('cardRenovPayments', lang), value: acc.total_expenses },
             ]
-            if (acc.account_type === 'rental') return [
-              { label: t('cardRentalIncome', lang), value: acc.total_income },
-              { label: t('cardRentalExpenses', lang), value: acc.total_expenses },
-              { label: t('cardRentalBpo', lang), value: acc.total_bpo },
-            ]
+            if (acc.account_type === 'rental') {
+              // #1 — split real rental income from cross-property settlements
+              const opSplit = splitOperatingIncomeTotals(acc)
+              return [
+                { label: t('cardRentalIncome', lang), value: opSplit.rentalIncome },
+                ...(Math.abs(opSplit.crossPropertySettlements) >= 0.005
+                  ? [{ label: t('sumCrossProperty', lang), value: opSplit.crossPropertySettlements }] : []),
+                { label: t('cardRentalExpenses', lang), value: acc.total_expenses },
+                { label: t('cardRentalBpo', lang), value: acc.total_bpo },
+              ]
+            }
+            const opSplit = splitOperatingIncomeTotals(acc)
             return [
-              { label: t('cardAirbnbIncome', lang), value: acc.total_income },
+              { label: t('cardAirbnbIncome', lang), value: opSplit.rentalIncome },
+              ...(Math.abs(opSplit.crossPropertySettlements) >= 0.005
+                ? [{ label: t('sumCrossProperty', lang), value: opSplit.crossPropertySettlements }] : []),
               { label: t('cardAirbnbExpenses', lang), value: acc.total_expenses },
               { label: t('cardAirbnbBpo', lang), value: acc.total_bpo },
             ]
@@ -677,15 +696,22 @@ function ModuleMetrics({ section, lang }: { section: RC3AccountSection; lang: La
       { label: t('cardRenovBalance', lang), value: Math.abs(section.closing_balance), highlight: true },
     ]
   } else if (section.account_type === 'rental') {
+    // #1 — real rental income and cross-property settlements shown as separate cells
+    const opSplit = splitOperatingIncomeTotals(section)
     metrics = [
-      { label: t('cardRentalIncome', lang), value: section.total_income },
+      { label: t('cardRentalIncome', lang), value: opSplit.rentalIncome },
+      ...(Math.abs(opSplit.crossPropertySettlements) >= 0.005
+        ? [{ label: t('sumCrossProperty', lang), value: opSplit.crossPropertySettlements }] : []),
       { label: t('cardRentalExpenses', lang), value: section.total_expenses },
       { label: t('cardRentalBpo', lang), value: section.total_bpo },
       { label: t('cardRentalBalance', lang), value: Math.abs(section.closing_balance), highlight: true },
     ]
   } else {
+    const opSplit = splitOperatingIncomeTotals(section)
     metrics = [
-      { label: t('cardAirbnbIncome', lang), value: section.total_income },
+      { label: t('cardAirbnbIncome', lang), value: opSplit.rentalIncome },
+      ...(Math.abs(opSplit.crossPropertySettlements) >= 0.005
+        ? [{ label: t('sumCrossProperty', lang), value: opSplit.crossPropertySettlements }] : []),
       { label: t('cardAirbnbExpenses', lang), value: section.total_expenses },
       { label: t('cardAirbnbBpo', lang), value: section.total_bpo },
       { label: t('cardAirbnbBalance', lang), value: Math.abs(section.closing_balance), highlight: true },
@@ -695,7 +721,9 @@ function ModuleMetrics({ section, lang }: { section: RC3AccountSection; lang: La
   const balColor = getBalColor(section)
 
   return (
-    <View style={s.moduleMetrics}>
+    // wrap={false} keeps the metric labels and their values on the same page
+    // (fixes the header/value split across the page boundary).
+    <View style={s.moduleMetrics} wrap={false}>
       {metrics.map((m, i) => {
         const isLast = i === metrics.length - 1
         return (
@@ -844,14 +872,16 @@ function AccountBlock({ section, lang }: { section: RC3AccountSection; lang: Lan
   const incomeLabelMap: Record<AccountKey, string> = {
     purchase: t('incomePurchase', lang),
     sale: t('incomeSale', lang),
-    renovation: t('incomeRenov', lang),
+    // #2 — Renovation is a debt account: 'income' group = client payments →
+    // "Payments Received"; 'expense' group = Extras → "Additional Approved Charges".
+    renovation: renovationGroupHeaders(lang).income,
     rental: t('incomeRental', lang),
     airbnb: t('incomeAirbnb', lang),
   }
   const expenseLabelMap: Record<AccountKey, string> = {
     purchase: t('expensesPurchase', lang),
     sale: t('expensesSale', lang),
-    renovation: t('expensesRenov', lang),
+    renovation: renovationGroupHeaders(lang).expense,
     rental: t('expensesRental', lang),
     airbnb: t('expensesAirbnb', lang),
   }
@@ -860,35 +890,49 @@ function AccountBlock({ section, lang }: { section: RC3AccountSection; lang: Lan
   const incomeLabel = incomeLabelMap[at] ?? 'Income'
   const expenseLabel = expenseLabelMap[at] ?? 'Expenses'
 
+  // #1 — In rental/airbnb, a "Client Payment" is not rental income: it is a
+  // credit used to settle another property/account (cross-property settlement).
+  // Split it out under its own heading. Tenant Payments stay as rental income.
+  // Balance effect is unchanged — this is presentation only.
+  const isOperating = at === 'rental' || at === 'airbnb'
+  const { income: primaryIncomeRows, settlements: settlementRows } =
+    isOperating ? splitOperatingIncome(incomeRows) : { income: incomeRows, settlements: [] as typeof incomeRows }
+
   return (
     <View style={s.accountSection} break={false}>
-      {/* Account header bar */}
-      <View style={[s.accountHeader, { backgroundColor: acColor }, rtlRowDirection(lang)]}>
-        <View style={s.accountHeaderLeft}>
-          {/* M6: monolingual label — t(key, lang) never raw account_label */}
-          <Text style={[s.accountTitle, rtlTextStyle(lang)]}>
-            {ACCOUNT_LABEL_KEYS_PDF[section.account_type]
-              ? t(ACCOUNT_LABEL_KEYS_PDF[section.account_type], lang)
-              : section.account_label}
-          </Text>
+      {/* Account header bar + metrics strip kept together so the section header
+          never orphans at a page bottom while its metrics move to the next page. */}
+      <View wrap={false}>
+        <View style={[s.accountHeader, { backgroundColor: acColor }, rtlRowDirection(lang)]}>
+          <View style={s.accountHeaderLeft}>
+            {/* M6: monolingual label — t(key, lang) never raw account_label */}
+            <Text style={[s.accountTitle, rtlTextStyle(lang)]}>
+              {ACCOUNT_LABEL_KEYS_PDF[section.account_type]
+                ? t(ACCOUNT_LABEL_KEYS_PDF[section.account_type], lang)
+                : section.account_label}
+            </Text>
+          </View>
+          <View style={[s.accountHeaderRight, rtlAlignEnd(lang)]}>
+            <Text style={[s.accountBalance, { color: C.white }]}>
+              {fmt(Math.abs(section.closing_balance))}
+            </Text>
+            <Text style={[s.accountBalLabel, rtlTextStyle(lang)]}>{balText}</Text>
+          </View>
         </View>
-        <View style={[s.accountHeaderRight, rtlAlignEnd(lang)]}>
-          <Text style={[s.accountBalance, { color: C.white }]}>
-            {fmt(Math.abs(section.closing_balance))}
-          </Text>
-          <Text style={[s.accountBalLabel, rtlTextStyle(lang)]}>{balText}</Text>
-        </View>
-      </View>
 
-      {/* Per-module metrics strip */}
-      <ModuleMetrics section={section} lang={lang} />
+        {/* Per-module metrics strip */}
+        <ModuleMetrics section={section} lang={lang} />
+      </View>
 
       {/* Section A — Reference rows */}
       <RefSection rows={referenceRows} lang={lang} />
 
       {/* Section B — Balance-affecting transactions */}
-      <TxGroupTable rows={incomeRows} groupLabel={incomeLabel} isIncome={true} lang={lang} />
-      {(section.account_type === 'rental' || section.account_type === 'airbnb')
+      <TxGroupTable rows={primaryIncomeRows} groupLabel={incomeLabel} isIncome={true} lang={lang} />
+      {settlementRows.length > 0 ? (
+        <TxGroupTable rows={settlementRows} groupLabel={t('sumCrossProperty', lang)} isIncome={true} lang={lang} />
+      ) : null}
+      {isOperating
         ? <GroupedExpensesPdf rows={expenseRows} sectionLabel={expenseLabel} lang={lang} />
         : <TxGroupTable rows={expenseRows} groupLabel={expenseLabel} isIncome={false} lang={lang} />
       }
@@ -919,7 +963,8 @@ function AccountBlock({ section, lang }: { section: RC3AccountSection; lang: Lan
 
 /** Final settlement summary + disclaimer (dark navy block at end of PDF) */
 function FinalSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
-  const { totalIncome, totalExpenses, totalTransfers, netOwnerBalance } = computeDashboard(report.accounts)
+  // Keep ONLY the canonical net — the €930.39 figure is not recomputed here.
+  const { netOwnerBalance } = computeDashboard(report.accounts)
 
   let balLabel: string; let balColor: string
   if (Math.abs(netOwnerBalance) < 0.005) {
@@ -938,25 +983,36 @@ function FinalSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: La
     } catch { return '' }
   })()
 
-  const kpis = [
-    { label: t('finalTotalIncome', lang), value: totalIncome },
-    { label: t('finalTotalExpenses', lang), value: totalExpenses },
-    { label: t('finalTotalTransfers', lang), value: totalTransfers },
-  ]
+  const hasElectricity = report.accounts.some(a =>
+    a.rows.some(r => {
+      const sub = (r.subcategory ?? '').toLowerCase()
+      return sub.includes('electric') || sub.includes('חשמל')
+    }),
+  )
+  const comp = computeStatementComponents(report.accounts)
+  const componentLines: Array<{ label: string; value: number }> = [
+    { label: t('sumRenovationContract', lang), value: comp.renovationContract },
+    { label: t('sumApprovedExtras', lang),     value: comp.approvedExtras },
+    { label: t('sumPaymentsReceived', lang),   value: comp.paymentsReceived },
+    { label: t('sumCrossProperty', lang),      value: comp.crossPropertySettlements },
+    { label: t('sumPropertyExpenses', lang),   value: comp.propertyExpenses },
+  ].filter(l => Math.abs(l.value) >= 0.005)
 
   return (
     <View style={s.finalSection}>
       <Text style={[s.finalTitle, rtlTextStyle(lang)]}>{t('finalTitle', lang)}</Text>
 
-      {/* 3 KPI cells */}
-      <View style={[s.finalKpiRow, rtlRowDirection(lang)]}>
-        {kpis.map((k, i) => (
-          <View key={i} style={i < kpis.length - 1 ? s.finalKpiCell : s.finalKpiCellLast}>
-            <Text style={[s.finalKpiLabel, rtlTextStyle(lang)]}>{k.label}</Text>
-            <Text style={s.finalKpiValue}>{fmt(k.value)}</Text>
+      {/* #3 — Explanatory components (separate lines; NOT a second balance engine) */}
+      <Text style={[s.finalKpiLabel, rtlTextStyle(lang), { marginBottom: 6, opacity: 0.85 }]}>{t('sumComponentsTitle', lang)}</Text>
+      <View style={{ marginBottom: 8 }}>
+        {componentLines.map((l, i) => (
+          <View key={i} style={[{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3, borderBottomWidth: 0.5, borderBottomColor: 'rgba(255,255,255,0.12)' }, rtlRowDirection(lang)]}>
+            <Text style={[s.finalKpiLabel, rtlTextStyle(lang)]}>{l.label}</Text>
+            <Text style={s.finalKpiValue}>{fmt(l.value)}</Text>
           </View>
         ))}
       </View>
+      <Text style={[s.finalDiscText, rtlTextStyle(lang), { fontSize: 6, opacity: 0.7, marginBottom: 8 }]}>{t('sumFinalBalanceNote', lang)}</Text>
 
       {/* Net balance */}
       <View style={[s.finalBalRow, rtlRowDirection(lang)]}>
@@ -973,6 +1029,9 @@ function FinalSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: La
       <View style={s.finalDiscBorder}>
         <Text style={[s.finalDiscTitle, rtlTextStyle(lang)]}>{t('finalNoteTitle', lang)}</Text>
         <Text style={[s.finalDiscText, rtlTextStyle(lang)]}>{t('finalDisclaimer', lang)}</Text>
+        {hasElectricity ? (
+          <Text style={[s.finalDiscText, rtlTextStyle(lang), { marginTop: 6 }]}>{t('noteElectricitySubmeter', lang)}</Text>
+        ) : null}
         <Text style={[s.finalDiscGen, rtlTextStyle(lang)]}>{t('finalGenerated', lang)}: {genDate}</Text>
         {/* M6: closing statement */}
         <Text style={[{ fontSize: 6, color: 'rgba(255,255,255,0.25)', marginTop: 8, textAlign: isRTL(lang) ? 'left' : 'right' }]}>
@@ -1037,7 +1096,8 @@ export function OwnerPropertyPage({
   reportType?: ReportType
 }) {
   const filteredReport = { ...report, accounts: filterSectionsByReportType(report.accounts, reportType) }
-  const reportTypeLabel = reportType === 'periodic' ? t('reportTypePeriodic', lang) : t('reportTypeFull', lang)
+  // #6 — This is a single-property statement, not a consolidated owner report.
+  const reportTypeLabel = t('docPropertyStatement', lang)
   return (
     <Page size="A4" style={s.page}>
       <DocHeader report={filteredReport} lang={lang} reportTypeLabel={reportTypeLabel} />
@@ -1058,11 +1118,9 @@ export function OwnerPropertyPage({
 }
 
 export function OwnerSettlementPdfV3({ report, lang = 'en', reportType = 'full' }: OwnerSettlementPdfV3Props) {
-  const reportTypeLabel = reportType === 'periodic' ? t('reportTypePeriodic', lang) : t('reportTypeFull', lang)
-
   return (
     <Document
-      title={`JJ ${reportTypeLabel} — ${report.reporting_name}`}
+      title={`JJ ${t('docPropertyStatement', lang)} — ${report.reporting_name}`}
       author="JJ Property 10"
       creator="JJ Property 10 Platform (RC3 V3)"
     >
