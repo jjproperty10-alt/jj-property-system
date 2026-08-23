@@ -1,6 +1,6 @@
 /**
  * @page /finance/partner-settlement/[period]
- * @description Partner Report B — Stage 1 (READ-ONLY framework).
+ * @description Partner Report B — Stage 2 (READ-ONLY wired ledger).
  *
  * Server Component. Read-only. The consolidated Yossi<->Jacob headline is gated
  * (never asserts a final debtor/creditor on partial data — see 12f). No mutations.

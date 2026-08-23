@@ -1,11 +1,15 @@
 /**
  * @module partner-settlement/partnerReportBService
- * @description READ-ONLY Stage 1 orchestrator. Assembles PartnerReportB from the
- * read adapters, builds the UNRESOLVED/PENDING queue, and gates the headline.
+ * @description READ-ONLY Stage 2 orchestrator. Wires the certified transaction ledger
+ * through the partner-ledger engine to produce Layer-A partner current accounts, a
+ * runtime classification summary, per-property partner positions, and the UNRESOLVED
+ * queue — then gates the Yossi↔Jacob headline.
  *
- * Stage 1 NEVER surfaces a certified consolidated Yossi<->Jacob result: the
- * equalization is not computed (classification/ownership/profit incomplete), so the
- * gate returns PENDING_RECONCILIATION and no debtor/creditor is asserted.
+ * The consolidated debtor/creditor headline stays BLOCKED whenever any hard gate
+ * fails: unresolved items (unknown transfer purpose, loan/capital unproven, identity,
+ * custodian, cap violation), pending ownership/profit, owner-balance unreconciled, or
+ * asymmetric equalization. Stage 2 does not manufacture a certified consolidated EP
+ * (profit authority + settlement purposes are absent), so it stays PENDING/PARTIAL.
  * No writes. Server-only.
  */
 
@@ -14,12 +18,15 @@ import { createServiceClient } from '@/lib/supabase'
 import { readCashboxes } from './adapters/cashboxReader'
 import { readReceivables } from './adapters/receivablesReader'
 import { readOwnership } from './adapters/ownershipReader'
-import { readPartnerScopeProperties } from './adapters/propertyReader'
+import { readPartnerScopeProperties, readPropertyScopeSets } from './adapters/propertyReader'
 import { readPropertyAccounts } from './adapters/accountReaders'
+import { readPartnerLedger } from './adapters/transactionsReader'
+import { buildPartnerLedger } from './partnerLedgerEngine'
+import { resolvePartnerSplit, type ConfirmedShare } from './ownershipRules'
 import { evaluateHeadlineGate } from './headlineGate'
 import type {
   PartnerReportB, PropertyView, UnresolvedItem, CashboxView, JjPosition,
-  PartnerCurrentAccount, EqualizationView, OwnershipShare,
+  EqualizationView, OwnershipShare, PartnerPropertyPosition, ExplainNode,
 } from './partnerReportBTypes'
 
 export interface BuildOptions {
@@ -32,14 +39,54 @@ export interface BuildOptions {
 export async function buildPartnerReportB(opts: BuildOptions): Promise<PartnerReportB> {
   const { periodStart, periodEnd, generatedAt } = opts
 
-  const [cashboxes, receivables, ownershipByProp, properties] = await Promise.all([
+  const [cashboxes, receivables, ownershipByProp, properties, ledgerRead, scopeSets] = await Promise.all([
     readCashboxes(),
     readReceivables(),
     readOwnership(),
     readPartnerScopeProperties(),
+    readPartnerLedger(periodStart, periodEnd),
+    readPropertyScopeSets(),
   ])
 
   const unresolved: UnresolvedItem[] = []
+
+  // Fail-closed source blockers (QA #185-1/2): a ledger/exclusions/identity source
+  // failure blocks certification and is surfaced traceably — never a silent zero.
+  for (const f of ledgerRead.sourceFailures) {
+    unresolved.push({
+      kind: f.kind,
+      ref: f.kind === 'IDENTITY_SOURCE_UNAVAILABLE' ? 'registry.parties'
+        : f.kind === 'EXCLUSIONS_SOURCE_UNAVAILABLE' ? 'transaction_exclusions' : 'public.transactions',
+      reason: f.reason,
+      sourceRef: { system: 'partner-settlement/transactionsReader' },
+    })
+  }
+
+  // Property scope (QA #185-3). If the scope source is unavailable, fail closed with
+  // EMPTY sets so no client/unknown property transaction can be silently included.
+  const effectiveScope = scopeSets ?? { partner: new Set<string>(), client: new Set<string>() }
+  if (scopeSets == null) {
+    unresolved.push({
+      kind: 'PROPERTY_SCOPE_UNRESOLVED',
+      ref: 'property_definitions',
+      reason: 'property scope source unavailable — scope cannot be enforced; failing closed',
+      sourceRef: { system: 'property_definitions' },
+    })
+  }
+
+  // ── Runtime partner-ledger engine (Layer A + classification + per-property) ──────
+  // Ownership split resolver (whole-property) from confirmed canonical shares +
+  // authorized facts. Capital allocation uses it; never assumes 50/50.
+  const splitFor = (propertyName: string | null) => {
+    const shares: ConfirmedShare[] = propertyName
+      ? (ownershipByProp.get(propertyName)?.shares ?? []).map((s: OwnershipShare) => ({
+          party: s.party, pct: s.pct, confidence: s.confidence,
+        }))
+      : []
+    return resolvePartnerSplit(propertyName ?? '', shares)
+  }
+  const engine = buildPartnerLedger(ledgerRead.txns, { splitFor, propertyScope: effectiveScope })
+
   const propertyViews: PropertyView[] = []
 
   const propList = opts.maxProperties ? properties.slice(0, opts.maxProperties) : properties
@@ -61,16 +108,23 @@ export async function buildPartnerReportB(opts: BuildOptions): Promise<PartnerRe
     }
     for (const a of accounts) propUnresolved.push(...a.unresolved)
 
+    const partnerPositions: PartnerPropertyPosition[] =
+      engine.partnerPositionsByProperty.get(p.reportingName) ?? []
+
     propertyViews.push({
       propertyName: p.reportingName,
       relationshipType: p.relationshipType,
       ownership: shares,
       accounts,
+      partnerPositions,
       unresolved: propUnresolved,
       status: 'PENDING',
     })
     unresolved.push(...propUnresolved)
   }
+
+  // Engine-surfaced unresolved (transfer purpose, loan/capital, identity, custodian, cap)
+  unresolved.push(...engine.unresolved)
 
   // Receivables scope caveat (12c)
   unresolved.push({
@@ -79,13 +133,11 @@ export async function buildPartnerReportB(opts: BuildOptions): Promise<PartnerRe
     reason: `receivables/payables authoritative only for covered scope: [${receivables.coveredCounterpartyTypes.join(', ') || 'n/a'}]; partner accounts / suppliers / forward commitments not fully covered`,
     sourceRef: { system: 'v_money_position' },
   })
-  // Forward commitments have no certified source (11k blocker 6)
   unresolved.push({
     kind: 'FORWARD_COMMITMENT_SOURCE_MISSING',
     ref: 'forward-commitments',
     reason: 'no certified source for future rent payable / forward receivables',
   })
-  // Cash unverified (12b)
   if (cashboxes.some(c => c.verificationStatus === 'LEDGER_ONLY')) {
     unresolved.push({
       kind: 'CASH_UNVERIFIED',
@@ -94,7 +146,6 @@ export async function buildPartnerReportB(opts: BuildOptions): Promise<PartnerRe
       sourceRef: { system: 'v_cashbox_audit' },
     })
   }
-  // QA fix #5: null receivable/payable amounts surfaced, never silently zeroed
   if (receivables.unknownRows > 0) {
     unresolved.push({
       kind: 'RECEIVABLE_AMOUNT_UNKNOWN',
@@ -103,33 +154,24 @@ export async function buildPartnerReportB(opts: BuildOptions): Promise<PartnerRe
       sourceRef: { system: 'v_money_position' },
     })
   }
-  // QA fix #3: cashbox ledger is NOT a partner current account — source gap
+  // Profit distribution authority not wired (v_jj_profit_distributions) — EP cannot be certified.
   unresolved.push({
-    kind: 'PARTNER_ACCOUNT_SOURCE_MISSING',
-    ref: 'partner-current-accounts',
-    reason: 'no certified partner current-account source wired; a cashbox/custody ledger is not a partner account (loans/capital/withdrawals/distributions). Stage 2/3.',
-    sourceRef: { system: 'partner-settlement' },
+    kind: 'PROFIT_DISTRIBUTION_UNCERTIFIED',
+    ref: 'v_jj_profit_distributions',
+    reason: 'certified partner profit-distribution authority not wired; consolidated EP not certifiable (Stage 3)',
+    sourceRef: { system: 'v_jj_profit_distributions' },
   })
 
-  // JJ position (economic profit PENDING — v_jj_company_pl not the authoritative partner-profit basis; unwired)
   const jjPosition = await buildJjPosition(cashboxes, receivables)
 
-  // Partner current accounts — QA fix #3: NOT populated from cashbox ledger.
-  // A cashbox/custody position is not a partner current account (which nets loans,
-  // capital, withdrawals, distributions). Until a certified current-account source is
-  // wired (Stage 2/3), return null / PENDING with an explicit source gap.
-  const partnerCurrentAccounts: PartnerCurrentAccount[] = ['Yossi', 'Jacob'].map(party => ({
-    party,
-    ledgerBalanceEur: null,
-    status: 'PENDING' as const,
-    explain: [{
-      label: `${party} current account`,
-      amountEur: null,
-      tracesTo: [{ system: 'partner-settlement', note: 'no certified partner current-account source (Stage 2/3)' }],
-    }],
-  }))
+  const partnerCurrentAccounts = engine.partnerAccounts
 
-  // Equalization — NOT computed in Stage 1; gate blocks the headline
+  // ── Equalization (Layer B) — gated ──────────────────────────────────────────────
+  // Stage 2 does not certify a consolidated EP: profit distribution authority is
+  // unwired and most inter-partner movements are unresolved. The certified inter-partner
+  // nets (direct transfers + capital) are surfaced as informational components only; the
+  // headline stays blocked (equalization not computed).
+  const certifiedInterPartnerNet = engine.interPartnerTransferNetEur + engine.capitalEqualizationNetEur
   const gate = evaluateHeadlineGate({
     unresolvedItems: unresolved,
     ownershipPending: propertyViews.some(pv => pv.unresolved.some(u => u.kind === 'OWNERSHIP_PENDING')),
@@ -137,8 +179,13 @@ export async function buildPartnerReportB(opts: BuildOptions): Promise<PartnerRe
     ownerBalanceUnreconciled: true, // 3 differing owner-balance sources (11k blocker 3)
     cashUnverified: true,
     moneyPositionPartial: true,
-    symmetryResidualEur: null, // equalization not computed in Stage 1
+    symmetryResidualEur: null, // consolidated EP not computed in Stage 2
   })
+
+  const components: ExplainNode[] = [
+    { label: 'Certified direct partner-transfer net (Jacob owes Yossi +)', amountEur: engine.interPartnerTransferNetEur, tracesTo: [{ system: 'public.transactions', note: 'certified-purpose direct transfers' }] },
+    { label: 'Certified capital equalization net (Jacob owes Yossi +)', amountEur: engine.capitalEqualizationNetEur, tracesTo: [{ system: 'partner-settlement/ownershipRules' }] },
+  ]
 
   const equalization: EqualizationView = {
     epYossi: null,
@@ -152,21 +199,22 @@ export async function buildPartnerReportB(opts: BuildOptions): Promise<PartnerRe
       canAssertDebtorCreditor: gate.canAssertDebtorCreditor,
       blockingReasons: gate.blockingReasons,
     },
-    certifiedSubtotalEur: null,
+    certifiedSubtotalEur: certifiedInterPartnerNet,
     unresolvedCount: unresolved.length,
     unresolvedAmountEur: null,
-    components: [],
+    components,
   }
 
   return {
     meta: {
-      schemaVersion: 'PartnerReportB/stage1',
-      periodStart, periodEnd, generatedAt, currency: 'EUR', stage: 1,
+      schemaVersion: 'PartnerReportB/stage2',
+      periodStart, periodEnd, generatedAt, currency: 'EUR', stage: 2,
     },
     properties: propertyViews,
     cashboxes,
     jjPosition,
     partnerCurrentAccounts,
+    classificationSummary: engine.classificationSummary,
     equalization,
     opening: { value: null, status: 'PENDING_RECONCILIATION' },
     closing: { value: null, status: 'PENDING_RECONCILIATION' },

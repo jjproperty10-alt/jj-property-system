@@ -2,12 +2,9 @@
  * @module partner-settlement/classifyPartnerTransaction
  * @description Pure classifier for partner-related transactions (11e / 12).
  *
- * ⚠️ STAGE 2 SCAFFOLDING — NOT WIRED. As of Stage 1 this module is a pure,
- * unit-tested helper only; it is NOT invoked by partnerReportBService or any read
- * path, so Stage 1 does NOT yet enforce loan/capital/transfer classification at
- * runtime. Wiring it requires a read-only transaction-classification pipeline
- * (Stage 2) and must not edit the Transaction Register workstream. Do not claim
- * Stage 1 enforces per-transaction classification.
+ * STAGE 2 — WIRED. This classifier is invoked at runtime by partnerLedgerEngine
+ * (via transactionsReader) to classify each certified partner-related transaction.
+ * It reads the canonical ledger read-only and NEVER edits the Transaction Register.
  *
  * Approved rules:
  *  - Routine operating expense personally paid by a partner -> REIMBURSABLE_LOAN

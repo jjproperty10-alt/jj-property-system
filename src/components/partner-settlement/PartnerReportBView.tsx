@@ -14,6 +14,7 @@
 
 import type {
   PartnerReportB, CashboxView, AccountView, PropertyView, UnresolvedItem, ExplainNode,
+  PartnerCurrentAccount, ClassificationSummaryRow,
 } from '@/lib/partner-settlement/partnerReportBTypes'
 
 const eur = (n: number | null): string =>
@@ -87,6 +88,61 @@ function HeadlineBanner({ dto }: { dto: PartnerReportB }) {
           )}
         </>
       )}
+    </section>
+  )
+}
+
+function PartnerAccountBlock({ pa }: { pa: PartnerCurrentAccount }) {
+  return (
+    <div className="rounded border border-gray-100 bg-gray-50 p-2">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold text-gray-800">{pa.party} current account</span>
+        <StatusPill status={pa.status} />
+      </div>
+      <div className="mt-1 text-sm text-gray-700" dir="ltr">
+        Certified net (JJ owes {pa.party}): <span className="font-bold tabular-nums">{eur(pa.ledgerBalanceEur)}</span>
+      </div>
+      {pa.unresolvedAmountEur !== null && (
+        <div className="text-xs text-amber-700" dir="ltr">Unresolved touching {pa.party}: {eur(pa.unresolvedAmountEur)}</div>
+      )}
+      {pa.components.length > 0 && (
+        <ul className="mt-1 space-y-0.5 text-xs text-gray-600">
+          {pa.components.map((c, i) => (
+            <li key={i} className="tabular-nums" dir="ltr">
+              {c.label}: {eur(c.amountEur)} <span className="text-gray-400">({c.count})</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function ClassificationSummary({ rows }: { rows: readonly ClassificationSummaryRow[] }) {
+  if (rows.length === 0) return null
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white p-4">
+      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-600">Runtime classification summary</h3>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b text-left text-xs uppercase tracking-wide text-gray-500">
+              <th className="py-2 pr-3">Class</th><th className="py-2 pr-3 text-right">Count</th>
+              <th className="py-2 pr-3 text-right">Amount</th><th className="py-2">Certified</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {rows.map((r, i) => (
+              <tr key={i}>
+                <td className="py-2 pr-3 text-xs font-medium text-gray-800">{r.klass.replace(/_/g, ' ')}</td>
+                <td className="py-2 pr-3 text-right tabular-nums" dir="ltr">{r.count}</td>
+                <td className="py-2 pr-3 text-right tabular-nums" dir="ltr">{eur(r.amountEur)}</td>
+                <td className="py-2"><StatusPill status={r.certified ? 'CERTIFIED' : 'UNRESOLVED'} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   )
 }
@@ -173,6 +229,15 @@ function PropertyBlock({ p }: { p: PropertyView }) {
           ))}
         </div>
       )}
+      {p.partnerPositions.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {p.partnerPositions.map((pp, i) => (
+            <span key={i} className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] text-blue-800" dir="ltr">
+              {pp.party}: certified {eur(pp.certifiedContributionEur)} · unresolved {eur(pp.unresolvedContributionEur)}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="mt-3 space-y-2">
         {p.accounts.map((a, i) => <AccountBlock key={i} a={a} />)}
         {p.accounts.length === 0 && <p className="text-xs italic text-gray-400">No RC3 account data for this property in period.</p>}
@@ -199,7 +264,7 @@ export function PartnerReportBView({ dto }: { dto: PartnerReportB }) {
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-8">
       <header>
-        <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400">JJ Property 10 · Partner Report B (Stage 1)</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400">JJ Property 10 · Partner Report B (Stage 2)</p>
         <h1 className="text-2xl font-extrabold text-gray-900">Partner Settlement — {dto.meta.periodStart} → {dto.meta.periodEnd}</h1>
         <p className="mt-1 text-xs text-gray-500">Framework view · read-only · consolidated headline gated</p>
       </header>
@@ -214,14 +279,14 @@ export function PartnerReportBView({ dto }: { dto: PartnerReportB }) {
             <div>JJ economic profit: {eur(dto.jjPosition.economicProfit)} <StatusPill status={dto.jjPosition.economicProfitStatus} /></div>
             <div>JJ actual cash (ledger): {eur(dto.jjPosition.actualCashLedger)} <StatusPill status={dto.jjPosition.cashVerificationStatus} /></div>
             <div>Receivables: {eur(dto.jjPosition.receivables)} · Payables: {eur(dto.jjPosition.payables)} <StatusPill status={dto.jjPosition.receivablesScope} /></div>
-            <div className="pt-2">
-              {dto.partnerCurrentAccounts.map((pa, i) => (
-                <div key={i}>{pa.party} current account (ledger): {eur(pa.ledgerBalanceEur)} <StatusPill status={pa.status} /></div>
-              ))}
+            <div className="space-y-2 pt-2">
+              {dto.partnerCurrentAccounts.map((pa, i) => <PartnerAccountBlock key={i} pa={pa} />)}
             </div>
           </div>
         </section>
       </div>
+
+      <ClassificationSummary rows={dto.classificationSummary} />
 
       <UnresolvedQueue items={dto.unresolved} />
 
@@ -231,7 +296,7 @@ export function PartnerReportBView({ dto }: { dto: PartnerReportB }) {
       </section>
 
       <footer className="border-t border-gray-100 pt-4 text-center text-xs text-gray-400">
-        {dto.meta.currency} · generated {dto.meta.generatedAt} · Stage 1 framework · no certified consolidated balance
+        {dto.meta.currency} · generated {dto.meta.generatedAt} · Stage 2 wired ledger · consolidated headline gated
       </footer>
     </div>
   )
