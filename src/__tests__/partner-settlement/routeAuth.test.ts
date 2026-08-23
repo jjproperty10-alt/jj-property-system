@@ -17,7 +17,7 @@ jest.mock('@/lib/statements/statementAuthService', () => ({
   authenticateStatementUser: () => authMock(),
 }))
 
-const buildMock = jest.fn(async (_a?: unknown) => ({ meta: { schemaVersion: 'PartnerReportB/stage1' } }))
+const buildMock = jest.fn(async (_a?: unknown) => ({ meta: { schemaVersion: 'PartnerReportB/stage2' } }))
 jest.mock('@/lib/partner-settlement/partnerReportBService', () => ({
   buildPartnerReportB: (a: unknown) => buildMock(a),
 }))

@@ -2,11 +2,10 @@
  * @module partner-settlement/invariants
  * @description Conservation & non-double-count invariants (12e / 11j). Pure.
  *
- * ⚠️ STAGE 2 SCAFFOLDING — NOT WIRED. As of Stage 1 these are unit-tested pure
- * helpers only; the service does NOT run them as runtime checks, so Stage 1 does
- * NOT yet enforce the per-transaction cap or single-count invariants at runtime.
- * They are exercised by tests and will be enforced when the classification pipeline
- * is wired in Stage 2. Do not claim Stage 1 enforces these at runtime.
+ * STAGE 2 — WIRED. partnerLedgerEngine runs withinPerTransactionCap on every
+ * classified line and isEqualizationSymmetric on the derived EPs at runtime. A cap
+ * violation blocks certification and appends a PER_TRANSACTION_CAP_VIOLATION
+ * unresolved item; a broken symmetry blocks the debtor/creditor headline.
  */
 
 import { EQUALIZATION_EPSILON, symmetryResidual } from './partnerReportBFormulas'

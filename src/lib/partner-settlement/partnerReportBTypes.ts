@@ -61,6 +61,10 @@ export type UnresolvedKind =
   | 'IDENTITY_UNRESOLVED'
   | 'PARTNER_ACCOUNT_SOURCE_MISSING'
   | 'RECEIVABLE_AMOUNT_UNKNOWN'
+  // Stage 2 — wired runtime pipeline
+  | 'CUSTODIAN_SETTLEMENT_UNCERTIFIED'
+  | 'PER_TRANSACTION_CAP_VIOLATION'
+  | 'PROFIT_DISTRIBUTION_UNCERTIFIED'
   | 'OTHER'
 
 /** An item that could not be certified. Must NEVER enter certified totals. */
@@ -152,6 +156,8 @@ export interface PropertyView {
   readonly relationshipType: string | null
   readonly ownership: readonly OwnershipShare[]
   readonly accounts: readonly AccountView[]
+  /** Stage 2: per-partner certified/unresolved contribution attributed to this property. */
+  readonly partnerPositions: readonly PartnerPropertyPosition[]
   readonly unresolved: readonly UnresolvedItem[]
   readonly status: SourceStatus
 }
@@ -195,12 +201,56 @@ export interface JjPosition {
 
 // ─── Partner current accounts (Layer A) ─────────────────────────────────────────
 
+/** Economic role of a classified partner-related transaction (Stage 2 runtime). */
+export type PartnerTxClass =
+  | 'REIMBURSABLE_LOAN'          // partner-funded routine expense → JJ owes partner
+  | 'CAPITAL'                    // approved capital contribution (needs approved fact)
+  | 'JJ_TO_PARTNER'             // reimbursement / withdrawal / distribution paid by JJ
+  | 'PARTNER_TO_JJ'             // partner cash contribution to JJ
+  | 'INCOME_COLLECTED_BY_PARTNER' // partner personally collected income owed to JJ
+  | 'DIRECT_PARTNER_TRANSFER'    // Yossi↔Jacob transfer (purpose-gated)
+  | 'CUSTODIAN_MOVEMENT'        // cash to/from a custodian (not a partner) — uncertified
+  | 'UNRESOLVED'                // classification/purpose/identity not provable
+  | 'EXTERNAL_OR_OTHER'
+
+/** One aggregated component of a partner current account (Layer A). */
+export interface PartnerAccountComponent {
+  readonly label: string
+  readonly klass: PartnerTxClass
+  /** signed contribution to CA_P (JJ owes partner = +). */
+  readonly amountEur: number
+  readonly count: number
+  readonly certified: boolean
+}
+
 export interface PartnerCurrentAccount {
   readonly party: string
-  /** CA_P from ledger (Stage 1: not certified) */
+  /**
+   * Certified net current account CA_P (JJ owes partner = +), from the certified
+   * components only. null when nothing is certifiable. Never includes unresolved
+   * magnitudes (P-ARCH-1) and NEVER derived from a cashbox ledger (12b / QA #3).
+   */
   readonly ledgerBalanceEur: number | null
   readonly status: SourceStatus
+  readonly components: readonly PartnerAccountComponent[]
+  /** magnitude of unresolved items touching this partner — informational only */
+  readonly unresolvedAmountEur: number | null
   readonly explain: readonly ExplainNode[]
+}
+
+/** Aggregated classification outcome (one row per class) for transparency. */
+export interface ClassificationSummaryRow {
+  readonly klass: PartnerTxClass
+  readonly count: number
+  readonly amountEur: number
+  readonly certified: boolean
+}
+
+/** Per-property, per-partner certified/unresolved contribution position (Stage 2). */
+export interface PartnerPropertyPosition {
+  readonly party: string
+  readonly certifiedContributionEur: number
+  readonly unresolvedContributionEur: number
 }
 
 // ─── Equalization (Layer B, derived, gated) ─────────────────────────────────────
@@ -239,12 +289,12 @@ export interface StatusedValue {
 }
 
 export interface PartnerReportBMeta {
-  readonly schemaVersion: 'PartnerReportB/stage1'
+  readonly schemaVersion: 'PartnerReportB/stage2'
   readonly periodStart: string
   readonly periodEnd: string
   readonly generatedAt: string
   readonly currency: 'EUR'
-  readonly stage: 1
+  readonly stage: 2
 }
 
 export interface PartnerReportB {
@@ -253,6 +303,8 @@ export interface PartnerReportB {
   readonly cashboxes: readonly CashboxView[]
   readonly jjPosition: JjPosition
   readonly partnerCurrentAccounts: readonly PartnerCurrentAccount[]
+  /** Stage 2: aggregated runtime classification outcome (one row per class). */
+  readonly classificationSummary: readonly ClassificationSummaryRow[]
   readonly equalization: EqualizationView
   readonly opening: StatusedValue
   readonly closing: StatusedValue
