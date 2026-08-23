@@ -42,6 +42,7 @@ import { computeOperationalKPIs, computeNetOwnerBalance, filterOwnerFacingSectio
 import { ReportScopeSelector } from '@/components/report/ReportScopeSelector'
 import type { ReportScope } from '@/lib/report/reportScope'
 import { isScopeValid, defaultScope } from '@/lib/report/reportScope'
+import { ReportPeriodHeader, ReportScopeSummary } from '@/components/client-report'
 import {
   getAuthorizedReportProperties,
   validateAuthorizedReportScope,
@@ -1223,6 +1224,10 @@ function ClientReportRC3Content() {
         {/* ── Report ───────────────────────────────────────────────────────── */}
         {report && !loading && (
           <>
+            {/* Presentation shell — additive header + scope (real DTO values; no total changes) */}
+            <ReportScopeSummary scope={scope} totalProperties={properties.length} fromDate={report.from_date} toDate={report.to_date} lang={lang} />
+            <ReportPeriodHeader reportingName={report.reporting_name} fromDate={report.from_date} toDate={report.to_date} generatedAt={report.generated_at} reportType={reportType} lang={lang} />
+
             {/* M2: Premium Executive Summary */}
             <PremiumSummary report={filteredReport!} lang={lang} />
 
