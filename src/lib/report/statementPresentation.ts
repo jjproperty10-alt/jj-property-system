@@ -42,6 +42,39 @@ export function splitOperatingIncome<T extends { subcategory: string | null }>(
   return { income, settlements }
 }
 
+export interface OperatingIncomeSplit {
+  /** Genuine operating income (Tenant Payment etc.) — real rental/platform income. */
+  rentalIncome: number
+  /** Cross-property settlements (a "Client Payment" credit used to settle another account). */
+  crossPropertySettlements: number
+}
+
+/**
+ * #1 (summary/KPI surface) — Split an OPERATING account's income into genuine
+ * operating income vs cross-property settlements, at the aggregate (total) level.
+ *
+ * This is the KPI-level companion to splitOperatingIncome (which splits rows for
+ * the detail tables). It exists so Rental Income / Operational Income KPIs never
+ * fold in a "Client Payment" settlement — the same rule, defined once.
+ *
+ * Uses balance_effect so `rentalIncome + crossPropertySettlements` reconciles
+ * EXACTLY to the account's total_income (income-group rows are precisely the
+ * balance_effect > 0 rows in a rental/airbnb account). PRESENTATION ONLY — it
+ * never changes a balance and contains no hardcoded names or amounts.
+ *
+ * Only meaningful for rental/airbnb accounts; callers guard by account_type.
+ */
+export function splitOperatingIncomeTotals(section: RC3AccountSection): OperatingIncomeSplit {
+  let rentalIncome = 0
+  let crossPropertySettlements = 0
+  for (const r of section.rows) {
+    if (r.display_group !== 'income') continue
+    if (r.subcategory === 'Client Payment') crossPropertySettlements += r.balance_effect
+    else rentalIncome += r.balance_effect
+  }
+  return { rentalIncome, crossPropertySettlements }
+}
+
 export interface StatementComponents {
   renovationContract: number
   approvedExtras: number

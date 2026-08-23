@@ -11,6 +11,7 @@ import type { RC3AccountRow, RC3AccountSection, DisplayGroup } from '../types'
 import {
   renovationGroupHeaders,
   splitOperatingIncome,
+  splitOperatingIncomeTotals,
   computeStatementComponents,
 } from '../statementPresentation'
 
@@ -75,6 +76,26 @@ const rental = mkSection({
 })
 const accounts = [renovation, rental]
 
+// settlement-only operating account: all "income" is a cross-property Client Payment
+// (mirrors Tamir Kiti, which has NO Tenant Payment rows).
+const settlementOnly = mkSection({
+  account_type: 'rental', balance_convention: 'owner_credit',
+  total_income: 3565.69, total_expenses: 5346.08, closing_balance: -1780.39,
+  rows: [
+    mkRow({ subcategory: 'Client Payment',   display_group: 'income',  balance_effect: 3565.69,  client_amount: 3565.69, display_label: 'Client Payment' }),
+    mkRow({ subcategory: 'Electricity bill', display_group: 'expense', balance_effect: -5346.08, client_amount: 5346.08, display_label: 'Electricity' }),
+  ],
+})
+
+// rental-only operating account: all income is genuine Tenant Payment rent
+const rentalOnly = mkSection({
+  account_type: 'rental', balance_convention: 'owner_credit',
+  total_income: 2400, total_expenses: 0, closing_balance: 2400,
+  rows: [
+    mkRow({ subcategory: 'Tenant Payment', display_group: 'income', balance_effect: 2400, client_amount: 2400, display_label: 'Rent Collected' }),
+  ],
+})
+
 // canonical net exactly as the PDF computes it (owner_credit +, client_debt −)
 function canonicalNet(secs: RC3AccountSection[]): number {
   let net = 0
@@ -93,6 +114,36 @@ describe('splitOperatingIncome (#1)', () => {
   it('a Tenant Payment is never classified as a settlement', () => {
     const { settlements } = splitOperatingIncome(incomeGroupRows)
     expect(settlements.some(r => r.subcategory === 'Tenant Payment')).toBe(false)
+  })
+})
+
+describe('splitOperatingIncomeTotals (#1 — KPI/summary surface)', () => {
+  it('mixed account: separates genuine rent from cross-property settlement', () => {
+    const s = splitOperatingIncomeTotals(rental)
+    expect(s.rentalIncome).toBeCloseTo(2400, 2)
+    expect(s.crossPropertySettlements).toBeCloseTo(3565.69, 2)
+  })
+  it('settlement-only account: zero rental income, full settlement, reconciles to total_income', () => {
+    const s = splitOperatingIncomeTotals(settlementOnly)
+    expect(s.rentalIncome).toBe(0)
+    expect(s.crossPropertySettlements).toBeCloseTo(3565.69, 2)
+    expect(s.rentalIncome + s.crossPropertySettlements).toBeCloseTo(settlementOnly.total_income, 2)
+  })
+  it('rental-only account: full rental income, zero settlement, reconciles to total_income', () => {
+    const s = splitOperatingIncomeTotals(rentalOnly)
+    expect(s.rentalIncome).toBeCloseTo(2400, 2)
+    expect(s.crossPropertySettlements).toBe(0)
+    expect(s.rentalIncome + s.crossPropertySettlements).toBeCloseTo(rentalOnly.total_income, 2)
+  })
+  it('never reports a settlement as rental income', () => {
+    const s = splitOperatingIncomeTotals(rental)
+    expect(s.rentalIncome).not.toBe(s.crossPropertySettlements)
+    expect(s.rentalIncome).not.toBe(3565.69)
+  })
+  it('is presentation only — does not change the canonical net', () => {
+    const before = canonicalNet([settlementOnly])
+    void splitOperatingIncomeTotals(settlementOnly)
+    expect(canonicalNet([settlementOnly])).toBeCloseTo(before, 2)
   })
 })
 
