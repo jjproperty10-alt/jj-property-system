@@ -11,6 +11,7 @@ const LIB = path.join(__dirname, '../../lib/partner-settlement')
 const READ_PATH_FILES = [
   'adapters/transactionsReader.ts',
   'adapters/identityDirectoryReader.ts',
+  'adapters/ownerScopeReader.ts',
   'adapters/cashboxReader.ts',
   'adapters/receivablesReader.ts',
   'adapters/ownershipReader.ts',

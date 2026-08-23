@@ -21,8 +21,10 @@ import { readOwnership } from './adapters/ownershipReader'
 import { readPartnerScopeProperties, readPropertyScopeSets } from './adapters/propertyReader'
 import { readPropertyAccounts } from './adapters/accountReaders'
 import { readPartnerLedger } from './adapters/transactionsReader'
+import { readExternalOwnerPropertyNames } from './adapters/ownerScopeReader'
 import { buildPartnerLedger } from './partnerLedgerEngine'
 import { resolvePartnerSplit, type ConfirmedShare } from './ownershipRules'
+import { buildConflictSet, isOwnableRelationshipType, type PropertyScopeSets } from './scope'
 import { evaluateHeadlineGate } from './headlineGate'
 import type {
   PartnerReportB, PropertyView, UnresolvedItem, CashboxView, JjPosition,
@@ -39,13 +41,14 @@ export interface BuildOptions {
 export async function buildPartnerReportB(opts: BuildOptions): Promise<PartnerReportB> {
   const { periodStart, periodEnd, generatedAt } = opts
 
-  const [cashboxes, receivables, ownershipByProp, properties, ledgerRead, scopeSets] = await Promise.all([
+  const [cashboxes, receivables, ownershipByProp, properties, ledgerRead, scopeSets, externalOwnerNames] = await Promise.all([
     readCashboxes(),
     readReceivables(),
     readOwnership(),
     readPartnerScopeProperties(),
     readPartnerLedger(periodStart, periodEnd),
     readPropertyScopeSets(),
+    readExternalOwnerPropertyNames(),
   ])
 
   const unresolved: UnresolvedItem[] = []
@@ -64,7 +67,7 @@ export async function buildPartnerReportB(opts: BuildOptions): Promise<PartnerRe
 
   // Property scope (QA #185-3). If the scope source is unavailable, fail closed with
   // EMPTY sets so no client/unknown property transaction can be silently included.
-  const effectiveScope = scopeSets ?? { partner: new Set<string>(), client: new Set<string>() }
+  const baseScope = scopeSets ?? { partner: new Set<string>(), client: new Set<string>(), conflictEligible: new Set<string>() }
   if (scopeSets == null) {
     unresolved.push({
       kind: 'PROPERTY_SCOPE_UNRESOLVED',
@@ -73,6 +76,40 @@ export async function buildPartnerReportB(opts: BuildOptions): Promise<PartnerRe
       sourceRef: { system: 'property_definitions' },
     })
   }
+
+  // ── Stage 2.2 defensive scope guard ──────────────────────────────────────────────
+  // A partner-tagged property with an external owner in contact_properties is a CLIENT
+  // (definition conflict). Exclude it from every partner total and surface it — never
+  // silently included, even if property_definitions mislabels it (e.g. Yogev Port).
+  // Conflict guard is relationship-aware: only jj / jj_company (conflictEligible) with an
+  // external owner is a conflict. Partnership co-owners (Avi/Oren) are legitimate — a
+  // partnership with an external owner stays IN_SCOPE (Villa Mazotos / Villa Mazotos 2).
+  const { conflict, ownerSourceUnavailable } = buildConflictSet(
+    baseScope.conflictEligible ?? new Set<string>(), externalOwnerNames,
+  )
+  if (ownerSourceUnavailable) {
+    // FAIL-CLOSED: cannot verify ownership → ALL jj / jj_company (conflict-eligible)
+    // properties are excluded from every total (their transactions never enter current
+    // accounts / positions / subtotals), and the headline stays blocked. Partnership
+    // properties are unaffected (never conflict-eligible).
+    unresolved.push({
+      kind: 'OWNER_SOURCE_UNAVAILABLE',
+      ref: 'contact_properties',
+      reason: 'external-owner source unavailable — cannot verify property scope against ownership; failing closed by excluding ALL jj/jj_company properties from partner totals until the source is restored',
+      sourceRef: { system: 'contact_properties' },
+    })
+  } else {
+    // Genuine per-property conflicts (owner source available): surface each explicitly.
+    conflict.forEach(name => {
+      unresolved.push({
+        kind: 'SCOPE_DEFINITION_CONFLICT',
+        ref: name,
+        reason: `"${name}" is tagged partner-scope in property_definitions but has an external owner in contact_properties → treated as a client and EXCLUDED from the Partner Report`,
+        sourceRef: { system: 'property_definitions vs contact_properties', ref: name },
+      })
+    })
+  }
+  const effectiveScope: PropertyScopeSets = { partner: baseScope.partner, client: baseScope.client, conflict }
 
   // ── Runtime partner-ledger engine (Layer A + classification + per-property) ──────
   // Ownership split resolver (whole-property) from confirmed canonical shares +
@@ -91,35 +128,56 @@ export async function buildPartnerReportB(opts: BuildOptions): Promise<PartnerRe
 
   const propList = opts.maxProperties ? properties.slice(0, opts.maxProperties) : properties
   for (const p of propList) {
-    const accounts = await readPropertyAccounts(p.reportingName, periodStart, periodEnd)
-    const own = ownershipByProp.get(p.reportingName)
-    const shares: readonly OwnershipShare[] = own?.shares ?? []
+    // Stage 2.2: definition-conflict properties (external owner) are excluded entirely —
+    // already surfaced as SCOPE_DEFINITION_CONFLICT above.
+    if (conflict.has(p.reportingName.trim().toLowerCase())) continue
+
+    const isOwnable = isOwnableRelationshipType(p.relationshipType)
     const propUnresolved: UnresolvedItem[] = []
-
-    if (!own || own.pending || shares.length === 0) {
-      propUnresolved.push({
-        kind: 'OWNERSHIP_PENDING',
-        ref: p.reportingName,
-        reason: shares.length === 0
-          ? 'no confirmed ownership_period rows'
-          : 'ownership pending_verification / missing effective dates',
-        sourceRef: { system: 'lifecycle.ownership_period', ref: p.reportingName },
-      })
-    }
-    for (const a of accounts) propUnresolved.push(...a.unresolved)
-
     const partnerPositions: PartnerPropertyPosition[] =
       engine.partnerPositionsByProperty.get(p.reportingName) ?? []
 
-    propertyViews.push({
-      propertyName: p.reportingName,
-      relationshipType: p.relationshipType,
-      ownership: shares,
-      accounts,
-      partnerPositions,
-      unresolved: propUnresolved,
-      status: 'PENDING',
-    })
+    if (isOwnable) {
+      // Genuine partner/JJ property: demand ownership + owner-facing RC3 accounts.
+      const accounts = await readPropertyAccounts(p.reportingName, periodStart, periodEnd)
+      const own = ownershipByProp.get(p.reportingName)
+      const shares: readonly OwnershipShare[] = own?.shares ?? []
+      if (!own || own.pending || shares.length === 0) {
+        propUnresolved.push({
+          kind: 'OWNERSHIP_PENDING',
+          ref: p.reportingName,
+          reason: shares.length === 0
+            ? 'no confirmed ownership_period rows'
+            : 'ownership pending_verification / missing effective dates',
+          sourceRef: { system: 'lifecycle.ownership_period', ref: p.reportingName },
+        })
+      }
+      for (const a of accounts) propUnresolved.push(...a.unresolved)
+
+      propertyViews.push({
+        propertyName: p.reportingName,
+        relationshipType: p.relationshipType,
+        ownership: shares,
+        accounts,
+        partnerPositions,
+        unresolved: propUnresolved,
+        status: 'PENDING',
+      })
+    } else {
+      // Stage 2.2: jj_company internal account / cost-centre — NOT ownable. No ownership
+      // demand and no owner-facing RC3 accounts, so no artificial OWNERSHIP_PENDING /
+      // ACCOUNT_PROFIT_PENDING noise. Its transactions still feed the current accounts
+      // (partner-funded JJ expenses); it is shown under "Internal accounts / cost centres".
+      propertyViews.push({
+        propertyName: p.reportingName,
+        relationshipType: p.relationshipType,
+        ownership: [],
+        accounts: [],
+        partnerPositions,
+        unresolved: [],
+        status: 'PENDING',
+      })
+    }
     unresolved.push(...propUnresolved)
   }
 
