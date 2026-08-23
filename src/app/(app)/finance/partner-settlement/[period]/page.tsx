@@ -2,16 +2,22 @@
  * @page /finance/partner-settlement/[period]
  * @description Partner Report B — Stage 1 (READ-ONLY framework).
  *
- * Server Component. Read-only: computes the framework DTO server-side and renders it.
- * The consolidated Yossi<->Jacob headline is gated (never asserts a final debtor/
- * creditor on partial data — see 12f). No mutations, no writes.
+ * Server Component. Read-only. The consolidated Yossi<->Jacob headline is gated
+ * (never asserts a final debtor/creditor on partial data — see 12f). No mutations.
+ *
+ * AUTHORIZATION (QA fix #1): uses the repository's established JJ-staff flow
+ * (authenticateStatementUser — session + jj_staff_config). FAIL CLOSED before
+ * buildPartnerReportB() is ever called:
+ *   - NO_SESSION            -> redirect('/login')
+ *   - NOT_STAFF / STAFF_INACTIVE / AUTH_ERROR (or any other failure) -> notFound()
+ * This is partner financial data — a bare authenticated session is NOT sufficient.
  *
  * [period] = YYYY-MM -> first/last day of that month.
  */
 
 import 'server-only'
 import { redirect, notFound } from 'next/navigation'
-import { createSupabaseServerClient } from '@/lib/supabaseServer'
+import { authenticateStatementUser } from '@/lib/statements/statementAuthService'
 import { buildPartnerReportB } from '@/lib/partner-settlement/partnerReportBService'
 import { PartnerReportBView } from '@/components/partner-settlement/PartnerReportBView'
 
@@ -37,10 +43,15 @@ export default async function PartnerSettlementPage({ params }: Props) {
   const period = parsePeriod(params.period)
   if (!period) notFound()
 
-  // Light session gate (read-only). No session -> login; never leaks detail.
-  const sessionClient = createSupabaseServerClient()
-  const { data: { user }, error } = await sessionClient.auth.getUser()
-  if (error || !user) redirect('/login')
+  // ── Staff authorization — FAIL CLOSED before any data is built ──────────────
+  const auth = await authenticateStatementUser()
+  if (!auth.ok) {
+    if (auth.error === 'NO_SESSION') {
+      redirect('/login')
+    }
+    // NOT_STAFF, STAFF_INACTIVE, AUTH_ERROR → generic 404 (never leak detail)
+    notFound()
+  }
 
   const dto = await buildPartnerReportB({
     periodStart: period.start,

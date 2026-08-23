@@ -14,7 +14,7 @@ import { createServiceClient } from '@/lib/supabase'
 import { readCashboxes } from './adapters/cashboxReader'
 import { readReceivables } from './adapters/receivablesReader'
 import { readOwnership } from './adapters/ownershipReader'
-import { readProperties } from './adapters/propertyReader'
+import { readPartnerScopeProperties } from './adapters/propertyReader'
 import { readPropertyAccounts } from './adapters/accountReaders'
 import { evaluateHeadlineGate } from './headlineGate'
 import type {
@@ -36,7 +36,7 @@ export async function buildPartnerReportB(opts: BuildOptions): Promise<PartnerRe
     readCashboxes(),
     readReceivables(),
     readOwnership(),
-    readProperties(),
+    readPartnerScopeProperties(),
   ])
 
   const unresolved: UnresolvedItem[] = []
@@ -94,22 +94,40 @@ export async function buildPartnerReportB(opts: BuildOptions): Promise<PartnerRe
       sourceRef: { system: 'v_cashbox_audit' },
     })
   }
+  // QA fix #5: null receivable/payable amounts surfaced, never silently zeroed
+  if (receivables.unknownRows > 0) {
+    unresolved.push({
+      kind: 'RECEIVABLE_AMOUNT_UNKNOWN',
+      ref: 'v_money_position',
+      reason: `${receivables.unknownRows} receivable/payable row(s) have unknown amount (null) — excluded from totals, not coerced to 0`,
+      sourceRef: { system: 'v_money_position' },
+    })
+  }
+  // QA fix #3: cashbox ledger is NOT a partner current account — source gap
+  unresolved.push({
+    kind: 'PARTNER_ACCOUNT_SOURCE_MISSING',
+    ref: 'partner-current-accounts',
+    reason: 'no certified partner current-account source wired; a cashbox/custody ledger is not a partner account (loans/capital/withdrawals/distributions). Stage 2/3.',
+    sourceRef: { system: 'partner-settlement' },
+  })
 
   // JJ position (economic profit PENDING — v_jj_company_pl not the authoritative partner-profit basis; unwired)
   const jjPosition = await buildJjPosition(cashboxes, receivables)
 
-  // Partner current accounts — Stage 1: ledger figures only, not certified
-  const partnerCurrentAccounts: PartnerCurrentAccount[] = ['Yossi', 'Jacob'].map(party => {
-    const box = cashboxes.find(c => c.name.toLowerCase() === party.toLowerCase())
-    return {
-      party,
-      ledgerBalanceEur: box?.ledgerCashPosition ?? null,
-      status: 'PENDING',
-      explain: box
-        ? [{ label: `${party} ledger cash`, amountEur: box.ledgerCashPosition, tracesTo: [box.sourceRef] }]
-        : [],
-    }
-  })
+  // Partner current accounts — QA fix #3: NOT populated from cashbox ledger.
+  // A cashbox/custody position is not a partner current account (which nets loans,
+  // capital, withdrawals, distributions). Until a certified current-account source is
+  // wired (Stage 2/3), return null / PENDING with an explicit source gap.
+  const partnerCurrentAccounts: PartnerCurrentAccount[] = ['Yossi', 'Jacob'].map(party => ({
+    party,
+    ledgerBalanceEur: null,
+    status: 'PENDING' as const,
+    explain: [{
+      label: `${party} current account`,
+      amountEur: null,
+      tracesTo: [{ system: 'partner-settlement', note: 'no certified partner current-account source (Stage 2/3)' }],
+    }],
+  }))
 
   // Equalization — NOT computed in Stage 1; gate blocks the headline
   const gate = evaluateHeadlineGate({
@@ -131,6 +149,7 @@ export async function buildPartnerReportB(opts: BuildOptions): Promise<PartnerRe
       creditor: null,
       amountEur: null,
       certificationStatus: gate.certificationStatus,
+      canAssertDebtorCreditor: gate.canAssertDebtorCreditor,
       blockingReasons: gate.blockingReasons,
     },
     certifiedSubtotalEur: null,

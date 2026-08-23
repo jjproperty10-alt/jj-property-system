@@ -57,7 +57,9 @@ function Explain({ nodes }: { nodes: readonly ExplainNode[] }) {
 
 function HeadlineBanner({ dto }: { dto: PartnerReportB }) {
   const h = dto.equalization.headline
-  const certified = h.certificationStatus === 'CERTIFIED'
+  // QA fix #6: BOTH conditions required. A hand-built CERTIFIED DTO with
+  // canAssertDebtorCreditor=false must not render a debtor/creditor sentence.
+  const certified = h.certificationStatus === 'CERTIFIED' && h.canAssertDebtorCreditor === true
   return (
     <section
       data-testid="prb-headline"

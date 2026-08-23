@@ -8,6 +8,11 @@
  * blocker 5). This module provides a deterministic read-time resolution WITHOUT
  * normalizing storage (P-ARCH-2). Names it cannot confidently map resolve to
  * EXTERNAL/other and are surfaced as unresolved where material.
+ *
+ * ⚠️ STAGE 2 SCAFFOLDING — NOT WIRED. As of Stage 1 this resolver is a pure,
+ * unit-tested helper only; it is NOT invoked by the read path (transaction-level
+ * attribution is Stage 2). Do not claim Stage 1 performs runtime payer/payee
+ * identity resolution.
  */
 
 import type { PartyRole } from './classifyPartnerTransaction'

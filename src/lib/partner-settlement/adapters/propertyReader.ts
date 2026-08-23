@@ -1,47 +1,22 @@
 /**
  * @module partner-settlement/adapters/propertyReader
- * @description READ-ONLY property list + relationship type.
- * Distinct reporting_name from the certified RC3 classified view; relationship_type
- * enriched from property_definitions where a canonical-name match exists.
+ * @description READ-ONLY partner-scope property resolver (QA fix #2).
+ *
+ * Resolves the canonical partner scope FIRST from property_definitions and NEVER
+ * starts from every reporting_name in v_rc3_classified. Pure filtering lives in
+ * ../scope.ts (unit-tested). Client-management-only properties are excluded.
  */
 
 import 'server-only'
 import { createServiceClient } from '@/lib/supabase'
+import { filterPartnerScope, type PropertyRef, type PropertyDefRow } from '../scope'
 
-export interface PropertyRef {
-  readonly reportingName: string
-  readonly relationshipType: string | null
-}
+export type { PropertyRef } from '../scope'
 
-export async function readProperties(): Promise<PropertyRef[]> {
+export async function readPartnerScopeProperties(): Promise<PropertyRef[]> {
   const db = createServiceClient()
-
-  const { data: rc3 } = await db
-    .from('v_rc3_classified')
-    .select('reporting_name')
-    .not('reporting_name', 'is', null)
-
-  const names = Array.from(
-    new Set(((rc3 as { reporting_name: string | null }[]) ?? [])
-      .map(r => r.reporting_name)
-      .filter((n): n is string => !!n)),
-  ).sort()
-
-  // relationship type (best-effort enrichment)
-  const relByName = new Map<string, string | null>()
-  try {
-    const { data: defs } = await db
-      .from('property_definitions')
-      .select('canonical_name, relationship_type')
-    for (const d of ((defs as { canonical_name: string | null; relationship_type: string | null }[]) ?? [])) {
-      if (d.canonical_name) relByName.set(d.canonical_name, d.relationship_type)
-    }
-  } catch {
-    // enrichment optional
-  }
-
-  return names.map(reportingName => ({
-    reportingName,
-    relationshipType: relByName.get(reportingName) ?? null,
-  }))
+  const { data } = await db
+    .from('property_definitions')
+    .select('canonical_name, reporting_name, relationship_type')
+  return filterPartnerScope((data as PropertyDefRow[]) ?? [])
 }

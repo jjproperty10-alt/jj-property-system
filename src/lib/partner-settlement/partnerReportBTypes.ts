@@ -59,6 +59,8 @@ export type UnresolvedKind =
   | 'MONEY_POSITION_SCOPE_PARTIAL'
   | 'FORWARD_COMMITMENT_SOURCE_MISSING'
   | 'IDENTITY_UNRESOLVED'
+  | 'PARTNER_ACCOUNT_SOURCE_MISSING'
+  | 'RECEIVABLE_AMOUNT_UNKNOWN'
   | 'OTHER'
 
 /** An item that could not be certified. Must NEVER enter certified totals. */
@@ -208,6 +210,12 @@ export interface EqualizationHeadline {
   readonly creditor: string | null
   readonly amountEur: number | null
   readonly certificationStatus: CertificationStatus
+  /**
+   * Hard gate carried through the DTO. The view renders a debtor/creditor
+   * sentence ONLY when certificationStatus === 'CERTIFIED' AND this is true.
+   * A hand-built CERTIFIED DTO with this false must not bypass the gate.
+   */
+  readonly canAssertDebtorCreditor: boolean
   readonly blockingReasons: readonly string[]
 }
 

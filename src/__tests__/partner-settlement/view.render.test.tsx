@@ -41,7 +41,7 @@ function baseDto(): PartnerReportB {
     ],
     equalization: {
       epYossi: null, epJacob: null, symmetryResidual: null,
-      headline: { debtor: null, creditor: null, amountEur: null, certificationStatus: 'PENDING_RECONCILIATION', blockingReasons: ['3 unresolved item(s) must be classified', 'property ownership pending confirmation', 'equalization not computed (Stage 1 framework)'] },
+      headline: { debtor: null, creditor: null, amountEur: null, certificationStatus: 'PENDING_RECONCILIATION', canAssertDebtorCreditor: false, blockingReasons: ['3 unresolved item(s) must be classified', 'property ownership pending confirmation', 'equalization not computed (Stage 1 framework)'] },
       certifiedSubtotalEur: null, unresolvedCount: 3, unresolvedAmountEur: null, components: [],
     },
     opening: { value: null, status: 'PENDING_RECONCILIATION' },
@@ -79,7 +79,7 @@ describe('PartnerReportBView (Stage 1 gating)', () => {
       equalization: {
         ...dto.equalization,
         epYossi: -2000, epJacob: 2000, symmetryResidual: 0,
-        headline: { debtor: 'Yossi', creditor: 'Jacob', amountEur: 2000, certificationStatus: 'CERTIFIED', blockingReasons: [] },
+        headline: { debtor: 'Yossi', creditor: 'Jacob', amountEur: 2000, certificationStatus: 'CERTIFIED', canAssertDebtorCreditor: true, blockingReasons: [] },
         unresolvedCount: 0,
       },
       unresolved: [],
@@ -88,5 +88,23 @@ describe('PartnerReportBView (Stage 1 gating)', () => {
     expect(html).toContain('data-certification="CERTIFIED"')
     expect(html).toMatch(/Yossi owes Jacob/)
     try { fs.writeFileSync('/tmp/prb_render_certified.html', wrap('Partner Report B — CERTIFIED sample', html)) } catch { /* best effort */ }
+  })
+
+  it('CERTIFIED status but canAssertDebtorCreditor=false: does NOT render a debtor/creditor sentence (gate not bypassable)', () => {
+    const dto = baseDto()
+    const bypass: PartnerReportB = {
+      ...dto,
+      equalization: {
+        ...dto.equalization,
+        epYossi: -2000, epJacob: 2000, symmetryResidual: 0,
+        // Hand-built CERTIFIED but the gate flag is false — must NOT render the sentence
+        headline: { debtor: 'Yossi', creditor: 'Jacob', amountEur: 2000, certificationStatus: 'CERTIFIED', canAssertDebtorCreditor: false, blockingReasons: [] },
+        unresolvedCount: 0,
+      },
+      unresolved: [],
+    }
+    const html = renderToStaticMarkup(<PartnerReportBView dto={bypass} />)
+    expect(html).not.toMatch(/Yossi owes Jacob/)
+    expect(html).toContain('not certified')
   })
 })
