@@ -1,10 +1,10 @@
 /**
  * @module partner-settlement/headlineGate
- * @description Stage 1 headline trust gate (12f).
+ * @description Headline trust gate (12f).
  *
  * The Yossi<->Jacob "who owes whom" headline may assert a final debtor/creditor
- * ONLY when every mandatory gate passes. In Stage 1 the classification / ownership /
- * profit inputs are incomplete by design, so this returns PARTIAL or
+ * ONLY when every mandatory gate passes. While the classification / ownership /
+ * profit inputs remain incomplete, this returns PARTIAL or
  * PENDING_RECONCILIATION and canAssertDebtorCreditor = false.
  *
  * Pure function — no I/O. Unit-tested.
@@ -49,7 +49,7 @@ export function evaluateHeadlineGate(input: GateInput): GateResult {
   if (input.ownerBalanceUnreconciled) hardReasons.push('owner balance not reconciled to one basis')
 
   if (input.symmetryResidualEur === null) {
-    hardReasons.push('equalization not computed (Stage 1 framework)')
+    hardReasons.push('consolidated equalization not computed (profit/settlement inputs not yet certified)')
   } else if (Math.abs(input.symmetryResidualEur) > SYMMETRY_EPSILON) {
     hardReasons.push('equalization components not symmetric (EP_Y + EP_J != 0)')
   }

@@ -1,9 +1,9 @@
 /**
  * @module components/partner-settlement/PartnerReportBView
- * @description Stage 1 presentation for Partner Report B. Pure props, no hooks — safe
+ * @description Presentation for Partner Report B (Stage 2). Pure props, no hooks — safe
  * to server-render (and to render in tests via renderToStaticMarkup).
  *
- * Self-contained on purpose: Stage 1 does not modify or extract shared components
+ * Self-contained on purpose: it does not modify or extract shared components
  * (report overlap must be reported before touching shared files). It reuses only
  * layout conventions.
  *
@@ -79,7 +79,7 @@ function HeadlineBanner({ dto }: { dto: PartnerReportB }) {
             No final “who owes whom” — result is not certified.
           </p>
           <p className="mt-1 text-sm text-amber-800">
-            {dto.equalization.unresolvedCount} unresolved item(s). This is a framework view (Stage 1); the consolidated balance is intentionally not asserted on partial data.
+            {dto.equalization.unresolvedCount} unresolved item(s). The consolidated balance is intentionally not asserted on partial data.
           </p>
           {h.blockingReasons.length > 0 && (
             <ul className="mt-2 list-disc pl-5 text-xs text-amber-800">
@@ -266,7 +266,7 @@ export function PartnerReportBView({ dto }: { dto: PartnerReportB }) {
       <header>
         <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400">JJ Property 10 · Partner Report B (Stage 2)</p>
         <h1 className="text-2xl font-extrabold text-gray-900">Partner Settlement — {dto.meta.periodStart} → {dto.meta.periodEnd}</h1>
-        <p className="mt-1 text-xs text-gray-500">Framework view · read-only · consolidated headline gated</p>
+        <p className="mt-1 text-xs text-gray-500">Read-only · consolidated headline gated</p>
       </header>
 
       <HeadlineBanner dto={dto} />
@@ -290,10 +290,30 @@ export function PartnerReportBView({ dto }: { dto: PartnerReportB }) {
 
       <UnresolvedQueue items={dto.unresolved} />
 
-      <section className="space-y-3">
-        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-600">Properties &amp; accounts</h3>
-        {dto.properties.map((p, i) => <PropertyBlock key={i} p={p} />)}
-      </section>
+      {(() => {
+        // Display-only grouping: separate genuine co-owned properties from JJ-company
+        // internal accounts / cost centres (relationship_type 'jj_company'). This does
+        // NOT change any computation — every item is still fully processed upstream.
+        const isInternal = (p: PropertyView) => (p.relationshipType ?? '').toLowerCase() === 'jj_company'
+        const realProps = dto.properties.filter(p => !isInternal(p))
+        const internal = dto.properties.filter(isInternal)
+        return (
+          <>
+            <section className="space-y-3">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-600">Properties &amp; accounts</h3>
+              {realProps.map((p, i) => <PropertyBlock key={i} p={p} />)}
+              {realProps.length === 0 && <p className="text-xs italic text-gray-400">No partnership/JJ properties in scope for this period.</p>}
+            </section>
+            {internal.length > 0 && (
+              <section className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-gray-600">Internal accounts / cost centres</h3>
+                <p className="text-xs text-gray-500">JJ-company internal accounts and cost centres — not co-owned properties. Shown separately; still included in the computation above.</p>
+                {internal.map((p, i) => <PropertyBlock key={i} p={p} />)}
+              </section>
+            )}
+          </>
+        )
+      })()}
 
       <footer className="border-t border-gray-100 pt-4 text-center text-xs text-gray-400">
         {dto.meta.currency} · generated {dto.meta.generatedAt} · Stage 2 wired ledger · consolidated headline gated
