@@ -205,11 +205,24 @@ const L = {
   finalTotalTransfers:  { en: 'Total Transfers to Owner',        he: 'סך העברות לבעלים'         },
   finalCurrentBalance:  { en: 'Current Balance',                 he: 'יתרה נוכחית'              },
   finalNoteTitle:       { en: 'Important Note',                  he: 'הערה חשובה'               },
-  finalDisclaimer:      { en: 'This report is prepared for informational purposes. Figures are based on recorded transactions and are subject to final audit and reconciliation. Opening balances from prior periods are not yet included.',
-                          he: 'דוח זה נערך למטרות מידע בלבד. הנתונים מבוססים על עסקאות שנרשמו וכפופים לביקורת ופיוס סופי. יתרות פתיחה מתקופות קודמות אינן כלולות עדיין.' },
+  finalDisclaimer:      { en: 'This report is prepared for informational purposes. Figures are based on all recorded transactions for this property and are subject to final audit and reconciliation.',
+                          he: 'דוח זה נערך למטרות מידע בלבד. הנתונים מבוססים על כל העסקאות הרשומות עבור נכס זה וכפופים לביקורת ופיוס סופי.' },
   finalGenerated:       { en: 'Report generated',                he: 'הדוח נוצר'                },
   // M6: closing statement
-  finalEndStatement:    { en: 'End of Owner Statement',          he: 'סוף דוח בעל הנכס'        },
+  finalEndStatement:    { en: 'End of Property Statement',       he: 'סוף דוח הנכס'            },
+
+  /* ── Statement components (settlement summary breakdown) ─────────────────── */
+  sumComponentsTitle:   { en: 'Statement Components',            he: 'רכיבי ההתחשבנות'         },
+  sumRenovationContract:{ en: 'Renovation Contract',            he: 'חוזה שיפוץ'              },
+  sumApprovedExtras:    { en: 'Approved Extras',                 he: 'תוספות מאושרות'          },
+  sumPaymentsReceived:  { en: 'Payments Received',               he: 'תשלומים שהתקבלו'         },
+  sumCrossProperty:     { en: 'Cross-Property Settlements',      he: 'קיזוזים בין נכסים'        },
+  sumPropertyExpenses:  { en: 'Property Expenses',               he: 'הוצאות נכס'              },
+  sumFinalBalanceNote:  { en: 'Final balance is the canonical net; components above are explanatory and may span periods and accounts.',
+                          he: 'היתרה הסופית היא הנטו הקנוני; הרכיבים שלמעלה הם להסבר בלבד ועשויים להשתרע על פני תקופות וחשבונות.' },
+  noteElectricitySubmeter: { en: 'Electricity is shown as the gross master-property bills paid by JJ. Tenant sub-meter reimbursements are recorded on the individual Kiti units and are reconciled only at the Kiti-group level.',
+                          he: 'החשמל מוצג כחשבונות הבית הראשי ברוטו ששולמו על ידי JJ. החזרי דיירים לפי מוני משנה נרשמים ביחידות קיטי הנפרדות ומתאזנים רק ברמת קבוצת קיטי.' },
+  docPropertyStatement: { en: 'Property Statement',              he: 'דוח נכס'                 },
 
   /* ── Controls ────────────────────────────────────────────────────────────── */
   property:             { en: 'Property',     he: 'נכס'         },
