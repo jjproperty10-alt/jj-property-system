@@ -30,6 +30,10 @@ function baseDto(): PartnerReportB {
       ],
       unresolved: [{ kind: 'OWNERSHIP_PENDING', ref: 'Villa Mazotos', reason: 'ownership pending_verification' }],
       status: 'PENDING',
+    }, {
+      propertyName: 'office', relationshipType: 'jj_company',
+      ownership: [], accounts: [], partnerPositions: [],
+      unresolved: [], status: 'PENDING',
     }],
     cashboxes: [
       { name: 'Yossi', kind: 'cash_holder', ledgerCashPosition: -41689.07, verifiedBankOrPhysicalCash: null, reconciliationDifference: null, verificationStatus: 'LEDGER_ONLY', sourceRef: { system: 'v_cashbox_audit', ref: 'Yossi' } },
@@ -47,7 +51,7 @@ function baseDto(): PartnerReportB {
     ],
     equalization: {
       epYossi: null, epJacob: null, symmetryResidual: null,
-      headline: { debtor: null, creditor: null, amountEur: null, certificationStatus: 'PENDING_RECONCILIATION', canAssertDebtorCreditor: false, blockingReasons: ['unresolved item(s) must be classified', 'property ownership pending confirmation', 'equalization not computed (Stage 1 framework)'] },
+      headline: { debtor: null, creditor: null, amountEur: null, certificationStatus: 'PENDING_RECONCILIATION', canAssertDebtorCreditor: false, blockingReasons: ['unresolved item(s) must be classified', 'property ownership pending confirmation', 'consolidated equalization not computed (profit/settlement inputs not yet certified)'] },
       certifiedSubtotalEur: 0, unresolvedCount: 3, unresolvedAmountEur: null, components: [],
     },
     opening: { value: null, status: 'PENDING_RECONCILIATION' },
@@ -77,6 +81,11 @@ describe('PartnerReportBView (Stage 2 gating)', () => {
     // Stage 2 additions render
     expect(html).toContain('Runtime classification summary')
     expect(html).toContain('current account')
+    // residual Stage-1 wording removed (Stage 2.1 UI cleanup)
+    expect(html).not.toMatch(/framework view \(Stage 1\)/i)
+    expect(html).not.toMatch(/Stage 1 framework/i)
+    // internal accounts / cost centres grouped separately from real properties
+    expect(html).toContain('Internal accounts / cost centres')
     try { fs.writeFileSync('/tmp/prb_render_pending.html', wrap('Partner Report B — Stage 2 (PENDING)', html)) } catch { /* best effort */ }
   })
 
