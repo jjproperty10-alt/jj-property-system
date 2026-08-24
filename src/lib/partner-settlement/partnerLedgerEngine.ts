@@ -225,6 +225,8 @@ export interface PartnerLedgerResult {
   readonly clientExcludedCount: number
   /** unrecognised non-null property transactions surfaced as PROPERTY_SCOPE_UNRESOLVED */
   readonly propertyScopeUnresolvedCount: number
+  /** transactions excluded because their property is a definition conflict (Stage 2.2) */
+  readonly conflictExcludedCount: number
   readonly unresolved: readonly UnresolvedItem[]
 }
 
@@ -251,6 +253,7 @@ export function buildPartnerLedger(
   let capitalNet = 0
   let clientExcludedCount = 0
   let propertyScopeUnresolvedCount = 0
+  let conflictExcludedCount = 0
 
   // Layer-A component accumulation: partner → class → {sum, count}
   const compByPartner = new Map<Partner, Map<PartnerTxClass, { sum: number; count: number; certified: boolean }>>()
@@ -274,6 +277,9 @@ export function buildPartnerLedger(
     if (opts.propertyScope) {
       const scope = classifyPropertyScope(tx.propertyName, opts.propertyScope)
       if (scope === 'CLIENT_EXCLUDE') { clientExcludedCount += 1; continue }
+      // Stage 2.2: partner-tagged property with an external owner → excluded from all
+      // totals (the SCOPE_DEFINITION_CONFLICT item is emitted once per property upstream).
+      if (scope === 'CONFLICT_EXCLUDE') { conflictExcludedCount += 1; continue }
       if (scope === 'UNKNOWN') {
         propertyScopeUnresolvedCount += 1
         unresolvedItems.push({
@@ -372,6 +378,7 @@ export function buildPartnerLedger(
     capViolations,
     clientExcludedCount,
     propertyScopeUnresolvedCount,
+    conflictExcludedCount,
     unresolved: unresolvedItems,
   }
 }
