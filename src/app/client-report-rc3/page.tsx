@@ -23,13 +23,11 @@
 'use client'
 
 import React, { useCallback, useEffect, useState, Suspense } from 'react'
-import nextDynamic from 'next/dynamic'
 import {
   Building2, Hammer, Key, Plane,
   Zap, Droplets, Wifi, Brush, Wrench, Sofa, Monitor, Package, Shield,
 } from 'lucide-react'
-import { fetchRC3Report } from '@/lib/report/fetchReport'
-import type { RC3PropertyReport, RC3AccountSection } from '@/lib/report/types'
+import type { ClientReport, ClientReportSection } from '@/lib/report/clientReportDto'
 import { toClientRow } from '@/lib/report/clientRow'
 import type { ClientDisplayRow } from '@/lib/report/clientRow'
 import { filterSectionsByReportType, type ReportType } from '@/lib/report/reportTypes'
@@ -43,42 +41,19 @@ import { ReportScopeSelector } from '@/components/report/ReportScopeSelector'
 import type { ReportScope } from '@/lib/report/reportScope'
 import { isScopeValid, defaultScope } from '@/lib/report/reportScope'
 import { ReportPeriodHeader, ReportScopeSummary } from '@/components/client-report'
-import {
-  getAuthorizedReportProperties,
-  validateAuthorizedReportScope,
-} from '@/lib/auth/reportAuthorization'
+import { getAuthorizedReportProperties } from '@/lib/auth/reportAuthorization'
+import { generateClientReport, type ClientReportErrorCode } from '@/lib/report/getClientReportAction'
 
-/* ─── Dynamic PDF import (client-only) ──────────────────────────────────────── */
-
-const PDFDownloadLink = nextDynamic(
-  () => import('@react-pdf/renderer').then(m => m.PDFDownloadLink),
-  { ssr: false, loading: () => <span>Preparing PDF…</span> },
-)
-
-// NOTE: OwnerSettlementPdfV3 is loaded via raw import() in useEffect (not nextDynamic).
-// react-pdf's custom reconciler cannot handle Next.js's dynamic() wrapper.
-
-/* ─── PDF Error Boundary ─────────────────────────────────────────────────────── */
-
-class PDFErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean }
-> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props)
-    this.state = { hasError: false }
-  }
-  static getDerivedStateFromError() { return { hasError: true } }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <span className="text-xs text-red-400 px-3 py-1 border border-red-200 rounded">
-          PDF unavailable — refresh to retry
-        </span>
-      )
-    }
-    return this.props.children
-  }
+/* ─── Server-generated PDF download link ────────────────────────────────────────
+ * The PDF is rendered on the SERVER by the auth-gated route GET /client-report-rc3/pdf,
+ * which re-runs the same authorization chain. No client-side react-pdf, no raw
+ * report in the browser — the browser only receives the finished PDF bytes.
+ */
+function pdfHref(opts: { property: string; reportType: ReportType; lang: Lang; fromDate?: string; toDate?: string }): string {
+  const p = new URLSearchParams({ property: opts.property, type: opts.reportType, lang: opts.lang })
+  if (opts.fromDate) p.set('from', opts.fromDate)
+  if (opts.toDate) p.set('to', opts.toDate)
+  return `/client-report-rc3/pdf?${p.toString()}`
 }
 
 /* ─── Format helpers ─────────────────────────────────────────────────────────── */
@@ -304,7 +279,7 @@ function MetricCard({ label, value, highlight = false, highlightColor = 'text-gr
   )
 }
 
-function ModuleSummaryCards({ section, lang }: { section: RC3AccountSection; lang: Lang }) {
+function ModuleSummaryCards({ section, lang }: { section: ClientReportSection; lang: Lang }) {
   const { label: balLabel, colorClass: balColor } = getBalanceLabel(
     section.closing_balance,
     section.balance_convention,
@@ -414,7 +389,7 @@ function ModuleSummaryCards({ section, lang }: { section: RC3AccountSection; lan
  * Aggregate KPIs across all active account sections.
  * Does NOT touch accounting logic — reads computed aggregates only.
  */
-function computeDashboard(accounts: RC3AccountSection[]) {
+function computeDashboard(accounts: ClientReportSection[]) {
   let totalIncome = 0
   let totalExpenses = 0
   let totalTransfers = 0
@@ -443,7 +418,7 @@ const M2_MODULE_COLORS: Record<string, string> = {
   airbnb: 'bg-orange-600',
 }
 
-function M2ModuleCard({ section, lang }: { section: RC3AccountSection; lang: Lang }) {
+function M2ModuleCard({ section, lang }: { section: ClientReportSection; lang: Lang }) {
   const colorClass = M2_MODULE_COLORS[section.account_type] ?? 'bg-slate-700'
   const { label: balLabel } = getBalanceLabel(section.closing_balance, section.balance_convention, lang)
   const absBalance = Math.abs(section.closing_balance)
@@ -500,7 +475,7 @@ function M2ModuleCard({ section, lang }: { section: RC3AccountSection; lang: Lan
   )
 }
 
-function PremiumSummary({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
+function PremiumSummary({ report, lang }: { report: ClientReport; lang: Lang }) {
   const netOwnerBalance = computeNetOwnerBalance(report.accounts)
   const { income: opIncome, expenses: opExpenses, transfers: opTransfers, hasOperational } =
     computeOperationalKPIs(report.accounts)
@@ -563,7 +538,7 @@ function PremiumSummary({ report, lang }: { report: RC3PropertyReport; lang: Lan
 
 /* ─── Final Summary ───────────────────────────────────────────────────────────── */
 
-function FinalSummary({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
+function FinalSummary({ report, lang }: { report: ClientReport; lang: Lang }) {
   const { totalIncome, totalExpenses, totalTransfers, netOwnerBalance } = computeDashboard(report.accounts)
 
   let balLabel: string
@@ -677,7 +652,7 @@ function ReportTypeSelector({
 
 /* ─── Account section card ────────────────────────────────────────────────────── */
 
-function AccountCard({ section, lang }: { section: RC3AccountSection; lang: Lang }) {
+function AccountCard({ section, lang }: { section: ClientReportSection; lang: Lang }) {
   const [expanded, setExpanded] = useState(true)
   const [showInfo, setShowInfo] = useState(false)
 
@@ -988,30 +963,33 @@ function authErrorMessage(error: string, lang: Lang): string {
   return messages[error]?.[lang] ?? messages[error]?.en ?? 'Authorization failed.'
 }
 
+/* ─── Server-action error messages (generic; no internal detail leaked) ───────── */
+
+function actionErrorMessage(error: ClientReportErrorCode, lang: Lang): string {
+  const messages: Record<ClientReportErrorCode, { en: string; he: string }> = {
+    invalid_input: { en: 'Invalid report request.', he: 'בקשת דוח לא תקינה.' },
+    access_denied: { en: 'You are not authorized to view this report.', he: 'אינך מורשה לצפות בדוח זה.' },
+    not_found: { en: 'No report data available.', he: 'אין נתוני דוח זמינים.' },
+    server_error: { en: 'Could not generate the report. Please try again.', he: 'לא ניתן להפיק את הדוח. נסה שוב.' },
+  }
+  return messages[error]?.[lang] ?? messages[error]?.en ?? 'Could not generate the report.'
+}
+
 /* ─── Main page content ──────────────────────────────────────────────────────── */
 
 function ClientReportRC3Content() {
   const [lang, setLang] = useState<Lang>('en')
   const [properties, setProperties] = useState<string[]>([])
   const [scope, setScope] = useState<ReportScope>({ type: 'single_property', propertyName: '' })
-  const [multiReports, setMultiReports] = useState<RC3PropertyReport[]>([])
+  const [multiReports, setMultiReports] = useState<ClientReport[]>([])
   const [fromDate, setFromDate] = useState<string>('')
   const [toDate, setToDate] = useState<string>('')
-  const [report, setReport] = useState<RC3PropertyReport | null>(null)
+  const [report, setReport] = useState<ClientReport | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pdfReady, setPdfReady] = useState(false)
-  const [PdfDoc, setPdfDoc] = useState<React.ComponentType<{
-    report: RC3PropertyReport; lang: Lang; reportType: ReportType
-  }> | null>(null)
-
-  useEffect(() => {
-    import('@/lib/pdf/OwnerSettlementPdfV3').then(m => {
-      setPdfDoc(() => m.OwnerSettlementPdfV3 as React.ComponentType<{
-        report: RC3PropertyReport; lang: Lang; reportType: ReportType
-      }>)
-    })
-  }, [])
+  // Hoisted above loadReport so the server action receives the selected report type.
+  const [reportType, setReportType] = useState<ReportType>('full')
 
   /**
    * PR B: Load authorized properties via PR A Server Action.
@@ -1054,47 +1032,36 @@ function ClientReportRC3Content() {
     setReport(null)
     setMultiReports([])
     try {
-      // Server-side scope validation through PR A authorization chain.
-      // This re-validates the user's session and role on every report load,
-      // ensuring no stale authorization state.
-      const validation = await validateAuthorizedReportScope(scope)
-      if (!validation.ok) {
-        setError(authErrorMessage(validation.error, lang))
+      // ONE atomic server action: it validates input, authenticates the session,
+      // authorizes the scope, fetches RC3 server-side, and returns ONLY the
+      // client-safe DTO. The raw report and the service-role client never reach
+      // the browser. The PDF is produced separately by the auth-gated route
+      // GET /client-report-rc3/pdf (see pdfHref), which re-runs the same
+      // authorization chain server-side.
+      const result = await generateClientReport({
+        scope,
+        reportType,
+        fromDate: fromDate || undefined,
+        toDate: toDate || undefined,
+        lang,
+      })
+      if (!result.ok) {
+        setError(actionErrorMessage(result.error, lang))
         return
       }
 
-      const resolvedProperties = validation.resolvedProperties
-
       if (scope.type === 'single_property') {
-        // ── Single-property path (backward-compatible UX) ─────────────────
-        const r = await fetchRC3Report({
-          reportingName: resolvedProperties[0],
-          fromDate: fromDate || undefined,
-          toDate: toDate || undefined,
-        })
-        setReport(r)
-        setTimeout(() => setPdfReady(true), 600)
+        setReport(result.reports[0] ?? null)
       } else {
-        // ── Multi-property path (portfolio / selected_properties) ──────────
-        // Each report is fetched independently — no cross-property arithmetic.
-        const reports = await Promise.all(
-          resolvedProperties.map(name =>
-            fetchRC3Report({
-              reportingName: name,
-              fromDate: fromDate || undefined,
-              toDate: toDate || undefined,
-            }),
-          ),
-        )
-        setMultiReports(reports)
-        setTimeout(() => setPdfReady(true), 600)
+        setMultiReports(result.reports)
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load report')
+      setPdfReady(true) // report data ready; PDF served on-demand by the route handler
+    } catch {
+      setError(actionErrorMessage('server_error', lang))
     } finally {
       setLoading(false)
     }
-  }, [scope, fromDate, toDate, lang])
+  }, [scope, fromDate, toDate, lang, reportType])
 
   // Auto-load when the user selects a different property in single-property mode.
   // Portfolio / selected_properties require an explicit "View Report" click.
@@ -1104,13 +1071,6 @@ function ClientReportRC3Content() {
     if (_singlePropTrigger) loadReport()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [_singlePropTrigger])
-
-  const [reportType, setReportType] = useState<ReportType>('full')
-
-  const reportTypeSlug = reportType === 'full' ? 'Full_Owner_Report' : 'Periodic_Owner_Report'
-  const pdfFilename = report
-    ? `JJ_${reportTypeSlug}_${report.reporting_name.replace(/\s+/g, '_')}_${report.from_date || 'all'}_to_${report.to_date || 'all'}.pdf`
-    : 'report.pdf'
 
   // Filter sections by report type + exclude Purchase (JJ internal, Global Owner/Client Perspective Rule)
   const visibleAccounts = report ? filterOwnerFacingSections(filterSectionsByReportType(report.accounts, reportType)) : []
@@ -1191,18 +1151,21 @@ function ClientReportRC3Content() {
               {loading ? t('loading', lang) : t('viewReport', lang)}
             </button>
 
-            {report && pdfReady && PdfDoc && (
-              <PDFErrorBoundary>
-                <PDFDownloadLink
-                  document={<PdfDoc report={filteredReport!} lang={lang} reportType={reportType} />}
-                  fileName={pdfFilename}
-                  className="px-5 py-2.5 bg-green-700 text-white text-sm rounded-lg hover:bg-green-800 font-medium transition-colors"
-                >
-                  {({ loading: pdfLoading }: { loading: boolean }) =>
-                    pdfLoading ? t('buildingPdf', lang) : `⬇ ${t('downloadPdf', lang)}`
-                  }
-                </PDFDownloadLink>
-              </PDFErrorBoundary>
+            {report && pdfReady && (
+              <a
+                href={pdfHref({
+                  property: report.reporting_name,
+                  reportType,
+                  lang,
+                  fromDate: fromDate || undefined,
+                  toDate: toDate || undefined,
+                })}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-5 py-2.5 bg-green-700 text-white text-sm rounded-lg hover:bg-green-800 font-medium transition-colors"
+              >
+                {`⬇ ${t('downloadPdf', lang)}`}
+              </a>
             )}
           </div>
         </div>
@@ -1267,24 +1230,26 @@ function ClientReportRC3Content() {
                   )}
                   <FinalSummary report={mrFiltered} lang={lang} />
 
-                  {/* Per-property PDF download button.
-                      One button per property — each generates its own file.
-                      Unified scope PDF (single document, all properties) is future work. */}
-                  {pdfReady && PdfDoc && (
+                  {/* Per-property PDF download link.
+                      One link per property — each is served on-demand by the
+                      auth-gated route handler. Unified scope PDF (single document,
+                      all properties) is future work. */}
+                  {pdfReady && (
                     <div className="flex justify-end mt-2 mb-4">
-                      <PDFErrorBoundary>
-                        <PDFDownloadLink
-                          document={<PdfDoc report={mrFiltered} lang={lang} reportType={reportType} />}
-                          fileName={`JJ_${reportTypeSlug}_${mr.reporting_name.replace(/\s+/g, '_')}_${mr.from_date || 'all'}_to_${mr.to_date || 'all'}.pdf`}
-                          className="px-4 py-2 bg-green-700 text-white text-sm rounded-lg hover:bg-green-800 font-medium transition-colors"
-                        >
-                          {({ loading: pdfLoading }: { loading: boolean }) =>
-                            pdfLoading
-                              ? t('buildingPdf', lang)
-                              : `⬇ ${t('downloadPdf', lang)} — ${mr.reporting_name}`
-                          }
-                        </PDFDownloadLink>
-                      </PDFErrorBoundary>
+                      <a
+                        href={pdfHref({
+                          property: mr.reporting_name,
+                          reportType,
+                          lang,
+                          fromDate: fromDate || undefined,
+                          toDate: toDate || undefined,
+                        })}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2 bg-green-700 text-white text-sm rounded-lg hover:bg-green-800 font-medium transition-colors"
+                      >
+                        {`⬇ ${t('downloadPdf', lang)} — ${mr.reporting_name}`}
+                      </a>
                     </div>
                   )}
                 </div>

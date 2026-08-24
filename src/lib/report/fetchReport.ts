@@ -18,9 +18,8 @@
  * already-authorized server-side reporting layer. No authorization
  * model changes.
  *
- * Follow-up: add `import 'server-only'` once the `server-only` npm package
- * is installed (not currently in package.json). This will cause the compiler
- * to reject any accidental client-bundle import.
+ * `import 'server-only'` (below) makes any accidental client-bundle import of
+ * this module a build-time error — enforcing the server boundary in code.
  *
  * View chain:
  * transactions
@@ -32,6 +31,7 @@
  * (review_status = 'active' OR review_status IS NULL) AND reporting_name IS NOT NULL
  */
 
+import 'server-only'
 import { createServiceClient } from '@/lib/supabase'
 import { buildAccountSection } from './computeBalance'
 import type { RC3AccountType, RC3PropertyReport, RC3Row } from './types'

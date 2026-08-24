@@ -9,8 +9,6 @@
  * Do NOT redefine these types elsewhere.
  */
 
-import type { RC3AccountSection } from './types'
-
 /**
  * The two report modes for RC3.
  *
@@ -67,10 +65,10 @@ const PERIODIC_ACCOUNT_TYPES = new Set<string>(['rental', 'airbnb'])
  * Pure display-layer filter — never modifies accounting totals,
  * balance calculations, or any field on the remaining sections.
  */
-export function filterSectionsByReportType(
-  sections: RC3AccountSection[],
+export function filterSectionsByReportType<T extends { account_type: string }>(
+  sections: T[],
   reportType: ReportType,
-): RC3AccountSection[] {
+): T[] {
   if (reportType === 'full') return sections
   return sections.filter(s => PERIODIC_ACCOUNT_TYPES.has(s.account_type))
 }
