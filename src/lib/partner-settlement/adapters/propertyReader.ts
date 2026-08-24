@@ -32,7 +32,7 @@ export async function readPropertyScopeSets(): Promise<PropertyScopeSets | null>
   const db = createServiceClient()
   const { data, error } = await db
     .from('property_definitions')
-    .select('canonical_name, reporting_name, relationship_type')
+    .select('canonical_name, reporting_name, relationship_type, aliases')
   if (error || data == null) return null
   return splitPropertyScopeSets(data as PropertyDefRow[])
 }

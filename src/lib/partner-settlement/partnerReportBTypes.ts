@@ -70,6 +70,9 @@ export type UnresolvedKind =
   | 'EXCLUSIONS_SOURCE_UNAVAILABLE'
   | 'IDENTITY_SOURCE_UNAVAILABLE'
   | 'PROPERTY_SCOPE_UNRESOLVED'
+  // Stage 2.2 — defensive scope guard
+  | 'SCOPE_DEFINITION_CONFLICT'
+  | 'OWNER_SOURCE_UNAVAILABLE'
   | 'OTHER'
 
 /** An item that could not be certified. Must NEVER enter certified totals. */
