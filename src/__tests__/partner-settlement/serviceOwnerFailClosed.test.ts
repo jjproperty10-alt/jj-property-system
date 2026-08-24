@@ -45,6 +45,7 @@ jest.mock('@/lib/partner-settlement/adapters/ownerScopeReader', () => ({
 
 import { buildPartnerReportB } from '@/lib/partner-settlement/partnerReportBService'
 import { normalizePartnerTx, type RawLedgerRow } from '@/lib/partner-settlement/ledgerRowFilter'
+import { splitPropertyScopeSets } from '@/lib/partner-settlement/scope'
 
 function tx(p: Partial<RawLedgerRow>) {
   return normalizePartnerTx({
@@ -66,7 +67,7 @@ beforeEach(() => {
   readPropertyScopeSets.mockResolvedValue({
     partner: new Set(['yogev port', 'villa mazotos']),
     client: new Set<string>(),
-    conflictEligible: new Set(['yogev port']), // jj_company
+    conflictEligibleGroups: [new Set(['yogev port'])], // one jj_company row group
   })
   readPartnerLedger.mockResolvedValue({
     txns: [
@@ -114,5 +115,37 @@ describe('buildPartnerReportB — owner source failure fails closed (Stage 2.2 #
     expect(yossi.ledgerBalanceEur).toBe(500) // Yogev still excluded (real conflict); Villa counts
     expect(dto.unresolved.some(u => u.kind === 'SCOPE_DEFINITION_CONFLICT' && u.ref === 'yogev port')).toBe(true)
     expect(dto.unresolved.some(u => u.kind === 'OWNER_SOURCE_UNAVAILABLE')).toBe(false)
+  })
+
+  it('REGRESSION: owner matches CANONICAL, but the Property View / tx use a DIFFERENT reporting name → still excluded', async () => {
+    // Yogev row: canonical 'Yogev Port', reporting 'Yogev Marina', alias 'Yogev Apartment'.
+    const defs = [
+      { canonical_name: 'Yogev Port', reporting_name: 'Yogev Marina', relationship_type: 'jj_company', aliases: ['Yogev Apartment'] },
+      { canonical_name: 'Villa Mazotos', reporting_name: null, relationship_type: 'partnership', aliases: null },
+    ]
+    readPropertyScopeSets.mockResolvedValue(splitPropertyScopeSets(defs))
+    readExternalOwnerPropertyNames.mockResolvedValue(new Set(['yogev port'])) // owner match on CANONICAL only
+    // Property View is listed under the REPORTING name; tx is under the ALIAS.
+    readPartnerScopeProperties.mockResolvedValue([
+      { reportingName: 'Yogev Marina', relationshipType: 'jj_company' },
+      { reportingName: 'Villa Mazotos', relationshipType: 'partnership' },
+    ])
+    readPartnerLedger.mockResolvedValue({
+      txns: [
+        tx({ id: 'yog', payer: 'yossi', payee: 'jj', category: 'Renovation', subcategory: 'AC', amount_eur: 71.40, property_name: 'Yogev Apartment' }),
+        tx({ id: 'vm', payer: 'yossi', payee: 'company', category: 'Management', subcategory: 'Repairs', amount_eur: 500, property_name: 'Villa Mazotos' }),
+      ],
+      sourceFailures: [],
+    })
+
+    const dto = await buildPartnerReportB({ periodStart: '2026-08-01', periodEnd: '2026-08-31', generatedAt: '2026-08-23T00:00:00.000Z' })
+
+    // The €71.40 (under the alias) is excluded; Yossi = 500 from Villa only.
+    expect(dto.partnerCurrentAccounts.find(a => a.party === 'Yossi')!.ledgerBalanceEur).toBe(500)
+    // The Property View listed under the REPORTING name is NOT rendered (card excluded).
+    expect(dto.properties.some(p => p.propertyName === 'Yogev Marina')).toBe(false)
+    // Conflict surfaced; Villa (partnership) still present.
+    expect(dto.unresolved.some(u => u.kind === 'SCOPE_DEFINITION_CONFLICT')).toBe(true)
+    expect(dto.properties.some(p => p.propertyName === 'Villa Mazotos')).toBe(true)
   })
 })

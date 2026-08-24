@@ -67,7 +67,7 @@ export async function buildPartnerReportB(opts: BuildOptions): Promise<PartnerRe
 
   // Property scope (QA #185-3). If the scope source is unavailable, fail closed with
   // EMPTY sets so no client/unknown property transaction can be silently included.
-  const baseScope = scopeSets ?? { partner: new Set<string>(), client: new Set<string>(), conflictEligible: new Set<string>() }
+  const baseScope = scopeSets ?? { partner: new Set<string>(), client: new Set<string>(), conflictEligibleGroups: [] }
   if (scopeSets == null) {
     unresolved.push({
       kind: 'PROPERTY_SCOPE_UNRESOLVED',
@@ -85,7 +85,7 @@ export async function buildPartnerReportB(opts: BuildOptions): Promise<PartnerRe
   // external owner is a conflict. Partnership co-owners (Avi/Oren) are legitimate — a
   // partnership with an external owner stays IN_SCOPE (Villa Mazotos / Villa Mazotos 2).
   const { conflict, ownerSourceUnavailable } = buildConflictSet(
-    baseScope.conflictEligible ?? new Set<string>(), externalOwnerNames,
+    baseScope.conflictEligibleGroups ?? [], externalOwnerNames,
   )
   if (ownerSourceUnavailable) {
     // FAIL-CLOSED: cannot verify ownership → ALL jj / jj_company (conflict-eligible)

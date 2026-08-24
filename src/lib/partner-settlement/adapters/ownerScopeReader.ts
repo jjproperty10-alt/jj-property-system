@@ -3,10 +3,12 @@
  * @description READ-ONLY external-owner reader for the Stage 2.2 scope guard.
  *
  * Returns the set of property names that have an active external OWNER in
- * contact_properties. A property with an external owner is a client relationship — if
- * property_definitions nonetheless tags it partner-scope (partnership/jj/jj_company),
- * that is a SCOPE_DEFINITION_CONFLICT and the property must be excluded from the Partner
- * Report (never silently included).
+ * contact_properties. An external owner is a definition conflict ONLY for
+ * conflict-eligible rows — jj / jj_company (an internal/JJ property that actually has an
+ * external owner is really a client, e.g. Yogev Port). `partnership` is NOT a conflict:
+ * a partnership legitimately has external co-owners (Villa Mazotos: Avi 50%; Villa
+ * Mazotos 2: Oren 35%). The relationship-aware decision lives in scope.ts
+ * (computeScopeConflicts over per-row groups); this adapter only supplies the owner set.
  *
  * READ-ONLY: only .select(). Returns null on source failure so the caller can fail
  * closed with an OWNER_SOURCE_UNAVAILABLE blocker.

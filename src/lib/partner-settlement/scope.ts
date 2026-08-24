@@ -58,15 +58,19 @@ export interface PropertyScopeSets {
   /** lower-cased client-management-only property names (+ aliases) */
   readonly client: ReadonlySet<string>
   /**
-   * Stage 2.2: names eligible to become a definition conflict if they ALSO have an
-   * external owner — i.e. jj / jj_company only. `partnership` is DELIBERATELY EXCLUDED:
-   * a partnership legitimately has external co-owners (Villa Mazotos: Avi 50%; Villa
-   * Mazotos 2: Oren 35%), so an external owner there is expected, NOT a conflict.
+   * Stage 2.2 (QA fix): conflict eligibility is per PROPERTY-DEFINITION ROW, not per
+   * individual name. Each group is the COMPLETE name-set of one jj / jj_company row
+   * (canonical + reporting + all aliases). `partnership` rows are DELIBERATELY EXCLUDED
+   * (external co-owners there are legitimate — Villa Mazotos Avi 50%, Villa Mazotos 2
+   * Oren 35%). When any name in a group matches an external owner, the WHOLE group is
+   * flagged — so a transaction under a different alias/reporting name of the same
+   * property is excluded too.
    */
-  readonly conflictEligible?: ReadonlySet<string>
+  readonly conflictEligibleGroups?: ReadonlyArray<ReadonlySet<string>>
   /**
-   * Stage 2.2: names that are conflict-eligible AND have an external owner — excluded
-   * from all partner totals and surfaced as SCOPE_DEFINITION_CONFLICT (never silent).
+   * Stage 2.2: the full set of names (canonical+reporting+aliases) of every conflicting
+   * property row — excluded from all partner totals and surfaced as
+   * SCOPE_DEFINITION_CONFLICT (never silent).
    */
   readonly conflict?: ReadonlySet<string>
 }
@@ -93,39 +97,53 @@ export function classifyPropertyScope(name: string | null | undefined, sets: Pro
   return 'UNKNOWN'
 }
 
-/** Build partner/client/conflict-eligible name sets from property_definitions. */
+/** Collect a property row's complete lower-cased name-set (canonical + reporting + aliases). */
+function rowNames(r: PropertyDefRow): Set<string> {
+  const s = new Set<string>()
+  const names: (string | null | undefined)[] = [r.reporting_name, r.canonical_name, ...(r.aliases ?? [])]
+  for (const nm of names) {
+    if (!nm) continue
+    const key = nm.trim().toLowerCase()
+    if (key) s.add(key)
+  }
+  return s
+}
+
+/** Build partner/client name sets + per-row conflict-eligible groups from property_definitions. */
 export function splitPropertyScopeSets(rows: readonly PropertyDefRow[]): PropertyScopeSets {
   const partner = new Set<string>()
   const client = new Set<string>()
-  const conflictEligible = new Set<string>()
+  const conflictEligibleGroups: Set<string>[] = []
   for (const r of rows) {
     const rel = (r.relationship_type ?? '').toLowerCase()
-    const names: (string | null | undefined)[] = [r.reporting_name, r.canonical_name, ...(r.aliases ?? [])]
-    for (const nm of names) {
-      if (!nm) continue
-      const key = nm.trim().toLowerCase()
-      if (key === '') continue
+    const names = rowNames(r)
+    names.forEach(key => {
       if (PARTNER_SCOPE_RELATIONSHIP_TYPES.has(rel)) partner.add(key)
       else if (rel === 'client') client.add(key)
-      if (CONFLICT_ELIGIBLE_RELATIONSHIP_TYPES.has(rel)) conflictEligible.add(key) // jj / jj_company only
-    }
+    })
+    // jj / jj_company only — keep the row's names TOGETHER as one group (NOT partnership).
+    if (CONFLICT_ELIGIBLE_RELATIONSHIP_TYPES.has(rel) && names.size > 0) conflictEligibleGroups.push(names)
   }
-  return { partner, client, conflictEligible }
+  return { partner, client, conflictEligibleGroups }
 }
 
 /**
- * Stage 2.2 defensive guard: a definition conflict is a CONFLICT-ELIGIBLE property
- * (jj / jj_company — NOT partnership) that ALSO has an external owner in
- * contact_properties. Partnership co-owners (Avi, Oren) are legitimate and are never
- * flagged. Pure set intersection; `externalOwnerNames` must be lower-cased.
+ * Stage 2.2 defensive guard (QA fix): a definition conflict is a CONFLICT-ELIGIBLE ROW
+ * (jj / jj_company — NOT partnership) where ANY of its names (canonical/reporting/alias)
+ * matches an external owner in contact_properties. When matched, the ENTIRE row's
+ * name-set is flagged, so a transaction/property-card under a DIFFERENT name of the same
+ * property is also excluded. Partnership co-owners (Avi, Oren) are never flagged.
+ * `externalOwnerNames` must be lower-cased.
  */
 export function computeScopeConflicts(
-  conflictEligible: ReadonlySet<string>,
+  conflictEligibleGroups: ReadonlyArray<ReadonlySet<string>>,
   externalOwnerNames: ReadonlySet<string>,
 ): Set<string> {
   const conflict = new Set<string>()
-  conflictEligible.forEach(name => {
-    if (externalOwnerNames.has(name)) conflict.add(name)
+  conflictEligibleGroups.forEach(group => {
+    let matched = false
+    group.forEach(name => { if (externalOwnerNames.has(name)) matched = true })
+    if (matched) group.forEach(name => conflict.add(name)) // flag ALL names of the row
   })
   return conflict
 }
@@ -133,19 +151,18 @@ export function computeScopeConflicts(
 /**
  * Resolve the scope guard, FAIL-CLOSED. If the external-owner source is unavailable
  * (null) we cannot verify which jj / jj_company properties are actually clients, so we
- * exclude EVERY conflict-eligible property (all jj + jj_company) from partner totals —
- * NOT an empty conflict set. Otherwise an owner-dependent property (e.g. Yogev) could
- * re-enter the subtotals with only a warning. Partnership is never conflict-eligible, so
- * partnership properties are unaffected. The caller also surfaces OWNER_SOURCE_UNAVAILABLE.
+ * exclude EVERY conflict-eligible property (all names of all jj/jj_company rows) from
+ * partner totals — NOT an empty conflict set. Partnership rows are never conflict-eligible
+ * and are unaffected. The caller also surfaces OWNER_SOURCE_UNAVAILABLE.
  */
 export function buildConflictSet(
-  conflictEligible: ReadonlySet<string>,
+  conflictEligibleGroups: ReadonlyArray<ReadonlySet<string>>,
   externalOwnerNames: ReadonlySet<string> | null,
 ): { conflict: Set<string>; ownerSourceUnavailable: boolean } {
   if (externalOwnerNames == null) {
     const conflict = new Set<string>()
-    conflictEligible.forEach(name => conflict.add(name)) // exclude ALL jj/jj_company (fail-closed)
+    conflictEligibleGroups.forEach(group => group.forEach(name => conflict.add(name))) // all jj/jj_company names
     return { conflict, ownerSourceUnavailable: true }
   }
-  return { conflict: computeScopeConflicts(conflictEligible, externalOwnerNames), ownerSourceUnavailable: false }
+  return { conflict: computeScopeConflicts(conflictEligibleGroups, externalOwnerNames), ownerSourceUnavailable: false }
 }
