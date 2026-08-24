@@ -15,7 +15,7 @@
  *                                 (Additional Approved Charges).
  *   #3 computeStatementComponents — explanatory component lines; NOT a balance.
  */
-import type { RC3AccountSection } from './types'
+import type { DisplayGroup } from './types'
 import { t, type Lang } from './labels'
 
 /** #2 — Corrected group headers for the renovation (debt) account. */
@@ -63,8 +63,18 @@ export interface OperatingIncomeSplit {
  * never changes a balance and contains no hardcoded names or amounts.
  *
  * Only meaningful for rental/airbnb accounts; callers guard by account_type.
+ *
+ * Structural param (screen reuse, 2026-08-24): typed to the minimal row shape it
+ * reads, so BOTH the raw RC3AccountSection (PDF, server-side) AND the client-safe
+ * ClientReportSection DTO (the /client-report-rc3 screen) can be passed. This is
+ * the SAME single classification rule for PDF and screen — no duplicated logic.
+ * Backward-compatible: RC3AccountSection remains assignable, existing callers
+ * are unaffected.
  */
-export function splitOperatingIncomeTotals(section: RC3AccountSection): OperatingIncomeSplit {
+interface OperatingIncomeRowsSection {
+  rows: ReadonlyArray<{ display_group: DisplayGroup; subcategory: string | null; balance_effect: number }>
+}
+export function splitOperatingIncomeTotals(section: OperatingIncomeRowsSection): OperatingIncomeSplit {
   let rentalIncome = 0
   let crossPropertySettlements = 0
   for (const r of section.rows) {
@@ -88,8 +98,17 @@ export interface StatementComponents {
  * PRESENTATION ONLY: these lines help a reader see contract, extras, payments,
  * settlements and expenses apart. They do NOT sum to the final balance and must
  * never be used to recompute it — the canonical net is authoritative.
+ *
+ * Structural param (screen reuse, 2026-08-24): same rationale as
+ * splitOperatingIncomeTotals — accepts both the raw RC3AccountSection (PDF) and
+ * the client-safe ClientReportSection DTO (screen). Backward-compatible.
  */
-export function computeStatementComponents(accounts: RC3AccountSection[]): StatementComponents {
+interface StatementComponentsSection {
+  account_type:      string
+  contract_baseline: number
+  rows:              ReadonlyArray<{ subcategory: string | null; display_group: DisplayGroup; client_amount: number }>
+}
+export function computeStatementComponents(accounts: readonly StatementComponentsSection[]): StatementComponents {
   let renovationContract = 0
   let approvedExtras = 0
   let paymentsReceived = 0

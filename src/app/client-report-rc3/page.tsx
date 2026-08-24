@@ -37,6 +37,7 @@ import {
 } from '@/lib/report/labels'
 import { groupExpenses } from '@/lib/report/expenseGroups'
 import { computeOperationalKPIs, computeNetOwnerBalance, filterOwnerFacingSections } from '@/lib/report/executiveSummary'
+import { splitOperatingIncome, splitOperatingIncomeTotals, computeStatementComponents } from '@/lib/report/statementPresentation'
 import { ReportScopeSelector } from '@/components/report/ReportScopeSelector'
 import type { ReportScope } from '@/lib/report/reportScope'
 import { isScopeValid, defaultScope } from '@/lib/report/reportScope'
@@ -346,9 +347,14 @@ function ModuleSummaryCards({ section, lang }: { section: ClientReportSection; l
   }
 
   if (section.account_type === 'rental') {
+    // #1 — a rental "Client Payment" is a cross-property settlement, not rental
+    // income. Same rule as the approved PDF (splitOperatingIncomeTotals). Balance unchanged.
+    const opSplit = splitOperatingIncomeTotals(section)
+    const hasSettlement = Math.abs(opSplit.crossPropertySettlements) >= 0.005
     return (
       <div className="flex gap-3 px-4 py-3 flex-wrap">
-        <MetricCard label={t('cardRentalIncome', lang)} value={section.total_income} />
+        <MetricCard label={t('cardRentalIncome', lang)} value={opSplit.rentalIncome} />
+        {hasSettlement && <MetricCard label={t('sumCrossProperty', lang)} value={opSplit.crossPropertySettlements} />}
         <MetricCard label={t('cardRentalExpenses', lang)} value={section.total_expenses} />
         <MetricCard label={t('cardRentalBpo', lang)} value={section.total_bpo} />
         <div className="flex-1 min-w-0 bg-white rounded-xl border-2 border-gray-300 px-4 py-3 shadow-sm">
@@ -365,9 +371,12 @@ function ModuleSummaryCards({ section, lang }: { section: ClientReportSection; l
   }
 
   // airbnb
+  const opSplitAirbnb = splitOperatingIncomeTotals(section)
+  const hasSettlementAirbnb = Math.abs(opSplitAirbnb.crossPropertySettlements) >= 0.005
   return (
     <div className="flex gap-3 px-4 py-3 flex-wrap">
-      <MetricCard label={t('cardAirbnbIncome', lang)} value={section.total_income} />
+      <MetricCard label={t('cardAirbnbIncome', lang)} value={opSplitAirbnb.rentalIncome} />
+      {hasSettlementAirbnb && <MetricCard label={t('sumCrossProperty', lang)} value={opSplitAirbnb.crossPropertySettlements} />}
       <MetricCard label={t('cardAirbnbExpenses', lang)} value={section.total_expenses} />
       <MetricCard label={t('cardAirbnbBpo', lang)} value={section.total_bpo} />
       <div className="flex-1 min-w-0 bg-white rounded-xl border-2 border-gray-300 px-4 py-3 shadow-sm">
@@ -439,13 +448,22 @@ function M2ModuleCard({ section, lang }: { section: ClientReportSection; lang: L
       { label: t('cardRenovExtras', lang), value: section.total_income },
       { label: t('cardRenovPayments', lang), value: section.total_expenses },
     ]
-    if (section.account_type === 'rental') return [
-      { label: t('cardRentalIncome', lang), value: section.total_income },
-      { label: t('cardRentalExpenses', lang), value: section.total_expenses },
-      { label: t('cardRentalBpo', lang), value: section.total_bpo },
-    ]
+    if (section.account_type === 'rental') {
+      // #1 — split cross-property settlements out of rental income (approved PDF rule)
+      const s = splitOperatingIncomeTotals(section)
+      return [
+        { label: t('cardRentalIncome', lang), value: s.rentalIncome },
+        ...(Math.abs(s.crossPropertySettlements) >= 0.005
+          ? [{ label: t('sumCrossProperty', lang), value: s.crossPropertySettlements }] : []),
+        { label: t('cardRentalExpenses', lang), value: section.total_expenses },
+        { label: t('cardRentalBpo', lang), value: section.total_bpo },
+      ]
+    }
+    const s = splitOperatingIncomeTotals(section)
     return [
-      { label: t('cardAirbnbIncome', lang), value: section.total_income },
+      { label: t('cardAirbnbIncome', lang), value: s.rentalIncome },
+      ...(Math.abs(s.crossPropertySettlements) >= 0.005
+        ? [{ label: t('sumCrossProperty', lang), value: s.crossPropertySettlements }] : []),
       { label: t('cardAirbnbExpenses', lang), value: section.total_expenses },
       { label: t('cardAirbnbBpo', lang), value: section.total_bpo },
     ]
@@ -477,8 +495,16 @@ function M2ModuleCard({ section, lang }: { section: ClientReportSection; lang: L
 
 function PremiumSummary({ report, lang }: { report: ClientReport; lang: Lang }) {
   const netOwnerBalance = computeNetOwnerBalance(report.accounts)
-  const { income: opIncome, expenses: opExpenses, transfers: opTransfers, hasOperational } =
+  const { income: opIncomeRaw, expenses: opExpenses, transfers: opTransfers, hasOperational } =
     computeOperationalKPIs(report.accounts)
+  // #1 — a rental/airbnb "Client Payment" is a cross-property settlement, not
+  // operating income. Separate it here (same rule as the approved PDF), so the
+  // Operational Income KPI shows genuine income and settlements get their own KPI.
+  // Presentation only — the canonical net is unchanged.
+  const opSettlements = report.accounts
+    .filter(a => a.account_type === 'rental' || a.account_type === 'airbnb')
+    .reduce((sum, a) => sum + splitOperatingIncomeTotals(a).crossPropertySettlements, 0)
+  const opIncome = opIncomeRaw - opSettlements
   const absNet = Math.abs(netOwnerBalance)
   let heroLabel: string, heroBg: string, heroAmountClass: string
   if (absNet < 0.005) {
@@ -511,13 +537,15 @@ function PremiumSummary({ report, lang }: { report: ClientReport; lang: Lang }) 
       {hasOperational && (
         <div className="mb-6">
           <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-blue-400 mb-3">{t('opSummaryTitle', lang)}</div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="flex flex-wrap gap-3">
             {[
               { label: t('opIncomeLabel', lang), value: opIncome },
+              // #1 — cross-property settlements shown separately, never folded into Operational Income
+              ...(Math.abs(opSettlements) >= 0.005 ? [{ label: t('sumCrossProperty', lang), value: opSettlements }] : []),
               { label: t('opExpensesLabel', lang), value: opExpenses },
               { label: t('dashTransfers', lang), value: opTransfers },
             ].map(kpi => (
-              <div key={kpi.label} className="bg-white/5 border border-white/10 rounded-lg px-4 py-3">
+              <div key={kpi.label} className="flex-1 min-w-[120px] bg-white/5 border border-white/10 rounded-lg px-4 py-3">
                 <div className="text-[9px] font-bold text-blue-300/80 uppercase tracking-wide mb-2">{kpi.label}</div>
                 {/* M6: text-lg for KPI values */}
                 <div className="text-lg font-bold font-mono text-white/90">{eur(kpi.value)}</div>
@@ -539,7 +567,8 @@ function PremiumSummary({ report, lang }: { report: ClientReport; lang: Lang }) 
 /* ─── Final Summary ───────────────────────────────────────────────────────────── */
 
 function FinalSummary({ report, lang }: { report: ClientReport; lang: Lang }) {
-  const { totalIncome, totalExpenses, totalTransfers, netOwnerBalance } = computeDashboard(report.accounts)
+  // Canonical net — unchanged (do NOT recompute the balance here).
+  const { netOwnerBalance } = computeDashboard(report.accounts)
 
   let balLabel: string
   let balColor: string
@@ -551,11 +580,23 @@ function FinalSummary({ report, lang }: { report: ClientReport; lang: Lang }) {
     balLabel = t('balPayableByYou', lang); balColor = 'text-red-300'
   }
 
-  const kpis = [
-    { label: t('finalTotalIncome', lang), value: totalIncome },
-    { label: t('finalTotalExpenses', lang), value: totalExpenses },
-    { label: t('finalTotalTransfers', lang), value: totalTransfers },
-  ]
+  // #1 — Statement components, each type identified separately (matches the approved
+  // PDF Settlement Summary). A cross-property settlement is NEVER folded into an
+  // "Income" total. Genuine operating income and settlements come from the SAME
+  // approved helper (splitOperatingIncomeTotals); the remaining components from
+  // computeStatementComponents. Presentation only — the canonical net is untouched.
+  const operating = report.accounts.filter(a => a.account_type === 'rental' || a.account_type === 'airbnb')
+  const operationalIncome = operating.reduce((s, a) => s + splitOperatingIncomeTotals(a).rentalIncome, 0)
+  const crossPropertySettlements = operating.reduce((s, a) => s + splitOperatingIncomeTotals(a).crossPropertySettlements, 0)
+  const comp = computeStatementComponents(report.accounts)
+  const componentLines = [
+    { label: t('opIncomeLabel', lang), value: operationalIncome },
+    { label: t('sumRenovationContract', lang), value: comp.renovationContract },
+    { label: t('sumApprovedExtras', lang), value: comp.approvedExtras },
+    { label: t('sumPaymentsReceived', lang), value: comp.paymentsReceived },
+    { label: t('sumCrossProperty', lang), value: crossPropertySettlements },
+    { label: t('sumPropertyExpenses', lang), value: comp.propertyExpenses },
+  ].filter(l => Math.abs(l.value) >= 0.005)
 
   const genDate = (() => {
     try {
@@ -572,10 +613,10 @@ function FinalSummary({ report, lang }: { report: ClientReport; lang: Lang }) {
         {t('finalTitle', lang)}
       </div>
 
-      {/* 3 KPI cards */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
-        {kpis.map(k => (
-          <div key={k.label} className="bg-white/10 rounded-xl px-4 py-3">
+      {/* Statement components — each type identified separately (no "Total Income") */}
+      <div className="flex flex-wrap gap-3 mb-4">
+        {componentLines.map(k => (
+          <div key={k.label} className="flex-1 min-w-[150px] bg-white/10 rounded-xl px-4 py-3">
             <div className="text-[10px] text-blue-300 mb-1.5 font-medium">{k.label}</div>
             {/* M6: text-lg */}
             <div className="text-lg font-bold font-mono text-white">{eur(k.value)}</div>
@@ -689,6 +730,15 @@ function AccountCard({ section, lang }: { section: ClientReportSection; lang: La
 
   const useExpenseGrouping = section.account_type === 'rental' || section.account_type === 'airbnb'
 
+  // #1 — operating accounts: a "Client Payment" income row is a cross-property
+  // settlement, not rental income. Split it out under its own heading (same rule
+  // as the approved PDF). Tenant/genuine income stays under the income heading.
+  const isOperating = section.account_type === 'rental' || section.account_type === 'airbnb'
+  const { income: primaryIncomeRows, settlements: settlementRows } =
+    isOperating ? splitOperatingIncome(incomeRows) : { income: incomeRows, settlements: [] as typeof incomeRows }
+  const opTotals = isOperating ? splitOperatingIncomeTotals(section) : null
+  const hasSettlement = !!opTotals && Math.abs(opTotals.crossPropertySettlements) >= 0.005
+
   return (
     <div className={`rounded-2xl border ${colours.border} ${colours.bg} mb-5 overflow-hidden shadow-sm print-card`}>
 
@@ -753,7 +803,12 @@ function AccountCard({ section, lang }: { section: ClientReportSection; lang: La
           <div className="flex flex-wrap gap-6 px-5 py-3 border-b border-gray-100 bg-gray-50 text-xs">
             {incomeRows.length > 0 && (
               <span className={section.balance_convention === 'client_debt' ? 'text-red-700 font-medium' : 'text-green-700 font-medium'}>
-                {t(incomeLabelKey, lang)}: {eur(section.total_income)}
+                {t(incomeLabelKey, lang)}: {eur(isOperating && opTotals ? opTotals.rentalIncome : section.total_income)}
+              </span>
+            )}
+            {hasSettlement && opTotals && (
+              <span className="text-blue-700 font-medium">
+                {t('sumCrossProperty', lang)}: {eur(opTotals.crossPropertySettlements)}
               </span>
             )}
             {expenseRows.length > 0 && (
@@ -768,8 +823,8 @@ function AccountCard({ section, lang }: { section: ClientReportSection; lang: La
             )}
           </div>
 
-          {/* Section B — Income rows */}
-          {incomeRows.length > 0 && (
+          {/* Section B — Income rows (genuine operating/other income) */}
+          {primaryIncomeRows.length > 0 && (
             <div className="border-b border-gray-100">
               <div className="px-5 pt-3 pb-1">
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
@@ -792,7 +847,28 @@ function AccountCard({ section, lang }: { section: ClientReportSection; lang: La
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {incomeRows.map((row, i) => (
+                    {primaryIncomeRows.map((row, i) => (
+                      <TxRow key={row.id} row={row} idx={i} lang={lang} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Section B — Cross-property settlements: a "Client Payment" credit used
+              to settle another account. Never rental income (approved PDF rule). */}
+          {settlementRows.length > 0 && (
+            <div className="border-b border-gray-100">
+              <div className="px-5 pt-3 pb-1">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+                  {t('sumCrossProperty', lang)}
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <tbody className="divide-y divide-gray-100">
+                    {settlementRows.map((row, i) => (
                       <TxRow key={row.id} row={row} idx={i} lang={lang} />
                     ))}
                   </tbody>
