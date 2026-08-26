@@ -494,7 +494,11 @@ function M2ModuleCard({ section, lang }: { section: ClientReportSection; lang: L
 }
 
 function PremiumSummary({ report, lang }: { report: ClientReport; lang: Lang }) {
-  const netOwnerBalance = computeNetOwnerBalance(report.accounts)
+  // P-UI-504: headline net must match the canonical owner-facing composition the PDF uses
+  // (getOwnerClientReport(report).overallNet === computeNetOwnerBalance(filterOwnerFacingSections(report.accounts))).
+  // Purchase stays VISIBLE in the account list / drill-down but is EXCLUDED from the settlement net
+  // via filterOwnerFacingSections (JJ-internal acquisition — Global Owner/Client Perspective Rule).
+  const netOwnerBalance = computeNetOwnerBalance(filterOwnerFacingSections(report.accounts))
   const { income: opIncomeRaw, expenses: opExpenses, transfers: opTransfers, hasOperational } =
     computeOperationalKPIs(report.accounts)
   // #1 — a rental/airbnb "Client Payment" is a cross-property settlement, not
