@@ -30,13 +30,14 @@ import {
 import type { ClientReport, ClientReportSection } from '@/lib/report/clientReportDto'
 import { toClientRow } from '@/lib/report/clientRow'
 import type { ClientDisplayRow } from '@/lib/report/clientRow'
-import { filterSectionsByReportType, type ReportType } from '@/lib/report/reportTypes'
+import type { ReportType } from '@/lib/report/reportTypes'
 import {
   buildRowLabel,
   t, type Lang, type LabelKey,
 } from '@/lib/report/labels'
 import { groupExpenses } from '@/lib/report/expenseGroups'
 import { computeOperationalKPIs, computeNetOwnerBalance, filterOwnerFacingSections } from '@/lib/report/executiveSummary'
+import { partitionReportAccounts } from '@/lib/report/reportAccountPartition'
 import { splitOperatingIncome, splitOperatingIncomeTotals, computeStatementComponents } from '@/lib/report/statementPresentation'
 import { ReportScopeSelector } from '@/components/report/ReportScopeSelector'
 import type { ReportScope } from '@/lib/report/reportScope'
@@ -1152,9 +1153,14 @@ function ClientReportRC3Content() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [_singlePropTrigger])
 
-  // Filter sections by report type + exclude Purchase (JJ internal, Global Owner/Client Perspective Rule)
-  const visibleAccounts = report ? filterOwnerFacingSections(filterSectionsByReportType(report.accounts, reportType)) : []
-  const filteredReport = report ? { ...report, accounts: visibleAccounts } : null
+  // P-UI-504b — split display vs summary. Purchase stays VISIBLE in the account
+  // list / drill-down (reference only), but is EXCLUDED from the headline net,
+  // module cards and settlement summary (Global Owner/Client Perspective Rule).
+  const { displayAccounts, summaryAccounts } = report
+    ? partitionReportAccounts(report.accounts, reportType)
+    : { displayAccounts: [], summaryAccounts: [] }
+  const visibleAccounts = summaryAccounts
+  const filteredReport = report ? { ...report, accounts: summaryAccounts } : null
 
   const isRTL = lang === 'he'
 
@@ -1275,12 +1281,12 @@ function ClientReportRC3Content() {
             <PremiumSummary report={filteredReport!} lang={lang} />
 
             {/* Account cards */}
-            {visibleAccounts.length === 0 ? (
+            {displayAccounts.length === 0 ? (
               <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm rounded-xl p-5">
                 {t('noTransactions', lang)}
               </div>
             ) : (
-              visibleAccounts.map(acc => (
+              displayAccounts.map(acc => (
                 <AccountCard key={acc.account_type} section={acc} lang={lang} />
               ))
             )}
@@ -1294,17 +1300,18 @@ function ClientReportRC3Content() {
         {multiReports.length > 0 && !loading && (
           <div className="space-y-6">
             {multiReports.map(mr => {
-              const mrAccounts = filterOwnerFacingSections(filterSectionsByReportType(mr.accounts, reportType))
+              const { displayAccounts: mrDisplay, summaryAccounts: mrAccounts } =
+                partitionReportAccounts(mr.accounts, reportType)
               const mrFiltered = { ...mr, accounts: mrAccounts }
               return (
                 <div key={mr.reporting_name}>
                   <PremiumSummary report={mrFiltered} lang={lang} />
-                  {mrAccounts.length === 0 ? (
+                  {mrDisplay.length === 0 ? (
                     <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm rounded-xl p-5 mb-4">
                       {t('noTransactions', lang)}
                     </div>
                   ) : (
-                    mrAccounts.map(acc => (
+                    mrDisplay.map(acc => (
                       <AccountCard key={acc.account_type} section={acc} lang={lang} />
                     ))
                   )}
