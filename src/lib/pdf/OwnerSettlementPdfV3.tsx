@@ -35,6 +35,7 @@ import {
 } from '../report/labels'
 import { groupExpenses } from '../report/expenseGroups'
 import { computeOperationalKPIs, filterOwnerFacingSections } from '../report/executiveSummary'
+import { shouldShowElectricitySubmeterNote } from '../report/electricitySubmeterNote'
 import { getOwnerClientReport, getPortfolioOwnerNet } from '../report/ownerClientReport'
 import { renovationGroupHeaders, splitOperatingIncome, splitOperatingIncomeTotals, computeStatementComponents } from '../report/statementPresentation'
 
@@ -759,11 +760,15 @@ function TxGroupTable({
   const total = rows.reduce((s, r) => s + r.client_amount, 0)
   return (
     <View>
-      <Text style={[s.groupLabel, rtlTextStyle(lang)]}>{label}</Text>
-      <View style={[s.tableHead, rtlRowDirection(lang)]}>
-        <Text style={[s.th, s.cDate, rtlTextStyle(lang)]}>{t('thDate', lang)}</Text>
-        <Text style={[s.th, s.cDesc, rtlTextStyle(lang)]}>{t('thDescription', lang)}</Text>
-        <Text style={[s.th, s.cAmt, rtlColumnOrder(lang)]}>{t('thAmount', lang)}</Text>
+      {/* P-UI-504d — keep the group header + column head together and never leave the
+          header alone at a page bottom (minPresenceAhead reserves room for a first row). */}
+      <View wrap={false} minPresenceAhead={48}>
+        <Text style={[s.groupLabel, rtlTextStyle(lang)]}>{label}</Text>
+        <View style={[s.tableHead, rtlRowDirection(lang)]}>
+          <Text style={[s.th, s.cDate, rtlTextStyle(lang)]}>{t('thDate', lang)}</Text>
+          <Text style={[s.th, s.cDesc, rtlTextStyle(lang)]}>{t('thDescription', lang)}</Text>
+          <Text style={[s.th, s.cAmt, rtlColumnOrder(lang)]}>{t('thAmount', lang)}</Text>
+        </View>
       </View>
       {rows.map((row, i) => {
         const desc = buildRowLabel(row, lang)
@@ -963,8 +968,12 @@ function AccountBlock({ section, lang }: { section: RC3AccountSection; lang: Lan
 
 /** Final settlement summary + disclaimer (dark navy block at end of PDF) */
 function FinalSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
-  // Keep ONLY the canonical net — the €930.39 figure is not recomputed here.
-  const { netOwnerBalance } = computeDashboard(report.accounts)
+  // P-UI-504d — the settlement summary must use ONLY owner-facing (client) accounts,
+  // exactly like the hero net. Purchase (JJ-internal acquisition) is excluded via the
+  // canonical filter so the bottom balance == the header net (same value + direction),
+  // and Payments/Expenses components reference client accounts only.
+  const clientAccounts = filterOwnerFacingSections(report.accounts)
+  const { netOwnerBalance } = computeDashboard(clientAccounts)
 
   let balLabel: string; let balColor: string
   if (Math.abs(netOwnerBalance) < 0.005) {
@@ -983,13 +992,11 @@ function FinalSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: La
     } catch { return '' }
   })()
 
-  const hasElectricity = report.accounts.some(a =>
-    a.rows.some(r => {
-      const sub = (r.subcategory ?? '').toLowerCase()
-      return sub.includes('electric') || sub.includes('חשמל')
-    }),
-  )
-  const comp = computeStatementComponents(report.accounts)
+  // P-UI-504d — the Kiti electricity sub-meter note is gated by a VERIFIED property
+  // association (electricitySubmeterNote), NEVER by the property name or by "has an
+  // electricity line" (which false-positives on unrelated properties, e.g. Neer).
+  const showSubmeterNote = shouldShowElectricitySubmeterNote(report)
+  const comp = computeStatementComponents(clientAccounts)
   const componentLines: Array<{ label: string; value: number }> = [
     { label: t('sumRenovationContract', lang), value: comp.renovationContract },
     { label: t('sumApprovedExtras', lang),     value: comp.approvedExtras },
@@ -1029,7 +1036,7 @@ function FinalSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: La
       <View style={s.finalDiscBorder}>
         <Text style={[s.finalDiscTitle, rtlTextStyle(lang)]}>{t('finalNoteTitle', lang)}</Text>
         <Text style={[s.finalDiscText, rtlTextStyle(lang)]}>{t('finalDisclaimer', lang)}</Text>
-        {hasElectricity ? (
+        {showSubmeterNote ? (
           <Text style={[s.finalDiscText, rtlTextStyle(lang), { marginTop: 6 }]}>{t('noteElectricitySubmeter', lang)}</Text>
         ) : null}
         <Text style={[s.finalDiscGen, rtlTextStyle(lang)]}>{t('finalGenerated', lang)}: {genDate}</Text>

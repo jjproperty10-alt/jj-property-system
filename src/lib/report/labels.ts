@@ -36,7 +36,8 @@ export function overrideDisplayLabel(label: string): string {
 /** Section header labels — static EN (kept for backward compat with Phase A PDF import) */
 export const SECTION_LABELS = {
   contractInfo:     'Contract Information',
-  contractInfoNote: 'Shown for reference only — does not affect settlement balance',
+  // P-UI-504d — see the bilingual contractInfoNote below; kept in sync.
+  contractInfoNote: 'The contract value is included in the deal balance below — shown here for reference, not counted twice.',
 } as const
 
 /** Account type → EN label */
@@ -176,8 +177,11 @@ const L = {
   /* ── Section labels ──────────────────────────────────────────────────────── */
   contractInfo:         { en: 'Contract Information',
                           he: 'פרטי חוזה' },
-  contractInfoNote:     { en: 'Shown for reference only — does not affect settlement balance',
-                          he: 'מוצג לעיון בלבד — אינו משפיע על יתרת החשבון' },
+  // P-UI-504d — the contract value IS the deal-balance baseline; the old note
+  // ("does not affect settlement balance") was misleading. Clarify that it is
+  // included in the deal balance below and is not counted twice.
+  contractInfoNote:     { en: 'The contract value is included in the deal balance below — shown here for reference, not counted twice.',
+                          he: 'ערך החוזה כלול ביתרת העסקה שלמטה — מוצג כאן לעיון בלבד, ואינו נספר פעמיים.' },
 
   /* ── Table headers ───────────────────────────────────────────────────────── */
   thDate:               { en: 'Date',         he: 'תאריך'   },
@@ -188,8 +192,11 @@ const L = {
   /* ── Income / expense group headers inside each account ─────────────────── */
   incomePurchase:       { en: 'Purchase Costs',                  he: 'עלויות רכישה'         },
   expensesPurchase:     { en: 'Purchase Payments',               he: 'תשלומי רכישה'         },
-  incomeSale:           { en: 'Charges & Expenses',              he: 'חיובים והוצאות'       },
-  expensesSale:         { en: 'Payments Received',               he: 'תשלומים שהתקבלו'      },
+  // P-UI-504d — in a Sale (client_debt) account the 'income' display_group holds
+  // the client's payments toward their purchase (credits), and the 'expense' group
+  // holds real charges/costs. Label them accordingly (they were previously swapped).
+  incomeSale:           { en: 'Payments toward your purchase',   he: 'תשלומים עבור הרכישה שלך' },
+  expensesSale:         { en: 'Charges & Expenses',              he: 'חיובים והוצאות'       },
   incomeRenov:          { en: 'Additional Approved Charges',     he: 'חיובים נוספים מאושרים' },
   expensesRenov:        { en: 'Payments Received',               he: 'תשלומים שהתקבלו'      },
   incomeRental:         { en: 'Rental Income',                   he: 'הכנסות שכירות'        },

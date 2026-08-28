@@ -75,7 +75,10 @@ function oldVisible(rep: RC3PropertyReport, reportType: 'full' | 'periodic') {
   return filterOwnerFacingSections(filterSectionsByReportType(rep.accounts, reportType))
 }
 
-describe('P-UI-504b — Purchase stays in the account list, stays out of the net', () => {
+// NOTE — Updated by P-UI-504d: the Client Report Privacy Rule now hides Purchase
+// from the account list / drill-down TOO (it was previously kept for reference in
+// 504b). displayAccounts therefore equals summaryAccounts (both Purchase-excluded).
+describe('P-UI-504b/d — Purchase stays out of BOTH the client account list and the net', () => {
   // Purchase net component = Contract 180,000 − Deposit 10,000 − Purchase
   // Payment 44,000 = 126,000 (client_debt). Plus an owner-facing rental credit
   // of +500 so the display path and the summary net are numerically distinct.
@@ -85,13 +88,14 @@ describe('P-UI-504b — Purchase stays in the account list, stays out of the net
     section('rental', 500, 'owner_credit'),
   ])
 
-  test('1a. full: displayAccounts INCLUDE Purchase; summaryAccounts EXCLUDE it', () => {
+  test('1a. full (504d): displayAccounts EXCLUDE Purchase and equal summaryAccounts', () => {
     expect(purchaseNet).toBe(126000)
     const { displayAccounts, summaryAccounts } = partitionReportAccounts(rep.accounts, 'full')
-    // Purchase renders in the account list / drill-down.
-    expect(displayAccounts.some(a => a.account_type === 'purchase')).toBe(true)
+    // 504d — Purchase is hidden from the client account list / drill-down too.
+    expect(displayAccounts.some(a => a.account_type === 'purchase')).toBe(false)
     expect(displayAccounts.some(a => a.account_type === 'rental')).toBe(true)
-    // Purchase absent from the settlement/summary set.
+    // Both client sets are the same owner-facing set now.
+    expect(displayAccounts).toEqual(summaryAccounts)
     expect(summaryAccounts.some(a => a.account_type === 'purchase')).toBe(false)
     expect(summaryAccounts.some(a => a.account_type === 'rental')).toBe(true)
   })
