@@ -266,3 +266,59 @@ export function saleStatus(s: StatusSummary): SectionStatus {
   }
   return { label: 'Sold', color: 'green' }
 }
+
+// ── Seller Settlement Status (P-UI-504c) ──────────────────────────────
+// SEPARATE from purchaseStatus (which tracks JJ's own invested capital, JJ-only).
+// Question: "Is the original seller fully paid on this purchase?"
+// The client's Third-Party Payment (paid directly to the seller) settles the seller
+// debt alongside JJ's own payments, attributed to the property's single purchase
+// contract. This does NOT change the JJ-investment figure (purchase_paid_to_seller).
+// All money comparisons are done in integer CENTS to avoid float-equality artifacts
+// (a spurious tiny remaining balance, or a false 'Review'). See tpp-seller-debt-gap.
+const toCents = (v: number | null | undefined): number => Math.round(n(v) * 100)
+
+// Total settled toward the seller = JJ's own payments + client's direct (Third-Party) payments.
+export function sellerPaid(s: StatusSummary): number {
+  return (toCents(s.purchase_paid_to_seller) + toCents(s.third_party_payment)) / 100
+}
+
+// Remaining balance still owed to the seller, clamped at 0, cents-exact.
+export function sellerBalance(s: StatusSummary): number {
+  const cents = toCents(s.purchase_contract) - toCents(s.purchase_paid_to_seller) - toCents(s.third_party_payment)
+  return Math.max(0, cents) / 100
+}
+
+export function sellerSettlementStatus(s: StatusSummary): SectionStatus {
+  const contract = toCents(s.purchase_contract)
+  const paid     = toCents(s.purchase_paid_to_seller) + toCents(s.third_party_payment)
+
+  if (contract === 0) {
+    return { label: 'No data', color: 'gray' }
+  }
+  // Overpaid vs contract (JJ + client-to-seller exceed the contract): likely a
+  // duplicate or mis-entry. Flag for review — never auto-net to a negative debt.
+  if (paid > contract) {
+    return { label: 'Review', color: 'red' }
+  }
+  if (paid === 0) {
+    return { label: 'Waiting', color: 'orange' }
+  }
+  return (contract - paid) > 0
+    ? { label: 'Partially paid', color: 'yellow' }
+    : { label: 'Closed', color: 'green' }
+}
+
+// Display decision for the "Balance to seller" cell — single source for the UI.
+// No data → render a grey dash (NOT €0), so an absent purchase is never mistaken
+// for a settled debt. Review → flagged overpayment. Due/Paid → remaining/settled.
+export type SellerBalanceKind = 'No data' | 'Review' | 'Due' | 'Paid'
+export interface SellerBalanceCell { kind: SellerBalanceKind; amount: number; color: StatusColor }
+export function sellerBalanceCell(s: StatusSummary): SellerBalanceCell {
+  const st = sellerSettlementStatus(s)
+  if (st.label === 'No data') return { kind: 'No data', amount: 0, color: 'gray' }
+  if (st.label === 'Review')  return { kind: 'Review', amount: 0, color: 'red' }
+  const bal = sellerBalance(s)
+  return bal > 0
+    ? { kind: 'Due',  amount: bal, color: 'yellow' }
+    : { kind: 'Paid', amount: 0,   color: 'green' }
+}
