@@ -11,6 +11,7 @@ import { format, parseISO } from 'date-fns'
 import {
   purchaseStatus, partnerStatus, renovationStatus,
   airbnbStatus, managementStatus, saleStatus, STATUS_COLORS,
+  sellerSettlementStatus, sellerBalance, sellerBalanceCell,
 } from '@/lib/propertyStatus'
 
 const EUR = (n: number) =>
@@ -210,6 +211,7 @@ export default function PropertyDetailPage() {
         // pre-computed values (unchanged — do not modify)
         const invested      = num(s.purchase_paid_to_seller) + num(s.purchase_expenses_only)
         const purchaseBal   = num(s.purchase_contract) - num(s.purchase_paid_to_seller)
+        const sellerBal     = sellerBalance(s)  // remaining owed to seller, cents-exact (JJ + client direct payment)
         const extrasMarkup  = num(s.renovation_extras_charge) - num(s.renovation_extras_cost)
         const renovProfit   = num(s.renovation_received) - num(s.renovation_actual_cost)  // P0-B
         const airbnbResult  = num(s.airbnb_platform_income) - num(s.airbnb_expenses)
@@ -230,6 +232,8 @@ export default function PropertyDetailPage() {
 
         // section statuses — shared functions, one source of truth
         const pSt   = purchaseStatus(s)
+        const sSt   = sellerSettlementStatus(s)
+        const sbc   = sellerBalanceCell(s)
         const ptSt  = partnerStatus(owners)
         const rSt   = renovationStatus(s)
         const aSt   = airbnbStatus(s)
@@ -295,12 +299,22 @@ export default function PropertyDetailPage() {
               {heroRow(invested > 0 ? EUR(invested) : '—', 'Total Invested', invested > 0 ? 'red' : 'muted')}
               <div className="grid grid-cols-3 divide-x divide-y divide-gray-50">
                 {cell('Contract value',    num(s.purchase_contract) > 0 ? EUR(num(s.purchase_contract)) : dash, 'blue')}
-                {cell('Paid to seller',    EUR(num(s.purchase_paid_to_seller)), num(s.purchase_paid_to_seller) > 0 ? 'neutral' : 'muted')}
+                {cell('Paid from JJ funds', EUR(num(s.purchase_paid_to_seller)), num(s.purchase_paid_to_seller) > 0 ? 'neutral' : 'muted')}
                 {cell('Purchase expenses', EUR(num(s.purchase_expenses_only)), num(s.purchase_expenses_only) > 0 ? 'neutral' : 'muted')}
                 {cell('Total invested',    EUR(invested), invested > 0 ? 'red' : 'muted')}
-                {cell('Balance due',       purchaseBal > 0 ? EUR(purchaseBal) : '€0', purchaseBal > 0 ? 'yellow' : 'green')}
-                {cell('Status',            purchaseBal <= 0 ? 'Fully paid' : `${EUR(purchaseBal)} outstanding`, purchaseBal <= 0 ? 'green' : 'yellow')}
+                {cell('Paid directly by client', EUR(num(s.third_party_payment)), num(s.third_party_payment) > 0 ? 'neutral' : 'muted')}
+                {cell('Balance to seller',       sbc.kind === 'No data' ? dash : sbc.kind === 'Review' ? 'Review' : sbc.kind === 'Due' ? EUR(sbc.amount) : '€0', sbc.kind === 'No data' ? 'muted' : sbc.color)}
               </div>
+              {/* Seller settlement (P-UI-504c) — separate from JJ investment; includes the client's direct payment to the seller */}
+              {num(s.purchase_contract) > 0 && (
+                <div className="px-3 py-2 border-t border-gray-100 flex items-center justify-between text-sm">
+                  <span className="text-gray-500">Seller settlement <span className="text-gray-400">(incl. client direct payment)</span></span>
+                  <span className="flex items-center gap-2">
+                    {badge(sSt.color, sSt.label)}
+                    <span className="tabular-nums text-gray-600">{sSt.label === 'Review' ? 'overpaid — review' : (sellerBal > 0 ? `${EUR(sellerBal)} to seller` : 'seller paid in full')}</span>
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* 2 · Partner Entry */}
