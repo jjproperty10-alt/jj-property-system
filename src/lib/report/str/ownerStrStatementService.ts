@@ -11,6 +11,7 @@ import { PropertyAuditService, isRevenueEligible, parsePeriodFromDescription } f
 import { maskGuestName } from '@/lib/owners/ownerReservationAdapter'
 import { composeOwnerStrStatement, isOwnerStatementExtra, type OwnerStrStatement, type StatementReservationEvidence, type StatementExtra } from './ownerStrStatement'
 import { isBookingAccountVerifiedZero } from './bookingTaxPolicy'
+import { applyAirbnbCyprusVat } from './airbnbTaxPolicy'
 import { getAuthoritativeStatementLine, belongsToStatementMonth } from './statementEvidence'
 import { getHistoricalChannelEvidence } from './historicalChannelEvidence'
 
@@ -36,6 +37,16 @@ function toEvidence(propertyName: string, r: any, today: string): StatementReser
     : commission != null
       ? 'hostaway:channelCommissionAmount'
       : r.channel === 'direct' ? 'direct:no_platform_fee' : 'hostaway:none'
+  // Cyprus VAT gross-up (Airbnb only): the raw Airbnb feed omits the 9% occupancy VAT that the
+  // authoritative Hostaway Owner Statement grosses-up into Gross + Platform Fees and surfaces as Taxes.
+  // Report layer only; Booking/direct/historical untouched; explicit-nonzero-tax rows respected as-is.
+  const vat = applyAirbnbCyprusVat({
+    channel: String(r.channel),
+    grossEur: f.totalPrice ?? null,
+    platformFeesEur,
+    taxesEur: f.taxAmount ?? null,
+    airbnbExpectedPayoutEur: f.payout?.amount ?? null,
+  })
   return {
     reservationId: r.hostawayReservationId,
     channel: String(r.channel),
@@ -44,11 +55,11 @@ function toEvidence(propertyName: string, r: any, today: string): StatementReser
     checkIn: r.checkIn,
     checkOut: r.checkOut,
     nights: r.nights,
-    grossEur: f.totalPrice ?? null,
-    platformFeesEur,
-    platformFeesSource,
+    grossEur: vat.grossEur,
+    platformFeesEur: vat.platformFeesEur,
+    platformFeesSource: vat.applied ? `${platformFeesSource}+jj_derived:airbnb_cyprus_vat_9pct` : platformFeesSource,
     cleaningEur: f.cleaningFee ?? null,
-    taxesEur: f.taxAmount ?? null,               // null stays Unknown (never coerced to 0)
+    taxesEur: vat.taxesEur,                       // Airbnb VAT gross-up applied; null stays Unknown (never coerced to 0)
     // Account-bounded Booking verified-zero tax (raw null + validated regime). Fail-closed elsewhere.
     taxVerifiedZeroEvidence: isBookingAccountVerifiedZero(String(r.channel), f.taxAmount ?? null, r.checkIn),
     // Authoritative Hostaway statement line (verbatim) when raw is incomplete/inconsistent.
