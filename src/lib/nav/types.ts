@@ -66,14 +66,28 @@ export interface WorkspaceRegistration {
  * TypeScript enforces completeness of WORKSPACE_ICON_IDS and WORKSPACE_ICONS maps.
  * Update when adding a workspace to the registry.
  */
-export type RegisteredWorkspaceId = 'home' | 'ceo' | 'owners' | 'clientReports' | 'finance'
+export type RegisteredWorkspaceId =
+  | 'home'
+  | 'ceo'
+  | 'owners'
+  | 'clientReports'
+  | 'finance'
+  | 'transactions'
+  | 'validation'
 
 /**
  * Closed set of icon identifiers for workspace navigation.
  * Each value maps to a Lucide component in Sidebar's WORKSPACE_ICONS.
  * Update when adding a workspace to the registry.
  */
-export type WorkspaceIconId = 'home' | 'ceo' | 'owners' | 'clientReports' | 'finance'
+export type WorkspaceIconId =
+  | 'home'
+  | 'ceo'
+  | 'owners'
+  | 'clientReports'
+  | 'finance'
+  | 'transactions'
+  | 'validation'
 
 /**
  * Serializable projection of WorkspaceRegistration for the RSC boundary.

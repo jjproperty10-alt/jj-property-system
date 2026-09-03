@@ -21,7 +21,7 @@
  * @see NAV-1_PHASE2_NAVIGATION_CONTRACT.md — Contract B, Contract E, Appendix
  */
 
-import { Home, Users, BarChart3, Building2, FileText } from 'lucide-react'
+import { Home, Users, BarChart3, Building2, FileText, ListOrdered, ShieldCheck } from 'lucide-react'
 import type {
   WorkspaceRegistration,
   WorkspaceNavItem,
@@ -42,6 +42,8 @@ import type {
  *   owners        — active — identityResolverService — R11
  *   clientReports — active — existing /client-report-rc3 route (nav link only)
  *   finance       — active — Finance KG — R5+R6
+ *   transactions  — active — M1 correction workspace
+ *   validation    — active — M1 validation workspace
  *
  * Not registered yet:
  *   properties  — future
@@ -90,6 +92,22 @@ const WORKSPACES: readonly WorkspaceRegistration[] = [
     routePrefix: '/finance',
     attentionProvider: async () => null, // v1: Finance attention not yet wired
   },
+  {
+    id: 'transactions',
+    label: 'Transactions / עסקאות',
+    icon: ListOrdered,
+    landingRoute: '/transactions',
+    routePrefix: '/transactions',
+    attentionProvider: async () => null,
+  },
+  {
+    id: 'validation',
+    label: 'Validation / בדיקות',
+    icon: ShieldCheck,
+    landingRoute: '/validation',
+    routePrefix: '/validation',
+    attentionProvider: async () => null,
+  },
 ]
 
 // ─── Icon ID Map ────────────────────────────────────────────────────────
@@ -107,6 +125,8 @@ const WORKSPACE_ICON_IDS: Record<RegisteredWorkspaceId, WorkspaceIconId> = {
   owners: 'owners',
   clientReports: 'clientReports',
   finance: 'finance',
+  transactions: 'transactions',
+  validation: 'validation',
 }
 
 // ─── Role Visibility (Contract E.1) ─────────────────────────────────────
@@ -149,6 +169,18 @@ const ROLE_VISIBILITY: Record<string, Record<FrameUser['role'], 'visible' | 'rea
     finance: 'visible',
     operations: 'hidden',
     staff: 'hidden',
+  },
+  transactions: {
+    ceo: 'visible',
+    finance: 'visible',
+    operations: 'visible',
+    staff: 'visible',
+  },
+  validation: {
+    ceo: 'visible',
+    finance: 'visible',
+    operations: 'visible',
+    staff: 'visible',
   },
 }
 

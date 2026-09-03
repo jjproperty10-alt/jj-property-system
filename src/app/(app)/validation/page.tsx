@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { RefreshCw, AlertTriangle, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
@@ -70,7 +71,7 @@ export default function ValidationPage() {
     <div className="p-8">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Transaction Validation</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Validation / בדיקות</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {txCount.toLocaleString()} total transactions · {issues.length} issues found
           </p>
@@ -151,10 +152,11 @@ export default function ValidationPage() {
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Description</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase">Amount</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">From → To</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Correct</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filtered.map((issue, i) => {
+              {filtered.map((issue) => {
                 const cfg = ISSUE_CONFIG[issue.issue_type] ?? { label: issue.issue_type, color: 'bg-gray-100 text-gray-600', icon: AlertCircle }
                 const IssueIcon = cfg.icon
                 return (
@@ -184,6 +186,16 @@ export default function ValidationPage() {
                       <span className={!issue.payer ? 'text-red-400' : ''}>{issue.payer ?? '⚠ missing'}</span>
                       <span className="text-gray-300 mx-1">→</span>
                       <span className={!issue.payee ? 'text-red-400' : ''}>{issue.payee ?? '⚠ missing'}</span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <Link
+                        href={`/transactions?tx=${encodeURIComponent(issue.id)}`}
+                        className="text-xs font-medium text-brand-600 hover:text-brand-800"
+                        data-testid={`validation-correct-link-${issue.id}`}
+                      >
+                        Review / Correct
+                        <span className="block text-[10px] font-normal text-gray-500">בדיקה / תיקון</span>
+                      </Link>
                     </td>
                   </tr>
                 )

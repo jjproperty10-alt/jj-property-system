@@ -75,6 +75,8 @@ describe('Client Reports sidebar item', () => {
       '/owners',
       '/client-report-rc3',
       '/finance',
+      '/transactions',
+      '/validation',
     ])
   })
 
