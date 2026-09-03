@@ -191,14 +191,14 @@ describe('F-3: Purchase account_type gets correct section metadata', () => {
     expect(section.balance_convention).toBe('client_debt')
   })
 
-  it('sale section label is NOT Property Purchase (regression)', () => {
+  it('sale section label is Property Purchase (client perspective)', () => {
     const section = buildAccountSection('sale', [
       makePurchaseRow({
         id: 's1', subcategory: 'Sale Contract', is_contract_value: true,
         client_amount: 100000, account_type: 'sale', category: 'Sale',
       }),
     ], 0)
-    expect(section.account_label).toBe('Property Sale')
-    expect(section.account_label).not.toBe('Property Purchase')
+    expect(section.account_label).toBe('Property Purchase')
+    expect(section.account_label_he).toBe('רכישת הנכס')
   })
 })

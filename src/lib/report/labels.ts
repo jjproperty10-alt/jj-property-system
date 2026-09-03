@@ -23,7 +23,7 @@ export const DISPLAY_LABEL_OVERRIDES: Record<string, string> = {
   'Sale Contract (Reference)':                       'Purchase Contract (Reference)',
   'Client Sale Expenses':                            'Purchase Expenses',
   'Sale Tax':                                        'Purchase / Transfer Tax',
-  'Third-Party Payment (Bank Transfer to Seller)':   'Direct Payment to Seller',
+  'Third-Party Payment (Bank Transfer to Seller)':   'Payment toward property purchase',
   'Property Sale':                                   'Property Purchase',
 }
 
@@ -50,7 +50,7 @@ export const ACCOUNT_LABEL_EN: Record<string, string> = {
 
 /** Account type → HE label */
 export const ACCOUNT_LABEL_HE: Record<string, string> = {
-  sale:       'רכישת נכס',
+  sale:       'רכישת הנכס',
   renovation: 'שיפוץ',
   rental:     'ניהול נכס',
   airbnb:     'השכרה לטווח קצר',
@@ -77,7 +77,7 @@ const L = {
 
   /* ── Module names ────────────────────────────────────────────────────────── */
   accountPurchase:      { en: 'Property Acquisition', he: 'רכישת נכס'          },
-  accountSale:          { en: 'Property Purchase',    he: 'רכישת נכס'          },
+  accountSale:          { en: 'Property Purchase',    he: 'רכישת הנכס'          },
   accountRenovation:    { en: 'Renovation',           he: 'שיפוץ'              },
   // M6: renamed from "Rental" → "Property Management"
   accountRental:        { en: 'Property Management',  he: 'ניהול נכס'          },
@@ -131,7 +131,7 @@ const L = {
 
   /* ── Row-level labels (transaction descriptions shown to client) ──────────── */
   rowClientPayment:     { en: 'Client Payment',                  he: 'תשלום לקוח'              },
-  rowDirectSeller:      { en: 'Direct Payment to Seller',        he: 'תשלום ישיר למוכר'        },
+  rowDirectSeller:      { en: 'Payment toward property purchase', he: 'תשלום עבור רכישת הנכס'    },
   rowPurchaseExpense:   { en: 'Purchase Expense',                he: 'הוצאת רכישה'             },
   rowPurchaseTax:       { en: 'Purchase / Transfer Tax',         he: 'מס רכישה / העברה'        },
   rowRenovPayment:      { en: 'Renovation Payment',              he: 'תשלום שיפוץ'             },
@@ -430,7 +430,14 @@ export function buildRowLabel(row: ClientDisplayRow, lang: Lang): string {
   if (grp === 'income') {
     if (dl === 'Payment Received')
       return acct === 'renovation' ? t('rowRenovPayment', lang) : t('rowClientPayment', lang)
-    if (dl === 'Third-Party Payment (Bank Transfer to Seller)')
+    // Raw RC3/PDF still use the internal display_label; browser DTO (P3b) uses
+    // the sanitized client-safe wording. Both must resolve to the same i18n label.
+    if (
+      dl === 'Third-Party Payment (Bank Transfer to Seller)' ||
+      dl === 'Payment toward property purchase' ||
+      sub === 'Third-Party Payment' ||
+      sub === 'Payment toward property purchase'
+    )
       return t('rowDirectSeller', lang)
     if (dl === 'Rent Collected')
       return t('rowRentalPayment', lang)
