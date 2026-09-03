@@ -50,7 +50,7 @@ export const ACCOUNT_LABEL_EN: Record<string, string> = {
 
 /** Account type → HE label */
 export const ACCOUNT_LABEL_HE: Record<string, string> = {
-  sale:       'רכישת נכס',
+  sale:       'רכישת הנכס',
   renovation: 'שיפוץ',
   rental:     'ניהול נכס',
   airbnb:     'השכרה לטווח קצר',
@@ -77,7 +77,7 @@ const L = {
 
   /* ── Module names ────────────────────────────────────────────────────────── */
   accountPurchase:      { en: 'Property Acquisition', he: 'רכישת נכס'          },
-  accountSale:          { en: 'Property Purchase',    he: 'רכישת נכס'          },
+  accountSale:          { en: 'Property Purchase',    he: 'רכישת הנכס'          },
   accountRenovation:    { en: 'Renovation',           he: 'שיפוץ'              },
   // M6: renamed from "Rental" → "Property Management"
   accountRental:        { en: 'Property Management',  he: 'ניהול נכס'          },

@@ -2,7 +2,7 @@
  * P2 — Sale presented as Property Purchase
  *
  * Internal account_type remains 'sale'. Client-facing section labels must
- * read "Property Purchase / רכישת נכס", never "Property Sale / מכירת נכס".
+ * read "Property Purchase / רכישת הנכס", never "Property Sale / מכירת נכס".
  */
 import { buildAccountSection } from '@/lib/report/computeBalance'
 import { toClientReport } from '@/lib/report/clientReportDto'
@@ -59,21 +59,21 @@ describe('P2 — Sale presented as Property Purchase', () => {
     const section = mkSaleSection()
     expect(section.account_type).toBe('sale')
     expect(section.account_label).toBe('Property Purchase')
-    expect(section.account_label_he).toBe('רכישת נכס')
+    expect(section.account_label_he).toBe('רכישת הנכס')
   })
 
   test('client DTO carries Property Purchase for sale section', () => {
     const dto = toClientReport(mkReport(mkSaleSection()))
     const sale = dto.accounts.find(a => a.account_type === 'sale')!
     expect(sale.account_label).toBe('Property Purchase')
-    expect(sale.account_label_he).toBe('רכישת נכס')
+    expect(sale.account_label_he).toBe('רכישת הנכס')
   })
 
   test('labels.ts account keys match Property Purchase', () => {
     expect(t('accountSale', 'en')).toBe('Property Purchase')
-    expect(t('accountSale', 'he')).toBe('רכישת נכס')
+    expect(t('accountSale', 'he')).toBe('רכישת הנכס')
     expect(ACCOUNT_LABEL_EN.sale).toBe('Property Purchase')
-    expect(ACCOUNT_LABEL_HE.sale).toBe('רכישת נכס')
+    expect(ACCOUNT_LABEL_HE.sale).toBe('רכישת הנכס')
   })
 
   test('forbidden sale wording absent from client-facing labels', () => {
