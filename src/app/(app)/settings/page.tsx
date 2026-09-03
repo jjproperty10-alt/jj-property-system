@@ -2,18 +2,19 @@
 
 import { useEffect, useState } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
+import { PageShell, WorkspaceHeader } from '@/components/ds'
 import { Settings2, Users, Database, RefreshCw, CheckCircle, AlertCircle, KeyRound, Eye, EyeOff } from 'lucide-react'
 
 type EmployeeConfig = { id: string; name: string; role: string; is_active: boolean }
 type DbStatus = { table: string; count: number; status: 'ok' | 'empty' | 'error' }
+type SettingsTab = 'database' | 'employees' | 'system' | 'account'
 
 export default function SettingsPage() {
   const [employees, setEmployees] = useState<EmployeeConfig[]>([])
   const [dbStatus, setDbStatus]   = useState<DbStatus[]>([])
   const [loading, setLoading]     = useState(true)
-  const [tab, setTab]             = useState<'database' | 'employees' | 'system' | 'account'>('database')
+  const [tab, setTab]             = useState<SettingsTab>('database')
 
-  // Change password
   const [newPassword, setNewPassword]         = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPass, setShowPass]               = useState(false)
@@ -61,7 +62,7 @@ export default function SettingsPage() {
     setPwLoading(false)
   }
 
-  const TABS = [
+  const TABS: { id: SettingsTab; label: string; icon: typeof Database }[] = [
     { id: 'database', label: 'Database Status', icon: Database },
     { id: 'employees', label: 'Employees',       icon: Users },
     { id: 'system',   label: 'System Info',      icon: Settings2 },
@@ -69,21 +70,21 @@ export default function SettingsPage() {
   ]
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-          <p className="text-sm text-gray-500 mt-0.5">System configuration</p>
-        </div>
-        <button onClick={loadAll} disabled={loading} className="btn-secondary flex items-center gap-2 text-sm">
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
-        </button>
-      </div>
+    <PageShell maxWidth="xl">
+      <WorkspaceHeader
+        title="Settings"
+        subtitle="System configuration"
+        backRoute="/home"
+        actions={
+          <button onClick={loadAll} disabled={loading} className="btn-secondary flex items-center gap-2 text-sm">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
+          </button>
+        }
+      />
 
-      {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b border-gray-200">
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id as any)}
+          <button key={t.id} onClick={() => setTab(t.id)}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               tab === t.id ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}>
@@ -93,7 +94,6 @@ export default function SettingsPage() {
         ))}
       </div>
 
-      {/* Database Status */}
       {tab === 'database' && (
         <div className="space-y-3">
           <h2 className="font-semibold text-gray-700 mb-3">Tables &amp; Views</h2>
@@ -133,7 +133,6 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Employees */}
       {tab === 'employees' && (
         <div>
           <h2 className="font-semibold text-gray-700 mb-3">Employee Configuration</h2>
@@ -183,7 +182,6 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* System Info */}
       {tab === 'system' && (
         <div className="space-y-4">
           <div className="card p-5">
@@ -218,7 +216,6 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Account - Change Password */}
       {tab === 'account' && (
         <div className="max-w-md">
           <div className="card p-6">
@@ -273,7 +270,6 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   )
 }
-
