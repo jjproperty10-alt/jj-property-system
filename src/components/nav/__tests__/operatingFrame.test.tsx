@@ -166,6 +166,19 @@ describe('OperatingFrame', () => {
     expect(html).toContain('yossi@jjproperty.com')
   })
 
+  it('renders Settings as a frame utility link, not a workspace', () => {
+    const html = renderFrame()
+    expect(html).toContain('href="/settings"')
+    expect(html).toContain('Settings')
+  })
+
+  it('marks Settings active without activating a workspace', () => {
+    const html = renderFrame('/settings')
+    expect(html).toContain('href="/settings"')
+    // Desktop + mobile drawers both render the Settings utility link.
+    expect((html.match(/aria-current="page"/g) ?? []).length).toBe(2)
+  })
+
   // Brand
   it('displays JJ Property brand in sidebar', () => {
     const html = renderFrame()

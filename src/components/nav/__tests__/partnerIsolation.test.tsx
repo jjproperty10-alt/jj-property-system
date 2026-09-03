@@ -73,7 +73,8 @@ describe('Partner Isolation — Route Group Architecture', () => {
     //   │   ├── page.tsx        ← CEO Dashboard (/)
     //   │   ├── home/page.tsx   ← Home (/home)
     //   │   ├── owners/...      ← Owners (/owners, /owners/[slug])
-    //   │   └── finance/...     ← Finance (/finance/decision/...)
+    //   │   ├── finance/...     ← Finance (/finance/decision/...)
+    //   │   └── settings/page.tsx ← Settings (/settings) — frame utility, not a workspace
     //   └── partner/            ← OUTSIDE (app) — no OperatingFrame
     //       └── [slug]/
     //           ├── page.tsx

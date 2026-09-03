@@ -31,8 +31,9 @@
 
 import Link from 'next/link'
 import { useEffect, useRef } from 'react'
+import { usePathname } from 'next/navigation'
 import type { ComponentType } from 'react'
-import { Menu, X, LogOut, Home, Users, BarChart3, Building2 } from 'lucide-react'
+import { Menu, X, LogOut, Home, Users, BarChart3, Building2, Settings2 } from 'lucide-react'
 import type { FrameUser, WorkspaceNavItem, WorkspaceIconId, WorkspaceAttention } from '@/lib/nav/types'
 import { useGlobalContext, useSetMobileMenu } from './GlobalContextProvider'
 
@@ -66,6 +67,8 @@ interface SidebarProps {
 export function Sidebar({ workspaces, activeWorkspaceId, user }: SidebarProps) {
   const { attention, mobileMenuOpen } = useGlobalContext()
   const setMobileMenu = useSetMobileMenu()
+  const pathname = usePathname()
+  const settingsActive = pathname === '/settings' || pathname.startsWith('/settings/')
 
   // Close mobile menu on workspace navigation
   const prevActiveRef = useRef(activeWorkspaceId)
@@ -106,6 +109,17 @@ export function Sidebar({ workspaces, activeWorkspaceId, user }: SidebarProps) {
         <div className="text-xs text-gray-400 truncate">
           {user.email}
         </div>
+        <Link
+          href="/settings"
+          onClick={() => setMobileMenu(false)}
+          className={`mt-3 flex items-center gap-2 text-xs transition-colors ${
+            settingsActive ? 'text-white' : 'text-gray-400 hover:text-white'
+          }`}
+          aria-current={settingsActive ? 'page' : undefined}
+        >
+          <Settings2 className="h-3.5 w-3.5" />
+          Settings
+        </Link>
         <form action="/api/auth/logout" method="POST" className="mt-2">
           <button
             type="submit"
