@@ -49,9 +49,8 @@ function LoginForm() {
     setLoading(true)
     setError('')
     const supabase = createSupabaseBrowserClient()
-    // FIX: Route through /auth/callback so the server can exchange the PKCE code
-    // before redirecting to /auth/reset. Direct redirect to /auth/reset would
-    // land a ?code= that the reset page cannot exchange (browser client ≠ SSR client).
+    // Email returns to /auth/reset with a PKCE ?code=. The reset page uses this
+    // same cookie client so it can exchange the code (verifier lives in cookies).
     const { error: e } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/auth/reset`,
     })
