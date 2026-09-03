@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseBrowserClient } from '@/lib/supabase'
 import { Settings2, Users, Database, RefreshCw, CheckCircle, AlertCircle, KeyRound, Eye, EyeOff } from 'lucide-react'
 
 type EmployeeConfig = { id: string; name: string; role: string; is_active: boolean }
@@ -23,6 +23,7 @@ export default function SettingsPage() {
 
   async function loadAll() {
     setLoading(true)
+    const supabase = createSupabaseBrowserClient()
     const [empRes, ...tableResults] = await Promise.all([
       supabase.from('employee_config').select('*').order('name'),
       supabase.from('transactions').select('id', { count: 'exact', head: true }),
@@ -43,6 +44,7 @@ export default function SettingsPage() {
   useEffect(() => { loadAll() }, [])
 
   async function toggleEmployee(id: string, current: boolean) {
+    const supabase = createSupabaseBrowserClient()
     await supabase.from('employee_config').update({ is_active: !current }).eq('id', id)
     loadAll()
   }
@@ -52,6 +54,7 @@ export default function SettingsPage() {
     if (newPassword.length < 8) { setPwError('Minimum 8 characters.'); return }
     if (newPassword !== confirmPassword) { setPwError('Passwords do not match.'); return }
     setPwLoading(true); setPwError(''); setPwSuccess(false)
+    const supabase = createSupabaseBrowserClient()
     const { error } = await supabase.auth.updateUser({ password: newPassword })
     if (error) { setPwError(error.message); setPwLoading(false); return }
     setPwSuccess(true); setNewPassword(''); setConfirmPassword('')
