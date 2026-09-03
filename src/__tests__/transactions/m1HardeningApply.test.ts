@@ -369,4 +369,153 @@ describe('M1 hardened apply/preview', () => {
     expect(mockApply).not.toHaveBeenCalled()
     expect(mockTransition).not.toHaveBeenCalled()
   })
+
+  it('unique_violation with same idempotency key resumes instead of duplicating', async () => {
+    const caseId = '66666666-6666-6666-6666-666666666666'
+    const token = tokenFor({ amount_eur: 800 })
+    mockOpen.mockResolvedValue({
+      ok: false,
+      error: 'duplicate key value violates unique constraint "uq_correction_cases_one_nonterminal_per_tx"',
+      code: 'unique_violation',
+    })
+    let correctionCalls = 0
+    mockSchemaFrom.mockImplementation((table: string) => {
+      if (table === 'management_relationship') {
+        return chain({
+          data: [{ entity_id: ENTITY_ID, property_name: 'Sea View', verification_status: 'verified', valid_to: null }],
+          error: null,
+        })
+      }
+      if (table === 'statement_series') {
+        return chain({
+          data: [{ series_id: SERIES_ID, owner_party_id: PARTY_ID, series_status: 'active' }],
+          error: null,
+        })
+      }
+      if (table === 'correction_cases') {
+        correctionCalls += 1
+        // 1: findCaseByIdempotencyKey (miss)  2: openCases guard (empty)
+        // 3+: post-unique-violation findCaseByIdempotencyKey (hit)
+        if (correctionCalls >= 3) {
+          return chain({
+            data: [
+              {
+                id: caseId,
+                status: 'open',
+                series_id: SERIES_ID,
+                corrected_field_values: { m1_idempotency_key: token.idempotencyKey },
+                applied_transaction_id: null,
+              },
+            ],
+            error: null,
+          })
+        }
+        return chain({ data: [], error: null })
+      }
+      return chain({ data: [], error: null })
+    })
+    mockTransition.mockResolvedValue({ ok: true })
+    mockApply.mockResolvedValue({
+      ok: true,
+      primaryAppliedTransactionId: '77777777-7777-7777-7777-777777777777',
+      appliedTransactionIds: ['77777777-7777-7777-7777-777777777777'],
+      insertedCount: 2,
+    })
+
+    const res = await applyControlledCorrectionAction({
+      transactionId: TX_ID,
+      proposed: { amount_eur: 800 },
+      reason: 'fix',
+      evidenceReference: '',
+      confirmed: true,
+      previewToken: token,
+      seriesId: SERIES_ID,
+    })
+    expect(res.ok).toBe(true)
+    if (res.ok) {
+      expect(res.resumed).toBe(true)
+      expect(res.caseId).toBe(caseId)
+    }
+    expect(mockOpen).toHaveBeenCalledTimes(1)
+    expect(mockTransition).toHaveBeenCalled()
+    expect(mockApply).toHaveBeenCalled()
+  })
+
+  it('unique_violation with a different active case fails closed (no unhandled exception)', async () => {
+    const otherId = '88888888-8888-8888-8888-888888888888'
+    mockOpen.mockResolvedValue({
+      ok: false,
+      error: 'duplicate key value violates unique constraint "uq_correction_cases_one_nonterminal_per_tx"',
+      code: 'unique_violation',
+    })
+    // First correction_cases lookups (idempotency / open cases) empty; race lookup returns other.
+    let correctionCalls = 0
+    mockSchemaFrom.mockImplementation((table: string) => {
+      if (table === 'management_relationship') {
+        return chain({
+          data: [{ entity_id: ENTITY_ID, property_name: 'Sea View', verification_status: 'verified', valid_to: null }],
+          error: null,
+        })
+      }
+      if (table === 'statement_series') {
+        return chain({
+          data: [{ series_id: SERIES_ID, owner_party_id: PARTY_ID, series_status: 'active' }],
+          error: null,
+        })
+      }
+      if (table === 'correction_cases') {
+        correctionCalls += 1
+        // findCaseByIdempotencyKey / openCases → empty; post-race → other active case
+        if (correctionCalls >= 3) {
+          return chain({
+            data: [{ id: otherId, status: 'approved' }],
+            error: null,
+          })
+        }
+        return chain({ data: [], error: null })
+      }
+      return chain({ data: [], error: null })
+    })
+
+    const res = await applyControlledCorrectionAction({
+      transactionId: TX_ID,
+      proposed: { amount_eur: 800 },
+      reason: 'fix',
+      evidenceReference: '',
+      confirmed: true,
+      previewToken: tokenFor({ amount_eur: 800 }),
+      seriesId: SERIES_ID,
+    })
+    expect(res.ok).toBe(false)
+    if (!res.ok) {
+      expect(res.error).toMatch(/non-terminal correction case already exists/i)
+      expect(res.error).not.toMatch(/unhandled|stack/i)
+      expect(res.caseId).toBe(otherId)
+      expect(res.resumable).toBe(true)
+    }
+    expect(mockApply).not.toHaveBeenCalled()
+  })
+
+  it('finance_admin can enter the controlled apply workflow', async () => {
+    mockAuth.mockResolvedValue({ ok: true, userId: 'u2', staffRole: 'finance_admin', isActive: true })
+    mockOpen.mockResolvedValue({ ok: true, caseId: '66666666-6666-6666-6666-666666666666' })
+    mockTransition.mockResolvedValue({ ok: true })
+    mockApply.mockResolvedValue({
+      ok: true,
+      primaryAppliedTransactionId: '77777777-7777-7777-7777-777777777777',
+      appliedTransactionIds: ['77777777-7777-7777-7777-777777777777'],
+      insertedCount: 2,
+    })
+    const res = await applyControlledCorrectionAction({
+      transactionId: TX_ID,
+      proposed: { amount_eur: 800 },
+      reason: 'fix',
+      evidenceReference: '',
+      confirmed: true,
+      previewToken: tokenFor({ amount_eur: 800 }),
+      seriesId: SERIES_ID,
+    })
+    expect(res.ok).toBe(true)
+    expect(mockOpen).toHaveBeenCalled()
+  })
 })

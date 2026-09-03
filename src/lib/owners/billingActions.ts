@@ -58,6 +58,10 @@ import {
   type OriginalTxRow,
 } from '@/lib/statements/correctionInsertRows'
 import type { CorrectionPlan } from '@/lib/statements/correctionPlan'
+import {
+  isPostgresUniqueViolation,
+  uniqueNonterminalCaseMessage,
+} from '@/lib/transactions/uniqueCaseViolation'
 
 // ─── Toggle Draft Line Inclusion ─────────────────────────────
 
@@ -285,7 +289,10 @@ export interface OpenCorrectionCaseInput {
  */
 export async function openCorrectionCaseAction(
   input: OpenCorrectionCaseInput,
-): Promise<{ ok: true; caseId: string } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; caseId: string }
+  | { ok: false; error: string; code?: 'unique_violation' }
+> {
   const gate = requireCorrectionMutator(await authenticateStatementUser())
   if (!gate.ok) return { ok: false, error: gate.error }
 
@@ -321,12 +328,26 @@ export async function openCorrectionCaseAction(
 
     if (error) {
       console.error('[billingActions] openCorrectionCase RPC error:', error)
+      if (isPostgresUniqueViolation(error)) {
+        return {
+          ok: false,
+          error: uniqueNonterminalCaseMessage(null),
+          code: 'unique_violation',
+        }
+      }
       return { ok: false, error: error.message ?? 'Database error' }
     }
 
     return { ok: true, caseId: String(data) }
   } catch (err) {
     console.error('[billingActions] openCorrectionCase unexpected error:', err)
+    if (isPostgresUniqueViolation(err)) {
+      return {
+        ok: false,
+        error: uniqueNonterminalCaseMessage(null),
+        code: 'unique_violation',
+      }
+    }
     return { ok: false, error: 'Unexpected error' }
   }
 }

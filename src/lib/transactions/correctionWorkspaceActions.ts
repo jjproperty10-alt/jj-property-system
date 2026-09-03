@@ -42,6 +42,10 @@ import {
   resolveBoundCorrectionSeries,
   type BoundSeriesResult,
 } from './resolveBoundCorrectionSeries'
+import {
+  isPostgresUniqueViolation,
+  uniqueNonterminalCaseMessage,
+} from './uniqueCaseViolation'
 
 const CORRECTION_MUTATOR_ROLES = new Set(['ceo', 'finance_admin'])
 
@@ -641,16 +645,80 @@ export async function applyControlledCorrectionAction(
   const { data: openCases } = await (db as any)
     .schema('statements')
     .from('correction_cases')
-    .select('id, status')
+    .select('id, status, corrected_field_values')
     .eq('original_transaction_id', canonical.id)
     .in('status', ['open', 'under_review', 'approved'])
     .limit(5)
 
   if (Array.isArray(openCases) && openCases.length > 0) {
-    const other = openCases[0] as { id: string; status: string }
+    const other = openCases[0] as {
+      id: string
+      status: string
+      corrected_field_values: Record<string, unknown> | null
+    }
+    // Same idempotency key → resume that case instead of failing.
+    if (other.corrected_field_values?.m1_idempotency_key === expectedKey) {
+      const resumedExisting = await findCaseByIdempotencyKey(canonical.id, expectedKey)
+      if (resumedExisting) {
+        // Fall through by recursively treating as existing — call resume path inline
+        if (resumedExisting.status === 'applied') {
+          const ids = await loadAppliedIds(resumedExisting.id)
+          return {
+            ok: true,
+            caseId: resumedExisting.id,
+            caseStatus: 'applied',
+            appliedTransactionIds:
+              ids.length > 0
+                ? ids
+                : resumedExisting.applied_transaction_id
+                  ? [String(resumedExisting.applied_transaction_id)]
+                  : [],
+            resumed: true,
+          }
+        }
+        let caseId = resumedExisting.id
+        if (resumedExisting.status === 'open' || resumedExisting.status === 'under_review') {
+          const approved = await transitionCorrectionCaseAction({
+            caseId,
+            newStatus: 'approved',
+            notes: 'M1 workspace: resume approve after discovering existing idempotent case',
+          })
+          if (!approved.ok) {
+            return {
+              ok: false,
+              error: `Case opened but approval failed: ${approved.error}`,
+              caseId,
+              caseStatus: resumedExisting.status,
+              resumable: true,
+            }
+          }
+        }
+        const applied = await applyCorrectionCaseAction({
+          caseId,
+          plan: preview.plan,
+          original: originalRow,
+        })
+        if (!applied.ok) {
+          return {
+            ok: false,
+            error: `Case approved but apply failed: ${applied.error}`,
+            caseId,
+            caseStatus: 'approved',
+            resumable: true,
+          }
+        }
+        return {
+          ok: true,
+          caseId,
+          caseStatus: 'applied',
+          appliedTransactionIds: applied.appliedTransactionIds,
+          resumed: true,
+        }
+      }
+    }
     return {
       ok: false,
-      error: `A non-terminal correction case already exists for this transaction (${other.id}, status=${other.status}). Resume that case or resolve it before opening another. Full concurrency safety requires a DB unique partial index (reported separately).`,
+      error: uniqueNonterminalCaseMessage(other.id),
       caseId: other.id,
       caseStatus: other.status,
       resumable: true,
@@ -668,7 +736,88 @@ export async function applyControlledCorrectionAction(
     originalFields: preview.plan.original_field_values ?? preview.originalSnapshot,
     correctedFields,
   })
-  if (!opened.ok) return { ok: false, error: opened.error }
+  if (!opened.ok) {
+    // Race: unique partial index fired between pre-check and INSERT.
+    if (opened.code === 'unique_violation' || isPostgresUniqueViolation({ message: opened.error })) {
+      const raced = await findCaseByIdempotencyKey(canonical.id, expectedKey)
+      if (raced) {
+        // Same idempotency key → resume (never surface as unhandled unique violation).
+        if (raced.status === 'applied') {
+          const ids = await loadAppliedIds(raced.id)
+          return {
+            ok: true,
+            caseId: raced.id,
+            caseStatus: 'applied',
+            appliedTransactionIds:
+              ids.length > 0
+                ? ids
+                : raced.applied_transaction_id
+                  ? [String(raced.applied_transaction_id)]
+                  : [],
+            resumed: true,
+          }
+        }
+        let caseId = raced.id
+        if (raced.status === 'open' || raced.status === 'under_review') {
+          const approved = await transitionCorrectionCaseAction({
+            caseId,
+            newStatus: 'approved',
+            notes: 'M1 workspace: resume approve after unique-index race (same idempotency key)',
+          })
+          if (!approved.ok) {
+            return {
+              ok: false,
+              error: `Case opened but approval failed: ${approved.error}`,
+              caseId,
+              caseStatus: raced.status,
+              resumable: true,
+            }
+          }
+        }
+        const applied = await applyCorrectionCaseAction({
+          caseId,
+          plan: preview.plan,
+          original: originalRow,
+        })
+        if (!applied.ok) {
+          return {
+            ok: false,
+            error: `Case approved but apply failed: ${applied.error}`,
+            caseId,
+            caseStatus: 'approved',
+            resumable: true,
+          }
+        }
+        return {
+          ok: true,
+          caseId,
+          caseStatus: 'applied',
+          appliedTransactionIds: applied.appliedTransactionIds,
+          resumed: true,
+        }
+      }
+      // Different active case for this transaction — fail closed with clear message.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: racedOpen } = await (db as any)
+        .schema('statements')
+        .from('correction_cases')
+        .select('id, status')
+        .eq('original_transaction_id', canonical.id)
+        .in('status', ['open', 'under_review', 'approved'])
+        .limit(1)
+      const row = Array.isArray(racedOpen) && racedOpen[0]
+        ? (racedOpen[0] as { id: string; status: string })
+        : null
+      return {
+        ok: false,
+        error: uniqueNonterminalCaseMessage(row?.id ?? null),
+        caseId: row?.id,
+        caseStatus: row?.status,
+        resumable: !!row,
+      }
+    }
+    return { ok: false, error: opened.error }
+  }
 
   const caseId = opened.caseId
 
