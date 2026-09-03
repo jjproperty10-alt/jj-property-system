@@ -539,7 +539,7 @@ const ACCOUNT_META: Record<RC3AccountType, {
   convention: BalanceConvention
 }> = {
   purchase:   { en: 'Property Purchase', he: 'רכישת נכס',   convention: 'client_debt'  },
-  sale:       { en: 'Property Sale',     he: 'מכירת נכס',   convention: 'client_debt'  },
+  sale:       { en: 'Property Purchase', he: 'רכישת נכס',   convention: 'client_debt'  },
   renovation: { en: 'Renovation',        he: 'שיפוץ',        convention: 'client_debt'  },
   rental:     { en: 'Rental Management', he: 'ניהול השכרה', convention: 'owner_credit' },
   airbnb:     { en: 'Short-Term Rental', he: 'אירבנב / STR', convention: 'owner_credit' },

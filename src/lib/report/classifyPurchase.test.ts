@@ -125,10 +125,11 @@ describe('buildAccountSection — purchase', () => {
 // ─── Sale label regression ────────────────────────────────────────────────────
 
 describe('ACCOUNT_META regression', () => {
-  it('sale label is Property Sale (not Property Purchase)', () => {
+  it('sale label is Property Purchase (client perspective)', () => {
     const section = buildAccountSection('sale', [
       makeRow({ id: 's1', subcategory: 'Sale Contract', is_contract_value: true, client_amount: 100000, account_type: 'sale', category: 'Sale' }),
     ], 0)
-    expect(section.account_label).toBe('Property Sale')
+    expect(section.account_label).toBe('Property Purchase')
+    expect(section.account_label_he).toBe('רכישת נכס')
   })
 })
