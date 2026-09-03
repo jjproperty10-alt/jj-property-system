@@ -430,7 +430,14 @@ export function buildRowLabel(row: ClientDisplayRow, lang: Lang): string {
   if (grp === 'income') {
     if (dl === 'Payment Received')
       return acct === 'renovation' ? t('rowRenovPayment', lang) : t('rowClientPayment', lang)
-    if (dl === 'Third-Party Payment (Bank Transfer to Seller)')
+    // Raw RC3/PDF still use the internal display_label; browser DTO (P3b) uses
+    // the sanitized client-safe wording. Both must resolve to the same i18n label.
+    if (
+      dl === 'Third-Party Payment (Bank Transfer to Seller)' ||
+      dl === 'Payment toward property purchase' ||
+      sub === 'Third-Party Payment' ||
+      sub === 'Payment toward property purchase'
+    )
       return t('rowDirectSeller', lang)
     if (dl === 'Rent Collected')
       return t('rowRentalPayment', lang)

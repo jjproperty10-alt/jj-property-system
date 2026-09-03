@@ -95,13 +95,21 @@ export interface ClientReport {
   has_airbnb:     boolean
 }
 
+/** Client-facing wording for Sale / Third-Party Payment (P3b). DB/server unchanged. */
+const CLIENT_SAFE_PROPERTY_PURCHASE_PAYMENT = 'Payment toward property purchase'
+
 function toClientReportRow(row: RC3AccountRow): ClientReportRow {
   // Explicit allowlist copy — forbidden raw fields are structurally never read.
+  // P3b: Sale / Third-Party Payment must not serialize internal terminology
+  // ("Third-Party Payment", "Seller", bank-routing) into the browser DTO.
+  const isSaleThirdParty =
+    row.account_type === 'sale' && row.subcategory === 'Third-Party Payment'
+
   return {
     id:                   row.id,
     date:                 row.date,
     reporting_name:       row.reporting_name,
-    subcategory:          row.subcategory ?? null,
+    subcategory:          isSaleThirdParty ? CLIENT_SAFE_PROPERTY_PURCHASE_PAYMENT : (row.subcategory ?? null),
     client_amount:        row.client_amount,
     account_type:         row.account_type,
     is_contract_value:    row.is_contract_value,
@@ -109,7 +117,7 @@ function toClientReportRow(row: RC3AccountRow): ClientReportRow {
     balance_effect:       row.balance_effect,
     is_balance_affecting: row.is_balance_affecting,
     display_group:        row.display_group,
-    display_label:        row.display_label,
+    display_label:        isSaleThirdParty ? CLIENT_SAFE_PROPERTY_PURCHASE_PAYMENT : row.display_label,
   }
 }
 
