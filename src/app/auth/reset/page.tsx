@@ -2,21 +2,15 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { createSupabaseBrowserClient } from '@/lib/supabase'
 import { Lock, Eye, EyeOff, CheckCircle, AlertCircle, Loader } from 'lucide-react'
 
 /**
- * Uses createClient from @supabase/supabase-js (localStorage-based) so it can
- * detect hash-fragment tokens (#access_token=...&type=recovery) from the
- * implicit grant flow used by password reset emails.
+ * Must use the cookie-based browser client (same as /login).
+ * resetPasswordForEmail stores a PKCE verifier in cookies; the email then
+ * returns here with ?code=. A localStorage client cannot see that verifier,
+ * so exchange fails and the page falsely reports "link expired".
  */
-function createClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-}
-
 type SessionState = 'loading' | 'ready' | 'invalid'
 
 function ResetForm() {
@@ -30,7 +24,7 @@ function ResetForm() {
   const [sessionState, setSessionState] = useState<SessionState>('loading')
 
   useEffect(() => {
-    const supabase = createClient()
+    const supabase = createSupabaseBrowserClient()
     let resolved = false
 
     function resolve(hasSession: boolean) {
@@ -39,20 +33,39 @@ function ResetForm() {
       setSessionState(hasSession ? 'ready' : 'invalid')
     }
 
-    // Primary: check if the hash fragment was auto-detected by supabase-js
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      resolve(!!session)
-    })
-
-    // Fallback: listen for PASSWORD_RECOVERY event (implicit / hash-based flow)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY' && session) {
+      if (session && (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN')) {
         resolve(true)
       }
     })
 
-    // Safety timeout: if neither fires in 4 s, show "link expired"
-    const timeout = setTimeout(() => resolve(false), 4000)
+    async function establishRecoverySession() {
+      const params = new URLSearchParams(window.location.search)
+      const code = params.get('code')
+
+      // Wait for client init (detectSessionInUrl may already exchange ?code=)
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        if (code) window.history.replaceState({}, '', '/auth/reset')
+        resolve(true)
+        return
+      }
+
+      if (code) {
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+        if (!error && data.session) {
+          window.history.replaceState({}, '', '/auth/reset')
+          resolve(true)
+          return
+        }
+      }
+
+      resolve(false)
+    }
+
+    establishRecoverySession()
+
+    const timeout = setTimeout(() => resolve(false), 8000)
 
     return () => {
       subscription.unsubscribe()
@@ -72,7 +85,7 @@ function ResetForm() {
     }
     setLoading(true)
     setError('')
-    const supabase = createClient()
+    const supabase = createSupabaseBrowserClient()
     const { error: err } = await supabase.auth.updateUser({ password })
     if (err) {
       setError(err.message)
