@@ -33,7 +33,7 @@ import Link from 'next/link'
 import { useEffect, useRef } from 'react'
 import { usePathname } from 'next/navigation'
 import type { ComponentType } from 'react'
-import { Menu, X, LogOut, Home, Users, BarChart3, Building2, Settings2 } from 'lucide-react'
+import { Menu, X, LogOut, Home, Users, BarChart3, Building2, FileText, Settings2 } from 'lucide-react'
 import type { FrameUser, WorkspaceNavItem, WorkspaceIconId, WorkspaceAttention } from '@/lib/nav/types'
 import { useGlobalContext, useSetMobileMenu } from './GlobalContextProvider'
 
@@ -51,6 +51,7 @@ const WORKSPACE_ICONS: Record<WorkspaceIconId, ComponentType<{ className?: strin
   home: Home,
   ceo: Building2,
   owners: Users,
+  clientReports: FileText,
   finance: BarChart3,
 }
 
@@ -222,7 +223,12 @@ function NavItem({ workspace, isActive, attention }: NavItemProps) {
       aria-current={isActive ? 'page' : undefined}
     >
       <Icon className="h-5 w-5 flex-shrink-0" />
-      <span className="flex-1">{workspace.label}</span>
+      <span className="flex-1">
+        {workspace.label}
+        {workspace.labelHe ? (
+          <span className="block text-xs font-normal text-gray-400">{workspace.labelHe}</span>
+        ) : null}
+      </span>
       {showBadge && (
         <span
           className="inline-flex items-center justify-center rounded-full bg-red-500 px-2 py-0.5 text-xs font-medium text-white"

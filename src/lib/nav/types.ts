@@ -47,6 +47,8 @@ export interface WorkspaceRegistration {
   readonly id: string
   /** User-facing name displayed in navigation. */
   readonly label: string
+  /** Optional Hebrew label shown with the English name. */
+  readonly labelHe?: string
   /** Lucide icon component for navigation display. */
   readonly icon: ComponentType<{ className?: string }>
   /** Route loaded when nav item is clicked. */
@@ -64,14 +66,14 @@ export interface WorkspaceRegistration {
  * TypeScript enforces completeness of WORKSPACE_ICON_IDS and WORKSPACE_ICONS maps.
  * Update when adding a workspace to the registry.
  */
-export type RegisteredWorkspaceId = 'home' | 'ceo' | 'owners' | 'finance'
+export type RegisteredWorkspaceId = 'home' | 'ceo' | 'owners' | 'clientReports' | 'finance'
 
 /**
  * Closed set of icon identifiers for workspace navigation.
  * Each value maps to a Lucide component in Sidebar's WORKSPACE_ICONS.
  * Update when adding a workspace to the registry.
  */
-export type WorkspaceIconId = 'home' | 'ceo' | 'owners' | 'finance'
+export type WorkspaceIconId = 'home' | 'ceo' | 'owners' | 'clientReports' | 'finance'
 
 /**
  * Serializable projection of WorkspaceRegistration for the RSC boundary.
@@ -87,6 +89,8 @@ export interface WorkspaceNavItem {
   readonly id: RegisteredWorkspaceId
   /** User-facing name. Matches WorkspaceRegistration.label. */
   readonly label: string
+  /** Optional Hebrew label. Matches WorkspaceRegistration.labelHe. */
+  readonly labelHe?: string
   /** Closed icon key resolved to a Lucide icon component client-side. */
   readonly iconId: WorkspaceIconId
   /** Route loaded when nav item is clicked. */
