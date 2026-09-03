@@ -1,18 +1,11 @@
 /**
- * P-UI-504b — DISPLAY vs SUMMARY account partitioning for /client-report-rc3.
+ * P-UI-504b/d — DISPLAY vs SUMMARY account partitioning for /client-report-rc3.
  *
- * The route previously drove BOTH the account list / drill-down AND the
- * settlement summary from ONE filtered set:
- *
- *     filterOwnerFacingSections(filterSectionsByReportType(accounts, reportType))
- *
- * which dropped Purchase from the visible account list too. The fix splits the
- * two concerns via `partitionReportAccounts`:
- *
- *   • displayAccounts  — report-type scoped, Purchase RETAINED (account list /
- *                        drill-down; shown for reference).
- *   • summaryAccounts  — additionally Purchase-excluded (headline net, module
- *                        cards, PremiumSummary, FinalSummary).
+ * Final rule: BOTH displayAccounts and summaryAccounts exclude internal Purchase
+ * (account_type = 'purchase'). Purchase is JJ internal acquisition cost and must
+ * never appear in any client-facing output. Sale remains present (client-facing
+ * Property Purchase). filterOwnerFacingSections is defense-in-depth alongside the
+ * DTO boundary in clientReportDto.ts.
  *
  * These are PURE-FUNCTION (node) proofs of the exact partitioning + net
  * composition the route uses. No DOM/RTL. They assert the deterministic inputs
@@ -75,9 +68,6 @@ function oldVisible(rep: RC3PropertyReport, reportType: 'full' | 'periodic') {
   return filterOwnerFacingSections(filterSectionsByReportType(rep.accounts, reportType))
 }
 
-// NOTE — Updated by P-UI-504d: the Client Report Privacy Rule now hides Purchase
-// from the account list / drill-down TOO (it was previously kept for reference in
-// 504b). displayAccounts therefore equals summaryAccounts (both Purchase-excluded).
 describe('P-UI-504b/d — Purchase stays out of BOTH the client account list and the net', () => {
   // Purchase net component = Contract 180,000 − Deposit 10,000 − Purchase
   // Payment 44,000 = 126,000 (client_debt). Plus an owner-facing rental credit
@@ -88,10 +78,9 @@ describe('P-UI-504b/d — Purchase stays out of BOTH the client account list and
     section('rental', 500, 'owner_credit'),
   ])
 
-  test('1a. full (504d): displayAccounts EXCLUDE Purchase and equal summaryAccounts', () => {
+  test('1a. full: displayAccounts EXCLUDE Purchase and equal summaryAccounts', () => {
     expect(purchaseNet).toBe(126000)
     const { displayAccounts, summaryAccounts } = partitionReportAccounts(rep.accounts, 'full')
-    // 504d — Purchase is hidden from the client account list / drill-down too.
     expect(displayAccounts.some(a => a.account_type === 'purchase')).toBe(false)
     expect(displayAccounts.some(a => a.account_type === 'rental')).toBe(true)
     // Both client sets are the same owner-facing set now.
