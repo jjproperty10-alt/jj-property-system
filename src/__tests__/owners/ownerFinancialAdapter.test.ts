@@ -882,7 +882,7 @@ describe('fetchOwnerFinancial', () => {
       expect(rentalSection!.openingBalanceEur).toBe('300')
     })
 
-    it('omits openingBalanceEur when opening_balance is zero', async () => {
+    it('returns openingBalanceEur "0" when opening_balance is zero', async () => {
       mockFetchRC3Report.mockResolvedValueOnce(
         makeReport('Villa Mazotos', [
           makeSection({ account_type: 'rental', account_label: 'Rental' }),
@@ -893,7 +893,7 @@ describe('fetchOwnerFinancial', () => {
       const rentalSection = result.sections.find(s => s.type === 'rental')
 
       expect(rentalSection).toBeDefined()
-      expect(rentalSection!.openingBalanceEur).toBeUndefined()
+      expect(rentalSection!.openingBalanceEur).toBe('0')
     })
   })
 

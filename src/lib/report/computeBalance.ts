@@ -596,16 +596,22 @@ export function buildAccountSection(
           .reduce((sum, r) => sum + r.client_amount, 0)
       : 0
 
+  // Bucket by the row's SEMANTIC classification (display_group), NOT the sign of balance_effect.
+  // balanceRows only ever contain display_group in {'income','expense','payment_out'} (is_balance_affecting is
+  // false for 'info'/'reference'); 'payment_out' <=> is_bpo. A correction posts a SIGNED reversal (e.g. a
+  // -EUR181.79 'Electricity' contra-row, still display_group='expense') whose positive balance_effect must
+  // REDUCE its own bucket, never cross into the other. Sign-based bucketing mis-counted such reversals as income.
+  // Invariant preserved: closing_balance = Sum(balance_effect) is unchanged.
   const total_income = balanceRows
-    .filter(r => r.balance_effect > 0)
-    .reduce((sum, r) => sum + r.balance_effect, 0)
+    .filter(r => r.display_group === 'income')
+    .reduce((sum, r) => sum + r.balance_effect, 0)          // income effects are +; a reversed income (-) nets income down
 
   const total_expenses = balanceRows
-    .filter(r => r.balance_effect < 0 && !r.is_bpo)
-    .reduce((sum, r) => sum + Math.abs(r.balance_effect), 0)
+    .filter(r => r.display_group === 'expense')
+    .reduce((sum, r) => sum - r.balance_effect, 0)          // expense effects are -; -effect = positive cost; a reversal (+) nets expenses down
 
   const total_bpo = balanceRows
-    .filter(r => r.is_bpo)
+    .filter(r => r.is_bpo)                                  // display_group === 'payment_out'; behavior unchanged
     .reduce((sum, r) => sum + Math.abs(r.balance_effect), 0)
 
   const closing_balance =
