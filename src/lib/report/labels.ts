@@ -23,7 +23,7 @@ export const DISPLAY_LABEL_OVERRIDES: Record<string, string> = {
   'Sale Contract (Reference)':                       'Purchase Contract (Reference)',
   'Client Sale Expenses':                            'Purchase Expenses',
   'Sale Tax':                                        'Purchase / Transfer Tax',
-  'Third-Party Payment (Bank Transfer to Seller)':   'Direct Payment to Seller',
+  'Third-Party Payment (Bank Transfer to Seller)':   'Payment toward property purchase',
   'Property Sale':                                   'Property Purchase',
 }
 
@@ -131,7 +131,7 @@ const L = {
 
   /* ── Row-level labels (transaction descriptions shown to client) ──────────── */
   rowClientPayment:     { en: 'Client Payment',                  he: 'תשלום לקוח'              },
-  rowDirectSeller:      { en: 'Direct Payment to Seller',        he: 'תשלום ישיר למוכר'        },
+  rowDirectSeller:      { en: 'Payment toward property purchase', he: 'תשלום עבור רכישת הנכס'    },
   rowPurchaseExpense:   { en: 'Purchase Expense',                he: 'הוצאת רכישה'             },
   rowPurchaseTax:       { en: 'Purchase / Transfer Tax',         he: 'מס רכישה / העברה'        },
   rowRenovPayment:      { en: 'Renovation Payment',              he: 'תשלום שיפוץ'             },
