@@ -31,6 +31,7 @@ import type {
   BalanceConvention,
   DisplayGroup,
 } from './types'
+import { filterOwnerFacingSections } from './executiveSummary'
 
 /** Fields in a raw RC3 row that must never reach the browser. */
 export const CLIENT_REPORT_FORBIDDEN_ROW_FIELDS = [
@@ -94,13 +95,21 @@ export interface ClientReport {
   has_airbnb:     boolean
 }
 
+/** Client-facing wording for Sale / Third-Party Payment (P3b). DB/server unchanged. */
+const CLIENT_SAFE_PROPERTY_PURCHASE_PAYMENT = 'Payment toward property purchase'
+
 function toClientReportRow(row: RC3AccountRow): ClientReportRow {
   // Explicit allowlist copy — forbidden raw fields are structurally never read.
+  // P3b: Sale / Third-Party Payment must not serialize internal terminology
+  // ("Third-Party Payment", "Seller", bank-routing) into the browser DTO.
+  const isSaleThirdParty =
+    row.account_type === 'sale' && row.subcategory === 'Third-Party Payment'
+
   return {
     id:                   row.id,
     date:                 row.date,
     reporting_name:       row.reporting_name,
-    subcategory:          row.subcategory ?? null,
+    subcategory:          isSaleThirdParty ? CLIENT_SAFE_PROPERTY_PURCHASE_PAYMENT : (row.subcategory ?? null),
     client_amount:        row.client_amount,
     account_type:         row.account_type,
     is_contract_value:    row.is_contract_value,
@@ -108,7 +117,7 @@ function toClientReportRow(row: RC3AccountRow): ClientReportRow {
     balance_effect:       row.balance_effect,
     is_balance_affecting: row.is_balance_affecting,
     display_group:        row.display_group,
-    display_label:        row.display_label,
+    display_label:        isSaleThirdParty ? CLIENT_SAFE_PROPERTY_PURCHASE_PAYMENT : row.display_label,
   }
 }
 
@@ -131,18 +140,25 @@ function toClientReportSection(section: RC3AccountSection): ClientReportSection 
 /**
  * Single authorized boundary: raw RC3 report (server-side) → client-safe DTO.
  * Never returns the raw report; every field is explicitly allowlisted above.
+ *
+ * P1 Purchase Confidentiality: internal Purchase (account_type = 'purchase')
+ * is JJ acquisition cost and MUST NEVER be serialized to the browser.
+ * filterOwnerFacingSections strips it before DTO conversion. has_purchase
+ * is always false in the client DTO — the client has no reason to know
+ * Purchase data exists. Sale (displayed as "Property Purchase") is retained.
  */
 export function toClientReport(report: RC3PropertyReport): ClientReport {
+  const clientAccounts = filterOwnerFacingSections(report.accounts)
   return {
     reporting_name: report.reporting_name,
     from_date:      report.from_date,
     to_date:        report.to_date,
     generated_at:   report.generated_at,
-    accounts:       report.accounts.map(toClientReportSection),
-    has_purchase:   report.has_purchase,
-    has_sale:       report.has_sale,
-    has_renovation: report.has_renovation,
-    has_rental:     report.has_rental,
-    has_airbnb:     report.has_airbnb,
+    accounts:       clientAccounts.map(toClientReportSection),
+    has_purchase:   false,
+    has_sale:       clientAccounts.some(a => a.account_type === 'sale'),
+    has_renovation: clientAccounts.some(a => a.account_type === 'renovation'),
+    has_rental:     clientAccounts.some(a => a.account_type === 'rental'),
+    has_airbnb:     clientAccounts.some(a => a.account_type === 'airbnb'),
   }
 }

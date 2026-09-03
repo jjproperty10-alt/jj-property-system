@@ -135,7 +135,7 @@ describe('Account order', () => {
       'Renovation',
       'Rental Management',
       'Short-Term Rental',
-      'Property Sale',
+      'Property Purchase',
     ])
   })
 })

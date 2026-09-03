@@ -6,8 +6,10 @@
  * PR #166 — Gaps C+D (Include/Exclude), E+F (FIFO Allocation + Integrity).
  *
  * Security boundary:
- *   Browser → Server Action → authenticateStatementUser() → createServiceClient()
- *   → SECURITY DEFINER RPC (service_role only, require_jj_staff() inside)
+ *   Browser → Server Action → authenticateStatementUser()
+ *   → correction mutations: createSupabaseServerClient() (session JWT → auth.uid())
+ *   → SECURITY DEFINER RPC (require_jj_staff(['ceo','finance_admin']) inside)
+ *   Other billing helpers may still use createServiceClient() for reads / non-uid RPCs.
  *
  * Constitutional:
  *   - P-ARCH-1: NULL = Unknown (no placeholders)
@@ -19,7 +21,32 @@
 
 import { authenticateStatementUser } from '@/lib/statements/statementAuthService'
 import { createServiceClient } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabaseServer'
 import { isValidUUID } from '@/lib/owners/validation'
+
+/** Roles accepted by statements.open/transition/apply_correction_case RPCs. */
+const CORRECTION_MUTATOR_ROLES = new Set(['ceo', 'finance_admin'])
+
+function requireCorrectionMutator(
+  auth: Awaited<ReturnType<typeof authenticateStatementUser>>,
+): { ok: true; userId: string; staffRole: string } | { ok: false; error: string } {
+  if (!auth.ok) return { ok: false, error: 'You must be signed in' }
+  if (!CORRECTION_MUTATOR_ROLES.has(auth.staffRole)) {
+    return {
+      ok: false,
+      error: `Correction mutations require ceo or finance_admin (got "${auth.staffRole}")`,
+    }
+  }
+  return { ok: true, userId: auth.userId, staffRole: auth.staffRole }
+}
+
+/**
+ * Session-scoped client for correction RPCs that call require_jj_staff()/auth.uid().
+ * Must NEVER use the service-role client for these RPCs — auth.uid() would be null.
+ */
+function correctionSessionDb() {
+  return createSupabaseServerClient()
+}
 import type {
   FinancialCorrectionType,
   FinancialCorrectionStatus,
@@ -31,6 +58,10 @@ import {
   type OriginalTxRow,
 } from '@/lib/statements/correctionInsertRows'
 import type { CorrectionPlan } from '@/lib/statements/correctionPlan'
+import {
+  isPostgresUniqueViolation,
+  uniqueNonterminalCaseMessage,
+} from '@/lib/transactions/uniqueCaseViolation'
 
 // ─── Toggle Draft Line Inclusion ─────────────────────────────
 
@@ -258,9 +289,12 @@ export interface OpenCorrectionCaseInput {
  */
 export async function openCorrectionCaseAction(
   input: OpenCorrectionCaseInput,
-): Promise<{ ok: true; caseId: string } | { ok: false; error: string }> {
-  const auth = await authenticateStatementUser()
-  if (!auth.ok) return { ok: false, error: 'You must be signed in' }
+): Promise<
+  | { ok: true; caseId: string }
+  | { ok: false; error: string; code?: 'unique_violation' }
+> {
+  const gate = requireCorrectionMutator(await authenticateStatementUser())
+  if (!gate.ok) return { ok: false, error: gate.error }
 
   if (!input.seriesId || !isValidUUID(input.seriesId)) {
     return { ok: false, error: 'Invalid series ID' }
@@ -272,7 +306,8 @@ export async function openCorrectionCaseAction(
     return { ok: false, error: 'Description is required' }
   }
 
-  const db = createServiceClient()
+  // Session JWT required so RPC require_jj_staff sees auth.uid() = signed-in mutator.
+  const db = correctionSessionDb()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -293,12 +328,26 @@ export async function openCorrectionCaseAction(
 
     if (error) {
       console.error('[billingActions] openCorrectionCase RPC error:', error)
+      if (isPostgresUniqueViolation(error)) {
+        return {
+          ok: false,
+          error: uniqueNonterminalCaseMessage(null),
+          code: 'unique_violation',
+        }
+      }
       return { ok: false, error: error.message ?? 'Database error' }
     }
 
     return { ok: true, caseId: String(data) }
   } catch (err) {
     console.error('[billingActions] openCorrectionCase unexpected error:', err)
+    if (isPostgresUniqueViolation(err)) {
+      return {
+        ok: false,
+        error: uniqueNonterminalCaseMessage(null),
+        code: 'unique_violation',
+      }
+    }
     return { ok: false, error: 'Unexpected error' }
   }
 }
@@ -346,8 +395,8 @@ export interface TransitionCorrectionCaseInput {
 export async function transitionCorrectionCaseAction(
   input: TransitionCorrectionCaseInput,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const auth = await authenticateStatementUser()
-  if (!auth.ok) return { ok: false, error: 'You must be signed in' }
+  const gate = requireCorrectionMutator(await authenticateStatementUser())
+  if (!gate.ok) return { ok: false, error: gate.error }
 
   if (!input.caseId || !isValidUUID(input.caseId)) {
     return { ok: false, error: 'Invalid case ID' }
@@ -365,7 +414,7 @@ export async function transitionCorrectionCaseAction(
     }
   }
 
-  const db = createServiceClient()
+  const db = correctionSessionDb()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -420,8 +469,8 @@ export interface ApplyCorrectionCaseResult {
 export async function applyCorrectionCaseAction(
   input: ApplyCorrectionCaseInput,
 ): Promise<ApplyCorrectionCaseResult | { ok: false; error: string }> {
-  const auth = await authenticateStatementUser()
-  if (!auth.ok) return { ok: false, error: 'You must be signed in' }
+  const gate = requireCorrectionMutator(await authenticateStatementUser())
+  if (!gate.ok) return { ok: false, error: gate.error }
   if (!input || !input.caseId || !isValidUUID(input.caseId)) {
     return { ok: false, error: 'Invalid case ID' }
   }
@@ -436,7 +485,7 @@ export async function applyCorrectionCaseAction(
     return { ok: false, error: 'Invalid correction plan' }
   }
 
-  const db = createServiceClient()
+  const db = correctionSessionDb()
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (db as any).schema('statements')

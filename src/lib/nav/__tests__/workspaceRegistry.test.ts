@@ -101,7 +101,15 @@ describe('workspaceRegistry', () => {
   describe('Client Reports nav item', () => {
     it('sits immediately after Owners and before Finance', () => {
       const ids = getAllWorkspaces().map((ws) => ws.id)
-      expect(ids).toEqual(['home', 'ceo', 'owners', 'clientReports', 'finance'])
+      expect(ids).toEqual([
+        'home',
+        'ceo',
+        'owners',
+        'clientReports',
+        'finance',
+        'transactions',
+        'validation',
+      ])
       expect(ids.indexOf('clientReports')).toBe(ids.indexOf('owners') + 1)
     })
 
