@@ -73,6 +73,7 @@ const L = {
   /* ── Top bar ─────────────────────────────────────────────────────────────── */
   // M6: renamed from "Client Financial Report" to premium branding
   reportTitle:          { en: 'Owner Financial Statement',     he: 'דוח פיננסי לבעל הנכס'       },
+  backToOwners:         { en: 'Back',                          he: 'חזרה'                        },
   confidential:         { en: 'Confidential',                  he: 'סודי'                        },
 
   /* ── Module names ────────────────────────────────────────────────────────── */

@@ -23,8 +23,9 @@
 'use client'
 
 import React, { useCallback, useEffect, useState, Suspense } from 'react'
+import Link from 'next/link'
 import {
-  Building2, Hammer, Key, Plane,
+  ArrowLeft, Building2, Hammer, Key, Plane,
   Zap, Droplets, Wifi, Brush, Wrench, Sofa, Monitor, Package, Shield,
 } from 'lucide-react'
 import type { ClientReport, ClientReportSection } from '@/lib/report/clientReportDto'
@@ -1171,14 +1172,24 @@ function ClientReportRC3Content() {
 
       {/* ── Top bar ──────────────────────────────────────────────────────────── */}
       <div className="bg-[#1e3a5f] text-white px-6 py-4 flex items-center justify-between">
-        <div>
-          {/* M6: Hierarchy — Brand / Report Type / (property loaded below) */}
-          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-400 mb-0.5">
-            JJ Property 10
+        <div className="flex items-center gap-4 min-w-0">
+          <Link
+            href="/owners"
+            className="print-hide flex items-center gap-1.5 text-sm font-medium text-blue-100 hover:text-white transition-colors flex-shrink-0"
+            aria-label={t('backToOwners', lang)}
+          >
+            <ArrowLeft className={`h-5 w-5 ${isRTL ? 'rotate-180' : ''}`} />
+            {t('backToOwners', lang)}
+          </Link>
+          <div className="min-w-0">
+            {/* M6: Hierarchy — Brand / Report Type / (property loaded below) */}
+            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-400 mb-0.5">
+              JJ Property 10
+            </div>
+            <h1 className="text-lg font-bold tracking-wide leading-tight">
+              {t('reportTitle', lang)}
+            </h1>
           </div>
-          <h1 className="text-lg font-bold tracking-wide leading-tight">
-            {t('reportTitle', lang)}
-          </h1>
         </div>
         {/* print-hide: controls disappear in print output */}
         <div className="flex items-center gap-3 print-hide">
