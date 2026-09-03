@@ -199,6 +199,6 @@ describe('F-3: Purchase account_type gets correct section metadata', () => {
       }),
     ], 0)
     expect(section.account_label).toBe('Property Purchase')
-    expect(section.account_label_he).toBe('רכישת נכס')
+    expect(section.account_label_he).toBe('רכישת הנכס')
   })
 })
