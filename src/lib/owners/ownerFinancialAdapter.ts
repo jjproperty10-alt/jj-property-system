@@ -182,7 +182,7 @@ function resolveRentalPresentationGroup(subcategory: string | null): string {
   return RENTAL_PRESENTATION_GROUPS[subcategory] ?? 'Other'
 }
 
-function mapRowToDTO(
+export function mapRowToDTO(
   row: RC3AccountRow,
   propertyName?: string | null,
   sectionType?: string,
@@ -200,12 +200,12 @@ function mapRowToDTO(
     isReference:       row.display_group === 'reference',
     subcategory:       isRental ? (row.subcategory ?? null) : undefined,
     presentationGroup: isRental ? resolveRentalPresentationGroup(row.subcategory ?? null) : undefined,
-    actualCostEur:     hasMargin ? toEur(row.amount_eur) : undefined,
-    marginEur:         hasMargin ? toEur(row.client_amount - row.amount_eur) : undefined,
+    actualCostEur:     hasMargin ? toEur(row.amount_eur) : null,
+    marginEur:         hasMargin ? toEur(row.client_amount - row.amount_eur) : null,
   }
 }
 
-function mapSectionToDTO(
+export function mapSectionToDTO(
   section: RC3AccountSection,
   propertyName?: string | null,
   purchaseDisposition?: 'internal_settled' | 'needs_review',
@@ -242,7 +242,7 @@ function mapSectionToDTO(
     incomeEur:          toEur(section.total_income),
     expensesEur:        toEur(section.total_expenses),
     netEur:             toEur(section.total_income - section.total_expenses),
-    openingBalanceEur:  section.opening_balance !== 0 ? toEur(section.opening_balance) : undefined,
+    openingBalanceEur:  toEur(section.opening_balance),
     closingBalanceEur:  toEur(section.closing_balance),
     balanceConvention:  section.balance_convention,
     propertyName:       propertyName ?? null,

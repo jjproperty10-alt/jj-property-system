@@ -27,6 +27,10 @@ const config: Config = {
       tsconfig: {
         moduleResolution: 'node',
         strict: true,
+        // Tests run on Node (not the browser bundle): compile at ES2017 so native Set/Map
+        // iteration and spreads are emitted. At the base 'es5' target, ts-jest downlevels
+        // `for (const k of new Set([...]))` to a `.length` index loop that iterates 0 times.
+        target: 'es2017',
         // Override 'preserve' so .tsx test files can run under Node.js
         jsx: 'react-jsx',
       },
