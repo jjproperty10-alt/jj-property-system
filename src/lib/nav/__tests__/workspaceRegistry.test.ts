@@ -97,4 +97,42 @@ describe('workspaceRegistry', () => {
       }
     })
   })
+
+  describe('Client Reports nav item', () => {
+    it('sits immediately after Owners and before Finance', () => {
+      const ids = getAllWorkspaces().map((ws) => ws.id)
+      expect(ids).toEqual(['home', 'ceo', 'owners', 'clientReports', 'finance'])
+      expect(ids.indexOf('clientReports')).toBe(ids.indexOf('owners') + 1)
+    })
+
+    it('uses the existing /client-report-rc3 route and bilingual labels', () => {
+      const ws = getAllWorkspaces().find((item) => item.id === 'clientReports')
+      expect(ws).toBeDefined()
+      expect(ws?.label).toBe('Client Reports')
+      expect(ws?.labelHe).toBe('דוחות לקוחות')
+      expect(ws?.landingRoute).toBe('/client-report-rc3')
+      expect(ws?.routePrefix).toBe('/client-report-rc3')
+    })
+
+    it('projects the same route and labels into the serializable nav DTO', () => {
+      const item = getRegisteredWorkspaces('ceo').find((ws) => ws.id === 'clientReports')
+      expect(item).toEqual(
+        expect.objectContaining({
+          id: 'clientReports',
+          label: 'Client Reports',
+          labelHe: 'דוחות לקוחות',
+          landingRoute: '/client-report-rc3',
+          routePrefix: '/client-report-rc3',
+          iconId: 'clientReports',
+        })
+      )
+    })
+
+    it('follows Owners visibility (ceo + finance; not operations or staff)', () => {
+      expect(getRegisteredWorkspaces('ceo').some((ws) => ws.id === 'clientReports')).toBe(true)
+      expect(getRegisteredWorkspaces('finance').some((ws) => ws.id === 'clientReports')).toBe(true)
+      expect(getRegisteredWorkspaces('operations').some((ws) => ws.id === 'clientReports')).toBe(false)
+      expect(getRegisteredWorkspaces('staff').some((ws) => ws.id === 'clientReports')).toBe(false)
+    })
+  })
 })

@@ -21,7 +21,7 @@
  * @see NAV-1_PHASE2_NAVIGATION_CONTRACT.md — Contract B, Contract E, Appendix
  */
 
-import { Home, Users, BarChart3, Building2 } from 'lucide-react'
+import { Home, Users, BarChart3, Building2, FileText } from 'lucide-react'
 import type {
   WorkspaceRegistration,
   WorkspaceNavItem,
@@ -39,8 +39,9 @@ import type {
  * Registry entries (Phase 2 Appendix):
  *   home    — active — homeService — R9+R16
  *   ceo     — active — CEO Workspace (RC-004) — Option D
- *   owners  — active — identityResolverService — R11
- *   finance — active — Finance KG — R5+R6
+ *   owners        — active — identityResolverService — R11
+ *   clientReports — active — existing /client-report-rc3 route (nav link only)
+ *   finance       — active — Finance KG — R5+R6
  *
  * Not registered yet:
  *   properties  — future
@@ -73,6 +74,15 @@ const WORKSPACES: readonly WorkspaceRegistration[] = [
     attentionProvider: async () => null, // v1: Owner attention not yet wired
   },
   {
+    id: 'clientReports',
+    label: 'Client Reports',
+    labelHe: 'דוחות לקוחות',
+    icon: FileText,
+    landingRoute: '/client-report-rc3',
+    routePrefix: '/client-report-rc3',
+    attentionProvider: async () => null,
+  },
+  {
     id: 'finance',
     label: 'Finance',
     icon: BarChart3,
@@ -95,6 +105,7 @@ const WORKSPACE_ICON_IDS: Record<RegisteredWorkspaceId, WorkspaceIconId> = {
   home: 'home',
   ceo: 'ceo',
   owners: 'owners',
+  clientReports: 'clientReports',
   finance: 'finance',
 }
 
@@ -122,6 +133,12 @@ const ROLE_VISIBILITY: Record<string, Record<FrameUser['role'], 'visible' | 'rea
     staff: 'hidden',
   },
   owners: {
+    ceo: 'visible',
+    finance: 'readonly',
+    operations: 'hidden',
+    staff: 'hidden',
+  },
+  clientReports: {
     ceo: 'visible',
     finance: 'readonly',
     operations: 'hidden',
@@ -166,6 +183,7 @@ export function getRegisteredWorkspaces(
       return {
         id,
         label: ws.label,
+        ...(ws.labelHe ? { labelHe: ws.labelHe } : {}),
         iconId: WORKSPACE_ICON_IDS[id],
         landingRoute: ws.landingRoute,
         routePrefix: ws.routePrefix,
