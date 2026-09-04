@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseBrowserClient } from '@/lib/supabase'
 import {
   CATEGORY_SUBCATEGORIES, CATEGORIES, KNOWN_PAYERS,
   KNOWN_PAYEES, CATEGORY_COLORS, type Category,
@@ -49,6 +49,7 @@ export default function NewTransactionPage() {
   const [showPropDrop, setShowPropDrop] = useState(false)
 
   useEffect(() => {
+    const supabase = createSupabaseBrowserClient()
     supabase
       .from('properties')
       .select('name')
@@ -78,6 +79,7 @@ export default function NewTransactionPage() {
 
     setSaving(true)
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+    const supabase = createSupabaseBrowserClient()
 
     // Find property ID
     let property_id: string | null = null

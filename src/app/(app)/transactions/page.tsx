@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseBrowserClient } from '@/lib/supabase'
 import type { Category } from '@/types'
 import { CATEGORIES, CATEGORY_COLORS } from '@/types'
 import { format } from 'date-fns'
@@ -80,6 +80,8 @@ function TransactionsRegisterInner() {
   const fetchRows = useCallback(async () => {
     setLoading(true)
 
+    // Cookie-session client (same as login) — plain `supabase` has no auth cookies → RLS anon → 0 rows.
+    const supabase = createSupabaseBrowserClient()
     let q = supabase
       .from('transactions')
       .select('*', { count: 'exact' })
