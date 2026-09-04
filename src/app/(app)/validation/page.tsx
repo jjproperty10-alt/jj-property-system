@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseBrowserClient } from '@/lib/supabase'
 import { RefreshCw, AlertTriangle, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 
@@ -48,6 +48,8 @@ export default function ValidationPage() {
 
   async function load() {
     setLoading(true)
+    // Cookie-session client — plain anon client yields RLS-empty results while staff UI looks logged-in.
+    const supabase = createSupabaseBrowserClient()
     const [issuesRes, countRes] = await Promise.all([
       supabase.from('v_transaction_issues').select('*').order('severity').order('date', { ascending: false }),
       supabase.from('transactions').select('id', { count: 'exact', head: true }),
