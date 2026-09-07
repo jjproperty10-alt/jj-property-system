@@ -13,7 +13,7 @@ import { composeOwnerStrStatement, isOwnerStatementExtra, type OwnerStrStatement
 import { isBookingAccountVerifiedZero } from './bookingTaxPolicy'
 import { applyAirbnbCyprusVat } from './airbnbTaxPolicy'
 import { getAuthoritativeStatementLine, belongsToStatementMonth } from './statementEvidence'
-import { getHistoricalChannelEvidence } from './historicalChannelEvidence'
+import { getHistoricalChannelEvidence, mergeLiveAndHistoricalEvidence } from './historicalChannelEvidence'
 
 export interface OwnerStrStatementInput {
   readonly ownerName: string
@@ -75,7 +75,9 @@ export async function buildOwnerStrStatement(input: OwnerStrStatementInput): Pro
   const names = input.properties.map(p => p.name)
 
   // 1) Hostaway reservation evidence (revenue-eligible only), per property.
-  const reservations: StatementReservationEvidence[] = []
+  //     Historical-only properties have no live mapping: auditProperty fails closed and this
+  //     loop contributes nothing. That is expected — not a defect.
+  const live: StatementReservationEvidence[] = []
   for (const p of input.properties) {
     const res = await audit.auditProperty({ jjPropertyName: p.name, dateFrom: input.startDate, dateTo: input.endDate })
     if (!res.success || !res.audit) continue
@@ -84,22 +86,23 @@ export async function buildOwnerStrStatement(input: OwnerStrStatementInput): Pro
       // Owner Statement periodization follows Hostaway: a reservation belongs to the statement month
       // by ARRIVAL/check-in date (NOT overlap). The operational Reservations cockpit keeps overlap.
       if (!belongsToStatementMonth(r.checkIn, input.startDate, input.endDate)) continue
-      reservations.push(toEvidence(p.name, r, today))
+      live.push(toEvidence(p.name, r, today))
     }
   }
 
-  // 1b) Historical channel evidence — recovered Booking/Airbnb reservations for properties whose STR
-  //     channel data did NOT come through Hostaway (e.g. a deleted Hostaway listing). Same
-  //     StatementReservationEvidence shape, same arrival-month periodization. Purely additive:
-  //     Hostaway-mapped properties have no rows here, so their statements are unchanged. Provenance is
-  //     preserved as airbnb/booking (never hostaway); buildStrStatementLine still derives Mgmt Fee/Net.
+  // 1b) Historical channel evidence — recovered Booking/Airbnb by canonical property_id.
+  //     No live Hostaway listing required. Same StatementReservationEvidence shape, same
+  //     arrival-month periodization. Deduped against live by reservationId (no double count).
+  //     Provenance remains airbnb/booking (never hostaway).
+  const historical: StatementReservationEvidence[] = []
   for (const p of input.properties) {
     const hist = await getHistoricalChannelEvidence(sb, p.id, p.name, today)
     for (const ev of hist) {
       if (!belongsToStatementMonth(ev.checkIn, input.startDate, input.endDate)) continue
-      reservations.push(ev)
+      historical.push(ev)
     }
   }
+  const reservations = mergeLiveAndHistoricalEvidence(live, historical)
 
   // 2) Expenses & Extras — JJ authoritative ledger (owner property expenses in period).
   //    Owner-facing amount = COALESCE(client_charge, amount_eur) (P-LEDGER-6), shown as a negative charge.

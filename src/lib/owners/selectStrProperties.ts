@@ -25,3 +25,22 @@ export function selectStrProperties(services: OwnerServiceEngagementsDTO): StrPr
   }
   return out
 }
+
+/**
+ * Union historical-only STR properties (recovered Booking/Airbnb, no live Hostaway listing)
+ * onto the live-engagement list. Deduped by canonical property_id. Does not invent mappings.
+ */
+export function includeHistoricalStrProperties(
+  live: readonly StrPropertyRef[],
+  historical: readonly StrPropertyRef[],
+): StrPropertyRef[] {
+  const seen = new Set(live.map(p => p.id))
+  const out: StrPropertyRef[] = [...live]
+  for (const h of historical) {
+    if (!h.id || !h.name) continue
+    if (seen.has(h.id)) continue
+    seen.add(h.id)
+    out.push(h)
+  }
+  return out
+}

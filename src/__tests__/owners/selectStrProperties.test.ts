@@ -1,4 +1,4 @@
-import { selectStrProperties } from '@/lib/owners/selectStrProperties'
+import { selectStrProperties, includeHistoricalStrProperties } from '@/lib/owners/selectStrProperties'
 import type { OwnerServiceEngagementsDTO } from '@/lib/owners/ownerWorkspaceTypes'
 
 const eng = (serviceType: string, status = 'active') => ({
@@ -40,5 +40,17 @@ describe('selectStrProperties', () => {
 
   it('returns empty when no STR engagements', () => {
     expect(selectStrProperties(svc([{ propertyId: 'x', propertyName: 'X', engagements: [eng('renovation')] }]))).toEqual([])
+  })
+
+  it('unions historical-only properties without duplicating live STR ids', () => {
+    const live = selectStrProperties(svc([
+      { propertyId: 'd', propertyName: 'Tamir Dekelia', engagements: [eng('airbnb_str')] },
+    ]))
+    const out = includeHistoricalStrProperties(live, [
+      { id: 'd', name: 'Tamir Dekelia' },
+      { id: 'u', name: 'Uriel Duplex' },
+      { id: 't', name: 'Tom Dekelia' },
+    ])
+    expect(out.map(o => o.name)).toEqual(['Tamir Dekelia', 'Uriel Duplex', 'Tom Dekelia'])
   })
 })

@@ -2,28 +2,24 @@
  * historicalChannelEvidence — read-only provider for recovered NON-Hostaway channel reservation
  * evidence (pms.historical_channel_reservation_evidence).
  *
- * Purpose: properties whose STR channel data did NOT come through Hostaway (e.g. a deleted Hostaway
- * listing) have their Booking/Airbnb reservations recovered directly from the channel extranets and
- * stored with TRUE provenance (provider = 'airbnb' | 'booking', never 'hostaway'). This provider maps
- * that evidence into the SAME StatementReservationEvidence shape the certified Hostaway path produces,
- * so it flows through the existing composeOwnerStrStatement / buildStrStatementLine engine unchanged.
+ * pms is NOT exposed to PostgREST. Reads go through public SECURITY DEFINER RPC
+ * `pms_historical_reservations_for_property` (same pattern as pms_reservations_for_property).
+ * Never labelled Hostaway. No ledger writes.
  *
- * Boundary: read-only (.select only). No writes; only ever called by the server-guarded ownerStrStatementService. No second financial engine — buildStrStatementLine
- * still derives Management Fee (20%) and Net Owner Payout. Unknown stays null (never coerced).
- *
- * Channel mapping note: recovered evidence already carries the ACTUAL platform fee (commission +
- * payment fee, from the real payout). The certified line builder synthesises a +1.6% Booking payment
- * fee only for channel === 'booking'. To avoid double-counting that fee on recovered direct-channel
- * Booking data, the provider maps DB channel 'booking' -> line channel 'booking_direct' (isBooking =
- * false in the line builder). Airbnb is unaffected.
+ * Channel mapping: recovered Booking already carries the ACTUAL platform fee. The line builder
+ * would add +1.6% when channel === 'booking', so this provider maps 'booking' → 'booking_direct'.
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { StatementReservationEvidence } from './ownerStrStatement'
 
-/** Channel-source statuses that represent realised owner-facing revenue (mirror of isRevenueEligible). */
+/** JJ historical-management cutoff for recovered channel evidence (check-in inclusive). */
+export const HISTORICAL_MANAGED_CHECKIN_CUTOFF = '2026-06-10'
+
+/** Recovered OTA channels only. Direct/LTR rent is not historical STR evidence. */
+const OTA_CHANNELS: ReadonlySet<string> = new Set(['airbnb', 'booking', 'booking_direct'])
 const REVENUE_STATUSES: ReadonlySet<string> = new Set(['paid', 'ok', 'confirmed', 'modified'])
 
-interface HistoricalEvidenceRow {
+export interface HistoricalEvidenceRow {
   external_reservation_id: string
   channel: string
   provider: string
@@ -41,17 +37,14 @@ interface HistoricalEvidenceRow {
 const num = (v: unknown): number | null =>
   v == null || v === '' || Number.isNaN(Number(v)) ? null : Number(v)
 
+const isoDate = (v: unknown): string => String(v).slice(0, 10)
+
 const nightsBetween = (ci: string, co: string): number => {
   const a = Date.parse(ci), b = Date.parse(co)
   if (Number.isNaN(a) || Number.isNaN(b)) return 0
   return Math.max(0, Math.round((b - a) / 86_400_000))
 }
 
-/**
- * Guest masking — identical rule to ownerReservationAdapter.maskGuestName (G3-19, locked 2026-07-25),
- * inlined to keep this provider free of server-only imports (directly unit-testable):
- * checkOut < today -> '[Guest]'; null -> null (never fabricated); active/upcoming -> full name.
- */
 function maskGuest(guestName: string | null, checkOut: string, today: string): string | null {
   if (guestName === null) return null
   return checkOut < today ? '[Guest]' : guestName
@@ -62,10 +55,56 @@ function lineChannel(dbChannel: string): string {
   return dbChannel === 'booking' ? 'booking_direct' : dbChannel
 }
 
+export function mapHistoricalRow(
+  raw: HistoricalEvidenceRow,
+  propertyName: string,
+  today: string,
+): StatementReservationEvidence | null {
+  if (!REVENUE_STATUSES.has(String(raw.status))) return null
+  if (String(raw.provider) === 'hostaway') return null
+  if (!OTA_CHANNELS.has(String(raw.channel))) return null
+  const checkIn = isoDate(raw.check_in_date)
+  if (checkIn > HISTORICAL_MANAGED_CHECKIN_CUTOFF) return null
+  const provider = String(raw.provider)
+  const checkOut = isoDate(raw.check_out_date)
+  return {
+    reservationId: String(raw.external_reservation_id),
+    channel: lineChannel(String(raw.channel)),
+    grossEur: num(raw.gross_amount),
+    platformFeesEur: num(raw.platform_fee),
+    platformFeesSource: provider + ':actual_platform_fee',
+    cleaningEur: num(raw.cleaning_fee),
+    taxesEur: num(raw.tax_amount),
+    platformPayoutEvidenceEur: num(raw.net_payout),
+    propertyName,
+    guestName: maskGuest(raw.guest_name ?? null, checkOut, today),
+    checkIn,
+    checkOut,
+    nights: nightsBetween(checkIn, checkOut),
+  }
+}
+
 /**
- * Fetch revenue-eligible recovered channel reservations for a property as StatementReservationEvidence.
- * Periodization (check-in month) is applied by the caller via belongsToStatementMonth, identical to the
- * Hostaway path. Cancelled / no-show / inquiry rows are excluded here (no owner revenue).
+ * Live Hostaway rows first; historical rows appended only when reservationId is new.
+ * Prevents double-counting if a property ever has both sources for the same stay.
+ */
+export function mergeLiveAndHistoricalEvidence(
+  live: readonly StatementReservationEvidence[],
+  historical: readonly StatementReservationEvidence[],
+): StatementReservationEvidence[] {
+  const seen = new Set(live.map(r => r.reservationId))
+  const out: StatementReservationEvidence[] = [...live]
+  for (const h of historical) {
+    if (seen.has(h.reservationId)) continue
+    seen.add(h.reservationId)
+    out.push(h)
+  }
+  return out
+}
+
+/**
+ * Fetch revenue-eligible recovered channel reservations for a property by canonical property_id.
+ * No live Hostaway mapping is required. Periodization (check-in month) is applied by the caller.
  */
 export async function getHistoricalChannelEvidence(
   sb: SupabaseClient,
@@ -73,36 +112,38 @@ export async function getHistoricalChannelEvidence(
   propertyName: string,
   today: string,
 ): Promise<StatementReservationEvidence[]> {
-  const { data, error } = await sb
-    .schema('pms')
-    .from('historical_channel_reservation_evidence')
-    .select(
-      'external_reservation_id, channel, provider, guest_name, check_in_date, check_out_date, status, gross_amount, platform_fee, cleaning_fee, tax_amount, net_payout',
-    )
-    .eq('property_id', propertyId)
-    .eq('is_current', true)
-    .eq('review_status', 'active')
+  const { data, error } = await sb.rpc('pms_historical_reservations_for_property', {
+    p_property_id: propertyId,
+  })
   if (error || !data) return []
 
   const out: StatementReservationEvidence[] = []
   for (const raw of data as HistoricalEvidenceRow[]) {
-    if (!REVENUE_STATUSES.has(String(raw.status))) continue
-    const provider = String(raw.provider) // 'airbnb' | 'booking' — real source, for provenance tags
-    out.push({
-      reservationId: String(raw.external_reservation_id),
-      channel: lineChannel(String(raw.channel)),
-      grossEur: num(raw.gross_amount),
-      platformFeesEur: num(raw.platform_fee),
-      platformFeesSource: provider + ':actual_platform_fee',
-      cleaningEur: num(raw.cleaning_fee),
-      taxesEur: num(raw.tax_amount),
-      platformPayoutEvidenceEur: num(raw.net_payout),
-      propertyName,
-      guestName: maskGuest(raw.guest_name ?? null, raw.check_out_date, today),
-      checkIn: String(raw.check_in_date),
-      checkOut: String(raw.check_out_date),
-      nights: nightsBetween(String(raw.check_in_date), String(raw.check_out_date)),
-    })
+    const ev = mapHistoricalRow(raw, propertyName, today)
+    if (ev) out.push(ev)
   }
   return out
+}
+
+/**
+ * Canonical properties that have recovered historical channel evidence AND belong to this owner
+ * (exact property_name match against the owner's managed names). No live Hostaway mapping required.
+ */
+export async function historicalPropertiesForOwner(
+  sb: SupabaseClient,
+  managedPropertyNames: readonly string[],
+): Promise<{ id: string; name: string }[]> {
+  if (!managedPropertyNames.length) return []
+  const { data, error } = await sb.rpc('pms_historical_property_ids')
+  if (error || !data) return []
+  const ids = (data as { property_id: string }[]).map(r => String(r.property_id))
+  if (!ids.length) return []
+  const { data: defs } = await sb
+    .from('property_definitions')
+    .select('property_id, property_name')
+    .in('property_id', ids)
+  const allowed = new Set(managedPropertyNames)
+  return (defs ?? [])
+    .filter(d => allowed.has(String(d.property_name)))
+    .map(d => ({ id: String(d.property_id), name: String(d.property_name) }))
 }
