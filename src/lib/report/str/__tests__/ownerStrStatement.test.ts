@@ -1,4 +1,4 @@
-import { composeOwnerStrStatement, isOwnerStatementExtra, RESERVATION_CHAIN_SUBCATEGORIES, NON_EXTRA_SUBCATEGORIES, type StatementReservationEvidence, type StatementExtra, type ComposeInput } from '../ownerStrStatement'
+import { composeOwnerStrStatement, isOwnerStatementExtra, isOwnerStatementExtraCategory, isOwnerStatementPayment, OWNER_STATEMENT_EXTRA_CATEGORIES, RESERVATION_CHAIN_SUBCATEGORIES, NON_EXTRA_SUBCATEGORIES, type StatementReservationEvidence, type StatementExtra, type ComposeInput } from '../ownerStrStatement'
 
 const base = (over: Partial<ComposeInput> = {}): ComposeInput => ({
   ownerName: 'Orit Rob', properties: ['Orit Rob Pingodes'],
@@ -30,6 +30,7 @@ describe('composeOwnerStrStatement', () => {
     expect(s.metrics.propertyManagementRevenueEur).toBe(221.39) // 161.39 + 60
     expect(s.expensesExtrasTotalEur).toBe(-40)
     expect(s.statementTotalEur).toBe(605.58) // 645.58 - 40
+    expect(s.ownerPaymentsTotalEur).toBe(0)
     expect(s.totals.needsReviewCount).toBe(0)
   })
 
@@ -73,20 +74,35 @@ describe('composeOwnerStrStatement', () => {
 describe('Decision B — Expenses & Extras exclusion (no double-count)', () => {
   it('excludes reservation-chain deductions and income/settlement subcategories', () => {
     expect(isOwnerStatementExtra('Cleaning')).toBe(false)
+    expect(isOwnerStatementExtra('Cleaning', 'Airbnb')).toBe(false)
+    expect(isOwnerStatementExtra('Cleaning', 'JJ')).toBe(true)
+    expect(isOwnerStatementExtra('Cleaning', 'Owner')).toBe(true)
     expect(isOwnerStatementExtra('Management Fee')).toBe(false)
+    expect(isOwnerStatementExtra('Management Fee', 'JJ')).toBe(false)
     expect(isOwnerStatementExtra('Platform Income')).toBe(false)
     expect(isOwnerStatementExtra('Client Payment')).toBe(false)
     expect(isOwnerStatementExtra('Bank Payment to Owner')).toBe(false)
+    expect(isOwnerStatementPayment('Client Payment')).toBe(true)
+    expect(isOwnerStatementPayment('Bank Payment to Owner')).toBe(false)
     expect(RESERVATION_CHAIN_SUBCATEGORIES.has('Cleaning')).toBe(true)
     expect(RESERVATION_CHAIN_SUBCATEGORIES.has('Management Fee')).toBe(true)
     expect(NON_EXTRA_SUBCATEGORIES.has('Platform Income')).toBe(true)
     expect(NON_EXTRA_SUBCATEGORIES.has('Bank Payment to Owner')).toBe(true)
+    expect(NON_EXTRA_SUBCATEGORIES.has('Client Payment')).toBe(true)
   })
   it('keeps genuine owner-cost subcategories', () => {
     expect(isOwnerStatementExtra('Electricity')).toBe(true)
     expect(isOwnerStatementExtra('Water')).toBe(true)
     expect(isOwnerStatementExtra('Repairs')).toBe(true)
     expect(isOwnerStatementExtra('Software/Hostaway')).toBe(true)
+  })
+  it('allows Airbnb + Management ledger categories and rejects purchase/renovation/sale', () => {
+    expect(OWNER_STATEMENT_EXTRA_CATEGORIES).toEqual(['Airbnb', 'Management'])
+    expect(isOwnerStatementExtraCategory('Airbnb')).toBe(true)
+    expect(isOwnerStatementExtraCategory('Management')).toBe(true)
+    expect(isOwnerStatementExtraCategory('Renovation')).toBe(false)
+    expect(isOwnerStatementExtraCategory('Purchase')).toBe(false)
+    expect(isOwnerStatementExtraCategory('Sale')).toBe(false)
   })
   it('statement total is unaffected by Cleaning/Mgmt because they never reach extras (composer sums only what it is given)', () => {
     // Simulate the service post-filter: Cleaning/Mgmt already removed, only a real owner cost remains.
@@ -96,6 +112,19 @@ describe('Decision B — Expenses & Extras exclusion (no double-count)', () => {
     }))
     expect(s.expensesExtrasTotalEur).toBe(-25)
     expect(s.statementTotalEur).toBe(620.58) // 645.58 net - 25, Cleaning/Mgmt NOT re-subtracted
+  })
+  it('owner payments are credits on statement total, not expenses', () => {
+    const s = composeOwnerStrStatement(base({
+      reservations: [airbnbRes()],
+      extras: [{ name: 'Design', date: '2026-05-06', subcategory: 'Design', propertyName: 'Orit Rob Pingodes', amountEur: -1500, provenance: 'jj_transaction' }],
+      ownerPayments: [{ name: 'שולם עבור ריהוט', date: '2026-04-28', subcategory: 'Client Payment', propertyName: 'Orit Rob Pingodes', amountEur: 1770, provenance: 'jj_transaction' }],
+    }))
+    expect(s.expensesExtrasTotalEur).toBe(-1500)
+    expect(s.ownerPaymentsTotalEur).toBe(1770)
+    expect(s.statementTotalEur).toBe(915.58) // 645.58 - 1500 + 1770
+  })
+  it('Orit certified Final = STR Net − Expenses + Payments', () => {
+    expect(Math.round((3374.87 - 6713.52 + 2770) * 100) / 100).toBe(-568.65)
   })
 })
 
@@ -118,12 +147,13 @@ describe('aggregate flag passthrough (composer honors service-detected aggregate
 
 describe('Bank Payment to Owner is settlement, not Expenses & Extras', () => {
   /** Mirrors ownerStrStatementService extras filter — presentation only; does not rewrite ledger rows. */
-  type AirbnbTx = { subcategory: string; description: string; amount_eur: number; client_charge: number | null }
+  type AirbnbTx = { subcategory: string; description: string; amount_eur: number; client_charge: number | null; payer?: string | null }
   function extrasFromAirbnbTx(rows: readonly AirbnbTx[]): StatementExtra[] {
     const frozen = JSON.parse(JSON.stringify(rows)) as AirbnbTx[]
     const extras: StatementExtra[] = []
     for (const t of rows) {
-      if (!isOwnerStatementExtra(t.subcategory)) continue
+      if (isOwnerStatementPayment(t.subcategory)) continue
+      if (!isOwnerStatementExtra(t.subcategory, t.payer)) continue
       const ownerFacing = t.client_charge ?? t.amount_eur
       extras.push({
         name: t.description,
@@ -184,5 +214,17 @@ describe('Bank Payment to Owner is settlement, not Expenses & Extras', () => {
     expect(certified.mirantaJunAugNet).toBe(2357.16)
     expect(certified.tamirCombinedMayJulNet).toBe(6139.57)
     expect(certified.yogevFebJunNet).toBe(2166.62)
+  })
+
+  it('includes non-Airbnb Cleaning and excludes Airbnb Cleaning / Client Payment / BPO from extras', () => {
+    const extras = extrasFromAirbnbTx([
+      { subcategory: 'Cleaning', description: 'cleaning supplies from sklavenitis', amount_eur: 61.08, client_charge: 61.08, payer: 'JJ' },
+      { subcategory: 'Cleaning', description: 'נקיון הדירה יסודי', amount_eur: 0, client_charge: 120, payer: 'Owner' },
+      { subcategory: 'Cleaning', description: 'platform cleaning', amount_eur: 80, client_charge: 80, payer: 'Airbnb' },
+      { subcategory: 'Client Payment', description: 'שולם עבור ריהוט', amount_eur: 1770, client_charge: null, payer: 'Owner' },
+      { subcategory: 'Bank Payment to Owner', description: 'BPO', amount_eur: 500, client_charge: 500, payer: 'JJ' },
+    ])
+    expect(extras.map(e => e.subcategory)).toEqual(['Cleaning', 'Cleaning'])
+    expect(Math.round(extras.reduce((a, e) => a + e.amountEur, 0) * 100) / 100).toBe(-181.08)
   })
 })

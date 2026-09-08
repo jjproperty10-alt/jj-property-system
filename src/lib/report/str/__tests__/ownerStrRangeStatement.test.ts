@@ -2,14 +2,16 @@ import { composeOwnerStrRangeStatement } from '../ownerStrRangeStatement'
 import type { OwnerStrStatement } from '../ownerStrStatement'
 
 // Minimal month stub with only the fields the range composer reads.
-const month = (o: { gross: number; platform: number | null; cleaning: number | null; mgmt: number | null; tax: number | null; net: number | null; extras: number }): OwnerStrStatement => ({
+const month = (o: { gross: number; platform: number | null; cleaning: number | null; mgmt: number | null; tax: number | null; net: number | null; extras: number; payments?: number }): OwnerStrStatement => ({
   header: { company: 'JJ PROPERTY 10 LTD', ownerName: 'X', properties: ['P'], periodStart: '2026-05-01', periodEnd: '2026-05-31', periodLabel: 'May 2026', issuedDate: '2026-08-14' },
   metrics: { grossEur: o.gross, netOwnerPayoutEur: o.net, propertyManagementRevenueEur: o.mgmt },
   activity: [],
   totals: { grossEur: o.gross, platformFeesEur: o.platform, cleaningEur: o.cleaning, managementFeeEur: o.mgmt, taxesEur: o.tax, netOwnerPayoutEur: o.net, needsReviewCount: o.net == null ? 1 : 0 },
   expensesExtras: [],
   expensesExtrasTotalEur: o.extras,
-  statementTotalEur: o.net == null ? null : o.net + o.extras,
+  ownerPayments: [],
+  ownerPaymentsTotalEur: o.payments ?? 0,
+  statementTotalEur: o.net == null ? null : o.net + o.extras + (o.payments ?? 0),
   reconciliation: { hostawayPayoutEvidenceEur: null, jjPlatformIncomeEur: null, jjPlatformIncomeIsAggregate: false, status: 'no_evidence', note: '' },
   provenanceNote: '',
 })
@@ -34,6 +36,7 @@ describe('composeOwnerStrRangeStatement', () => {
     expect(r.overall.netOwnerPayoutEur).toBe(3840)
     expect(r.overall.expensesExtrasTotalEur).toBe(-50)
     expect(r.overall.statementTotalEur).toBe(3790) // 3840 - 50
+    expect(r.overall.ownerPaymentsTotalEur).toBe(0)
     expect(r.overall.needsReviewMonths).toBe(0)
     expect(r.header.monthCount).toBe(3)
     expect(r.months).toHaveLength(3)
@@ -60,5 +63,14 @@ describe('composeOwnerStrRangeStatement', () => {
     ])
     expect(r.months[0].totals.grossEur).toBe(100)
     expect(r.months[1].totals.grossEur).toBe(200)
+  })
+
+  it('adds Client Payments into overall statement total', () => {
+    const r = base([
+      month({ gross: 1000, platform: 150, cleaning: 50, mgmt: 160, tax: 0, net: 3374.87, extras: -6713.52, payments: 2770 }),
+    ])
+    expect(r.overall.expensesExtrasTotalEur).toBe(-6713.52)
+    expect(r.overall.ownerPaymentsTotalEur).toBe(2770)
+    expect(r.overall.statementTotalEur).toBe(-568.65)
   })
 })

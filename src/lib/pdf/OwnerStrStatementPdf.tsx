@@ -250,6 +250,34 @@ export function OwnerStrStatementPdf({ data }: { data: OwnerStrStatement }) {
           </>
         )}
 
+        {data.ownerPayments.length > 0 && (
+          <>
+            <Text style={S.section}>Payments received</Text>
+            <View style={S.th}>
+              <Text style={[S.thT, { width: '24%' }]}>Name</Text>
+              <Text style={[S.thT, { width: '12%' }]}>Date</Text>
+              <Text style={[S.thT, { width: '20%' }]}>Category</Text>
+              <Text style={[S.thT, { width: '20%' }]}>Listing</Text>
+              <Text style={[S.thT, { width: '12%' }]}></Text>
+              <Text style={[S.thT, { width: '12%' }, S.right]}>Amount</Text>
+            </View>
+            {data.ownerPayments.map((e, i) => (
+              <View key={i} style={S.tr} wrap={false}>
+                <Text style={[S.cell, { width: '24%' }]}>{e.name}</Text>
+                <Text style={[S.cell, { width: '12%' }]}>{e.date}</Text>
+                <Text style={[S.cell, { width: '20%' }]}>{e.subcategory}</Text>
+                <Text style={[S.cell, { width: '20%' }]}>{e.propertyName}</Text>
+                <Text style={[S.cellMuted, { width: '12%' }]}>—</Text>
+                <Text style={[S.cell, { width: '12%' }, S.right]}>{fmtSigned(e.amountEur)}</Text>
+              </View>
+            ))}
+            <View style={S.totalRow}>
+              <Text style={[S.totalT, { width: '88%' }]}>Total payments received</Text>
+              <Text style={[S.totalT, { width: '12%' }, S.right]}>{fmtSigned(data.ownerPaymentsTotalEur)}</Text>
+            </View>
+          </>
+        )}
+
         {/* 5 -- CLOSING STATEMENT SUMMARY (most prominent block on the page) */}
         <View style={S.summary}>
           <View style={S.sumRow}>
@@ -260,9 +288,19 @@ export function OwnerStrStatementPdf({ data }: { data: OwnerStrStatement }) {
             <Text style={S.sumLabel}>Expenses & Extras</Text>
             <Text style={S.sumValue}>{fmtSigned(data.expensesExtrasTotalEur)}</Text>
           </View>
+          {data.ownerPaymentsTotalEur !== 0 && (
+            <View style={S.sumRow}>
+              <Text style={S.sumLabel}>Payments received</Text>
+              <Text style={S.sumValue}>{fmtSigned(data.ownerPaymentsTotalEur)}</Text>
+            </View>
+          )}
           <View style={[S.sumRow, S.sumDivider]}>
             <Text style={S.sumTotalLabel}>Statement Total</Text>
-            {data.statementTotalEur == null ? <ReviewBadge /> : <Text style={S.sumTotalValue}>{fmt(data.statementTotalEur)}</Text>}
+            {data.statementTotalEur == null ? <ReviewBadge /> : (
+              <Text style={S.sumTotalValue}>
+                {data.statementTotalEur < 0 ? `-${fmt(data.statementTotalEur)}` : fmt(data.statementTotalEur)}
+              </Text>
+            )}
           </View>
         </View>
 

@@ -11,7 +11,7 @@ const stub = (label: string, gross: number, net: number | null): OwnerStrStateme
   metrics: { grossEur: gross, netOwnerPayoutEur: net, propertyManagementRevenueEur: net },
   activity: [],
   totals: { grossEur: gross, platformFeesEur: 0, cleaningEur: 0, managementFeeEur: net, taxesEur: 0, netOwnerPayoutEur: net, needsReviewCount: net == null ? 1 : 0 },
-  expensesExtras: [], expensesExtrasTotalEur: 0, statementTotalEur: net,
+  expensesExtras: [], expensesExtrasTotalEur: 0, ownerPayments: [], ownerPaymentsTotalEur: 0, statementTotalEur: net,
   reconciliation: { hostawayPayoutEvidenceEur: null, jjPlatformIncomeEur: null, jjPlatformIncomeIsAggregate: false, status: 'no_evidence', note: '' }, provenanceNote: '',
 })
 

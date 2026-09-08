@@ -9,7 +9,7 @@ import 'server-only'
 import { createServiceClient } from '@/lib/supabase'
 import { PropertyAuditService, isRevenueEligible, parsePeriodFromDescription } from '@/lib/hostaway-audit'
 import { maskGuestName } from '@/lib/owners/ownerReservationAdapter'
-import { composeOwnerStrStatement, isOwnerStatementExtra, type OwnerStrStatement, type StatementReservationEvidence, type StatementExtra } from './ownerStrStatement'
+import { composeOwnerStrStatement, isOwnerStatementExtra, isOwnerStatementExtraCategory, isOwnerStatementPayment, OWNER_STATEMENT_EXTRA_CATEGORIES, type OwnerStrStatement, type StatementReservationEvidence, type StatementExtra } from './ownerStrStatement'
 import { isBookingAccountVerifiedZero } from './bookingTaxPolicy'
 import { applyAirbnbCyprusVat } from './airbnbTaxPolicy'
 import { getAuthoritativeStatementLine, belongsToStatementMonth } from './statementEvidence'
@@ -105,40 +105,43 @@ export async function buildOwnerStrStatement(input: OwnerStrStatementInput): Pro
   const reservations = mergeLiveAndHistoricalEvidence(live, historical)
 
   // 2) Expenses & Extras — JJ authoritative ledger (owner property expenses in period).
+  //    Categories: Airbnb + Management only (not Purchase/Sale/Renovation/Transfer).
   //    Owner-facing amount = COALESCE(client_charge, amount_eur) (P-LEDGER-6), shown as a negative charge.
-  //    Platform Income / Client Payment / Bank Payment to Owner are NOT extras
-  //    (income/settlement — handled via reconciliation; BPO is settlement, not an operating expense).
-  //    Cleaning / Management Fee are NOT extras either: both are already deducted inside the certified
-  //    per-reservation chain (Net = Total Payout − Cleaning − Management Fee − Taxes). Re-adding them here
-  //    would double-count (proven in the accuracy audit: Mgmt €4,023.79 + Cleaning €3,061.08).
-  //    KNOWN LIMITATION (subcategory-based exclusion): this drops Cleaning/Management Fee purely by
-  //    subcategory. If a future row is a genuinely SEPARATE charge (different business meaning than the
-  //    reservation's own cleaning/mgmt — e.g. a one-off deep-clean billed apart from any reservation),
-  //    it must be distinguished EXPLICITLY (dedicated flag / linkage), not inferred from subcategory alone.
+  //    Platform Income / Client Payment / Bank Payment to Owner are NOT extras (income/settlement).
+  //    Client Payment is collected separately as Payments received (owner credit).
+  //    Cleaning with payer=Airbnb is reservation-chain tracking — not an owner extra.
+  //    Cleaning with payer≠Airbnb is a real owner cost (supplies / billed deep clean).
+  //    Management Fee stays out of extras regardless of payer (already deducted in-chain).
   const extras: StatementExtra[] = []
+  const ownerPayments: StatementExtra[] = []
   if (names.length) {
     const { data: exRows } = await sb.from('transactions')
-      .select('date, property_name, subcategory, description, amount_eur, client_charge')
+      .select('date, property_name, category, subcategory, description, payer, amount_eur, client_charge')
       .in('property_name', names)
-      .eq('category', 'Airbnb')
+      .in('category', [...OWNER_STATEMENT_EXTRA_CATEGORIES])
       .gte('date', input.startDate).lte('date', input.endDate)
       .or('review_status.eq.active,review_status.is.null')
     for (const t of exRows ?? []) {
+      const cat = String(t.category ?? '')
       const sub = String(t.subcategory ?? '')
-      // Owner-facing extras only. Excludes income/settlement (Platform Income/Client Payment/
-      // Bank Payment to Owner) AND reservation-chain deductions (Cleaning/Management Fee —
-      // Decision B, prevents double-count).
-      if (!isOwnerStatementExtra(sub)) continue
+      const payer = t.payer != null ? String(t.payer) : null
+      if (!isOwnerStatementExtraCategory(cat)) continue
       const ownerFacing = num(t.client_charge) ?? num(t.amount_eur) ?? 0
       if (ownerFacing === 0) continue
-      extras.push({
+      const rounded = Math.round(ownerFacing * 100) / 100
+      const row = {
         name: (t.description as string) || sub || 'Expense',
         date: String(t.date),
         subcategory: sub,
         propertyName: String(t.property_name),
-        amountEur: -Math.abs(Math.round(ownerFacing * 100) / 100),
-        provenance: 'jj_transaction',
-      })
+        provenance: 'jj_transaction' as const,
+      }
+      if (isOwnerStatementPayment(sub)) {
+        ownerPayments.push({ ...row, amountEur: Math.abs(rounded) })
+        continue
+      }
+      if (!isOwnerStatementExtra(sub, payer)) continue
+      extras.push({ ...row, amountEur: -Math.abs(rounded) })
     }
   }
 
@@ -187,6 +190,7 @@ export async function buildOwnerStrStatement(input: OwnerStrStatementInput): Pro
     issuedDate: today,
     reservations,
     extras,
+    ownerPayments,
     jjPlatformIncomeInPeriodEur: jjPI,
     jjPlatformIncomeIsAggregate: piAggregate,
   })

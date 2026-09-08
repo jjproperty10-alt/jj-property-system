@@ -122,7 +122,17 @@ export function OwnerStrRangeStatementPdf({ data }: { data: OwnerStrRangeStateme
           <View style={S.sumRow}><Text style={S.sumLabel}>Taxes</Text>{o.taxesEur == null ? <Review /> : <Text style={S.sumValue}>{fmt(o.taxesEur)}</Text>}</View>
           <View style={S.sumRow}><Text style={S.sumLabel}>Net Owner Payout</Text>{o.netOwnerPayoutEur == null ? <Review /> : <Text style={S.sumValue}>{fmt(o.netOwnerPayoutEur)}</Text>}</View>
           <View style={S.sumRow}><Text style={S.sumLabel}>Expenses & Extras</Text><Text style={S.sumValue}>{fmtSigned(o.expensesExtrasTotalEur)}</Text></View>
-          <View style={[S.sumRow, S.sumDivider]}><Text style={S.sumTotalLabel}>Statement Total</Text>{o.statementTotalEur == null ? <Review /> : <Text style={S.sumTotalValue}>{fmt(o.statementTotalEur)}</Text>}</View>
+          {o.ownerPaymentsTotalEur !== 0 ? (
+            <View style={S.sumRow}><Text style={S.sumLabel}>Payments received</Text><Text style={S.sumValue}>{fmtSigned(o.ownerPaymentsTotalEur)}</Text></View>
+          ) : null}
+          <View style={[S.sumRow, S.sumDivider]}>
+            <Text style={S.sumTotalLabel}>Statement Total</Text>
+            {o.statementTotalEur == null ? <Review /> : (
+              <Text style={S.sumTotalValue}>
+                {o.statementTotalEur < 0 ? `-${fmt(o.statementTotalEur)}` : fmt(o.statementTotalEur)}
+              </Text>
+            )}
+          </View>
         </View>
         {o.needsReviewMonths > 0 ? (
           <Text style={S.note}>{o.needsReviewMonths} of {h.monthCount} months still contain a reservation awaiting evidence, so the affected overall totals show Needs Review rather than a partial sum.</Text>
@@ -212,6 +222,70 @@ export function OwnerStrRangeStatementPdf({ data }: { data: OwnerStrRangeStateme
               : <Text style={[S.cell, { width: WR[7] }, S.center]}>{fmt(r.netValue)}</Text>}
           </View>
         ))}
+
+        {(() => {
+          const extras = data.months.flatMap(m => m.expensesExtras)
+          if (extras.length === 0) return null
+          return (
+            <>
+              <Text style={S.section}>Expenses & Extras</Text>
+              <View style={S.th}>
+                <Text style={[S.thT, { width: '24%' }]}>Name</Text>
+                <Text style={[S.thT, { width: '12%' }]}>Date</Text>
+                <Text style={[S.thT, { width: '20%' }]}>Category</Text>
+                <Text style={[S.thT, { width: '20%' }]}>Listing</Text>
+                <Text style={[S.thT, { width: '12%' }]}></Text>
+                <Text style={[S.thT, { width: '12%' }, S.center]}>Amount</Text>
+              </View>
+              {extras.map((e, i) => (
+                <View key={i} style={S.tr} wrap={false}>
+                  <Text style={[S.cell, { width: '24%' }]}>{e.name}</Text>
+                  <Text style={[S.cell, { width: '12%' }]}>{e.date}</Text>
+                  <Text style={[S.cell, { width: '20%' }]}>{e.subcategory}</Text>
+                  <Text style={[S.cell, { width: '20%' }]}>{e.propertyName}</Text>
+                  <Text style={[S.cellMuted, { width: '12%' }]}>—</Text>
+                  <Text style={[S.cell, { width: '12%' }, S.center]}>{fmtSigned(e.amountEur)}</Text>
+                </View>
+              ))}
+              <View style={S.totalRow}>
+                <Text style={[S.totalT, { width: '88%' }]}>Total Expenses & Extras</Text>
+                <Text style={[S.totalT, { width: '12%' }, S.center]}>{fmtSigned(o.expensesExtrasTotalEur)}</Text>
+              </View>
+            </>
+          )
+        })()}
+
+        {(() => {
+          const payments = data.months.flatMap(m => m.ownerPayments)
+          if (payments.length === 0) return null
+          return (
+            <>
+              <Text style={S.section}>Payments received</Text>
+              <View style={S.th}>
+                <Text style={[S.thT, { width: '24%' }]}>Name</Text>
+                <Text style={[S.thT, { width: '12%' }]}>Date</Text>
+                <Text style={[S.thT, { width: '20%' }]}>Category</Text>
+                <Text style={[S.thT, { width: '20%' }]}>Listing</Text>
+                <Text style={[S.thT, { width: '12%' }]}></Text>
+                <Text style={[S.thT, { width: '12%' }, S.center]}>Amount</Text>
+              </View>
+              {payments.map((e, i) => (
+                <View key={i} style={S.tr} wrap={false}>
+                  <Text style={[S.cell, { width: '24%' }]}>{e.name}</Text>
+                  <Text style={[S.cell, { width: '12%' }]}>{e.date}</Text>
+                  <Text style={[S.cell, { width: '20%' }]}>{e.subcategory}</Text>
+                  <Text style={[S.cell, { width: '20%' }]}>{e.propertyName}</Text>
+                  <Text style={[S.cellMuted, { width: '12%' }]}>—</Text>
+                  <Text style={[S.cell, { width: '12%' }, S.center]}>{fmtSigned(e.amountEur)}</Text>
+                </View>
+              ))}
+              <View style={S.totalRow}>
+                <Text style={[S.totalT, { width: '88%' }]}>Total payments received</Text>
+                <Text style={[S.totalT, { width: '12%' }, S.center]}>{fmtSigned(o.ownerPaymentsTotalEur)}</Text>
+              </View>
+            </>
+          )
+        })()}
 
         {/* Friendly overview */}
         <View style={S.overviewBox}>
