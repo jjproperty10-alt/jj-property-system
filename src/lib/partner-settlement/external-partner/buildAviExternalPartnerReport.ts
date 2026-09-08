@@ -17,6 +17,7 @@ import {
   AVI_VM1_REQUIRED_CONTROLS,
   AVI_VM1_LAYER_INPUTS,
   AVI_VM1_ATTRIBUTED_AMOUNT_CONTROLS,
+  AVI_VM1_RENOVATION_FUNDING_PAYMENT_IDS,
   buildAviVm1ControlInput,
 } from './externalPartnerAviConfig'
 import type { ExternalPartnerAviReport } from './externalPartnerAviReportTypes'
@@ -57,5 +58,6 @@ export async function buildAviExternalPartnerReport(): Promise<ExternalPartnerAv
     expectedAttributedAmounts: [...AVI_VM1_ATTRIBUTED_AMOUNT_CONTROLS],
     transactionRows: rows,
     layerInputs: AVI_VM1_LAYER_INPUTS,
+    renovationFundingPaymentIds: AVI_VM1_RENOVATION_FUNDING_PAYMENT_IDS,
   })
 }

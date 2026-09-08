@@ -20,6 +20,7 @@ import {
   AVI_VM1_LAYER_INPUTS,
   AVI_VM1_OWNERS,
   AVI_VM1_PREMIUM,
+  AVI_VM1_RENOVATION_FUNDING_PAYMENT_IDS,
   AVI_VM1_REQUIRED_CONTROLS,
   buildAviVm1ControlInput,
 } from '@/lib/partner-settlement/external-partner/externalPartnerAviConfig'
@@ -146,6 +147,7 @@ function certifiedInput(transactionRows: RawExternalPartnerTransaction[] = aviFu
     expectedAttributedAmounts: [...AVI_VM1_ATTRIBUTED_AMOUNT_CONTROLS],
     transactionRows,
     layerInputs: AVI_VM1_LAYER_INPUTS,
+    renovationFundingPaymentIds: AVI_VM1_RENOVATION_FUNDING_PAYMENT_IDS,
   }
 }
 
@@ -233,18 +235,18 @@ describe('external-partner Avi report service — certified golden', () => {
     expect(report.controlStatus.failures).toHaveLength(0)
   })
 
-  it('Avi partner summary: paid 280600, credits 19640.34, obligation 300620.84, net −380.50', () => {
+  it('Avi partner summary: paid 280600, credits 19744.44, obligation 299603.50, net +740.94', () => {
     if (report.status !== 'certified') return
     const avi = report.partners.find((p) => p.partner === 'Avi')!
     expect(avi.ownershipPct).toBe(50)
     expect(avi.isJjPrincipal).toBe(false)
     expect(avi.status).toBe('CERTIFIED')
     expect(avi.paidEur).toBe(280600)
-    expect(avi.creditsEur).toBe(19640.34)
-    expect(avi.obligationEur).toBe(300620.84)
-    expect(avi.netEur).toBe(-380.50)
-    expect(avi.direction).toBe('to_pay')
-    expect(avi.semanticNet).toBe('Avi owes €380.50')
+    expect(avi.creditsEur).toBe(19744.44)
+    expect(avi.obligationEur).toBe(299603.5)
+    expect(avi.netEur).toBe(740.94)
+    expect(avi.direction).toBe('to_refund')
+    expect(avi.semanticNet).toBe('Avi is owed €740.94')
   })
 
   it('Yossi and Jacob are PROVISIONAL with no amounts', () => {
@@ -563,11 +565,11 @@ describe('external-partner Avi report service — Avi-visible presentation', () 
     if (report.status !== 'certified') return
     const avi = report.partners.find((p) => p.partner === 'Avi')!
     expect(avi.paidEur).toBe(280600)
-    expect(avi.creditsEur).toBe(19640.34)
-    expect(avi.obligationEur).toBe(300620.84)
-    expect(avi.netEur).toBe(-380.50)
-    expect(avi.direction).toBe('to_pay')
-    expect(avi.semanticNet).toBe('Avi owes €380.50')
+    expect(avi.creditsEur).toBe(19744.44)
+    expect(avi.obligationEur).toBe(299603.5)
+    expect(avi.netEur).toBe(740.94)
+    expect(avi.direction).toBe('to_refund')
+    expect(avi.semanticNet).toBe('Avi is owed €740.94')
   })
 
   it('shows agreed value 500000 and Avi acquisition obligation 250000', () => {
@@ -603,12 +605,15 @@ describe('external-partner Avi report service — Avi-visible presentation', () 
     expect(report.partnerPayments.some((p) => p.id === TX.purchaseContract)).toBe(false)
   })
 
-  it('keeps real 14300 deal expenses visible', () => {
+  it('keeps 11900 deal expenses visible after removing the duplicate tax', () => {
     if (report.status !== 'certified') return
     const deal = report.partnerExpenses.filter((e) => e.layer === 'deal_expense')
     const dealSum = deal.reduce((s, e) => s + (e.amountEur ?? 0), 0)
-    expect(dealSum).toBe(14300)
-    expect(deal.map((e) => e.id).sort()).toEqual(PURCHASE_EXPENSE_ROWS.map((r) => r.id).sort())
+    expect(dealSum).toBe(11900)
+    expect(deal.some((e) => e.id === TX.purchaseExpAnastasia2400)).toBe(false)
+    expect(deal.map((e) => e.id).sort()).toEqual(
+      PURCHASE_EXPENSE_ROWS.filter((r) => r.id !== TX.purchaseExpAnastasia2400).map((r) => r.id).sort(),
+    )
   })
 
   it('certified layer totals stay on AVI_VM1; expense overlay is presentation-only', () => {
@@ -617,39 +622,41 @@ describe('external-partner Avi report service — Avi-visible presentation', () 
       report.partnerExpenses
         .filter((e) => e.layer === layer)
         .reduce((s, e) => s + (e.amountEur ?? 0), 0)
-    expect(sumLayer('renovation')).toBe(AMOUNTS.renovation)
+    expect(sumLayer('renovation')).toBe(2015)
     expect(sumLayer('airbnb')).toBe(14447.53)
     expect(sumLayer('management')).toBe(0)
-    expect(sumLayer('deal_expense')).toBe(AMOUNTS.purchaseExpenses)
+    expect(sumLayer('deal_expense')).toBe(11900)
     const total = roundEur(report.partnerExpenses.reduce((s, e) => s + (e.amountEur ?? 0), 0))
-    expect(total).toBe(100961.67)
+    expect(total).toBe(28362.53)
     const layerAviShare = roundEur(
       report.layers
         .filter((l) => l.key !== 'acquisition')
         .reduce((s, l) => s + (l.aviShareEur ?? 0), 0),
     )
-    expect(layerAviShare).toBe(50620.84)
-    expect(roundEur(report.partnerExpenses.reduce((s, e) => s + (e.aviShareEur ?? 0), 0))).toBe(50480.84)
-    expect(report.partnerExpenses).toHaveLength(20)
-    expect(report.visibleExpenseTotals.rowCount).toBe(20)
-    expect(report.visibleExpenseTotals.totalChargeEur).toBe(101241.67)
-    expect(report.visibleExpenseTotals.aviShareEur).toBe(50620.84)
+    expect(layerAviShare).toBe(49603.5)
+    expect(roundEur(report.partnerExpenses.reduce((s, e) => s + (e.aviShareEur ?? 0), 0))).toBe(14181.27)
+    expect(report.partnerExpenses).toHaveLength(19)
+    expect(report.visibleExpenseTotals.rowCount).toBe(19)
+    expect(report.visibleExpenseTotals.totalChargeEur).toBe(99207)
+    expect(report.visibleExpenseTotals.aviShareEur).toBe(49603.5)
     expect(report.partnerExpenses.some((e) => e.id === TX.mgmtPool480)).toBe(false)
   })
 
-  it('shows renovation contract 72199.14 plus plumber 15 as the certified renovation charge', () => {
+  it('hides the renovation contract and lists the real work rows', () => {
     if (report.status !== 'certified') return
     const reno = report.partnerExpenses.filter((e) => e.layer === 'renovation')
     expect(reno).toHaveLength(2)
     const contract = reno.find((e) => e.id === '8257e2f4-88f0-45aa-be63-4512680e29ad')
     const plumber = reno.find((e) => e.id === 'fa51910c-67f8-4782-97b4-f7ad332ac5d1')
-    expect(contract?.amountEur).toBe(72199.14)
-    expect(contract?.subcategory).toBe('Renovation Contract')
+    expect(contract).toBeUndefined()
     expect(plumber?.amountEur).toBe(15)
     expect(plumber?.subcategory).toBe('Plumber')
-    expect((contract!.amountEur ?? 0) + (plumber!.amountEur ?? 0)).toBe(AMOUNTS.renovation)
-    expect(report.partnerExpenses.some((e) => e.id === TX.germanWorkerOnce)).toBe(false)
-    expect(report.partnerExpenses.some((e) => e.subcategory === 'Workers')).toBe(false)
+    expect(report.partnerExpenses.some((e) => e.id === TX.germanWorkerOnce)).toBe(true)
+    expect(report.partnerExpenses.some((e) => e.subcategory === 'Workers')).toBe(true)
+    expect(report.renovation.groups.some((g) => g.subcategory === 'Workers')).toBe(true)
+    expect(report.airbnb.setup.totalEur).toBe(5706.06)
+    expect(report.airbnb.operations.totalEur).toBe(9386.8)
+    expect(report.finalSummary.netEur).toBe(740.94)
   })
 
   it('does not list internal Airbnb pool cash; overlay recodes utilities and pending pool invoices', () => {
@@ -700,9 +707,9 @@ describe('external-partner Avi report service — Avi-visible presentation', () 
     const mgmt = report.layers.find((l) => l.key === 'management')!
     const deal = report.layers.find((l) => l.key === 'deal_expense')!
     expect(reno.semanticNet).toBe('Avi owes €11,107.07')
-    expect(airbnb.semanticNet).toBe('Avi is owed €12,276.57')
+    expect(airbnb.semanticNet).toBe('Avi is owed €12,198.01')
     expect(mgmt.semanticNet).toBe('Settled')
-    expect(deal.semanticNet).toBe('Avi owes €1,550.00')
+    expect(deal.semanticNet).toBe('Avi owes €350.00')
     expect(report.layers.find((l) => l.key === 'acquisition')!.semanticNet).toBeNull()
   })
 })

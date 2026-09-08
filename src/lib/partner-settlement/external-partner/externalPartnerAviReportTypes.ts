@@ -8,6 +8,15 @@
  * modules and are not copied here.
  */
 
+import type {
+  AviAirbnbSection,
+  AviFinalSummary,
+  AviHostawayIncomeSection,
+  AviMonthlySection,
+  AviPurchaseExpensesSection,
+  AviRenovationSection,
+} from './aviReportSections'
+
 export type AviReportStatus = 'certified' | 'failed'
 
 export type AviVisibleExpenseLayer =
@@ -129,6 +138,13 @@ export interface AviReportAirbnbCredits {
   readonly otherHostawayPrintedNtoEur: number
   readonly otherHostawayAviEur: number
   readonly totalAviEur: number
+  /** Completed stays behind the payout. Requests that never became stays are excluded. */
+  readonly completedStayCount: number
+  readonly completedNights: number
+  /** Printed statement covering 2025-08-04–2026-09-08. */
+  readonly statementP1NtoEur: number
+  /** Stays only in the 2025-07-01–2026-08-05 statement, added without double count. */
+  readonly statementP2TopUpNtoEur: number
   readonly certifiedDirectStay: AviReportHostawayStayCredit
 }
 
@@ -146,6 +162,12 @@ export type ExternalPartnerAviReport =
       readonly partnerPayments: readonly AviReportPartnerPayment[]
       readonly partnerExpenses: readonly AviReportPartnerExpense[]
       readonly airbnbCredits: AviReportAirbnbCredits
+      readonly purchaseExpenses: AviPurchaseExpensesSection
+      readonly renovation: AviRenovationSection
+      readonly airbnb: AviAirbnbSection
+      readonly hostawayIncome: AviHostawayIncomeSection
+      readonly monthly: AviMonthlySection
+      readonly finalSummary: AviFinalSummary
     }
   | {
       readonly status: 'failed'

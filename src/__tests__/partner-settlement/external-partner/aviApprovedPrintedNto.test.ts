@@ -1,6 +1,7 @@
 /**
- * Approved Avi partner-report balance after Yossi 2026-09-05.
- * Printed Hostaway NTO, no tax-line certification, no Production writes.
+ * Approved Avi partner-report balance after Yossi 2026-09-08.
+ * Printed Hostaway NTO unioned across both owner statements, no tax-line
+ * certification, no Production writes.
  */
 import {
   applyAviApprovedExpenseOverlay,
@@ -32,10 +33,19 @@ import {
 } from '@/lib/partner-settlement/external-partner/externalPartnerAviConfig'
 import type { ComposeAviReportInput } from '@/lib/partner-settlement/external-partner'
 import {
+  AVI_VM1_DUPLICATE_PURCHASE_EXPENSE,
+  AVI_VM1_PURCHASE_EXPENSE_ROWS,
+  AVI_VM1_REQUIRED_PURCHASE_EXPENSE_PAYMENTS,
+} from '@/lib/partner-settlement/external-partner/externalPartnerAviConfig'
+import { aviCertifiedIdentityIsSelfConsistent } from '@/lib/partner-settlement/external-partner/aviCertifiedIdentity'
+import {
+  AVI_EXCLUDED_RESERVATIONS,
+  AVI_HOSTAWAY_STAYS,
+  aviDuplicateStayIds,
+} from '@/lib/partner-settlement/external-partner/aviHostawayStays'
+import {
   AMOUNTS,
   AVI_OWNERS,
-  PURCHASE_EXPENSE_ROWS,
-  REQUIRED_PURCHASE_EXPENSE_PAYMENTS,
   TX,
   VM1_CANONICAL_CLASSIFICATION,
   aviGoldenPresentIds,
@@ -43,15 +53,16 @@ import {
 import type { RawExternalPartnerTransaction } from '@/lib/partner-settlement/external-partner'
 
 const APPROVED = {
-  airbnbCharge: 14727.53,
-  airbnbCost: 13133.53,
-  jjAirbnbProfit: 1594,
+  airbnbCharge: 15092.86,
+  airbnbCost: 15092.86,
+  jjAirbnbProfit: 0,
   management: 0,
-  income: 39280.67,
-  aviCredit: 19640.34,
-  obligation: 300620.84,
-  credits: 19640.34,
-  net: -380.50,
+  income: 39488.87,
+  aviCredit: 19744.44,
+  purchaseExpenses: 11900,
+  obligation: 299603.5,
+  credits: 19744.44,
+  net: 740.94,
 } as const
 
 function raw(overrides: Partial<RawExternalPartnerTransaction> = {}): RawExternalPartnerTransaction {
@@ -125,7 +136,7 @@ function approvedInput(): ComposeAviReportInput {
     owners: AVI_OWNERS,
     charges: [
       { key: 'purchase_cost', label: 'Purchase cost', total: AMOUNTS.purchaseContract },
-      { key: 'deal_expenses', label: 'Deal expenses', total: AMOUNTS.purchaseExpenses },
+      { key: 'deal_expenses', label: 'Deal expenses', total: APPROVED.purchaseExpenses },
       { key: 'renovation', label: 'Renovation', total: AMOUNTS.renovation, jjProfit: 0 },
       {
         key: 'airbnb',
@@ -140,7 +151,7 @@ function approvedInput(): ComposeAviReportInput {
     evidence: VM1_CANONICAL_CLASSIFICATION,
     requiredControls: {
       purchase_cost: AMOUNTS.purchaseContract,
-      deal_expenses: AMOUNTS.purchaseExpenses,
+      deal_expenses: APPROVED.purchaseExpenses,
       renovation: AMOUNTS.renovation,
       airbnb: APPROVED.airbnbCharge,
       management: APPROVED.management,
@@ -149,9 +160,9 @@ function approvedInput(): ComposeAviReportInput {
     controlInput: {
       evidence: VM1_CANONICAL_CLASSIFICATION,
       expectedEvidence: VM1_CANONICAL_CLASSIFICATION,
-      purchaseExpenseRows: [...PURCHASE_EXPENSE_ROWS],
-      requiredPurchaseExpensePayments: [...REQUIRED_PURCHASE_EXPENSE_PAYMENTS],
-      purchaseExpensesAuthoritativeEur: AMOUNTS.purchaseExpenses,
+      purchaseExpenseRows: [...AVI_VM1_PURCHASE_EXPENSE_ROWS],
+      requiredPurchaseExpensePayments: [...AVI_VM1_REQUIRED_PURCHASE_EXPENSE_PAYMENTS],
+      purchaseExpensesAuthoritativeEur: APPROVED.purchaseExpenses,
       renovationTotalEur: AMOUNTS.renovation,
       renovationAuthoritativeEur: AMOUNTS.renovation,
       presentIds: aviGoldenPresentIds(),
@@ -183,7 +194,7 @@ function approvedInput(): ComposeAviReportInput {
         jjProfit: 0,
       },
       dealExpense: {
-        total: AMOUNTS.purchaseExpenses,
+        total: APPROVED.purchaseExpenses,
         aviPayment: AMOUNTS.aviToJacob,
         jacobConduit: AMOUNTS.aviToJacob,
       },
@@ -199,16 +210,33 @@ describe('printed Hostaway NTO credits', () => {
     expect(HOSTAWAY_PRINTED_DIRECT_STAY.aviShareEur).toBe(804.67)
   })
 
-  it('Hostaway Avi credit 18960.34 plus private 680 equals 19640.34', () => {
-    expect(HOSTAWAY_PRINTED_NTO_TOTAL_EUR).toBe(37920.67)
-    expect(HOSTAWAY_PRINTED_AVI_SHARE_EUR).toBe(18960.34)
+  it('Hostaway Avi credit 19064.44 plus private 680 equals 19744.44', () => {
+    expect(HOSTAWAY_PRINTED_NTO_TOTAL_EUR).toBe(38128.87)
+    expect(HOSTAWAY_PRINTED_AVI_SHARE_EUR).toBe(19064.44)
     expect(PRIVATE_BOOKING_AVI_CREDIT_EUR).toBe(680)
     const credits = composeAviAirbnbCredits()
-    expect(credits.totalAviEur).toBe(19640.34)
-    expect(credits.otherHostawayPrintedNtoEur).toBe(36311.33)
-    expect(credits.otherHostawayAviEur).toBe(18155.67)
+    expect(credits.totalAviEur).toBe(19744.44)
+    expect(credits.otherHostawayPrintedNtoEur).toBe(36519.53)
     expect(credits.certifiedDirectStay.printedNtoEur).toBe(1609.34)
     expect(credits.certifiedDirectStay.aviShareEur).toBe(804.67)
+  })
+
+  it('unions the two printed statements without counting a stay twice', () => {
+    const credits = composeAviAirbnbCredits()
+    expect(credits.completedStayCount).toBe(29)
+    expect(credits.completedNights).toBe(152)
+    expect(credits.statementP1NtoEur).toBe(34614.17)
+    expect(credits.statementP2TopUpNtoEur).toBe(3514.7)
+    expect(roundEur(credits.statementP1NtoEur + credits.statementP2TopUpNtoEur)).toBe(38128.87)
+    expect(aviDuplicateStayIds()).toEqual([])
+  })
+
+  it('excludes the request to book that never became a stay', () => {
+    const excluded = AVI_EXCLUDED_RESERVATIONS.find((r) => r.reservationId === '47817104')
+    expect(excluded).toBeDefined()
+    expect(AVI_HOSTAWAY_STAYS.some((s) => s.reservationId === '47817104')).toBe(false)
+    // It earns no payout, no night, and no per-stay consumables charge.
+    expect(composeAviAirbnbCredits().completedStayCount).toBe(AVI_HOSTAWAY_STAYS.length)
   })
 
   it('does not certify or expose unprinted tax lines', () => {
@@ -220,22 +248,22 @@ describe('printed Hostaway NTO credits', () => {
   })
 })
 
-describe('approved Avi partner report — Avi owes €380.50', () => {
+describe('approved Avi partner report — Avi is owed €740.94', () => {
   const report = composeExternalPartnerAviReport(approvedInput())
 
-  it('certifies Avi owes 380.50 with printed-NTO credits', () => {
+  it('certifies Avi is owed 740.94 with printed-NTO credits', () => {
     expect(report.status).toBe('certified')
     if (report.status !== 'certified') return
     const avi = report.partners.find((p) => p.partner === 'Avi')!
     expect(avi.paidEur).toBe(280600)
-    expect(avi.creditsEur).toBe(19640.34)
-    expect(avi.obligationEur).toBe(300620.84)
-    expect(avi.netEur).toBe(-380.50)
-    expect(avi.semanticNet).toBe('Avi owes €380.50')
+    expect(avi.creditsEur).toBe(19744.44)
+    expect(avi.obligationEur).toBe(299603.5)
+    expect(avi.netEur).toBe(740.94)
+    expect(avi.semanticNet).toBe('Avi is owed €740.94')
     expect(report.airbnbCredits.certifiedDirectStay.reservationId).toBe('46340130')
     expect(report.airbnbCredits.certifiedDirectStay.printedNtoEur).toBe(1609.34)
     expect(report.airbnbCredits.certifiedDirectStay.aviShareEur).toBe(804.67)
-    expect(report.airbnbCredits.hostawayAviEur).toBe(18960.34)
+    expect(report.airbnbCredits.hostawayAviEur).toBe(19064.44)
     expect(report.snapshot.sha256).toBe(VM1_APPROVED_EXTERNAL_PARTNER_SNAPSHOT.sha256)
     expect(report.acquisition.remainingEur).toBe(0)
     expect(report.airbnbCredits.privateBookingTotalEur).toBe(1360)
@@ -280,7 +308,7 @@ describe('approved Avi partner report — Avi owes €380.50', () => {
       owners: AVI_OWNERS,
     })
     const dealExpense = composeExternalPartnerDealExpense({
-      totalDealExpenses: AMOUNTS.purchaseExpenses,
+      totalDealExpenses: APPROVED.purchaseExpenses,
       owners: AVI_OWNERS,
       paymentsTowardExpenses: { Avi: AMOUNTS.aviToJacob },
       conduitReceipts: { Jacob: AMOUNTS.aviToJacob },
@@ -290,11 +318,11 @@ describe('approved Avi partner report — Avi owes €380.50', () => {
     })
     expect('total' in components).toBe(true)
     if (!('total' in components)) return
-    expect(components.total).toBe(-380.50)
+    expect(components.total).toBe(APPROVED.net)
     expect(components.management).toBe(0)
   })
 
-  it('settlement identity: paid + credits − obligation = −380.50', () => {
+  it('settlement identity: paid + credits − obligation = +740.94', () => {
     const settlement = composeExternalPartnerSettlement({
       property: 'Villa Mazotos',
       cutoffDate: VM1_APPROVED_EXTERNAL_PARTNER_SNAPSHOT.cutoffDate,
@@ -309,8 +337,9 @@ describe('approved Avi partner report — Avi owes €380.50', () => {
     expect(settlement.status).toBe('computed')
     if (settlement.status !== 'computed') return
     const avi = settlement.shares.find((s) => s.partner === 'Avi')!
-    expect(roundEur(avi.paidEur + avi.credits.totalEur - avi.obligation.totalEur)).toBe(-380.50)
-    expect(avi.netEur).toBe(-380.50)
+    expect(roundEur(avi.paidEur + avi.credits.totalEur - avi.obligation.totalEur)).toBe(APPROVED.net)
+    expect(avi.netEur).toBe(APPROVED.net)
+    expect(avi.direction).toBe('to_refund')
   })
 
   it('report JSON does not certify unprinted tax amounts', () => {
@@ -322,19 +351,30 @@ describe('approved Avi partner report — Avi owes €380.50', () => {
 })
 
 describe('production Avi config is locked to the approved printed-NTO settlement', () => {
-  it('uses Airbnb charge 14727.53, Hostaway credits 19640.34, and management 0', () => {
+  it('uses Airbnb charge 15092.86, Hostaway credits 19744.44, and management 0', () => {
     const airbnb = AVI_VM1_CHARGES.find((c) => c.key === 'airbnb')!
-    expect(airbnb.total).toBe(14727.53)
-    expect(airbnb.income).toBe(39280.67)
-    expect(AVI_VM1_LAYER_INPUTS.airbnb.aviCredit).toBe(19640.34)
-    expect(AVI_VM1_LAYER_INPUTS.airbnb.clientCharge).toBe(14727.53)
+    expect(airbnb.total).toBe(15092.86)
+    expect(airbnb.income).toBe(39488.87)
+    expect(AVI_VM1_LAYER_INPUTS.airbnb.aviCredit).toBe(19744.44)
+    expect(AVI_VM1_LAYER_INPUTS.airbnb.clientCharge).toBe(15092.86)
     expect(AVI_VM1_LAYER_INPUTS.management.clientCharge).toBe(0)
-    expect(AVI_VM1_REQUIRED_CONTROLS.airbnb).toBe(14727.53)
+    expect(AVI_VM1_REQUIRED_CONTROLS.airbnb).toBe(15092.86)
+    expect(AVI_VM1_REQUIRED_CONTROLS.deal_expenses).toBe(11900)
     expect(AVI_VM1_REQUIRED_CONTROLS.management).toBe(0)
     expect(AVI_CERTIFIED_PAID_EUR).toBe(280600)
-    expect(AVI_CERTIFIED_CREDITS_EUR).toBe(19640.34)
-    expect(AVI_CERTIFIED_OBLIGATION_EUR).toBe(300620.84)
-    expect(AVI_CERTIFIED_NET_EUR).toBe(-380.50)
+    expect(AVI_CERTIFIED_CREDITS_EUR).toBe(19744.44)
+    expect(AVI_CERTIFIED_OBLIGATION_EUR).toBe(299603.5)
+    expect(AVI_CERTIFIED_NET_EUR).toBe(740.94)
+    expect(aviCertifiedIdentityIsSelfConsistent()).toBe(true)
+  })
+
+  it('charges the purchase tax once: 11900, with the duplicated 2400 row removed', () => {
+    const rows = AVI_VM1_PURCHASE_EXPENSE_ROWS
+    expect(roundEur(rows.reduce((s, r) => s + r.amountEur, 0))).toBe(11900)
+    expect(rows.some((r) => r.id === AVI_VM1_DUPLICATE_PURCHASE_EXPENSE.id)).toBe(false)
+    expect(AVI_VM1_DUPLICATE_PURCHASE_EXPENSE.amountEur).toBe(2400)
+    // The two funding legs that make up the tax are kept, the aggregate is not.
+    expect(rows.filter((r) => r.amountEur === 1400 || r.amountEur === 1000)).toHaveLength(2)
   })
 
   it('overlay recodes gardener, hides the pool vendor payment, and injects 2026 pool invoices', () => {

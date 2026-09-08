@@ -8,22 +8,20 @@ import type { ComposeAviReportInput } from '@/lib/partner-settlement/external-pa
 import type { RawExternalPartnerTransaction } from '@/lib/partner-settlement/external-partner'
 import {
   AMOUNTS,
-  AVI_OWNERS,
-  PURCHASE_EXPENSE_ROWS,
-  REQUIRED_PURCHASE_EXPENSE_PAYMENTS,
   TX,
   VM1_CANONICAL_CLASSIFICATION,
   aviGoldenPresentIds,
 } from './aviGoldenFixture'
-
-const APPROVED = {
-  airbnbCharge: 14727.53,
-  airbnbCost: 13133.53,
-  jjAirbnbProfit: 1594,
-  management: 0,
-  income: 39280.67,
-  aviCredit: 19640.34,
-} as const
+import {
+  AVI_VM1_CHARGES,
+  AVI_VM1_LAYER_INPUTS,
+  AVI_VM1_OWNERS,
+  AVI_VM1_PREMIUM,
+  AVI_VM1_PURCHASE_EXPENSE_ROWS,
+  AVI_VM1_RENOVATION_FUNDING_PAYMENT_IDS,
+  AVI_VM1_REQUIRED_CONTROLS,
+  AVI_VM1_REQUIRED_PURCHASE_EXPENSE_PAYMENTS,
+} from '@/lib/partner-settlement/external-partner/externalPartnerAviConfig'
 
 export function loadCanonicalVm1RawTransactions(): RawExternalPartnerTransaction[] {
   const csvPath = path.join(process.cwd(), VM1_CANONICAL_CLASSIFICATION.classificationArtifact)
@@ -52,39 +50,24 @@ export function loadCanonicalVm1RawTransactions(): RawExternalPartnerTransaction
   })
 }
 
-/** Same approved identity as aviApprovedPrintedNto, with 202-row evidence rows. */
+/**
+ * The production Avi configuration, run against the 202-row canonical evidence.
+ * Amounts are imported from the config rather than restated so the fixture
+ * cannot certify an identity the product no longer uses.
+ */
 export function approvedComposeInputFromCanonicalEvidence(): ComposeAviReportInput {
   return {
-    owners: AVI_OWNERS,
-    charges: [
-      { key: 'purchase_cost', label: 'Purchase cost', total: AMOUNTS.purchaseContract },
-      { key: 'deal_expenses', label: 'Deal expenses', total: AMOUNTS.purchaseExpenses },
-      { key: 'renovation', label: 'Renovation', total: AMOUNTS.renovation, jjProfit: 0 },
-      {
-        key: 'airbnb',
-        label: 'Airbnb',
-        total: APPROVED.airbnbCharge,
-        jjProfit: APPROVED.jjAirbnbProfit,
-        income: APPROVED.income,
-      },
-      { key: 'management', label: 'Management', total: APPROVED.management, jjProfit: 0 },
-    ],
-    premium: { totalEur: AMOUNTS.aviPremium, paidBy: 'Avi', receivedBy: { Yossi: AMOUNTS.aviPremium } },
+    owners: AVI_VM1_OWNERS,
+    charges: AVI_VM1_CHARGES,
+    premium: AVI_VM1_PREMIUM,
     evidence: VM1_CANONICAL_CLASSIFICATION,
-    requiredControls: {
-      purchase_cost: AMOUNTS.purchaseContract,
-      deal_expenses: AMOUNTS.purchaseExpenses,
-      renovation: AMOUNTS.renovation,
-      airbnb: APPROVED.airbnbCharge,
-      management: APPROVED.management,
-      premium: AMOUNTS.aviPremium,
-    },
+    requiredControls: AVI_VM1_REQUIRED_CONTROLS,
     controlInput: {
       evidence: VM1_CANONICAL_CLASSIFICATION,
       expectedEvidence: VM1_CANONICAL_CLASSIFICATION,
-      purchaseExpenseRows: [...PURCHASE_EXPENSE_ROWS],
-      requiredPurchaseExpensePayments: [...REQUIRED_PURCHASE_EXPENSE_PAYMENTS],
-      purchaseExpensesAuthoritativeEur: AMOUNTS.purchaseExpenses,
+      purchaseExpenseRows: [...AVI_VM1_PURCHASE_EXPENSE_ROWS],
+      requiredPurchaseExpensePayments: [...AVI_VM1_REQUIRED_PURCHASE_EXPENSE_PAYMENTS],
+      purchaseExpensesAuthoritativeEur: AVI_VM1_REQUIRED_CONTROLS.deal_expenses,
       renovationTotalEur: AMOUNTS.renovation,
       renovationAuthoritativeEur: AMOUNTS.renovation,
       presentIds: aviGoldenPresentIds(),
@@ -97,29 +80,7 @@ export function approvedComposeInputFromCanonicalEvidence(): ComposeAviReportInp
       { id: TX.aviReno20000, amountEur: AMOUNTS.aviReno20000 },
     ],
     transactionRows: loadCanonicalVm1RawTransactions(),
-    layerInputs: {
-      renovation: {
-        clientCharge: AMOUNTS.renovation,
-        actualCost: AMOUNTS.renovation,
-        jjProfit: 0,
-        aviFunding: AMOUNTS.aviRenoFinancing,
-      },
-      airbnb: {
-        clientCharge: APPROVED.airbnbCharge,
-        actualCost: APPROVED.airbnbCost,
-        jjProfit: APPROVED.jjAirbnbProfit,
-        aviCredit: APPROVED.aviCredit,
-      },
-      management: {
-        clientCharge: APPROVED.management,
-        actualCost: APPROVED.management,
-        jjProfit: 0,
-      },
-      dealExpense: {
-        total: AMOUNTS.purchaseExpenses,
-        aviPayment: AMOUNTS.aviToJacob,
-        jacobConduit: AMOUNTS.aviToJacob,
-      },
-    },
+    layerInputs: AVI_VM1_LAYER_INPUTS,
+    renovationFundingPaymentIds: AVI_VM1_RENOVATION_FUNDING_PAYMENT_IDS,
   }
 }

@@ -34,6 +34,7 @@ const PRINT_SRC_FILES = [
   'src/components/finance/ExternalPartnerAviReportView.tsx',
   'src/components/finance/AviReportPrintButton.tsx',
   'src/components/finance/aviReportPrintCss.ts',
+  'src/components/finance/aviReportCopy.ts',
   'src/app/(app)/finance/external-partner/avi/page.tsx',
 ]
 
@@ -83,18 +84,18 @@ describe('Avi print view — canonical 202-row certified compose', () => {
 
   it('keeps exact certified identity', () => {
     expect(report.partners.find((p) => p.partner === 'Avi')!.paidEur).toBe(280600)
-    expect(report.partners.find((p) => p.partner === 'Avi')!.creditsEur).toBe(19640.34)
-    expect(report.partners.find((p) => p.partner === 'Avi')!.obligationEur).toBe(300620.84)
-    expect(report.partners.find((p) => p.partner === 'Avi')!.netEur).toBe(-380.50)
-    expect(report.partners.find((p) => p.partner === 'Avi')!.semanticNet).toBe('Avi owes €380.50')
-    expect(html).toContain('Avi owes €380.50')
+    expect(report.partners.find((p) => p.partner === 'Avi')!.creditsEur).toBe(19744.44)
+    expect(report.partners.find((p) => p.partner === 'Avi')!.obligationEur).toBe(299603.5)
+    expect(report.partners.find((p) => p.partner === 'Avi')!.netEur).toBe(740.94)
+    expect(report.partners.find((p) => p.partner === 'Avi')!.semanticNet).toBe('Avi is owed €740.94')
+    expect(html).toContain('Avi is owed €740.94')
     expect(html).toContain('280,600.00')
-    expect(html).toContain('19,640.34')
-    expect(html).toContain('300,620.84')
+    expect(html).toContain('19,744.44')
+    expect(html).toContain('299,603.50')
     expect(html).toContain('Avi owes €11,107.07')
-    expect(html).toContain('Avi is owed €12,276.57')
+    expect(html).toContain('Avi is owed €12,198.01')
     expect(html).not.toContain('Avi owes €345.90')
-    expect(html).toContain('Avi owes €1,550.00')
+    expect(html).toContain('Avi owes €350.00')
   })
 
   it('displays agreed acquisition, Avi obligation, and certified remaining €0.00', () => {
@@ -154,20 +155,20 @@ describe('Avi print view — canonical 202-row certified compose', () => {
     }
   })
 
-  it('expenses remain exactly 101 rows and reconcile to €101,241.67 / €50,620.84', () => {
-    expect(report.partnerExpenses).toHaveLength(101)
-    expect(report.visibleExpenseTotals.rowCount).toBe(101)
-    expect(report.visibleExpenseTotals.totalChargeEur).toBe(101241.67)
-    expect(report.visibleExpenseTotals.aviShareEur).toBe(50620.84)
+  it('expenses remain exactly 180 rows and reconcile to €99,207.00 / €49,603.50', () => {
+    expect(report.partnerExpenses).toHaveLength(180)
+    expect(report.visibleExpenseTotals.rowCount).toBe(180)
+    expect(report.visibleExpenseTotals.totalChargeEur).toBe(99207)
+    expect(report.visibleExpenseTotals.aviShareEur).toBe(49603.5)
     expect(report.expenseCompleteness.complete).toBe(true)
     expect(html).not.toContain('data-testid="avi-expense-completeness"')
     expect(html).not.toContain('No certified expenses')
-    expect(html).toContain('101 certified')
-    expect(html).toContain('101,241.67')
-    expect(html).toContain('50,620.84')
+    expect(html).toContain('180 certified')
+    expect(html).toContain('99,207.00')
+    expect(html).toContain('49,603.50')
     const recon = html.split('data-testid="avi-print-expense-recon"')[1] ?? ''
-    expect(recon).toContain('101,241.67')
-    expect(recon).toContain('50,620.84')
+    expect(recon).toContain('99,207.00')
+    expect(recon).toContain('49,603.50')
   })
 
   it('does not list the five funding IDs in expenses', () => {
@@ -285,7 +286,7 @@ describe('Avi print view — canonical 202-row certified compose', () => {
     expect(html).toContain('data-testid="avi-payment-table"')
     expect(html).toContain('72,214.14')
     expect(html).toContain('36,107.07')
-    expect(html).toContain('14,300.00')
+    expect(html).toContain('11,900.00')
     expect(html).toContain('Purchase Expenses')
     expect(html).not.toContain('Purchase Contract')
     const airbnbSection = html.slice(
@@ -293,7 +294,7 @@ describe('Avi print view — canonical 202-row certified compose', () => {
       html.indexOf('data-testid="avi-payment-table"'),
     )
     expect(airbnbSection).toContain('Photography')
-    expect(airbnbSection).toContain('14,727.53')
+    expect(airbnbSection).toContain('15,092.86')
     expect(airbnbSection).toContain('Electricity')
     expect(html).toContain('1,609.34')
     expect(html).toContain('804.67')

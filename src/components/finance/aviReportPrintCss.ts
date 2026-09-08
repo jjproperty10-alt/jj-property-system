@@ -120,5 +120,9 @@ export const AVI_REPORT_PRINT_CSS = `
     color: inherit !important;
     text-decoration: none !important;
   }
+
+  [dir="rtl"] {
+    direction: rtl;
+  }
 }
 `

@@ -18,6 +18,14 @@ import type {
   AviReportControlStatus,
 } from '@/lib/partner-settlement/external-partner/externalPartnerAviReportTypes'
 import { composeAviAirbnbCredits } from '@/lib/partner-settlement/external-partner'
+import {
+  composeAviAirbnbSection,
+  composeAviFinalSummary,
+  composeAviHostawayIncome,
+  composeAviMonthly,
+  composeAviPurchaseExpenses,
+  composeAviRenovation,
+} from '@/lib/partner-settlement/external-partner/aviReportSections'
 
 function certifiedReport(): Extract<ExternalPartnerAviReport, { status: 'certified' }> {
   const controlStatus: AviReportControlStatus = {
@@ -36,8 +44,8 @@ function certifiedReport(): Extract<ExternalPartnerAviReport, { status: 'certifi
   const partners: AviReportPartnerSummary[] = [
     {
       partner: 'Avi', ownershipPct: 50, isJjPrincipal: false, status: 'CERTIFIED',
-      paidEur: 280600, creditsEur: 19640.34, obligationEur: 300620.84, netEur: -380.50,
-      direction: 'to_pay', semanticNet: 'Avi owes €380.50',
+      paidEur: 280600, creditsEur: 19744.44, obligationEur: 299603.50, netEur: 740.94,
+      direction: 'to_refund', semanticNet: 'Avi is owed €740.94',
     },
     {
       partner: 'Yossi', ownershipPct: 25, isJjPrincipal: true, status: 'PROVISIONAL',
@@ -52,9 +60,9 @@ function certifiedReport(): Extract<ExternalPartnerAviReport, { status: 'certifi
   ]
   const layers: AviReportLayerBreakdown[] = [
     { key: 'acquisition', label: 'Acquisition', totalChargeEur: 500000, aviShareEur: 250000, aviFundingEur: null, semanticNet: null },
-    { key: 'deal_expense', label: 'Acquisition / Deal expenses', totalChargeEur: 14300, aviShareEur: 7150, aviFundingEur: 5600, semanticNet: 'Avi owes €1,550.00' },
+    { key: 'deal_expense', label: 'Acquisition / Deal expenses', totalChargeEur: 11900, aviShareEur: 5950, aviFundingEur: 5600, semanticNet: 'Avi owes €350.00' },
     { key: 'renovation', label: 'Renovation', totalChargeEur: 72214.14, aviShareEur: 36107.07, aviFundingEur: 25000, semanticNet: 'Avi owes €11,107.07' },
-    { key: 'airbnb', label: 'Airbnb', totalChargeEur: 14727.53, aviShareEur: 7363.77, aviFundingEur: 19640.34, semanticNet: 'Avi is owed €12,276.57' },
+    { key: 'airbnb', label: 'Airbnb', totalChargeEur: 15092.86, aviShareEur: 7546.43, aviFundingEur: 19744.44, semanticNet: 'Avi is owed €12,198.01' },
     { key: 'management', label: 'Management', totalChargeEur: 0, aviShareEur: 0, aviFundingEur: null, semanticNet: 'Settled' },
   ]
   const partnerPayments: AviReportPartnerPayment[] = [
@@ -95,6 +103,26 @@ function certifiedReport(): Extract<ExternalPartnerAviReport, { status: 'certifi
     partnerPayments,
     partnerExpenses,
     airbnbCredits: composeAviAirbnbCredits(),
+    purchaseExpenses: composeAviPurchaseExpenses(),
+    renovation: composeAviRenovation({
+      rows: [{ subcategory: 'Workers', amountEur: 2000 }],
+      certifiedChargeEur: 72214.14,
+      aviPaidEur: 25000,
+      payments: [
+        { date: '2024-11-16', amountEur: 5000 },
+        { date: '2025-07-10', amountEur: 20000 },
+      ],
+    }),
+    airbnb: composeAviAirbnbSection(),
+    hostawayIncome: composeAviHostawayIncome(),
+    monthly: composeAviMonthly(),
+    finalSummary: composeAviFinalSummary({
+      acquisitionObligationEur: 250000,
+      acquisitionPaidEur: 250000,
+      renovationObligationEur: 36107.07,
+      renovationPaidEur: 25000,
+      creditsEur: 19744.44,
+    }),
   }
 }
 
@@ -124,9 +152,10 @@ describe('ExternalPartnerAviReportView — certified', () => {
   })
 
   it('displays Avi semantic net', () => {
-    expect(html).toContain('Avi owes')
-    expect(html).toContain('380.50')
+    expect(html).toContain('Avi is owed')
+    expect(html).toContain('740.94')
     expect(html).not.toContain('18,900.84')
+    expect(html).not.toContain('380.50')
   })
 
   it('marks data-testid for certified', () => {
@@ -225,8 +254,8 @@ describe('ExternalPartnerAviReportView — partner audience', () => {
     expect(html).not.toContain('JJ Internal Staff Report')
     expect(html).not.toContain('JJ Internal — Certified snapshot report')
     expect(html).not.toContain('Control Status')
-    expect(html).toContain('Avi owes')
-    expect(html).toContain('380.50')
+    expect(html).toContain('Avi is owed')
+    expect(html).toContain('740.94')
     expect(html).toContain('500,000.00')
     expect(html).not.toMatch(/400,000/)
   })
@@ -296,6 +325,7 @@ describe('ExternalPartnerAviReportView — source isolation', () => {
     'src/components/finance/AviReportPrintButton.tsx',
     'src/components/finance/aviReportPrintCss.ts',
     'src/components/finance/AviShareLinkButton.tsx',
+    'src/components/finance/aviReportCopy.ts',
   ]
 
   it('does not import Partner B, RC3, lifecycle, PDF, or Supabase', () => {

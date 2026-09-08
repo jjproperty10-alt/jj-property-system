@@ -12,10 +12,11 @@
  * Avi is charged the certified partner obligation. Internal JJ execution
  * costs, payers, and payment movements are not exposed.
  *
- * Purchase Contract, Premium, funding, conduit, Client Payment, and platform
- * income are excluded. The Renovation Contract charge-basis artifact is
- * included; cash spent to fulfil that contract is not. Airbnb billing-only
- * pool invoices are included; cashbox pool execution of those invoices is not.
+ * Purchase Contract, Premium, funding, conduit, Client Payment, platform
+ * income, the renovation contract value, the duplicated purchase-tax row,
+ * superseded guest-supply purchases, and the unsplit €325 internet row are
+ * excluded. Actual renovation work is listed. Airbnb billing-only pool
+ * invoices are included; cashbox pool execution of those invoices is not.
  * Payments never appear in the expense list.
  *
  * Charge per expense row: a positive client_charge replaces amount; they are
@@ -23,7 +24,12 @@
  * and CSV `0.00` both mean “no separate markup”).
  */
 
+import {
+  AVI_INTERNET_SPLIT_ROW_ID,
+  AVI_SUPERSEDED_CONSUMABLE_IDS,
+} from './aviAirbnbDepartments'
 import { applyAviApprovedExpenseOverlay } from './aviExpenseOverlay'
+import { AVI_VM1_DUPLICATE_PURCHASE_EXPENSE } from './externalPartnerAviConfig'
 import { deriveExternalPartnerBillableCharge } from './billedActivity'
 import { roundEur } from './roundEur'
 import type { ExternalPartnerInternalRow } from './externalPartnerReadTypes'
@@ -55,24 +61,15 @@ export function formatAviIsOwed(amountEur: number): string {
 }
 
 /**
- * Renovation rows Avi may see:
- * - `Renovation Contract` is the charge-basis self-artifact (partner obligation).
- *   It is the certified renovation total minus residuals that sit outside it,
- *   not an extra charge on top of execution costs.
- * - Internal execution (Workers, Materials, …) is how JJ spent cash to fulfil
- *   that contract. Those rows must not appear beside the contract or Avi is
- *   charged twice for the same work.
+ * Renovation rows Avi may see (Yossi 2026-09-08):
+ * - Actual work rows are the expenses. The contract value is an agreed price,
+ *   not a thing that was bought, and is never listed beside them.
  * - `Client Payment` is funding, not an expense.
- * - Residuals outside the contract (Plumber) remain partner-chargeable.
  */
-const RENOVATION_INTERNAL_EXECUTION_SUBCATEGORIES: ReadonlySet<string> = new Set([
-  'Workers',
-  'Materials',
-  'Contractors',
-  'Furniture',
-  'Electrical Appliances',
-  'Alouminiom',
-  'Pool Service',
+const HIDDEN_PRESENTATION_IDS: ReadonlySet<string> = new Set([
+  AVI_VM1_DUPLICATE_PURCHASE_EXPENSE.id,
+  AVI_INTERNET_SPLIT_ROW_ID,
+  ...AVI_SUPERSEDED_CONSUMABLE_IDS,
 ])
 
 const MANAGEMENT_NON_CHARGE_SUBCATEGORIES: ReadonlySet<string> = new Set([
@@ -188,7 +185,7 @@ export function classifyAviVisibleExpenseLayer(
   if (cat === 'Purchase' && sub === 'Purchase Expenses') return 'deal_expense'
   if (cat === 'Renovation') {
     if (sub === 'Client Payment') return null
-    if (RENOVATION_INTERNAL_EXECUTION_SUBCATEGORIES.has(sub)) return null
+    if (sub === 'Renovation Contract') return null
     return 'renovation'
   }
   if (cat === 'Airbnb') {
@@ -213,6 +210,7 @@ export function projectAviVisibleExpenses(
   const staged: AviReportPartnerExpense[] = []
   for (const row of overlayRows) {
     if (paymentIds.has(row.id)) continue
+    if (HIDDEN_PRESENTATION_IDS.has(row.id)) continue
     const layer = classifyAviVisibleExpenseLayer(row.category, row.subcategory, {
       amountEur: row.amountEur,
       clientCharge: row.clientCharge,

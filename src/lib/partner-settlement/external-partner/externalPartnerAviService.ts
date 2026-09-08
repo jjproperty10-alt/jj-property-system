@@ -5,8 +5,8 @@
  *
  * Uses Commit 1 formulas, 2A (reader), and 2B (attribution). A Certified Avi
  * report must match the single approved identity (paid €280,600, credits
- * €19,640.34, obligation €300,620.84, net −€380.50). Pre-Hostaway formula
- * inputs (−€18,900.84) fail closed and never attach partners, layers, or print copy.
+ * €19,744.44, obligation €299,603.50, net +€740.94). Inputs that do not reach
+ * that identity fail closed and never attach partners, layers, or print copy.
  *
  * Not imported by routes. No UI, PDF, Partner B, RC3, or lifecycle dependency.
  */
@@ -19,6 +19,7 @@ import {
   composeExternalPartnerBilledActivity,
 } from './billedActivity'
 import { composeExternalPartnerDealExpense } from './dealExpense'
+import { roundEur } from './roundEur'
 import { reconcileExternalPartnerControls } from './controlReconciliation'
 import {
   applyAviFundingAttribution,
@@ -58,6 +59,14 @@ import {
 } from './externalPartnerAviVisible'
 import { composeAviAirbnbCredits } from './hostawayPrintedNto'
 import { aviCertifiedIdentityFailures } from './aviCertifiedIdentity'
+import {
+  composeAviAirbnbSection,
+  composeAviFinalSummary,
+  composeAviHostawayIncome,
+  composeAviMonthly,
+  composeAviPurchaseExpenses,
+  composeAviRenovation,
+} from './aviReportSections'
 
 export interface ComposeAviReportInput {
   readonly owners: readonly ExternalPartnerOwner[]
@@ -75,6 +84,11 @@ export interface ComposeAviReportInput {
     readonly management: { clientCharge: number; actualCost: number; jjProfit: number }
     readonly dealExpense: { total: number; aviPayment: number; jacobConduit: number }
   }
+  /**
+   * Avi's renovation funding payments. Identity only — the dates and amounts
+   * Avi reads come from the ledger rows, not from configuration.
+   */
+  readonly renovationFundingPaymentIds?: readonly string[]
 }
 
 function buildSnapshotMeta(): AviReportSnapshotMeta {
@@ -284,6 +298,49 @@ export function composeExternalPartnerAviReport(
   }
   const expenseCompleteness = projectAviExpenseCompleteness(layers, partnerExpenses)
 
+  const renovationFundingIds = input.renovationFundingPaymentIds ?? []
+  const renovationSection = composeAviRenovation({
+    rows: partnerExpenses
+      .filter((e) => e.layer === 'renovation')
+      .map((e) => ({ subcategory: e.subcategory, amountEur: e.amountEur })),
+    certifiedChargeEur: li.renovation.clientCharge,
+    aviPaidEur: li.renovation.aviFunding,
+    payments: partnerPayments
+      .filter((p) => renovationFundingIds.indexOf(p.id) !== -1)
+      .map((p) => ({ date: p.date, amountEur: p.amountEur ?? 0 })),
+  })
+
+  const airbnbSection = composeAviAirbnbSection()
+  const finalSummary = composeAviFinalSummary({
+    acquisitionObligationEur: acquisition.aviObligationEur,
+    acquisitionPaidEur: roundEur(acquisition.aviObligationEur - acquisition.remainingEur),
+    renovationObligationEur: roundEur(li.renovation.clientCharge / 2),
+    renovationPaidEur: li.renovation.aviFunding,
+    creditsEur: aviShare.credits.totalEur,
+  })
+
+  // The summary the partner reads must be the settlement, not a second opinion.
+  const summaryFailures: string[] = []
+  if (Math.abs(finalSummary.obligationTotalEur - aviShare.obligation.totalEur) >= 0.005) {
+    summaryFailures.push('summary_obligation_mismatch')
+  }
+  if (Math.abs(finalSummary.paidTotalEur - aviShare.paidEur) >= 0.005) {
+    summaryFailures.push('summary_paid_mismatch')
+  }
+  if (Math.abs(finalSummary.netEur - aviShare.netEur) >= 0.005) {
+    summaryFailures.push('summary_net_mismatch')
+  }
+  if (Math.abs(airbnbSection.totalEur - li.airbnb.clientCharge) >= 0.005) {
+    summaryFailures.push('airbnb_department_split_mismatch')
+  }
+  if (!renovationSection.reconciles) {
+    summaryFailures.push('renovation_rows_do_not_reconcile')
+  }
+  if (summaryFailures.length > 0) {
+    const failures = [...allFailures, ...summaryFailures]
+    return failedReport({ ...controlStatus, failures }, failures)
+  }
+
   return {
     status: 'certified',
     property: 'Villa Mazotos',
@@ -297,5 +354,11 @@ export function composeExternalPartnerAviReport(
     partnerPayments,
     partnerExpenses,
     airbnbCredits: composeAviAirbnbCredits(),
+    purchaseExpenses: composeAviPurchaseExpenses(),
+    renovation: renovationSection,
+    airbnb: airbnbSection,
+    hostawayIncome: composeAviHostawayIncome(),
+    monthly: composeAviMonthly(),
+    finalSummary,
   }
 }
