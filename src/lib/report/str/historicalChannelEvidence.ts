@@ -125,6 +125,30 @@ export async function getHistoricalChannelEvidence(
   return out
 }
 
+async function loadHistoricalPropertyDefs(
+  sb: SupabaseClient,
+): Promise<{ id: string; name: string }[]> {
+  const { data, error } = await sb.rpc('pms_historical_property_ids')
+  if (error || !data) return []
+  const ids = (data as { property_id: string }[]).map(r => String(r.property_id))
+  if (!ids.length) return []
+  const { data: defs } = await sb
+    .from('property_definitions')
+    .select('property_id, property_name')
+    .in('property_id', ids)
+  return (defs ?? []).map(d => ({ id: String(d.property_id), name: String(d.property_name) }))
+}
+
+/**
+ * All canonical properties that currently have recovered historical channel evidence.
+ * Used by the PDF route when an owner slug is missing from Owner Room (historical-only send path).
+ */
+export async function listHistoricalStrProperties(
+  sb: SupabaseClient,
+): Promise<{ id: string; name: string }[]> {
+  return loadHistoricalPropertyDefs(sb)
+}
+
 /**
  * Canonical properties that have recovered historical channel evidence AND belong to this owner
  * (exact property_name match against the owner's managed names). No live Hostaway mapping required.
@@ -134,16 +158,6 @@ export async function historicalPropertiesForOwner(
   managedPropertyNames: readonly string[],
 ): Promise<{ id: string; name: string }[]> {
   if (!managedPropertyNames.length) return []
-  const { data, error } = await sb.rpc('pms_historical_property_ids')
-  if (error || !data) return []
-  const ids = (data as { property_id: string }[]).map(r => String(r.property_id))
-  if (!ids.length) return []
-  const { data: defs } = await sb
-    .from('property_definitions')
-    .select('property_id, property_name')
-    .in('property_id', ids)
   const allowed = new Set(managedPropertyNames)
-  return (defs ?? [])
-    .filter(d => allowed.has(String(d.property_name)))
-    .map(d => ({ id: String(d.property_id), name: String(d.property_name) }))
+  return (await loadHistoricalPropertyDefs(sb)).filter(d => allowed.has(d.name))
 }

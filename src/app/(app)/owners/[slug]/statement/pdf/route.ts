@@ -1,17 +1,15 @@
 /**
- * GET /owners/[slug]/statement?period=YYYY-MM — printable STR Owner Statement (PDF).
+ * GET /owners/[slug]/statement/pdf?period=YYYY-MM[&property=UUID] - printable STR Owner Statement (PDF).
  *
- * Auth-gated (statement auth). Composes the owner STR statement (Hostaway reservation evidence +
- * JJ-derived management fee/net payout + JJ authoritative Expenses & Extras + reconciliation) and
- * renders it to a real PDF via the existing react-pdf stack. Read-only; no financial writes.
+ * Auth-gated (statement auth). Same certified builder as the range PDF. Read-only; no financial writes.
+ * `property=<canonical uuid>` selects one in-scope STR property; omitted = owner aggregation.
  */
 import React from 'react'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { authenticateStatementUser } from '@/lib/statements/statementAuthService'
-import { getOwnerWorkspace, getOwnerServiceEngagements } from '@/lib/owners/ownerWorkspaceService'
-import { selectStrProperties } from '@/lib/owners/selectStrProperties'
 import { buildOwnerStrStatement } from '@/lib/report/str/ownerStrStatementService'
 import { OwnerStrStatementPdf } from '@/lib/pdf/OwnerStrStatementPdf'
+import { resolveStrStatementPdfScope } from '@/lib/owners/strStatementPdfScopeServer'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -33,27 +31,25 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
     return new Response('Unauthorized', { status: auth.error === 'NO_SESSION' ? 401 : 403 })
   }
 
-  const period = new URL(req.url).searchParams.get('period') ?? ''
+  const url = new URL(req.url)
+  const period = url.searchParams.get('period') ?? ''
+  const propertyId = url.searchParams.get('property')
   if (!MONTH_RE.test(period)) {
     return new Response('Invalid or missing period (expected YYYY-MM)', { status: 400 })
   }
 
-  const workspace = await getOwnerWorkspace(params.slug)
-  if (!workspace) return new Response('Owner not found', { status: 404 })
+  const scope = await resolveStrStatementPdfScope(params.slug, propertyId)
+  if (!scope.ok) return new Response(scope.message, { status: scope.status })
 
-  const services = await getOwnerServiceEngagements(params.slug)
-  const strProps = selectStrProperties(services)
   const { start, end, label } = monthBounds(period)
-
   const dto = await buildOwnerStrStatement({
-    ownerName: workspace.identity.name,
-    properties: strProps,
+    ownerName: scope.ownerName,
+    properties: scope.properties,
     startDate: start,
     endDate: end,
     periodLabel: label,
   })
 
-  // Cast as in src/lib/pdf/generate.ts — wrapper props {data} vs DocumentProps; functionally correct.
   const element = React.createElement(OwnerStrStatementPdf, { data: dto }) as unknown as React.ReactElement
   const buffer = await renderToBuffer(element as any)
   return new Response(new Uint8Array(buffer), {

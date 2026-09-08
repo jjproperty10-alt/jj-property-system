@@ -1,16 +1,28 @@
 'use client'
 
 import React, { useState } from 'react'
+import { rangeStatementHref } from '@/lib/owners/strStatementPdfScope'
+
+export type RangeStatementProperty = { readonly id: string; readonly name: string }
 
 /**
  * RangeStatementPicker — owner-facing control to generate a MULTI-MONTH STR Owner Statement PDF.
  *
- * Presentation only: picks a from→to month range and opens the certified range PDF route
- * (/owners/[slug]/statement/range/pdf?from=&to=). No financial logic here; the PDF is composed
- * server-side from the certified single-month statements. Defaults to a 3-month range ending at the
- * currently-selected month.
+ * Presentation only: picks a from→to month range (and, when the owner has more than one STR
+ * property, All vs one canonical property_id) and opens the certified range PDF route.
+ * No financial logic here; the PDF is composed server-side from the certified single-month statements.
+ * Defaults to a 3-month range ending at the currently-selected month.
+ * Omitted property = owner aggregation (existing combined report).
  */
-export function RangeStatementPicker({ slug, defaultMonth }: { slug: string; defaultMonth: string }) {
+export function RangeStatementPicker({
+  slug,
+  defaultMonth,
+  properties = [],
+}: {
+  slug: string
+  defaultMonth: string
+  properties?: readonly RangeStatementProperty[]
+}) {
   const monthMinus = (ym: string, n: number): string => {
     const [y, m] = ym.split('-').map(Number)
     const d = new Date(Date.UTC(y, m - 1 - n, 1))
@@ -18,9 +30,11 @@ export function RangeStatementPicker({ slug, defaultMonth }: { slug: string; def
   }
   const [from, setFrom] = useState(monthMinus(defaultMonth, 2)) // default: 3-month range ending at selected
   const [to, setTo] = useState(defaultMonth)
+  const [propertyId, setPropertyId] = useState('')
 
   const valid = /^\d{4}-\d{2}$/.test(from) && /^\d{4}-\d{2}$/.test(to) && from <= to
-  const href = `/owners/${slug}/statement/range/pdf?from=${from}&to=${to}`
+  const href = rangeStatementHref(slug, from, to, propertyId || undefined)
+  const showProperty = properties.length > 1
 
   return (
     <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-4 py-3">
@@ -51,6 +65,22 @@ export function RangeStatementPicker({ slug, defaultMonth }: { slug: string; def
                 className="ml-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
               />
             </label>
+            {showProperty ? (
+              <label className="text-xs text-gray-600">
+                Property{' '}
+                <select
+                  value={propertyId}
+                  onChange={e => setPropertyId(e.target.value)}
+                  data-testid="range-property"
+                  className="ml-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
+                >
+                  <option value="">All STR properties</option>
+                  {properties.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
           </div>
         </div>
         {valid ? (

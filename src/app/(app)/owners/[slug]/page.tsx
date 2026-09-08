@@ -40,7 +40,9 @@ import { StrPropertyBreakdown } from '@/components/owners/StrPropertyBreakdown'
 import { StrReconciliationTable } from '@/components/owners/StrReconciliationTable'
 import { ReservationsPeriodNav } from '@/components/owners/ReservationsPeriodNav'
 import { RangeStatementPicker } from '@/components/owners/RangeStatementPicker'
-import { selectStrProperties } from '@/lib/owners/selectStrProperties'
+import { selectStrProperties, includeHistoricalStrProperties } from '@/lib/owners/selectStrProperties'
+import { historicalPropertiesForOwner } from '@/lib/report/str/historicalChannelEvidence'
+import { createServiceClient } from '@/lib/supabase'
 import { buildOwnerStrCockpit } from '@/lib/owners/ownerStrCockpit'
 import { DocumentsTab } from '@/components/owners/tabs/DocumentsTab'
 import { MaintenanceTab } from '@/components/owners/tabs/MaintenanceTab'
@@ -278,6 +280,10 @@ export default async function OwnerWorkspacePage({
   // This excludes legacy/duplicate managed-property names that are not STR properties
   // (e.g. the "Tamir Kiti" variants), so we never render empty "no engagement" panels for them.
   const strProperties = selectStrProperties(services)
+  const statementProperties = includeHistoricalStrProperties(
+    strProperties,
+    await historicalPropertiesForOwner(createServiceClient(), workspace.identity.properties),
+  )
   const strCockpit = activeTab === 'reservations' && strProperties.length > 0
     ? await buildOwnerStrCockpit({ properties: strProperties, startDate: resBounds.start, endDate: resBounds.end })
     : null
@@ -342,7 +348,7 @@ export default async function OwnerWorkspacePage({
               Generate / Download Statement
             </a>
           </div>
-          <RangeStatementPicker slug={slug} defaultMonth={resMonth} />
+          <RangeStatementPicker slug={slug} defaultMonth={resMonth} properties={statementProperties} />
           <ReservationsPeriodNav
             selectedLabel={resBounds.label}
             prevHref={resHref(addMonths(resMonth, -1))}
