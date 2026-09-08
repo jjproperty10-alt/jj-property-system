@@ -4,6 +4,11 @@ import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
 import { sanitizeReturnPath } from '@/lib/auth/sanitizeReturnPath'
+import { isSupabaseConfigured } from '@/lib/supabaseConfig'
+import {
+  describePasswordSignInFailure,
+  LOGIN_UNCONFIGURED_BANNER,
+} from '@/lib/auth/loginAuthFailure'
 import { Eye, EyeOff, Lock, Mail, AlertCircle } from 'lucide-react'
 
 function LoginForm() {
@@ -13,6 +18,7 @@ function LoginForm() {
   // The `next` param now includes query strings (e.g. ?property=Villa%20Mazotos)
   // after the middleware fix.
   const next = sanitizeReturnPath(searchParams.get('next'))
+  const supabaseConfigured = isSupabaseConfigured()
 
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
@@ -24,6 +30,10 @@ function LoginForm() {
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
+    if (!supabaseConfigured) {
+      setError(LOGIN_UNCONFIGURED_BANNER)
+      return
+    }
     if (attempts >= 5) {
       setError('Too many failed attempts. Please wait a few minutes.')
       return
@@ -33,10 +43,11 @@ function LoginForm() {
     const supabase = createSupabaseBrowserClient()
     const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
     if (authError) {
-      setAttempts(a => a + 1)
-      setError(attempts >= 4
-        ? 'Account temporarily locked after 5 failed attempts. Try again in 10 minutes.'
-        : 'Invalid email or password.')
+      const failure = describePasswordSignInFailure(authError.message, attempts)
+      if (failure.countAttempt) {
+        setAttempts(a => a + 1)
+      }
+      setError(failure.message)
       setLoading(false)
       return
     }
@@ -82,6 +93,15 @@ function LoginForm() {
         </div>
       ) : (
         <form onSubmit={handleLogin} className="space-y-5">
+          {!supabaseConfigured && (
+            <div
+              data-testid="login-supabase-unconfigured"
+              className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900"
+            >
+              <AlertCircle size={14} className="shrink-0 mt-0.5" />
+              <p>{LOGIN_UNCONFIGURED_BANNER}</p>
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
             <div className="relative">
@@ -112,13 +132,13 @@ function LoginForm() {
           {attempts > 0 && attempts < 5 && (
             <p className="text-xs text-orange-500">{5 - attempts} attempt{5 - attempts !== 1 ? 's' : ''} remaining before temporary lock.</p>
           )}
-          <button type="submit" disabled={loading || attempts >= 5}
+          <button type="submit" disabled={loading || attempts >= 5 || !supabaseConfigured}
             className="w-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg transition-colors text-sm">
-            {loading ? 'Signing in...' : 'Sign In'}
+            {loading ? 'Signing in...' : supabaseConfigured ? 'Sign In' : 'Sign-in unavailable in this Preview'}
           </button>
           <div className="text-center">
-            <button type="button" onClick={handleReset} disabled={loading}
-              className="text-xs text-brand-500 hover:text-brand-700 underline">
+            <button type="button" onClick={handleReset} disabled={loading || !supabaseConfigured}
+              className="text-xs text-brand-500 hover:text-brand-700 underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline">
               Forgot password? Send reset email
             </button>
           </div>
