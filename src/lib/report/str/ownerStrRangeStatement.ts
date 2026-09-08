@@ -40,6 +40,7 @@ export interface OwnerStrRangeStatement {
     readonly taxesEur: number | null
     readonly netOwnerPayoutEur: number | null
     readonly expensesExtrasTotalEur: number
+    readonly ownerPaymentsTotalEur: number
     readonly statementTotalEur: number | null
     readonly needsReviewMonths: number // count of months whose Net Owner Payout is Needs Review
   }
@@ -69,8 +70,9 @@ export function composeOwnerStrRangeStatement(input: ComposeRangeInput): OwnerSt
   const taxesEur = sumOrNull(m.map(s => s.totals.taxesEur))
   const netOwnerPayoutEur = sumOrNull(m.map(s => s.totals.netOwnerPayoutEur))
   const expensesExtrasTotalEur = roundEur(m.reduce((a, s) => a + s.expensesExtrasTotalEur, 0))
+  const ownerPaymentsTotalEur = roundEur(m.reduce((a, s) => a + s.ownerPaymentsTotalEur, 0))
   const statementTotalEur =
-    netOwnerPayoutEur == null ? null : roundEur(netOwnerPayoutEur + expensesExtrasTotalEur)
+    netOwnerPayoutEur == null ? null : roundEur(netOwnerPayoutEur + expensesExtrasTotalEur + ownerPaymentsTotalEur)
   const needsReviewMonths = m.filter(s => s.totals.netOwnerPayoutEur == null).length
 
   return {
@@ -92,6 +94,7 @@ export function composeOwnerStrRangeStatement(input: ComposeRangeInput): OwnerSt
       taxesEur,
       netOwnerPayoutEur,
       expensesExtrasTotalEur,
+      ownerPaymentsTotalEur,
       statementTotalEur,
       needsReviewMonths,
     },

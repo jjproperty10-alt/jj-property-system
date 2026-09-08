@@ -17,8 +17,14 @@ export interface StatementReservationEvidence extends StrLineEvidence {
 }
 
 /**
+ * Ledger categories that may contribute owner-facing property expenses on the STR statement.
+ * Purchase / Sale / Renovation / Transfer / JJ stay out — they are not owner STR operating extras.
+ */
+export const OWNER_STATEMENT_EXTRA_CATEGORIES: readonly string[] = ['Airbnb', 'Management']
+/**
  * Non-extra income/settlement subcategories — handled via reconciliation / settlement, never owner charges.
  * Bank Payment to Owner is SETTLEMENT (Rule 1.7 / LTR adapter), not an operating expense.
+ * Client Payment is an owner credit (Payments received), never an expense.
  */
 export const NON_EXTRA_SUBCATEGORIES: ReadonlySet<string> = new Set([
   'Platform Income',
@@ -28,15 +34,32 @@ export const NON_EXTRA_SUBCATEGORIES: ReadonlySet<string> = new Set([
 /**
  * Reservation-chain deductions already applied inside the certified per-reservation Net calculation
  * (Net = Total Payout - Cleaning - Management Fee - Taxes). Re-adding them to Expenses & Extras would
- * double-count (Decision B, proven in the accuracy audit). KNOWN LIMITATION: subcategory-based — a
- * future genuinely SEPARATE Cleaning/Management charge (different business meaning than the
- * reservation's own) must be distinguished EXPLICITLY (e.g. reservationId / dedicated flag), never
- * inferred from subcategory alone.
+ * double-count (Decision B, proven in the accuracy audit).
+ *
+ * Cleaning is excluded only when it is the Airbnb/platform tracking row (`payer=Airbnb`).
+ * A Cleaning row with payer≠Airbnb is a real owner cost (e.g. supplies) and belongs in extras.
+ * Management Fee stays excluded regardless of payer — the statement already deducts JJ's 20% in-chain.
  */
 export const RESERVATION_CHAIN_SUBCATEGORIES: ReadonlySet<string> = new Set(['Cleaning', 'Management Fee'])
-/** True when a JJ ledger row (category=Airbnb) belongs in owner-facing Expenses & Extras. */
-export function isOwnerStatementExtra(subcategory: string): boolean {
-  return !NON_EXTRA_SUBCATEGORIES.has(subcategory) && !RESERVATION_CHAIN_SUBCATEGORIES.has(subcategory)
+const AIRBNB_PAYER = 'Airbnb'
+
+/** True when a JJ ledger row belongs in owner-facing Expenses & Extras (subcategory + payer gate). */
+export function isOwnerStatementExtra(subcategory: string, payer?: string | null): boolean {
+  if (NON_EXTRA_SUBCATEGORIES.has(subcategory)) return false
+  if (subcategory === 'Management Fee') return false
+  if (subcategory === 'Cleaning') {
+    const p = (payer ?? '').trim()
+    return p.length > 0 && p !== AIRBNB_PAYER
+  }
+  return true
+}
+/** True when a JJ ledger category is allowed to feed Expenses & Extras / owner payments. */
+export function isOwnerStatementExtraCategory(category: string): boolean {
+  return OWNER_STATEMENT_EXTRA_CATEGORIES.includes(category)
+}
+/** Cash the owner sent to JJ — credit on the statement, not an expense. */
+export function isOwnerStatementPayment(subcategory: string): boolean {
+  return subcategory === 'Client Payment'
 }
 
 export interface StatementExtra {
@@ -93,7 +116,10 @@ export interface OwnerStrStatement {
   }
   readonly expensesExtras: readonly StatementExtra[]
   readonly expensesExtrasTotalEur: number
-  readonly statementTotalEur: number | null          // netOwnerPayout + Σ extras; null if payout unknown
+  /** Cash the owner sent to JJ in the period (Client Payment). Credit, never an expense. */
+  readonly ownerPayments: readonly StatementExtra[]
+  readonly ownerPaymentsTotalEur: number
+  readonly statementTotalEur: number | null          // net + extras + owner payments; null if payout unknown
   readonly reconciliation: {
     readonly hostawayPayoutEvidenceEur: number | null
     readonly jjPlatformIncomeEur: number | null
@@ -114,6 +140,8 @@ export interface ComposeInput {
   readonly issuedDate: string
   readonly reservations: readonly StatementReservationEvidence[]
   readonly extras: readonly StatementExtra[]
+  /** Owner → JJ cash in the period. Composer adds these as credits. */
+  readonly ownerPayments?: readonly StatementExtra[]
   /** JJ Platform Income posted with a transaction date inside the period (aggregate rows kept as-is). */
   readonly jjPlatformIncomeInPeriodEur: number | null
   /** True when the JJ Platform Income evidence covers a span wider than this period (aggregate). */
@@ -152,7 +180,9 @@ export function composeOwnerStrStatement(input: ComposeInput): OwnerStrStatement
     managementFeeTotal != null && cleaningTotal != null ? roundEur(managementFeeTotal + cleaningTotal) : null
 
   const extrasTotal = roundEur(input.extras.reduce((a, e) => a + e.amountEur, 0))
-  const statementTotal = netTotal != null ? roundEur(netTotal + extrasTotal) : null
+  const payments = input.ownerPayments ?? []
+  const paymentsTotal = roundEur(payments.reduce((a, e) => a + e.amountEur, 0))
+  const statementTotal = netTotal != null ? roundEur(netTotal + extrasTotal + paymentsTotal) : null
 
   const hostawayPayoutEvidence = roundEur(
     activity.reduce((a, r) => a + (r.line.platformPayoutEvidence.value ?? 0), 0),
@@ -201,6 +231,8 @@ export function composeOwnerStrStatement(input: ComposeInput): OwnerStrStatement
     },
     expensesExtras: input.extras,
     expensesExtrasTotalEur: extrasTotal,
+    ownerPayments: payments,
+    ownerPaymentsTotalEur: paymentsTotal,
     statementTotalEur: statementTotal,
     reconciliation: {
       hostawayPayoutEvidenceEur: activity.length ? hostawayPayoutEvidence : null,
