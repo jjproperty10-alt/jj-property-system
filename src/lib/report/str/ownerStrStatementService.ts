@@ -106,7 +106,8 @@ export async function buildOwnerStrStatement(input: OwnerStrStatementInput): Pro
 
   // 2) Expenses & Extras — JJ authoritative ledger (owner property expenses in period).
   //    Owner-facing amount = COALESCE(client_charge, amount_eur) (P-LEDGER-6), shown as a negative charge.
-  //    Platform Income / Client Payment are NOT extras (income/settlement — handled via reconciliation).
+  //    Platform Income / Client Payment / Bank Payment to Owner are NOT extras
+  //    (income/settlement — handled via reconciliation; BPO is settlement, not an operating expense).
   //    Cleaning / Management Fee are NOT extras either: both are already deducted inside the certified
   //    per-reservation chain (Net = Total Payout − Cleaning − Management Fee − Taxes). Re-adding them here
   //    would double-count (proven in the accuracy audit: Mgmt €4,023.79 + Cleaning €3,061.08).
@@ -124,8 +125,9 @@ export async function buildOwnerStrStatement(input: OwnerStrStatementInput): Pro
       .or('review_status.eq.active,review_status.is.null')
     for (const t of exRows ?? []) {
       const sub = String(t.subcategory ?? '')
-      // Owner-facing extras only. Excludes income/settlement (Platform Income/Client Payment) AND
-      // reservation-chain deductions (Cleaning/Management Fee — Decision B, prevents double-count).
+      // Owner-facing extras only. Excludes income/settlement (Platform Income/Client Payment/
+      // Bank Payment to Owner) AND reservation-chain deductions (Cleaning/Management Fee —
+      // Decision B, prevents double-count).
       if (!isOwnerStatementExtra(sub)) continue
       const ownerFacing = num(t.client_charge) ?? num(t.amount_eur) ?? 0
       if (ownerFacing === 0) continue
