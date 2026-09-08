@@ -55,10 +55,12 @@ describe('filterEligibleProperties', () => {
     expect(filterEligibleProperties(eligible, YOGEV.id)).toEqual({
       ok: false, status: 404, message: "Property is not in this owner's STR statement scope",
     })
-    expect(filterEligibleProperties(eligible, 'Tamir Dekelia').ok).toBe(false)
-    if (!filterEligibleProperties(eligible, 'Tamir Dekelia').ok) {
-      expect(filterEligibleProperties(eligible, 'Tamir Dekelia').status).toBe(400)
+    const invalid = filterEligibleProperties(eligible, 'Tamir Dekelia')
+    expect(invalid.ok).toBe(false)
+    if (invalid.ok) {
+      throw new Error('Expected filterEligibleProperties to fail')
     }
+    expect(invalid.status).toBe(400)
   })
   it('empty eligible set is 404', () => {
     expect(filterEligibleProperties([], null).ok).toBe(false)
