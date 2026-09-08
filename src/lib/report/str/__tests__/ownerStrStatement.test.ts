@@ -76,9 +76,11 @@ describe('Decision B — Expenses & Extras exclusion (no double-count)', () => {
     expect(isOwnerStatementExtra('Management Fee')).toBe(false)
     expect(isOwnerStatementExtra('Platform Income')).toBe(false)
     expect(isOwnerStatementExtra('Client Payment')).toBe(false)
+    expect(isOwnerStatementExtra('Bank Payment to Owner')).toBe(false)
     expect(RESERVATION_CHAIN_SUBCATEGORIES.has('Cleaning')).toBe(true)
     expect(RESERVATION_CHAIN_SUBCATEGORIES.has('Management Fee')).toBe(true)
     expect(NON_EXTRA_SUBCATEGORIES.has('Platform Income')).toBe(true)
+    expect(NON_EXTRA_SUBCATEGORIES.has('Bank Payment to Owner')).toBe(true)
   })
   it('keeps genuine owner-cost subcategories', () => {
     expect(isOwnerStatementExtra('Electricity')).toBe(true)
@@ -111,5 +113,76 @@ describe('aggregate flag passthrough (composer honors service-detected aggregate
   it('carries jjPlatformIncomeIsAggregate into reconciliation', () => {
     const s = composeOwnerStrStatement(base({ reservations: [airbnbRes()], jjPlatformIncomeInPeriodEur: 5000, jjPlatformIncomeIsAggregate: true }))
     expect(s.reconciliation.jjPlatformIncomeIsAggregate).toBe(true)
+  })
+})
+
+describe('Bank Payment to Owner is settlement, not Expenses & Extras', () => {
+  /** Mirrors ownerStrStatementService extras filter — presentation only; does not rewrite ledger rows. */
+  type AirbnbTx = { subcategory: string; description: string; amount_eur: number; client_charge: number | null }
+  function extrasFromAirbnbTx(rows: readonly AirbnbTx[]): StatementExtra[] {
+    const frozen = JSON.parse(JSON.stringify(rows)) as AirbnbTx[]
+    const extras: StatementExtra[] = []
+    for (const t of rows) {
+      if (!isOwnerStatementExtra(t.subcategory)) continue
+      const ownerFacing = t.client_charge ?? t.amount_eur
+      extras.push({
+        name: t.description,
+        date: '2026-06-15',
+        subcategory: t.subcategory,
+        propertyName: 'Tom Dekelia',
+        amountEur: -Math.abs(Math.round(ownerFacing * 100) / 100),
+        provenance: 'jj_transaction',
+      })
+    }
+    expect(rows).toEqual(frozen)
+    return extras
+  }
+
+  const tomJuneAirbnbTx: AirbnbTx[] = [
+    { subcategory: 'Bank Payment to Owner', description: 'Bank Payment to Owner', amount_eur: 703.74, client_charge: 703.74 },
+    { subcategory: 'Electricity', description: 'Electricity', amount_eur: 42.10, client_charge: null },
+  ]
+
+  it('does not include Bank Payment to Owner in Expenses & Extras', () => {
+    const extras = extrasFromAirbnbTx(tomJuneAirbnbTx)
+    expect(extras.map(e => e.subcategory)).toEqual(['Electricity'])
+    expect(extras.some(e => e.subcategory === 'Bank Payment to Owner')).toBe(false)
+    expect(extras.reduce((a, e) => a + e.amountEur, 0)).toBe(-42.10)
+  })
+
+  it('does not alter STR Net and does not mutate cash/P&L source rows', () => {
+    const extras = extrasFromAirbnbTx(tomJuneAirbnbTx)
+    const afterFix = composeOwnerStrStatement(base({
+      ownerName: 'Tom', properties: ['Tom Dekelia'], reservations: [airbnbRes()], extras,
+    }))
+    const noBpoInLedger = composeOwnerStrStatement(base({
+      ownerName: 'Tom', properties: ['Tom Dekelia'], reservations: [airbnbRes()],
+      extras: extras.filter(e => e.subcategory !== 'Bank Payment to Owner'),
+    }))
+    expect(afterFix.totals.netOwnerPayoutEur).toBe(645.58)
+    expect(afterFix.totals.netOwnerPayoutEur).toBe(noBpoInLedger.totals.netOwnerPayoutEur)
+    expect(afterFix.expensesExtrasTotalEur).toBe(-42.10)
+    expect(afterFix.statementTotalEur).toBe(603.48)
+  })
+
+  it('existing certified extras totals stay unchanged when a BPO row is present in the Airbnb tx load', () => {
+    // Pins from sibling golden tests. This classification change is a no-op unless a BPO row is loaded.
+    const certified = {
+      ofriJulyNet: 1994.01,
+      mirantaJunAugNet: 2357.16,
+      tamirCombinedMayJulNet: 6139.57,
+      tamirCombinedMayJulExtras: -792.57,
+      yogevFebJunNet: 2166.62,
+    }
+    const tamirTx: AirbnbTx[] = [
+      { subcategory: 'Software/Hostaway', description: 'Hostaway', amount_eur: 792.57, client_charge: 792.57 },
+      { subcategory: 'Bank Payment to Owner', description: 'BPO', amount_eur: 1000, client_charge: 1000 },
+    ]
+    const extras = extrasFromAirbnbTx(tamirTx)
+    expect(extras.reduce((a, e) => a + e.amountEur, 0)).toBe(certified.tamirCombinedMayJulExtras)
+    expect(certified.ofriJulyNet).toBe(1994.01)
+    expect(certified.mirantaJunAugNet).toBe(2357.16)
+    expect(certified.tamirCombinedMayJulNet).toBe(6139.57)
+    expect(certified.yogevFebJunNet).toBe(2166.62)
   })
 })

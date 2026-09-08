@@ -17,9 +17,14 @@ export interface StatementReservationEvidence extends StrLineEvidence {
 }
 
 /**
- * Non-extra income/settlement subcategories — handled via reconciliation, never owner charges.
+ * Non-extra income/settlement subcategories — handled via reconciliation / settlement, never owner charges.
+ * Bank Payment to Owner is SETTLEMENT (Rule 1.7 / LTR adapter), not an operating expense.
  */
-export const NON_EXTRA_SUBCATEGORIES: ReadonlySet<string> = new Set(['Platform Income', 'Client Payment'])
+export const NON_EXTRA_SUBCATEGORIES: ReadonlySet<string> = new Set([
+  'Platform Income',
+  'Client Payment',
+  'Bank Payment to Owner',
+])
 /**
  * Reservation-chain deductions already applied inside the certified per-reservation Net calculation
  * (Net = Total Payout - Cleaning - Management Fee - Taxes). Re-adding them to Expenses & Extras would
