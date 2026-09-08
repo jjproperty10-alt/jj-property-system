@@ -4,7 +4,8 @@
 -- pms.historical_channel_reservation_evidence. `pms` is NOT exposed to PostgREST
 -- (pgrst.db_schemas = public, lifecycle), so the statement provider's .schema('pms') read
 -- silently returned []. Same pattern as 20260812_003_pms_audit_read_rpcs.sql.
--- Read-only. No table/data/ledger changes. anon has no EXECUTE; service_role only.
+-- Read-only. No table/data/ledger changes.
+-- EXECUTE is service_role only: PUBLIC, anon, and authenticated are all revoked.
 
 CREATE OR REPLACE FUNCTION public.pms_historical_reservations_for_property(p_property_id uuid)
 RETURNS TABLE (
@@ -44,5 +45,7 @@ $$;
 
 REVOKE ALL ON FUNCTION public.pms_historical_reservations_for_property(uuid) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.pms_historical_property_ids() FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION public.pms_historical_reservations_for_property(uuid) FROM authenticated;
+REVOKE EXECUTE ON FUNCTION public.pms_historical_property_ids() FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.pms_historical_reservations_for_property(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.pms_historical_property_ids() TO service_role;
