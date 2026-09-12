@@ -1,8 +1,13 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { isSupabaseConfigured } from '@/lib/supabaseConfig'
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
+
+  if (!isSupabaseConfigured()) {
+    return supabaseResponse
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,7 +32,16 @@ export async function middleware(request: NextRequest) {
 
   // LOCAL DEV ONLY: /client-report bypasses auth for RC1 visual parity testing.
   // restore_auth.bat removes this line before production deploy.
-  const publicPaths = ['/login', '/auth/callback', '/auth/reset', '/_next', '/favicon']
+  const publicPaths = [
+    '/login',
+    '/auth/callback',
+    '/auth/reset',
+    '/_next',
+    '/favicon',
+    '/share/avi-external-partner',
+    // Unconfigured Preview only — page itself 404s when Supabase keys are present.
+    '/preview/avi-certified-compose',
+  ]
   if (publicPaths.some(p => pathname.startsWith(p))) return supabaseResponse
 
   if (!user) {
