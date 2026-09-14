@@ -465,6 +465,25 @@ export interface OwnerFinancialDTO {
   paymentSummary?: PaymentAllocationSummaryDTO | null
   /** Open correction cases requiring attention */
   openCorrectionCases?: readonly FinancialCorrectionCaseDTO[]
+  /**
+   * Owner-level (unallocated) payments — not assigned to a property.
+   * Counted once in owner settlement; excluded from property P&L / STR / LTR.
+   */
+  ownerLevelPayments?: {
+    readonly totalEur: string
+    readonly countedCount: number
+    readonly needsReviewCount: number
+    readonly fetchStatus?: 'ok' | 'not_deployed' | 'blocked'
+    readonly rows: readonly {
+      readonly transactionId: string
+      readonly date: string
+      readonly payer: string
+      readonly amountEur: string
+      readonly description: string | null
+      readonly idempotencyKey: string
+      readonly reviewStatus: string
+    }[]
+  }
 }
 
 /**
