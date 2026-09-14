@@ -344,6 +344,11 @@ export interface AviMonthlyRow {
 export interface AviMonthlySection {
   readonly rows: readonly AviMonthlyRow[]
   readonly totals: Omit<AviMonthlyRow, 'month' | 'stays'>
+  /**
+   * Cent bridge so the sum of displayed monthly Avi halves matches the
+   * certified period share. Presentation only — does not change €740.94.
+   */
+  readonly roundingAdjustmentEur: number
 }
 
 function bucketOperations(month: string): {
@@ -396,24 +401,6 @@ export function composeAviMonthly(): AviMonthlySection {
   for (const line of AVI_AIRBNB_SETUP_LINES) note(line.month)
   for (const month of Object.keys(PRIVATE_INCOME_BY_MONTH)) note(month)
 
-  /**
-   * Avi's 50% is allocated against the running exact half rather than by halving
-   * each month on its own. Halving month by month and adding the results up can
-   * miss the period figure by a cent or two, which would leave the partner with a
-   * column that does not add up. Each month is still within a cent of its own
-   * half, and the column closes on the certified period share.
-   */
-  let cumulativeExactShare = 0
-  let cumulativeAllocatedShare = 0
-
-  function allocateShare(resultAfterSetupEur: number): number {
-    cumulativeExactShare += (resultAfterSetupEur * AVI_SHARE_PCT) / 100
-    const target = roundEur(cumulativeExactShare)
-    const share = roundEur(target - cumulativeAllocatedShare)
-    cumulativeAllocatedShare = target
-    return share
-  }
-
   const rows: AviMonthlyRow[] = months
     .sort((a, b) => a.localeCompare(b))
     .map((month) => {
@@ -446,15 +433,26 @@ export function composeAviMonthly(): AviMonthlySection {
         operatingResultEur,
         setupEur,
         resultAfterSetupEur,
-        aviResultEur: allocateShare(resultAfterSetupEur),
+        // Reader-verifiable half: (Income − Ops − Setup) ÷ 2 to the nearest cent.
+        // Sum of these halves can differ from the certified period share by a few
+        // cents; `roundingAdjustmentEur` bridges that gap. Final net €740.94 unchanged.
+        aviResultEur: Math.round(resultAfterSetupEur * 50) / 100,
       }
     })
 
   const add = (pick: (r: AviMonthlyRow) => number): number =>
     roundEur(rows.reduce((s, r) => s + pick(r), 0))
 
+  const displayedAviSumEur = add((r) => r.aviResultEur)
+  // Certified period share = half of the period result after setup (rounded once).
+  const certifiedAviResultEur = roundEur(
+    (add((r) => r.resultAfterSetupEur) * AVI_SHARE_PCT) / 100,
+  )
+  const roundingAdjustmentEur = roundEur(certifiedAviResultEur - displayedAviSumEur)
+
   return {
     rows,
+    roundingAdjustmentEur,
     totals: {
       stayCount: rows.reduce((s, r) => s + r.stayCount, 0),
       nights: rows.reduce((s, r) => s + r.nights, 0),
@@ -470,7 +468,7 @@ export function composeAviMonthly(): AviMonthlySection {
       operatingResultEur: add((r) => r.operatingResultEur),
       setupEur: add((r) => r.setupEur),
       resultAfterSetupEur: add((r) => r.resultAfterSetupEur),
-      aviResultEur: add((r) => r.aviResultEur),
+      aviResultEur: certifiedAviResultEur,
     },
   }
 }

@@ -64,12 +64,16 @@ describe('Avi print view — certified DTO, no second formula', () => {
     expect(src).toContain('window.print()')
     expect(src).toContain('printButton')
     expect(src).toMatch(/Headers and footers/i)
-    const html = renderToStaticMarkup(<AviReportPrintButton />)
+    expect(src).toContain('downloadSendablePdf')
+    const html = renderToStaticMarkup(
+      <AviReportPrintButton sendablePdfHref="/preview/avi-certified-compose/pdf?lang=en" />,
+    )
     expect(html).toContain('Print / Save PDF')
+    expect(html).toContain('Download sendable A4 PDF')
     expect(html).toContain('data-testid="avi-print-button"')
+    expect(html).toContain('data-testid="avi-download-sendable-pdf"')
     expect(html).toContain('data-testid="avi-print-chrome-headers-note"')
     expect(html).toMatch(/Headers and footers/i)
-    expect(html).toContain('A4 portrait')
     expect(html).toContain('print:hidden')
   })
 })
@@ -247,7 +251,6 @@ describe('Avi print view — canonical 202-row certified compose', () => {
   it('print CSS declares A4 portrait, repeating headers, and no clipped rows', () => {
     expect(AVI_REPORT_PRINT_CSS).toContain('@page')
     expect(AVI_REPORT_PRINT_CSS).toContain('A4 portrait')
-    expect(AVI_REPORT_PRINT_CSS).toContain('Headers and footers')
     expect(AVI_REPORT_PRINT_CSS).toContain('.avi-print-hide')
     expect(AVI_REPORT_PRINT_CSS).toContain('nav[aria-label="Main navigation"]')
     expect(AVI_REPORT_PRINT_CSS).toContain('avi-print-hide')
@@ -266,6 +269,9 @@ describe('Avi print view — canonical 202-row certified compose', () => {
     expect(page).toContain('avi-print-hide')
     expect(page).toContain('print:hidden')
     expect(page).toContain('AviReportPrintButton')
+    const button = fs.readFileSync(path.join(process.cwd(), 'src/components/finance/AviReportPrintButton.tsx'), 'utf8')
+    expect(button).toMatch(/Headers and footers/i)
+    expect(button).toContain('downloadSendablePdf')
   })
 
   it('print layout includes layers, expenses, and payments without private fields', () => {

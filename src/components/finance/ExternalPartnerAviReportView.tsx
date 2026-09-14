@@ -1,6 +1,6 @@
 'use client'
 
-import { MoneyValue, StatusBadge, KpiCard, SectionHeader, DataTable } from '@/components/ds'
+import { MoneyValue, StatusBadge, SectionHeader, DataTable } from '@/components/ds'
 import type { DataTableColumn } from '@/components/ds'
 import type {
   ExternalPartnerAviReport,
@@ -21,6 +21,7 @@ import {
   aviReportDir,
   formatAviFullDate,
   formatAviOwedCopy,
+  formatAviStayNightLabel,
   type AviReportLang,
 } from '@/components/finance/aviReportCopy'
 import {
@@ -52,6 +53,11 @@ interface Props {
   audience?: 'staff' | 'partner'
   /** Test / compose helper — defaults to English. */
   initialLang?: AviReportLang
+  /**
+   * Base path for partner-sendable PDF export (no Chrome headers/footers).
+   * Example: `/preview/avi-certified-compose/pdf` — lang query is appended.
+   */
+  sendablePdfPath?: string | null
 }
 
 function FailedView({ report }: { report: Extract<ExternalPartnerAviReport, { status: 'failed' }> }) {
@@ -114,9 +120,11 @@ function ControlCheck({ label, passed }: { label: string; passed: boolean }) {
 function LanguageToggle({
   lang,
   onChange,
+  sendablePdfHref = null,
 }: {
   lang: AviReportLang
   onChange: (next: AviReportLang) => void
+  sendablePdfHref?: string | null
 }) {
   const copy = AVI_REPORT_COPY[lang]
   return (
@@ -140,7 +148,7 @@ function LanguageToggle({
           {copy.toggleHe}
         </button>
       </div>
-      <AviReportPrintButton lang={lang} />
+      <AviReportPrintButton lang={lang} sendablePdfHref={sendablePdfHref} />
     </div>
   )
 }
@@ -155,39 +163,58 @@ function PartnerSummarySection({
   const avi = partners.find((p) => p.partner === 'Avi')
   const copy = AVI_REPORT_COPY[lang]
   return (
-    <div className="space-y-4 avi-print-keep" data-testid="avi-summary">
-      <SectionHeader title={copy.summary} />
-
+    <div className="avi-print-keep" data-testid="avi-summary">
       {avi && avi.status === 'CERTIFIED' && (
-        <>
-        <div
-          className="avi-final-hero rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white px-5 py-6 text-center"
-          data-testid="avi-final-hero"
-        >
-          <p className="text-xs font-bold uppercase tracking-widest text-emerald-700">
-            {copy.finalResult}
-          </p>
-          <p className="mt-2 text-2xl sm:text-3xl font-semibold text-emerald-800" dir="ltr">
-            {formatAviOwedCopy(lang, avi.semanticNet, avi.direction)}
-          </p>
-          <p className="mt-2 text-xs text-gray-600" dir="ltr">
-            {copy.formula}
-          </p>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <KpiCard label={copy.paid} value={<MoneyValue amount={avi.paidEur} />} />
-          <KpiCard label={copy.credits} value={<MoneyValue amount={avi.creditsEur} />} />
-          <KpiCard label={copy.obligation} value={<MoneyValue amount={avi.obligationEur} />} />
-          <KpiCard
-            label={copy.finalResult}
-            value={
-              <span className={avi.direction === 'to_pay' ? 'text-rose-600' : avi.direction === 'to_refund' ? 'text-emerald-600' : ''}>
+        <div className="avi-fin-summary" data-testid="avi-final-hero">
+          <div className="avi-fin-summary-top">
+            <span className="avi-fin-summary-kicker">
+              {lang === 'he' ? 'סיכום פיננסי' : 'Financial Summary'}
+            </span>
+            <span className="avi-fin-summary-badge">{copy.confidentiality.split('—')[0]?.trim() || 'Confidential'}</span>
+          </div>
+          <p className="avi-fin-summary-title">{lang === 'he' ? 'אבי' : 'Avi'}</p>
+          <p className="avi-fin-summary-sub">{copy.propertyName}</p>
+
+          <div className="avi-fin-balance">
+            <div className="avi-fin-balance-label">{copy.finalNet}</div>
+            <div>
+              <div className="avi-fin-balance-value" dir="ltr">
                 {formatAviOwedCopy(lang, avi.semanticNet, avi.direction)}
-              </span>
-            }
-          />
+              </div>
+              <div className="avi-fin-balance-hint" dir="ltr">
+                {copy.formula}
+              </div>
+            </div>
+          </div>
+
+          <div className="avi-fin-ops" aria-label={copy.summary}>
+            <div className="avi-fin-ops-cell">
+              <div className="avi-fin-ops-label">{copy.paid}</div>
+              <div className="avi-fin-ops-value">
+                <MoneyValue amount={avi.paidEur} />
+              </div>
+            </div>
+            <div className="avi-fin-ops-cell">
+              <div className="avi-fin-ops-label">{copy.credits}</div>
+              <div className="avi-fin-ops-value">
+                <MoneyValue amount={avi.creditsEur} />
+              </div>
+            </div>
+            <div className="avi-fin-ops-cell">
+              <div className="avi-fin-ops-label">{copy.obligation}</div>
+              <div className="avi-fin-ops-value">
+                <MoneyValue amount={avi.obligationEur} />
+              </div>
+            </div>
+          </div>
+
+          <p className="avi-fin-formula" dir="ltr">
+            {copy.paid} + {copy.credits} − {copy.obligation} = {copy.finalNet}
+            {' · '}
+            <MoneyValue amount={avi.paidEur} size="sm" /> + <MoneyValue amount={avi.creditsEur} size="sm" /> −{' '}
+            <MoneyValue amount={avi.obligationEur} size="sm" /> = <MoneyValue amount={avi.netEur} size="sm" />
+          </p>
         </div>
-        </>
       )}
     </div>
   )
@@ -202,14 +229,18 @@ function OwnershipSection({
 }) {
   const copy = AVI_REPORT_COPY[lang]
   return (
-    <div className="jj-card p-4 avi-print-keep">
-      <SectionHeader title={copy.ownership} />
-      <div className="mt-3 divide-y divide-gray-100">
+    <div className="avi-section avi-print-keep">
+      <div className="avi-account-bar" data-tone="navy">
+        <div>
+          <h2 className="avi-account-bar-title">{copy.ownership}</h2>
+        </div>
+      </div>
+      <div className="avi-ownership-list">
         {partners.map((p) => (
-          <div key={p.partner} className="flex items-center justify-between py-2.5">
+          <div key={p.partner} className="avi-ownership-row">
             <div className="flex items-center gap-2.5">
-              <span className="text-sm font-medium text-gray-900">{aviPartnerDisplayName(p.partner, lang)}</span>
-              <span className="text-xs text-gray-500">{p.ownershipPct}%</span>
+              <span className="text-sm font-medium text-slate-900">{aviPartnerDisplayName(p.partner, lang)}</span>
+              <span className="text-xs text-slate-500">{p.ownershipPct}%</span>
             </div>
             <StatusBadge
               status={p.status === 'CERTIFIED' ? 'confirmed' : 'pending'}
@@ -231,23 +262,36 @@ function AcquisitionSection({
 }) {
   const copy = AVI_REPORT_COPY[lang]
   return (
-    <div className="jj-card p-4 avi-print-keep">
-      <SectionHeader title={copy.acquisition} subtitle={copy.acquisitionSubtitle} />
-      {lang === 'en' && <p className="mt-3 text-sm text-gray-800">{acquisition.presentationLine}</p>}
-      <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <KpiCard
-          label={copy.agreedValue}
-          value={<MoneyValue amount={acquisition.agreedTransactionValueEur} />}
-        />
-        <KpiCard
-          label={copy.aviObligation}
-          value={<MoneyValue amount={acquisition.aviObligationEur} />}
-        />
-        <div data-testid="avi-acquisition-remaining">
-          <KpiCard
-            label={copy.remaining}
-            value={<MoneyValue amount={acquisition.remainingEur} />}
-          />
+    <div className="avi-section avi-print-keep">
+      <div className="avi-account-bar" data-tone="navy">
+        <div>
+          <h2 className="avi-account-bar-title">{copy.acquisition}</h2>
+          <p className="avi-account-bar-sub">{copy.acquisitionSubtitle}</p>
+        </div>
+        <div className="avi-account-bar-right">
+          <div className="avi-account-bar-amount"><MoneyValue amount={acquisition.aviObligationEur} /></div>
+          <div className="avi-account-bar-amount-hint">{copy.aviObligation}</div>
+        </div>
+      </div>
+      {lang === 'en' && <p className="avi-section-sub">{acquisition.presentationLine}</p>}
+      <div className="avi-kpi-strip">
+        <div className="avi-kpi-tile">
+          <div className="avi-kpi-label">{copy.agreedValue}</div>
+          <div className="avi-kpi-value">
+            <MoneyValue amount={acquisition.agreedTransactionValueEur} />
+          </div>
+        </div>
+        <div className="avi-kpi-tile">
+          <div className="avi-kpi-label">{copy.aviObligation}</div>
+          <div className="avi-kpi-value">
+            <MoneyValue amount={acquisition.aviObligationEur} />
+          </div>
+        </div>
+        <div className="avi-kpi-tile" data-testid="avi-acquisition-remaining">
+          <div className="avi-kpi-label">{copy.remaining}</div>
+          <div className="avi-kpi-value">
+            <MoneyValue amount={acquisition.remainingEur} />
+          </div>
         </div>
       </div>
     </div>
@@ -344,42 +388,42 @@ function PrintLayerSection({
     if (l.key === 'management' && (l.totalChargeEur == null || l.totalChargeEur === 0)) return false
     return true
   })
+  const copy = AVI_REPORT_COPY[lang]
   return (
     <section
-      className={`${visibleOnScreen ? 'block' : 'hidden print:block'} avi-print-keep`}
+      className={`${visibleOnScreen ? 'block' : 'hidden print:block'} avi-section avi-print-keep`}
       data-testid="avi-print-layers"
     >
-      <SectionHeader
-        title={AVI_REPORT_COPY[lang].postAcquisitionLayers}
-        subtitle={AVI_REPORT_COPY[lang].postAcquisitionSubtitle}
-        className="mb-3"
-      />
-      <div className="jj-card overflow-hidden">
-        <table className="w-full text-sm" dir="ltr">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th scope="col" className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wide text-gray-600">{AVI_REPORT_COPY[lang].layer}</th>
-              <th scope="col" className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-gray-600">{AVI_REPORT_COPY[lang].certifiedCharge}</th>
-              <th scope="col" className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-gray-600">{AVI_REPORT_COPY[lang].aviShare}</th>
-              <th scope="col" className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-gray-600">{AVI_REPORT_COPY[lang].result}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {operating.map((layer) => (
-              <tr key={layer.key}>
-                <td className="px-4 py-2 text-gray-900">{aviLayerLabel(layer.key, layer.label, lang)}</td>
-                <td className="px-4 py-2 text-right"><MoneyValue amount={layer.totalChargeEur} size="sm" /></td>
-                <td className="px-4 py-2 text-right"><MoneyValue amount={layer.aviShareEur} size="sm" /></td>
-                <td className="px-4 py-2 text-right text-rose-700" dir="ltr">{formatAviOwedCopy(lang, layer.semanticNet, null)}</td>
-              </tr>
-            ))}
-            <tr className="border-t border-gray-200 font-semibold">
-              <td className="px-4 py-2" colSpan={3}>{AVI_REPORT_COPY[lang].postAcquisitionTotal}</td>
-              <td className="px-4 py-2 text-right text-rose-700" dir="ltr">{postAcquisitionSemantic}</td>
-            </tr>
-          </tbody>
-        </table>
+      <div className="avi-account-bar" data-tone="navy">
+        <div>
+          <h2 className="avi-account-bar-title">{copy.postAcquisitionLayers}</h2>
+          <p className="avi-account-bar-sub">{copy.postAcquisitionSubtitle}</p>
+        </div>
       </div>
+      <table className="w-full text-sm avi-table" dir="ltr">
+        <thead>
+          <tr>
+            <th scope="col">{copy.layer}</th>
+            <th scope="col" className="text-right">{copy.certifiedCharge}</th>
+            <th scope="col" className="text-right">{copy.aviShare}</th>
+            <th scope="col" className="text-right">{copy.result}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {operating.map((layer) => (
+            <tr key={layer.key}>
+              <td>{aviLayerLabel(layer.key, layer.label, lang)}</td>
+              <td className="text-right"><MoneyValue amount={layer.totalChargeEur} size="sm" /></td>
+              <td className="text-right"><MoneyValue amount={layer.aviShareEur} size="sm" /></td>
+              <td className="text-right text-rose-700" dir="ltr">{formatAviOwedCopy(lang, layer.semanticNet, null)}</td>
+            </tr>
+          ))}
+          <tr className="avi-total-row">
+            <td colSpan={3}>{copy.postAcquisitionTotal}</td>
+            <td className="text-right text-rose-700" dir="ltr">{postAcquisitionSemantic}</td>
+          </tr>
+        </tbody>
+      </table>
     </section>
   )
 }
@@ -396,22 +440,31 @@ function PrintExpenseReconciliation({
   const copy = AVI_REPORT_COPY[lang]
   return (
     <section
-      className={`${visibleOnScreen ? 'block' : 'hidden print:block'} avi-print-keep`}
+      className={`${visibleOnScreen ? 'block' : 'hidden print:block'} avi-section avi-print-keep`}
       data-testid="avi-print-expense-recon"
     >
-      <SectionHeader title={copy.expenseReconciliation} subtitle={copy.expenseReconciliationNote} className="mb-3" />
-      <div className="jj-card p-4 grid grid-cols-3 gap-3">
+      <div className="avi-account-bar" data-tone="blue">
         <div>
-          <div className="text-xs text-gray-500 mb-0.5">{copy.certifiedExpenseRows}</div>
-          <div className="text-sm font-semibold tabular-nums" dir="ltr">{totals.rowCount}</div>
+          <h2 className="avi-account-bar-title">{copy.expenseReconciliation}</h2>
+          <p className="avi-account-bar-sub">{copy.expenseReconciliationNote}</p>
         </div>
-        <div>
-          <div className="text-xs text-gray-500 mb-0.5">{copy.totalCharges}</div>
-          <MoneyValue amount={totals.totalChargeEur} size="sm" />
+        <div className="avi-account-bar-right">
+          <div className="avi-account-bar-amount"><MoneyValue amount={totals.aviShareEur} /></div>
+          <div className="avi-account-bar-amount-hint">{copy.aviExpenseShare}</div>
         </div>
-        <div>
-          <div className="text-xs text-gray-500 mb-0.5">{copy.aviExpenseShare}</div>
-          <MoneyValue amount={totals.aviShareEur} size="sm" />
+      </div>
+      <div className="avi-kpi-strip">
+        <div className="avi-kpi-tile">
+          <div className="avi-kpi-label">{copy.certifiedExpenseRows}</div>
+          <div className="avi-kpi-value" dir="ltr">{totals.rowCount}</div>
+        </div>
+        <div className="avi-kpi-tile">
+          <div className="avi-kpi-label">{copy.totalCharges}</div>
+          <div className="avi-kpi-value"><MoneyValue amount={totals.totalChargeEur} size="sm" /></div>
+        </div>
+        <div className="avi-kpi-tile">
+          <div className="avi-kpi-label">{copy.aviExpenseShare}</div>
+          <div className="avi-kpi-value"><MoneyValue amount={totals.aviShareEur} size="sm" /></div>
         </div>
       </div>
     </section>
@@ -485,36 +538,45 @@ function DepartmentExpenseTable({
     aviPct: `${e.aviSharePct}%`,
     aviShare: <MoneyValue amount={e.aviShareEur} size="sm" />,
   }))
+  const tone =
+    layer === 'renovation' ? 'purple' :
+    layer === 'airbnb' ? 'orange' :
+    layer === 'deal_expense' ? 'navy' : 'blue'
   return (
     <section
-      className="space-y-3 avi-print-keep-header"
+      className="avi-section avi-print-keep-header"
       data-testid={`avi-expense-department-${layer}`}
     >
-      <SectionHeader title={title} subtitle={subtitle} className="print:hidden" />
-      <div className="hidden print:block">
-        <h3 className="jj-label">{title}</h3>
-        <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">{subtitle}</p>
+      <div className="avi-account-bar" data-tone={tone}>
+        <div>
+          <h2 className="avi-account-bar-title">{title}</h2>
+          <p className="avi-account-bar-sub">{subtitle}</p>
+        </div>
+        {layerTotals?.aviShareEur != null && (
+          <div className="avi-account-bar-right">
+            <div className="avi-account-bar-amount"><MoneyValue amount={layerTotals.aviShareEur} /></div>
+            <div className="avi-account-bar-amount-hint">Avi 50%</div>
+          </div>
+        )}
       </div>
       {layerTotals && layerTotals.totalChargeEur != null && layerTotals.aviShareEur != null && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <div>
-            <div className="text-xs text-gray-500 mb-0.5">Certified department charge</div>
-            <MoneyValue amount={layerTotals.totalChargeEur} size="sm" />
+        <div className="avi-kpi-strip">
+          <div className="avi-kpi-tile">
+            <div className="avi-kpi-label">Certified charge</div>
+            <div className="avi-kpi-value"><MoneyValue amount={layerTotals.totalChargeEur} size="sm" /></div>
           </div>
-          <div>
-            <div className="text-xs text-gray-500 mb-0.5">Avi 50% share</div>
-            <MoneyValue amount={layerTotals.aviShareEur} size="sm" />
+          <div className="avi-kpi-tile">
+            <div className="avi-kpi-label">Avi 50% share</div>
+            <div className="avi-kpi-value"><MoneyValue amount={layerTotals.aviShareEur} size="sm" /></div>
           </div>
-          <div>
-            <div className="text-xs text-gray-500 mb-0.5">Certified rows</div>
-            <div className="text-sm font-semibold tabular-nums" dir="ltr">{expenses.length}</div>
+          <div className="avi-kpi-tile">
+            <div className="avi-kpi-label">Certified rows</div>
+            <div className="avi-kpi-value" dir="ltr">{expenses.length}</div>
           </div>
         </div>
       )}
       {expenses.length === 0 ? (
-        <div className="jj-card px-4 py-8 text-center text-sm text-gray-500">
-          No certified expenses in this department.
-        </div>
+        <p className="avi-note-plain">No certified expenses in this department.</p>
       ) : (
         <DataTable columns={EXPENSE_COLUMNS} rows={rows} caption={title} />
       )}
@@ -540,17 +602,18 @@ export function AviCertifiedExpenseAppendix({
     return dept?.title ?? layer
   })
   return (
-    <div className="avi-print-expenses space-y-8" data-testid="avi-expense-table">
-      <SectionHeader
-        title="Certified Expenses"
-        subtitle="Each department is listed separately. Avi 50% share. Payer is not shown."
-        className="mb-0 print:hidden"
-      />
-      <div className="hidden print:block">
-        <h3 className="jj-label">Certified Expenses</h3>
-        <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">
-          {totals.rowCount} certified partner-chargeable rows, grouped by department. Avi share is the certified line amount.
-        </p>
+    <div className="avi-print-expenses space-y-6" data-testid="avi-expense-table">
+      <div className="avi-account-bar" data-tone="navy">
+        <div>
+          <h2 className="avi-account-bar-title">Certified Expenses</h2>
+          <p className="avi-account-bar-sub">
+            Each department is listed separately. Avi 50% share. Payer is not shown.
+          </p>
+        </div>
+        <div className="avi-account-bar-right">
+          <div className="avi-account-bar-amount" dir="ltr">{totals.rowCount}</div>
+          <div className="avi-account-bar-amount-hint">certified rows</div>
+        </div>
       </div>
       {!completeness.complete && (
         <div
@@ -612,75 +675,69 @@ function AirbnbCreditsSection({
   lang: AviReportLang
 }) {
   const copy = AVI_REPORT_COPY[lang]
-  // Partner body: aggregated Hostaway only — no guest names / reservation IDs.
   return (
-    <section className="space-y-3 avi-print-keep" data-testid="avi-airbnb-credits">
-      <SectionHeader title={copy.airbnbIncome} subtitle={copy.airbnbIncomeSubtitle} />
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="jj-card p-4" data-testid="avi-private-booking-credit">
-          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">{copy.privateIncome}</div>
-          <p className="mt-1 text-sm text-gray-700">{copy.privateIncomeHelp}</p>
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <div data-testid="avi-private-booking-total">
-              <div className="text-xs text-gray-500 mb-0.5">{copy.property}</div>
-              <MoneyValue amount={credits.privateBookingTotalEur} size="sm" />
-            </div>
-            <div data-testid="avi-private-booking-avi">
-              <div className="text-xs text-gray-500 mb-0.5">{copy.aviShareCredit}</div>
-              <MoneyValue amount={credits.privateBookingAviEur} size="sm" />
-            </div>
+    <section className="avi-section avi-print-keep" data-testid="avi-airbnb-credits">
+      <div className="avi-account-bar" data-tone="orange">
+        <div>
+          <h2 className="avi-account-bar-title">{copy.airbnbIncome}</h2>
+          <p className="avi-account-bar-sub">{copy.airbnbIncomeSubtitle}</p>
+        </div>
+        <div className="avi-account-bar-right">
+          <div className="avi-account-bar-amount"><MoneyValue amount={credits.totalAviEur} /></div>
+          <div className="avi-account-bar-amount-hint">{copy.aviShareCredit}</div>
+        </div>
+      </div>
+      <div className="avi-kpi-strip">
+        <div className="avi-kpi-tile" data-testid="avi-private-booking-credit">
+          <div className="avi-kpi-label">{copy.privateIncome}</div>
+          <div className="avi-kpi-value" data-testid="avi-private-booking-total">
+            <MoneyValue amount={credits.privateBookingTotalEur} size="sm" />
+          </div>
+          <div className="text-[10px] text-slate-500 mt-0.5" data-testid="avi-private-booking-avi">
+            {copy.aviShareCredit}: <MoneyValue amount={credits.privateBookingAviEur} size="sm" />
           </div>
         </div>
-        <div className="jj-card p-4" data-testid="avi-hostaway-rental-credit">
-          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">{copy.hostawayIncome}</div>
-          <p className="mt-1 text-sm text-gray-700">{copy.hostawayIncomeHelp}</p>
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <div>
-              <div className="text-xs text-gray-500 mb-0.5">{copy.printedNto}</div>
-              <MoneyValue amount={credits.hostawayPrintedNtoTotalEur} size="sm" />
-            </div>
-            <div>
-              <div className="text-xs text-gray-500 mb-0.5">{copy.aviShare}</div>
-              <MoneyValue amount={credits.hostawayAviEur} size="sm" />
-            </div>
+        <div className="avi-kpi-tile" data-testid="avi-hostaway-rental-credit">
+          <div className="avi-kpi-label">{copy.hostawayIncome}</div>
+          <div className="avi-kpi-value">
+            <MoneyValue amount={credits.hostawayPrintedNtoTotalEur} size="sm" />
+          </div>
+          <div className="text-[10px] text-slate-500 mt-0.5">
+            {copy.aviShare}: <MoneyValue amount={credits.hostawayAviEur} size="sm" />
           </div>
         </div>
       </div>
-      <div className="jj-card overflow-hidden">
-        <table className="w-full text-sm" dir="ltr">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th scope="col" className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wide text-gray-600">{copy.incomeSource}</th>
-              <th scope="col" className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-gray-600">{copy.printedNto}</th>
-              <th scope="col" className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-gray-600">{copy.aviShare}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            <tr data-testid="avi-hostaway-aggregated-stays">
-              <td className="px-4 py-2 text-gray-900">
-                {copy.completedHostawayStays}
-                <span className="mt-0.5 block text-xs font-normal text-gray-500" dir="ltr">
-                  {credits.completedStayCount} {copy.stays} · {credits.completedNights} {copy.nights}
-                </span>
-              </td>
-              <td className="px-4 py-2 text-right"><MoneyValue amount={credits.hostawayPrintedNtoTotalEur} size="sm" /></td>
-              <td className="px-4 py-2 text-right"><MoneyValue amount={credits.hostawayAviEur} size="sm" /></td>
-            </tr>
-            <tr data-testid="avi-private-booking-row">
-              <td className="px-4 py-2 text-gray-900">{copy.privateIncome}</td>
-              <td className="px-4 py-2 text-right"><MoneyValue amount={credits.privateBookingTotalEur} size="sm" /></td>
-              <td className="px-4 py-2 text-right"><MoneyValue amount={credits.privateBookingAviEur} size="sm" /></td>
-            </tr>
-          </tbody>
-          <tbody>
-            <tr className="border-t border-gray-200 font-semibold">
-              <td className="px-4 py-2">{copy.airbnbCreditsTotal}</td>
-              <td className="px-4 py-2 text-right" />
-              <td className="px-4 py-2 text-right"><MoneyValue amount={credits.totalAviEur} size="sm" /></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <table className="w-full text-sm avi-table" dir="ltr">
+        <thead>
+          <tr>
+            <th scope="col">{copy.incomeSource}</th>
+            <th scope="col" className="text-right">{copy.printedNto}</th>
+            <th scope="col" className="text-right">{copy.aviShare}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr data-testid="avi-hostaway-aggregated-stays">
+            <td>
+              {copy.completedHostawayStays}
+              <span className="mt-0.5 block text-xs font-normal text-slate-500" dir="ltr">
+                {formatAviStayNightLabel(lang, credits.completedStayCount, credits.completedNights)}
+              </span>
+            </td>
+            <td className="text-right"><MoneyValue amount={credits.hostawayPrintedNtoTotalEur} size="sm" /></td>
+            <td className="text-right"><MoneyValue amount={credits.hostawayAviEur} size="sm" /></td>
+          </tr>
+          <tr data-testid="avi-private-booking-row">
+            <td>{copy.privateIncome}</td>
+            <td className="text-right"><MoneyValue amount={credits.privateBookingTotalEur} size="sm" /></td>
+            <td className="text-right"><MoneyValue amount={credits.privateBookingAviEur} size="sm" /></td>
+          </tr>
+          <tr className="avi-total-row">
+            <td>{copy.airbnbCreditsTotal}</td>
+            <td className="text-right" />
+            <td className="text-right"><MoneyValue amount={credits.totalAviEur} size="sm" /></td>
+          </tr>
+        </tbody>
+      </table>
     </section>
   )
 }
@@ -698,9 +755,19 @@ function PaymentTable({
     label: aviPaymentPurpose(p.id, lang, p.label),
     amount: <MoneyValue amount={p.amountEur} size="sm" />,
   }))
+  const total = payments.reduce((s, p) => s + (p.amountEur ?? 0), 0)
   return (
-    <div className="avi-print-payments" data-testid="avi-payment-table" data-avi-payments-lang={lang}>
-      <SectionHeader title={copy.payments} subtitle={copy.paymentsSubtitle} className="mb-3" />
+    <div className="avi-section avi-print-payments" data-testid="avi-payment-table" data-avi-payments-lang={lang}>
+      <div className="avi-account-bar" data-tone="navy">
+        <div>
+          <h2 className="avi-account-bar-title">{copy.payments}</h2>
+          <p className="avi-account-bar-sub">{copy.paymentsSubtitle}</p>
+        </div>
+        <div className="avi-account-bar-right">
+          <div className="avi-account-bar-amount"><MoneyValue amount={total} /></div>
+          <div className="avi-account-bar-amount-hint">{copy.paid}</div>
+        </div>
+      </div>
       <DataTable columns={paymentColumns(lang)} rows={rows} caption={copy.payments} />
     </div>
   )
@@ -732,7 +799,6 @@ function PrintMasthead({
   snapshot: AviReportSnapshotMeta
   lang: AviReportLang
 }) {
-  // Client-only generated ISO avoids SSR/client text mismatch hydration errors.
   const [generatedIso, setGeneratedIso] = useState<string | null>(null)
   useEffect(() => {
     setGeneratedIso(new Date().toISOString().slice(0, 10))
@@ -741,36 +807,102 @@ function PrintMasthead({
   const dir = aviReportDir(lang)
   return (
     <header
-      className="avi-print-only avi-print-masthead mb-6 border-b border-gray-300 pb-4"
+      className="avi-print-only avi-print-masthead avi-doc-masthead"
       data-testid="avi-print-masthead"
       dir={dir}
     >
-      <p className="text-xs font-semibold uppercase tracking-widest text-gray-500">{copy.brand}</p>
-      <h1 className="text-xl font-semibold text-gray-900 mt-1">{copy.reportTitle}</h1>
-      <p className="text-sm text-gray-700 mt-2">{copy.propertyName}</p>
-      <p className="text-sm text-gray-700">{copy.certified}</p>
-      <p className="text-sm text-gray-700" data-testid="avi-print-generated">
-        {lang === 'he' ? (
-          generatedIso ? <HebrewGeneratedSentence iso={generatedIso} /> : <span>—</span>
-        ) : (
-          <>
-            {copy.generatedOn}{' '}
-            {generatedIso ? formatAviFullDate(generatedIso, 'en') : '—'}
-          </>
-        )}
-      </p>
-      <p className="text-sm text-gray-700" data-testid="avi-print-cutoff">
-        {lang === 'he' ? (
-          <HebrewCutoffSentence iso={snapshot.cutoffDate} />
-        ) : (
-          <>
-            {copy.transactionsThrough} {formatAviFullDate(snapshot.cutoffDate, 'en')}
-          </>
-        )}
-      </p>
-      <p className="text-xs text-gray-500 mt-1">{copy.approvedChargesNote}</p>
-      <p className="text-xs text-gray-500 mt-2">{copy.confidentiality}</p>
+      <div className="avi-doc-brand-block">
+        <p className="avi-doc-brand">JJ Property 10</p>
+        <p className="avi-doc-title">{copy.reportTitle}</p>
+        <p className="avi-doc-property">{lang === 'he' ? 'אבי' : 'Avi'} · {copy.propertyName}</p>
+      </div>
+      <div className="avi-doc-meta">
+        <p className="avi-doc-meta-line" data-testid="avi-print-generated">
+          {lang === 'he' ? (
+            generatedIso ? <HebrewGeneratedSentence iso={generatedIso} /> : <span>—</span>
+          ) : (
+            <>
+              {copy.generatedOn}{' '}
+              {generatedIso ? formatAviFullDate(generatedIso, 'en') : '—'}
+            </>
+          )}
+        </p>
+        <p className="avi-doc-meta-confidential">{copy.certified}</p>
+        <p className="avi-doc-meta-line avi-doc-meta-note">{copy.confidentiality}</p>
+      </div>
     </header>
+  )
+}
+
+function ScreenMasthead({
+  snapshot,
+  lang,
+}: {
+  snapshot: AviReportSnapshotMeta
+  lang: AviReportLang
+}) {
+  const [generatedIso, setGeneratedIso] = useState<string | null>(null)
+  useEffect(() => {
+    setGeneratedIso(new Date().toISOString().slice(0, 10))
+  }, [])
+  const copy = AVI_REPORT_COPY[lang]
+  return (
+    <>
+      <header
+        className="avi-screen-only avi-doc-masthead avi-print-hide"
+        data-testid="avi-screen-masthead"
+        dir={aviReportDir(lang)}
+      >
+        <div className="avi-doc-brand-block">
+          <p className="avi-doc-brand">JJ Property 10</p>
+          <p className="avi-doc-title">{copy.reportTitle}</p>
+          <p className="avi-doc-property">{lang === 'he' ? 'אבי' : 'Avi'} · {copy.propertyName}</p>
+        </div>
+        <div className="avi-doc-meta">
+          <span className="avi-certified-pill">{copy.certified}</span>
+          <p className="avi-doc-meta-line">
+            {lang === 'he' ? (
+              generatedIso ? <HebrewGeneratedSentence iso={generatedIso} /> : <span>—</span>
+            ) : (
+              <>
+                {copy.generatedOn}{' '}
+                {generatedIso ? formatAviFullDate(generatedIso, 'en') : '—'}
+              </>
+            )}
+          </p>
+          <p className="avi-doc-meta-confidential">{copy.confidentiality}</p>
+        </div>
+      </header>
+      <div className="avi-meta-block avi-print-keep" dir={aviReportDir(lang)}>
+        <div className="avi-meta-row">
+          <span className="avi-meta-label">{lang === 'he' ? 'נכס' : 'Property'}</span>
+          <span className="avi-meta-value">{copy.propertyName}</span>
+        </div>
+        <div className="avi-meta-row" data-testid="avi-print-cutoff">
+          <span className="avi-meta-label">{lang === 'he' ? 'תקופה' : 'Period'}</span>
+          <span className="avi-meta-value">
+            {lang === 'he' ? (
+              <HebrewCutoffSentence iso={snapshot.cutoffDate} />
+            ) : (
+              <>
+                {copy.transactionsThrough} {formatAviFullDate(snapshot.cutoffDate, 'en')}
+              </>
+            )}
+          </span>
+        </div>
+        <div className="avi-meta-row">
+          <span className="avi-meta-label">{lang === 'he' ? 'הופק' : 'Generated'}</span>
+          <span className="avi-meta-value">
+            {lang === 'he' ? (
+              generatedIso ? <HebrewGeneratedSentence iso={generatedIso} /> : <span>—</span>
+            ) : (
+              generatedIso ? formatAviFullDate(generatedIso, 'en') : '—'
+            )}
+          </span>
+        </div>
+        <p className="avi-note-plain">{copy.approvedChargesNote}</p>
+      </div>
+    </>
   )
 }
 
@@ -811,32 +943,59 @@ function PurchaseExpensesSection({
 }) {
   const copy = AVI_REPORT_COPY[lang]
   return (
-    <section className="jj-card p-4 avi-print-keep space-y-3" data-testid="avi-purchase-expenses">
-      <SectionHeader title={copy.purchaseExpenses} subtitle={copy.purchaseSubtitle} />
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <KpiCard label={copy.property} value={<MoneyValue amount={purchase.totalEur} />} />
-        <KpiCard label={copy.aviShare} value={<MoneyValue amount={purchase.aviShareEur} />} />
-        <KpiCard label={copy.aviPaid} value={<MoneyValue amount={purchase.aviPaidEur} />} />
-        <KpiCard label={copy.aviRemaining} value={<MoneyValue amount={purchase.aviRemainingEur} />} />
+    <section className="avi-section avi-print-keep" data-testid="avi-purchase-expenses">
+      <div className="avi-account-bar" data-tone="navy">
+        <div>
+          <h2 className="avi-account-bar-title">{copy.purchaseExpenses}</h2>
+          <p className="avi-account-bar-sub">{copy.purchaseSubtitle}</p>
+        </div>
+        <div className="avi-account-bar-right">
+          <div className="avi-account-bar-amount"><MoneyValue amount={purchase.aviRemainingEur} /></div>
+          <div className="avi-account-bar-amount-hint">{copy.aviRemaining}</div>
+        </div>
       </div>
-      <table className="w-full text-sm" dir="ltr">
-        <thead className="bg-gray-50 border-b border-gray-200">
+      <div className="avi-kpi-strip">
+        <div className="avi-kpi-tile">
+          <div className="avi-kpi-label">{copy.property}</div>
+          <div className="avi-kpi-value"><MoneyValue amount={purchase.totalEur} /></div>
+        </div>
+        <div className="avi-kpi-tile">
+          <div className="avi-kpi-label">{copy.aviShare}</div>
+          <div className="avi-kpi-value"><MoneyValue amount={purchase.aviShareEur} /></div>
+        </div>
+        <div className="avi-kpi-tile">
+          <div className="avi-kpi-label">{copy.aviPaid}</div>
+          <div className="avi-kpi-value"><MoneyValue amount={purchase.aviPaidEur} /></div>
+        </div>
+        <div className="avi-kpi-tile">
+          <div className="avi-kpi-label">{copy.aviRemaining}</div>
+          <div className="avi-kpi-value"><MoneyValue amount={purchase.aviRemainingEur} /></div>
+        </div>
+      </div>
+      <p className="avi-group-label">{copy.purchaseExpenses}</p>
+      <table className="w-full text-sm avi-table" dir="ltr">
+        <thead>
           <tr>
-            <th scope="col" className="px-3 py-2 text-left text-xs font-bold uppercase text-gray-600">{copy.month}</th>
-            <th scope="col" className="px-3 py-2 text-left text-xs font-bold uppercase text-gray-600">{copy.purchaseExpenses}</th>
-            <th scope="col" className="px-3 py-2 text-right text-xs font-bold uppercase text-gray-600">{copy.property}</th>
-            <th scope="col" className="px-3 py-2 text-right text-xs font-bold uppercase text-gray-600">{copy.aviShare}</th>
+            <th scope="col">{copy.month}</th>
+            <th scope="col">{copy.purchaseExpenses}</th>
+            <th scope="col" className="text-right">{copy.property}</th>
+            <th scope="col" className="text-right">{copy.aviShare}</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100">
+        <tbody>
           {purchase.lines.map((line, i) => (
             <tr key={`${line.month}-${line.labelEn}-${i}`}>
-              <td className="px-3 py-2">{<AviReportDate iso={line.month} lang={lang} mode="month" />}</td>
-              <td className="px-3 py-2">{lang === 'he' ? line.labelHe : line.labelEn}</td>
-              <td className="px-3 py-2 text-right"><MoneyValue amount={line.amountEur} size="sm" /></td>
-              <td className="px-3 py-2 text-right"><MoneyValue amount={line.aviShareEur} size="sm" /></td>
+              <td><AviReportDate iso={line.month} lang={lang} mode="month" /></td>
+              <td>{lang === 'he' ? line.labelHe : line.labelEn}</td>
+              <td className="text-right"><MoneyValue amount={line.amountEur} size="sm" /></td>
+              <td className="text-right"><MoneyValue amount={line.aviShareEur} size="sm" /></td>
             </tr>
           ))}
+          <tr className="avi-total-row">
+            <td colSpan={2}>{lang === 'he' ? 'סה״כ' : 'Total'}</td>
+            <td className="text-right"><MoneyValue amount={purchase.totalEur} size="sm" /></td>
+            <td className="text-right"><MoneyValue amount={purchase.aviShareEur} size="sm" /></td>
+          </tr>
         </tbody>
       </table>
     </section>
@@ -852,35 +1011,64 @@ function RenovationWorkSection({
 }) {
   const copy = AVI_REPORT_COPY[lang]
   return (
-    <section className="jj-card p-4 avi-print-keep space-y-3" data-testid="avi-renovation">
-      <SectionHeader title={copy.renovation} subtitle={copy.renovationSubtitle} />
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <KpiCard label={copy.property} value={<MoneyValue amount={renovation.certifiedChargeEur} />} />
-        <KpiCard label={copy.aviShare} value={<MoneyValue amount={renovation.aviShareEur} />} />
-        <KpiCard label={copy.aviPaid} value={<MoneyValue amount={renovation.aviPaidEur} />} />
-        <KpiCard label={copy.aviRemaining} value={<MoneyValue amount={renovation.aviRemainingEur} />} />
+    <section className="avi-section avi-print-keep" data-testid="avi-renovation">
+      <div className="avi-account-bar" data-tone="purple">
+        <div>
+          <h2 className="avi-account-bar-title">{copy.renovation}</h2>
+          <p className="avi-account-bar-sub">{copy.renovationSubtitle}</p>
+        </div>
+        <div className="avi-account-bar-right">
+          <div className="avi-account-bar-amount"><MoneyValue amount={renovation.aviRemainingEur} /></div>
+          <div className="avi-account-bar-amount-hint">{copy.aviRemaining}</div>
+        </div>
+      </div>
+      <div className="avi-kpi-strip">
+        <div className="avi-kpi-tile">
+          <div className="avi-kpi-label">{copy.property}</div>
+          <div className="avi-kpi-value"><MoneyValue amount={renovation.certifiedChargeEur} /></div>
+        </div>
+        <div className="avi-kpi-tile">
+          <div className="avi-kpi-label">{copy.aviShare}</div>
+          <div className="avi-kpi-value"><MoneyValue amount={renovation.aviShareEur} /></div>
+        </div>
+        <div className="avi-kpi-tile">
+          <div className="avi-kpi-label">{copy.aviPaid}</div>
+          <div className="avi-kpi-value"><MoneyValue amount={renovation.aviPaidEur} /></div>
+        </div>
+        <div className="avi-kpi-tile">
+          <div className="avi-kpi-label">{copy.aviRemaining}</div>
+          <div className="avi-kpi-value"><MoneyValue amount={renovation.aviRemainingEur} /></div>
+        </div>
       </div>
       {renovation.groups.length > 0 && (
-        <table className="w-full text-sm" dir="ltr">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th scope="col" className="px-3 py-2 text-left text-xs font-bold uppercase text-gray-600">{copy.renovation}</th>
-              <th scope="col" className="px-3 py-2 text-right text-xs font-bold uppercase text-gray-600">{copy.rows}</th>
-              <th scope="col" className="px-3 py-2 text-right text-xs font-bold uppercase text-gray-600">{copy.property}</th>
-              <th scope="col" className="px-3 py-2 text-right text-xs font-bold uppercase text-gray-600">{copy.aviShare}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {renovation.groups.map((g) => (
-              <tr key={g.subcategory}>
-                <td className="px-3 py-2">{aviRenovationCategoryLabel(g.subcategory, lang)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{g.rowCount}</td>
-                <td className="px-3 py-2 text-right"><MoneyValue amount={g.totalEur} size="sm" /></td>
-                <td className="px-3 py-2 text-right"><MoneyValue amount={g.aviShareEur} size="sm" /></td>
+        <>
+          <p className="avi-group-label">{copy.renovation}</p>
+          <table className="w-full text-sm avi-table" dir="ltr">
+            <thead>
+              <tr>
+                <th scope="col">{copy.renovation}</th>
+                <th scope="col" className="text-right">{copy.rows}</th>
+                <th scope="col" className="text-right">{copy.property}</th>
+                <th scope="col" className="text-right">{copy.aviShare}</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {renovation.groups.map((g) => (
+                <tr key={g.subcategory}>
+                  <td>{aviRenovationCategoryLabel(g.subcategory, lang)}</td>
+                  <td className="text-right tabular-nums">{g.rowCount}</td>
+                  <td className="text-right"><MoneyValue amount={g.totalEur} size="sm" /></td>
+                  <td className="text-right"><MoneyValue amount={g.aviShareEur} size="sm" /></td>
+                </tr>
+              ))}
+              <tr className="avi-total-row">
+                <td colSpan={2}>{lang === 'he' ? 'סה״כ' : 'Total'}</td>
+                <td className="text-right"><MoneyValue amount={renovation.certifiedChargeEur} size="sm" /></td>
+                <td className="text-right"><MoneyValue amount={renovation.aviShareEur} size="sm" /></td>
+              </tr>
+            </tbody>
+          </table>
+        </>
       )}
     </section>
   )
@@ -895,13 +1083,33 @@ function HostawayIncomeSection({
 }) {
   const copy = AVI_REPORT_COPY[lang]
   return (
-    <section className="jj-card p-4 avi-print-keep space-y-3" data-testid="avi-hostaway-income">
-      <SectionHeader title={copy.hostawayIncome} />
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <KpiCard label={copy.stays} value={<span dir="ltr">{income.stayCount}</span>} />
-        <KpiCard label={copy.nights} value={<span dir="ltr">{income.nights}</span>} />
-        <KpiCard label={copy.income} value={<MoneyValue amount={income.printedNtoTotalEur} />} />
-        <KpiCard label={copy.aviShare} value={<MoneyValue amount={income.aviShareEur} />} />
+    <section className="avi-section avi-print-keep" data-testid="avi-hostaway-income">
+      <div className="avi-account-bar" data-tone="blue">
+        <div>
+          <h2 className="avi-account-bar-title">{copy.hostawayIncome}</h2>
+        </div>
+        <div className="avi-account-bar-right">
+          <div className="avi-account-bar-amount"><MoneyValue amount={income.printedNtoTotalEur} /></div>
+          <div className="avi-account-bar-amount-hint">{copy.printedNto}</div>
+        </div>
+      </div>
+      <div className="avi-kpi-strip">
+        <div className="avi-kpi-tile">
+          <div className="avi-kpi-label">{copy.stays}</div>
+          <div className="avi-kpi-value" dir="ltr">{income.stayCount}</div>
+        </div>
+        <div className="avi-kpi-tile">
+          <div className="avi-kpi-label">{copy.nights}</div>
+          <div className="avi-kpi-value" dir="ltr">{income.nights}</div>
+        </div>
+        <div className="avi-kpi-tile">
+          <div className="avi-kpi-label">{copy.income}</div>
+          <div className="avi-kpi-value"><MoneyValue amount={income.printedNtoTotalEur} /></div>
+        </div>
+        <div className="avi-kpi-tile">
+          <div className="avi-kpi-label">{copy.aviShare}</div>
+          <div className="avi-kpi-value"><MoneyValue amount={income.aviShareEur} /></div>
+        </div>
       </div>
     </section>
   )
@@ -920,43 +1128,56 @@ function AirbnbDepartmentSection({
   const isOperations = department.key === 'operations'
   return (
     <section
-      className={`jj-card p-4 space-y-3 ${isOperations ? 'avi-print-ops' : 'avi-print-keep'}`}
+      className={`avi-section ${isOperations ? 'avi-print-ops' : 'avi-print-keep'}`}
       data-testid={`avi-airbnb-${department.key}`}
     >
-      <div className="avi-print-section-title">
-        <SectionHeader title={title} subtitle={description} />
+      <div className="avi-account-bar avi-print-section-title" data-tone="orange">
+        <div>
+          <h2 className="avi-account-bar-title">{title}</h2>
+          <p className="avi-account-bar-sub">{description}</p>
+        </div>
+        <div className="avi-account-bar-right">
+          <div className="avi-account-bar-amount"><MoneyValue amount={department.totalEur} /></div>
+          <div className="avi-account-bar-amount-hint">{copy.property}</div>
+        </div>
       </div>
-      <div className="grid grid-cols-2 gap-3 avi-print-keep">
-        <KpiCard label={copy.property} value={<MoneyValue amount={department.totalEur} />} />
-        <KpiCard label={copy.aviShare} value={<MoneyValue amount={department.aviShareEur} />} />
+      <div className="avi-kpi-strip avi-print-keep">
+        <div className="avi-kpi-tile">
+          <div className="avi-kpi-label">{copy.property}</div>
+          <div className="avi-kpi-value"><MoneyValue amount={department.totalEur} /></div>
+        </div>
+        <div className="avi-kpi-tile">
+          <div className="avi-kpi-label">{copy.aviShare}</div>
+          <div className="avi-kpi-value"><MoneyValue amount={department.aviShareEur} /></div>
+        </div>
       </div>
-      <table className="w-full text-sm avi-ops-table" dir={lang === 'he' ? 'rtl' : 'ltr'}>
-        <thead className="bg-gray-50 border-b border-gray-200">
+      <table className="w-full text-sm avi-table avi-ops-table" dir={lang === 'he' ? 'rtl' : 'ltr'}>
+        <thead>
           {isOperations && (
             <tr className="avi-ops-continued-banner avi-print-only">
-              <th
-                colSpan={3}
-                scope="colgroup"
-                className="px-3 py-2 text-left text-xs font-semibold tracking-wide text-gray-700"
-              >
+              <th colSpan={3} scope="colgroup">
                 {copy.operationsContinued}
               </th>
             </tr>
           )}
           <tr>
-            <th scope="col" className="px-3 py-2 text-start text-xs font-bold uppercase text-gray-600">{copy.month}</th>
-            <th scope="col" className="px-3 py-2 text-start text-xs font-bold uppercase text-gray-600">{title}</th>
-            <th scope="col" className="px-3 py-2 text-end text-xs font-bold uppercase text-gray-600">{copy.property}</th>
+            <th scope="col">{copy.month}</th>
+            <th scope="col">{title}</th>
+            <th scope="col" className="text-end">{copy.property}</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100">
+        <tbody>
           {department.lines.map((line, i) => (
             <tr key={`${line.month}-${line.labelEn}-${i}`}>
-              <td className="px-3 py-2"><AviReportDate iso={line.month} lang={lang} mode="month" /></td>
-              <td className="px-3 py-2">{lang === 'he' ? line.labelHe : line.labelEn}</td>
-              <td className="px-3 py-2 text-end"><MoneyValue amount={line.amountEur} size="sm" /></td>
+              <td><AviReportDate iso={line.month} lang={lang} mode="month" /></td>
+              <td>{lang === 'he' ? line.labelHe : line.labelEn}</td>
+              <td className="text-end"><MoneyValue amount={line.amountEur} size="sm" /></td>
             </tr>
           ))}
+          <tr className="avi-total-row">
+            <td colSpan={2}>{lang === 'he' ? 'סה״כ' : 'Total'}</td>
+            <td className="text-end"><MoneyValue amount={department.totalEur} size="sm" /></td>
+          </tr>
         </tbody>
       </table>
     </section>
@@ -973,32 +1194,39 @@ function MonthlySection({
   const copy = AVI_REPORT_COPY[lang]
   const [openMonth, setOpenMonth] = useState<string | null>(null)
   return (
-    <section className="jj-card overflow-hidden avi-print-keep-header" data-testid="avi-monthly">
-      <div className="p-4">
-        <SectionHeader title={copy.monthly} subtitle={copy.monthlySubtitle} />
+    <section className="avi-section avi-print-keep-header" data-testid="avi-monthly">
+      <div className="avi-account-bar" data-tone="blue">
+        <div>
+          <h2 className="avi-account-bar-title">{copy.monthly}</h2>
+          <p className="avi-account-bar-sub">{copy.monthlySubtitle}</p>
+        </div>
+        <div className="avi-account-bar-right">
+          <div className="avi-account-bar-amount"><MoneyValue amount={monthly.totals.incomeEur} /></div>
+          <div className="avi-account-bar-amount-hint">{copy.monthlyGrandTotal}</div>
+        </div>
       </div>
-      <table className="w-full text-sm" dir="ltr">
-        <thead className="bg-gray-50 border-b border-gray-200">
+      <table className="w-full text-sm avi-table" dir="ltr">
+        <thead>
           <tr>
-            <th scope="col" className="px-3 py-2 text-left text-xs font-bold uppercase text-gray-600">{copy.month}</th>
-            <th scope="col" className="px-3 py-2 text-right text-xs font-bold uppercase text-gray-600">{copy.income}</th>
-            <th scope="col" className="px-3 py-2 text-right text-xs font-bold uppercase text-gray-600">{copy.operations}</th>
-            <th scope="col" className="px-3 py-2 text-right text-xs font-bold uppercase text-gray-600">{copy.setup}</th>
-            <th scope="col" className="px-3 py-2 text-right text-xs font-bold uppercase text-gray-600">{copy.aviShare}</th>
+            <th scope="col">{copy.month}</th>
+            <th scope="col" className="text-right">{copy.income}</th>
+            <th scope="col" className="text-right">{copy.operations}</th>
+            <th scope="col" className="text-right">{copy.setup}</th>
+            <th scope="col" className="text-right">{copy.aviShare}</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100">
+        <tbody>
           {monthly.rows.map((row) => {
             const open = openMonth === row.month
             return (
               <tr key={row.month}>
-                <td className="px-3 py-2">
-                  <div className="text-sm font-medium text-gray-900" data-avi-month-label>
-                    {<AviReportDate iso={row.month} lang={lang} mode="month" />}
+                <td>
+                  <div className="text-sm font-medium text-slate-900" data-avi-month-label>
+                    <AviReportDate iso={row.month} lang={lang} mode="month" />
                   </div>
                   {row.stayCount > 0 && (
-                    <div className="mt-0.5 text-xs text-gray-500" dir="ltr">
-                      {row.stayCount} {copy.stays} · {row.nights} {copy.nights}
+                    <div className="mt-0.5 text-xs text-slate-500" dir="ltr">
+                      {formatAviStayNightLabel(lang, row.stayCount, row.nights)}
                       <button
                         type="button"
                         className="avi-print-hide ms-2 underline"
@@ -1009,7 +1237,7 @@ function MonthlySection({
                     </div>
                   )}
                   {open && row.stays.length > 0 && (
-                    <ul className="mt-2 space-y-1 text-xs text-gray-600 avi-print-hide">
+                    <ul className="mt-2 space-y-1 text-xs text-slate-600 avi-print-hide">
                       {row.stays.map((stay) => (
                         <li key={stay.reservationId}>
                           {stay.checkIn} · {stay.channel} · <MoneyValue amount={stay.printedNtoEur} size="sm" />
@@ -1018,20 +1246,28 @@ function MonthlySection({
                     </ul>
                   )}
                 </td>
-                <td className="px-3 py-2 text-right"><MoneyValue amount={row.incomeEur} size="sm" /></td>
-                <td className="px-3 py-2 text-right"><MoneyValue amount={row.operationsEur} size="sm" /></td>
-                <td className="px-3 py-2 text-right"><MoneyValue amount={row.setupEur} size="sm" /></td>
-                <td className="px-3 py-2 text-right"><MoneyValue amount={row.aviResultEur} size="sm" /></td>
+                <td className="text-right"><MoneyValue amount={row.incomeEur} size="sm" /></td>
+                <td className="text-right"><MoneyValue amount={row.operationsEur} size="sm" /></td>
+                <td className="text-right"><MoneyValue amount={row.setupEur} size="sm" /></td>
+                <td className="text-right"><MoneyValue amount={row.aviResultEur} size="sm" /></td>
               </tr>
             )
           })}
-            <tr className="border-t border-gray-200 font-semibold" data-testid="avi-monthly-totals">
-              <td className="px-3 py-2">{copy.finalResult}</td>
-              <td className="px-3 py-2 text-right"><MoneyValue amount={monthly.totals.incomeEur} size="sm" /></td>
-              <td className="px-3 py-2 text-right"><MoneyValue amount={monthly.totals.operationsEur} size="sm" /></td>
-              <td className="px-3 py-2 text-right"><MoneyValue amount={monthly.totals.setupEur} size="sm" /></td>
-              <td className="px-3 py-2 text-right"><MoneyValue amount={monthly.totals.aviResultEur} size="sm" /></td>
+          {monthly.roundingAdjustmentEur !== 0 && (
+            <tr data-testid="avi-monthly-rounding-adjustment">
+              <td colSpan={4}>{copy.roundingAdjustment}</td>
+              <td className="text-right">
+                <MoneyValue amount={monthly.roundingAdjustmentEur} size="sm" />
+              </td>
             </tr>
+          )}
+          <tr className="avi-total-row" data-testid="avi-monthly-totals">
+            <td>{copy.monthlyGrandTotal}</td>
+            <td className="text-right"><MoneyValue amount={monthly.totals.incomeEur} size="sm" /></td>
+            <td className="text-right"><MoneyValue amount={monthly.totals.operationsEur} size="sm" /></td>
+            <td className="text-right"><MoneyValue amount={monthly.totals.setupEur} size="sm" /></td>
+            <td className="text-right"><MoneyValue amount={monthly.totals.aviResultEur} size="sm" /></td>
+          </tr>
         </tbody>
       </table>
     </section>
@@ -1047,53 +1283,70 @@ function FinalSettlementSection({
 }) {
   const copy = AVI_REPORT_COPY[lang]
   return (
-    <section className="jj-card p-4 avi-print-keep space-y-3" data-testid="avi-final-summary">
-      <SectionHeader title={copy.finalSettlement} />
-      <table className="w-full text-sm" dir="ltr">
-        <thead className="bg-gray-50 border-b border-gray-200">
-          <tr>
-            <th scope="col" className="px-3 py-2 text-left text-xs font-bold uppercase text-gray-600">{copy.finalSettlement}</th>
-            <th scope="col" className="px-3 py-2 text-right text-xs font-bold uppercase text-gray-600">{copy.obligation}</th>
-            <th scope="col" className="px-3 py-2 text-right text-xs font-bold uppercase text-gray-600">{copy.paid}</th>
-            <th scope="col" className="px-3 py-2 text-right text-xs font-bold uppercase text-gray-600">{copy.credits}</th>
-            <th scope="col" className="px-3 py-2 text-right text-xs font-bold uppercase text-gray-600">{copy.remaining}</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100">
-          {summary.rows.map((row) => (
-            <tr key={row.key}>
-              <td className="px-3 py-2">{lang === 'he' ? row.labelHe : row.labelEn}</td>
-              <td className="px-3 py-2 text-right"><MoneyValue amount={row.obligationEur} size="sm" /></td>
-              <td className="px-3 py-2 text-right"><MoneyValue amount={row.paidEur} size="sm" /></td>
-              <td className="px-3 py-2 text-right"><MoneyValue amount={row.creditEur} size="sm" /></td>
-              <td className="px-3 py-2 text-right"><MoneyValue amount={row.remainingEur} size="sm" /></td>
+    <section className="avi-print-keep" data-testid="avi-final-summary">
+      <div className="avi-settlement-box">
+        <div className="avi-settlement-kicker">{copy.notesControls}</div>
+        <p className="avi-fin-summary-sub" style={{ marginBottom: '0.45rem' }}>{copy.finalSettlement}</p>
+        <table dir="ltr">
+          <thead>
+            <tr>
+              <th scope="col">{copy.finalSettlement}</th>
+              <th scope="col" className="text-right">{copy.obligation}</th>
+              <th scope="col" className="text-right">{copy.paid}</th>
+              <th scope="col" className="text-right">{copy.credits}</th>
+              <th scope="col" className="text-right">{copy.remaining}</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <KpiCard label={copy.obligation} value={<MoneyValue amount={summary.obligationTotalEur} />} />
-        <KpiCard label={copy.paid} value={<MoneyValue amount={summary.paidTotalEur} />} />
-        <KpiCard label={copy.credits} value={<MoneyValue amount={summary.creditsTotalEur} />} />
-        <KpiCard
-          label={copy.finalResult}
-          value={<MoneyValue amount={summary.netEur} />}
-        />
+          </thead>
+          <tbody>
+            {summary.rows.map((row) => (
+              <tr key={row.key}>
+                <td>{lang === 'he' ? row.labelHe : row.labelEn}</td>
+                <td className="text-right"><MoneyValue amount={row.obligationEur} size="sm" /></td>
+                <td className="text-right"><MoneyValue amount={row.paidEur} size="sm" /></td>
+                <td className="text-right"><MoneyValue amount={row.creditEur} size="sm" /></td>
+                <td className="text-right"><MoneyValue amount={row.remainingEur} size="sm" /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="avi-fin-ops" style={{ marginTop: '0.55rem' }}>
+          <div className="avi-fin-ops-cell">
+            <div className="avi-fin-ops-label">{copy.obligation}</div>
+            <div className="avi-fin-ops-value"><MoneyValue amount={summary.obligationTotalEur} /></div>
+          </div>
+          <div className="avi-fin-ops-cell">
+            <div className="avi-fin-ops-label">{copy.paid}</div>
+            <div className="avi-fin-ops-value"><MoneyValue amount={summary.paidTotalEur} /></div>
+          </div>
+          <div className="avi-fin-ops-cell">
+            <div className="avi-fin-ops-label">{copy.credits}</div>
+            <div className="avi-fin-ops-value"><MoneyValue amount={summary.creditsTotalEur} /></div>
+          </div>
+        </div>
+        <div className="avi-fin-balance" style={{ marginTop: '0.55rem' }}>
+          <div className="avi-fin-balance-label">{copy.finalNet}</div>
+          <div className="avi-fin-balance-value"><MoneyValue amount={summary.netEur} /></div>
+        </div>
+        <p className="avi-settlement-narrative" data-testid="avi-closing-narrative">
+          {copy.closingNarrative}
+        </p>
       </div>
-      <p
-        className="text-sm text-gray-700 leading-relaxed"
-        data-testid="avi-closing-narrative"
-      >
-        {copy.closingNarrative}
-      </p>
     </section>
   )
 }
 
-export function ExternalPartnerAviReportView({ report, audience = 'staff', initialLang = 'en' }: Props) {
+export function ExternalPartnerAviReportView({
+  report,
+  audience = 'staff',
+  initialLang = 'en',
+  sendablePdfPath = null,
+}: Props) {
   const isPartner = audience === 'partner'
   const [lang, setLang] = useState<AviReportLang>(initialLang)
   const dir = aviReportDir(lang)
+  const sendablePdfHref = sendablePdfPath
+    ? `${sendablePdfPath}?lang=${lang}`
+    : null
 
   if (report.status === 'failed') {
     return (
@@ -1117,6 +1370,7 @@ export function ExternalPartnerAviReportView({ report, audience = 'staff', initi
     <div
       className="space-y-6"
       data-testid="avi-report-certified"
+      data-avi-print-root
       data-avi-audience={audience}
       data-avi-lang={lang}
       dir={dir}
@@ -1125,7 +1379,8 @@ export function ExternalPartnerAviReportView({ report, audience = 'staff', initi
           which previously caused a React hydration error and the Next.js “1 error” print overlay. */}
       <style dangerouslySetInnerHTML={{ __html: AVI_REPORT_PRINT_CSS }} />
       <PrintMasthead snapshot={report.snapshot} lang={lang} />
-      <LanguageToggle lang={lang} onChange={setLang} />
+      <ScreenMasthead snapshot={report.snapshot} lang={lang} />
+      <LanguageToggle lang={lang} onChange={setLang} sendablePdfHref={sendablePdfHref} />
       {!isPartner && (
         <>
           <div className="avi-print-hide print:hidden">
@@ -1166,6 +1421,9 @@ export function ExternalPartnerAviReportView({ report, audience = 'staff', initi
       <HostawayIncomeSection income={report.hostawayIncome} lang={lang} />
       <AirbnbDepartmentSection department={report.airbnb.setup} lang={lang} />
       <AirbnbDepartmentSection department={report.airbnb.operations} lang={lang} />
+      <p className="avi-note-plain avi-print-keep" data-testid="avi-internet-split-note">
+        {AVI_REPORT_COPY[lang].internetSplitNote}
+      </p>
       <MonthlySection monthly={report.monthly} lang={lang} />
       <div
         className="avi-print-hide print:hidden rounded-xl border border-gray-200 bg-white p-4"

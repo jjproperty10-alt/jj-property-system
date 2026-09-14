@@ -60,10 +60,15 @@ export const AVI_REPORT_COPY = {
     credits: 'Credits',
     obligation: 'Obligation',
     finalResult: 'Final result',
+    finalNet: 'Final Net',
+    monthlyGrandTotal: 'Grand total',
+    roundingAdjustment: 'Rounding adjustment',
+    notesControls: 'Notes and controls',
     certified: 'Certified',
     provisional: 'Provisional',
-    stay: 'Stay',
+    stay: 'stay',
     stays: 'stays',
+    night: 'night',
     nights: 'nights',
     expand: 'Show stays',
     collapse: 'Hide stays',
@@ -83,6 +88,9 @@ export const AVI_REPORT_COPY = {
     appendixButton: 'Download certified expense appendix',
     backToReport: 'Back to main report',
     printButton: 'Print / Save PDF',
+    downloadSendablePdf: 'Download sendable A4 PDF',
+    downloadSendablePdfHint:
+      'Partner-sendable file: JJ page numbers, no Chrome date/URL/localhost chrome. Prefer this for sending to Avi.',
     printHint: 'In the print dialog choose Save as PDF, paper A4, and uncheck Headers and footers.',
     brand: 'JJ PROPERTY 10',
     reportTitle: 'External Partner Report — Avi',
@@ -97,6 +105,8 @@ export const AVI_REPORT_COPY = {
     transactionsThrough: 'Transactions included through',
     approvedChargesNote: 'Approved monthly charges may include later periods.',
     formula: 'Paid + Credits − Obligation = Final result',
+    internetSplitNote:
+      'Internet €325.00 is presented once as €295.00 one-time installation in Setup plus €30.00 June 2025 internet in Operations (June 2025–September 2026, 16 months). No duplicate charge.',
     closingNarrative:
       'Avi is owed €740.94 because amounts already paid and credited (€280,600.00 + €19,744.44) exceed his certified obligation (€299,603.50) by that difference.',
     layerAcquisition: 'Acquisition',
@@ -155,10 +165,15 @@ export const AVI_REPORT_COPY = {
     credits: 'זיכויים',
     obligation: 'התחייבות',
     finalResult: 'תוצאה סופית',
+    finalNet: 'יתרה סופית',
+    monthlyGrandTotal: 'סה״כ',
+    roundingAdjustment: 'התאמת עיגול',
+    notesControls: 'הערות ובקרות',
     certified: 'מאושר',
     provisional: 'זמני',
     stay: 'שהייה',
     stays: 'שהיות',
+    night: 'לילה',
     nights: 'לילות',
     expand: 'הצג שהיות',
     collapse: 'הסתר שהיות',
@@ -178,6 +193,9 @@ export const AVI_REPORT_COPY = {
     appendixButton: 'הורדת נספח הוצאות מאושרות',
     backToReport: 'חזרה לדוח הראשי',
     printButton: 'הדפסה / שמירה כ־PDF',
+    downloadSendablePdf: 'הורדת PDF לשליחה (A4)',
+    downloadSendablePdfHint:
+      'קובץ לשליחה לשותף: מספור JJ, בלי תאריך/כתובת/localhost של Chrome. זה הנתיב המומלץ לשליחה לאבי.',
     printHint: 'בחלון ההדפסה בחרו שמירה כ־PDF, נייר A4, ובטלו Headers and footers.',
     brand: 'JJ PROPERTY 10',
     reportTitle: 'דוח שותף חיצוני — אבי',
@@ -192,6 +210,8 @@ export const AVI_REPORT_COPY = {
     transactionsThrough: 'עסקאות שנכללו עד',
     approvedChargesNote: 'חיובים חודשיים מאושרים עשויים לכלול תקופות מאוחרות יותר.',
     formula: 'שולם + זיכויים − התחייבות = תוצאה סופית',
+    internetSplitNote:
+      'אינטרנט €325.00 מוצג פעם אחת כ־€295.00 התקנה חד־פעמית בהקמה ועוד €30.00 אינטרנט ליוני 2025 בתפעול (יוני 2025–ספטמבר 2026, 16 חודשים). ללא חיוב כפול.',
     closingNarrative:
       'מגיע לאבי €740.94 כי הסכומים שכבר שולמו וזוכו (€280,600.00 + €19,744.44) עולים על ההתחייבות המאושרת שלו (€299,603.50) בהפרש זה.',
     layerAcquisition: 'רכישה',
@@ -229,6 +249,23 @@ export function formatAviFullDate(iso: string, lang: AviReportLang): string {
     month: 'long',
     year: 'numeric',
   }).format(new Date(year, month - 1, day))
+}
+
+export function formatAviStayNightLabel(
+  lang: AviReportLang,
+  stayCount: number,
+  nights: number,
+): string {
+  if (lang === 'he') {
+    const stayPart =
+      stayCount === 1 ? 'שהייה אחת' : stayCount === 2 ? 'שתי שהיות' : `${stayCount} שהיות`
+    const nightPart =
+      nights === 1 ? 'לילה אחד' : nights === 2 ? 'שני לילות' : `${nights} לילות`
+    return `${stayPart} · ${nightPart}`
+  }
+  const stayPart = `${stayCount} ${stayCount === 1 ? 'stay' : 'stays'}`
+  const nightPart = `${nights} ${nights === 1 ? 'night' : 'nights'}`
+  return `${stayPart} · ${nightPart}`
 }
 
 export function formatAviOwedCopy(

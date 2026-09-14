@@ -19,7 +19,7 @@ import { sanitizeAviReportClientPayload } from '@/components/finance/aviReportPr
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: 'JJ — External Partner Report — Avi',
+  title: 'External Partner Report — Avi',
   robots: { index: false, follow: false },
 }
 
@@ -47,6 +47,18 @@ export default async function AviCertifiedComposePreviewPage() {
             and the approved Avi identity (Avi is owed €740.94). It is not a live
             database read and not an auth bypass for Production.
           </p>
+          <p className="mt-2 font-medium">
+            Partner-sendable PDF:{' '}
+            <a className="underline" href="/preview/avi-certified-compose/pdf?lang=he">
+              Hebrew
+            </a>
+            {' · '}
+            <a className="underline" href="/preview/avi-certified-compose/pdf?lang=en">
+              English
+            </a>
+            {' — '}
+            JJ page numbers, no Chrome date/URL/localhost chrome.
+          </p>
         </div>
         <div className="avi-print-hide print:hidden mb-6 flex items-center justify-between gap-3">
           <div>
@@ -60,10 +72,14 @@ export default async function AviCertifiedComposePreviewPage() {
             >
               Certified expense appendix
             </a>
-            {/* Print control lives inside the report language toggle */}
+            {/* Print / sendable PDF controls live inside the report language toggle */}
           </div>
         </div>
-        <ExternalPartnerAviReportView report={report} audience="partner" />
+        <ExternalPartnerAviReportView
+          report={report}
+          audience="partner"
+          sendablePdfPath="/preview/avi-certified-compose/pdf"
+        />
       </PageShell>
     </div>
   )
