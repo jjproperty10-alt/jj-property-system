@@ -3,8 +3,9 @@
  * @description Unconfigured-environment Preview of the certified Avi compose
  * fixture (canonical 202-row CSV). Not live Supabase. Not a staff auth bypass.
  *
- * Available only when isSupabaseConfigured() is false. When keys are present
- * this route 404s so Production / configured Preview cannot use it.
+ * Available only when Preview is allowed (non-production AND Supabase
+ * unconfigured). Production always 404s — even if keys are missing.
+ * Staff sendable PDF: /finance/external-partner/avi/pdf
  */
 
 import 'server-only'
@@ -12,7 +13,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { PageShell } from '@/components/ds'
 import { ExternalPartnerAviReportView } from '@/components/finance/ExternalPartnerAviReportView'
-import { isSupabaseConfigured } from '@/lib/supabaseConfig'
+import { isAviCertifiedComposePreviewAllowed } from '@/lib/partner-settlement/external-partner/aviComposePreviewGate'
 import { composeAviCertifiedCanonicalFixtureReport } from '@/lib/partner-settlement/external-partner/aviCanonicalComposeFixture'
 import { sanitizeAviReportClientPayload } from '@/components/finance/aviReportPresentation'
 
@@ -24,7 +25,8 @@ export const metadata: Metadata = {
 }
 
 export default async function AviCertifiedComposePreviewPage() {
-  if (isSupabaseConfigured()) {
+  // Production always 404s — even when Supabase keys are missing.
+  if (!isAviCertifiedComposePreviewAllowed()) {
     notFound()
   }
 

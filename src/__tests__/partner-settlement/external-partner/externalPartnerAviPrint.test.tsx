@@ -337,6 +337,24 @@ describe('Avi print view — staff authorization unchanged', () => {
     expect(page).toContain("auth.error === 'NO_SESSION'")
     expect(page).toContain("redirect('/login')")
     expect(page).toContain('notFound()')
-    expect(page).not.toContain('searchParams')
+    expect(page).toContain("sendablePdfPath={")
+    expect(page).toContain("'/finance/external-partner/avi/pdf'")
+  })
+
+  it('staff PDF and print routes exist and stay staff-gated', () => {
+    const pdfRoute = fs.readFileSync(
+      path.join(process.cwd(), 'src/app/(app)/finance/external-partner/avi/pdf/route.ts'),
+      'utf8',
+    )
+    const printPage = fs.readFileSync(
+      path.join(process.cwd(), 'src/app/(app)/finance/external-partner/avi/print/page.tsx'),
+      'utf8',
+    )
+    expect(pdfRoute).toContain('authenticateStatementUser')
+    expect(pdfRoute).toContain('/finance/external-partner/avi/print?lang=')
+    expect(pdfRoute).toContain('cookieHeader')
+    expect(printPage).toContain('authenticateStatementUser')
+    expect(printPage).toContain('searchParams')
+    expect(printPage).toContain('initialLang={lang}')
   })
 })

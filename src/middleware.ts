@@ -3,6 +3,16 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { isSupabaseConfigured } from '@/lib/supabaseConfig'
 
 export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  // Hard-block Avi compose fixture in Production even if Supabase keys are missing.
+  if (
+    process.env.NODE_ENV === 'production' &&
+    pathname.startsWith('/preview/avi-certified-compose')
+  ) {
+    return new NextResponse('Not Found', { status: 404 })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   if (!isSupabaseConfigured()) {
@@ -27,8 +37,6 @@ export async function middleware(request: NextRequest) {
   )
 
   const { data: { user } } = await supabase.auth.getUser()
-
-  const { pathname } = request.nextUrl
 
   // LOCAL DEV ONLY: /client-report bypasses auth for RC1 visual parity testing.
   // restore_auth.bat removes this line before production deploy.

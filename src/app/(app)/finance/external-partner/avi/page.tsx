@@ -62,7 +62,14 @@ export default async function ExternalPartnerAviPage() {
             }
           />
         </div>
-        <ExternalPartnerAviReportView report={report} />
+        <ExternalPartnerAviReportView
+          report={report}
+          sendablePdfPath={
+            report.status === 'certified'
+              ? '/finance/external-partner/avi/pdf'
+              : null
+          }
+        />
       </PageShell>
     </div>
   )

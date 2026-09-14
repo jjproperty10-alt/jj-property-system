@@ -1,11 +1,12 @@
 /**
  * @page /preview/avi-certified-compose/pdf
  * Partner-sendable A4 PDF (no Chrome headers/footers, JJ page numbers).
- * Available only when Supabase is unconfigured (same gate as the compose Preview).
+ * Non-production + unconfigured Supabase only. Always 404 in Production.
+ * Staff Production PDF: /finance/external-partner/avi/pdf
  */
 import 'server-only'
 import { NextResponse } from 'next/server'
-import { isSupabaseConfigured } from '@/lib/supabaseConfig'
+import { isAviCertifiedComposePreviewAllowed } from '@/lib/partner-settlement/external-partner/aviComposePreviewGate'
 import {
   renderAviPartnerReportPdf,
   type AviReportPdfOptions,
@@ -21,7 +22,7 @@ function langFrom(req: Request): AviReportLang {
 }
 
 export async function GET(req: Request) {
-  if (isSupabaseConfigured()) {
+  if (!isAviCertifiedComposePreviewAllowed()) {
     return new NextResponse('Not Found', { status: 404 })
   }
 

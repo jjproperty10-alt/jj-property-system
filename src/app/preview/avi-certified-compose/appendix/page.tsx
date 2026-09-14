@@ -10,7 +10,7 @@ import Link from 'next/link'
 import { PageShell } from '@/components/ds'
 import { AviCertifiedExpenseAppendix } from '@/components/finance/ExternalPartnerAviReportView'
 import { AviReportPrintButton } from '@/components/finance/AviReportPrintButton'
-import { isSupabaseConfigured } from '@/lib/supabaseConfig'
+import { isAviCertifiedComposePreviewAllowed } from '@/lib/partner-settlement/external-partner/aviComposePreviewGate'
 import { composeAviCertifiedCanonicalFixtureReport } from '@/lib/partner-settlement/external-partner/aviCanonicalComposeFixture'
 import { AVI_REPORT_COPY } from '@/components/finance/aviReportCopy'
 
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
 }
 
 export default async function AviCertifiedComposeAppendixPage() {
-  if (isSupabaseConfigured()) {
+  if (!isAviCertifiedComposePreviewAllowed()) {
     notFound()
   }
 

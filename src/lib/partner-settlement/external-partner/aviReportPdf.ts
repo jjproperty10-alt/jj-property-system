@@ -45,9 +45,19 @@ function footerTemplate(lang: AviReportLang, generatedLabel: string): string {
 
 export type AviReportPdfOptions = {
   readonly lang: AviReportLang
-  /** Absolute URL of the live report page (preview or share). */
+  /** Absolute URL of the live report page (staff print, preview, or share). */
   readonly reportUrl: string
   readonly chromeExecutablePath?: string
+  /**
+   * Forward the caller's Cookie header so staff-gated print URLs authenticate
+   * the headless browser as the same session. Never log this value.
+   */
+  readonly cookieHeader?: string | null
+  /**
+   * When true, the target page already rendered the requested language
+   * (e.g. /print?lang=he) — skip the in-page language toggle click.
+   */
+  readonly langAlreadyApplied?: boolean
 }
 
 /**
@@ -66,10 +76,13 @@ export async function renderAviPartnerReportPdf(
   try {
     const page = await browser.newPage()
     await page.setViewport({ width: 1280, height: 1600, deviceScaleFactor: 1 })
+    if (opts.cookieHeader) {
+      await page.setExtraHTTPHeaders({ Cookie: opts.cookieHeader })
+    }
     await page.goto(opts.reportUrl, { waitUntil: 'networkidle0', timeout: 120_000 })
     await page.waitForSelector('[data-testid="avi-report-certified"]', { timeout: 60_000 })
 
-    if (lang === 'he') {
+    if (lang === 'he' && !opts.langAlreadyApplied) {
       await page.evaluate(() => {
         const buttons = Array.from(
           document.querySelectorAll('[data-testid="avi-language-toggle"] button'),
