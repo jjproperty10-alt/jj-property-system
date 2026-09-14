@@ -20,11 +20,23 @@ import {
   AVI_REPORT_COPY,
   aviReportDir,
   formatAviFullDate,
-  formatAviMonth,
   formatAviOwedCopy,
   type AviReportLang,
 } from '@/components/finance/aviReportCopy'
-import { useState } from 'react'
+import {
+  aviPaymentPurpose,
+  aviRenovationCategoryLabel,
+  aviExpensePeriodKey,
+  aviLayerLabel,
+  aviPartnerDisplayName,
+} from '@/components/finance/aviReportPresentation'
+import {
+  AviReportDate,
+  HebrewCutoffSentence,
+  HebrewGeneratedSentence,
+} from '@/components/finance/HebrewDate'
+import { useEffect, useState } from 'react'
+import { AviReportPrintButton } from '@/components/finance/AviReportPrintButton'
 import type {
   AviAirbnbSection,
   AviFinalSummary,
@@ -38,28 +50,8 @@ interface Props {
   report: ExternalPartnerAviReport
   /** staff = JJ internal chrome. partner = Avi-facing share/print. */
   audience?: 'staff' | 'partner'
-}
-
-function formatIsoDateEnGb(iso: string): string {
-  const parts = iso.split('-')
-  if (parts.length !== 3) return iso
-  const year = Number(parts[0])
-  const month = Number(parts[1])
-  const day = Number(parts[2])
-  if (!year || !month || !day) return iso
-  return new Intl.DateTimeFormat('en-GB', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  }).format(new Date(year, month - 1, day))
-}
-
-function formatGeneratedEnGb(date: Date): string {
-  return new Intl.DateTimeFormat('en-GB', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  }).format(date)
+  /** Test / compose helper — defaults to English. */
+  initialLang?: AviReportLang
 }
 
 function FailedView({ report }: { report: Extract<ExternalPartnerAviReport, { status: 'failed' }> }) {
@@ -128,21 +120,27 @@ function LanguageToggle({
 }) {
   const copy = AVI_REPORT_COPY[lang]
   return (
-    <div className="avi-print-hide print:hidden flex items-center gap-2" data-testid="avi-language-toggle">
-      <button
-        type="button"
-        onClick={() => onChange('en')}
-        className={`rounded-lg px-3 py-1.5 text-xs font-medium ${lang === 'en' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700'}`}
-      >
-        {copy.toggleEn}
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange('he')}
-        className={`rounded-lg px-3 py-1.5 text-xs font-medium ${lang === 'he' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700'}`}
-      >
-        {copy.toggleHe}
-      </button>
+    <div
+      className="avi-print-hide print:hidden flex flex-wrap items-center justify-between gap-3"
+      data-testid="avi-language-toggle"
+    >
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onChange('en')}
+          className={`rounded-lg px-3 py-1.5 text-xs font-medium ${lang === 'en' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700'}`}
+        >
+          {copy.toggleEn}
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange('he')}
+          className={`rounded-lg px-3 py-1.5 text-xs font-medium ${lang === 'he' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700'}`}
+        >
+          {copy.toggleHe}
+        </button>
+      </div>
+      <AviReportPrintButton lang={lang} />
     </div>
   )
 }
@@ -161,6 +159,21 @@ function PartnerSummarySection({
       <SectionHeader title={copy.summary} />
 
       {avi && avi.status === 'CERTIFIED' && (
+        <>
+        <div
+          className="avi-final-hero rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white px-5 py-6 text-center"
+          data-testid="avi-final-hero"
+        >
+          <p className="text-xs font-bold uppercase tracking-widest text-emerald-700">
+            {copy.finalResult}
+          </p>
+          <p className="mt-2 text-2xl sm:text-3xl font-semibold text-emerald-800" dir="ltr">
+            {formatAviOwedCopy(lang, avi.semanticNet, avi.direction)}
+          </p>
+          <p className="mt-2 text-xs text-gray-600" dir="ltr">
+            {copy.formula}
+          </p>
+        </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <KpiCard label={copy.paid} value={<MoneyValue amount={avi.paidEur} />} />
           <KpiCard label={copy.credits} value={<MoneyValue amount={avi.creditsEur} />} />
@@ -174,6 +187,7 @@ function PartnerSummarySection({
             }
           />
         </div>
+        </>
       )}
     </div>
   )
@@ -194,12 +208,12 @@ function OwnershipSection({
         {partners.map((p) => (
           <div key={p.partner} className="flex items-center justify-between py-2.5">
             <div className="flex items-center gap-2.5">
-              <span className="text-sm font-medium text-gray-900">{p.partner}</span>
+              <span className="text-sm font-medium text-gray-900">{aviPartnerDisplayName(p.partner, lang)}</span>
               <span className="text-xs text-gray-500">{p.ownershipPct}%</span>
             </div>
             <StatusBadge
               status={p.status === 'CERTIFIED' ? 'confirmed' : 'pending'}
-              label={p.status}
+              label={p.status === 'CERTIFIED' ? copy.certified : copy.provisional}
             />
           </div>
         ))}
@@ -243,9 +257,11 @@ function AcquisitionSection({
 function LayerBreakdownSection({
   layers,
   postAcquisitionSemantic,
+  lang,
 }: {
   layers: readonly AviReportLayerBreakdown[]
   postAcquisitionSemantic: string | null
+  lang: AviReportLang
 }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const operating = layers.filter((l) => {
@@ -274,7 +290,7 @@ function LayerBreakdownSection({
               >
                 <span className="text-sm font-medium text-gray-800">{layer.label}</span>
                 <div className="flex items-center gap-3">
-                  <span className="text-sm text-rose-700 tabular-nums" dir="ltr">{layer.semanticNet}</span>
+                  <span className="text-sm text-rose-700 tabular-nums" dir="ltr">{formatAviOwedCopy(lang, layer.semanticNet, null)}</span>
                   <span className="text-gray-400 text-xs">{isExpanded ? '▲' : '▼'}</span>
                 </div>
               </button>
@@ -296,7 +312,7 @@ function LayerBreakdownSection({
                   )}
                   <div>
                     <div className="text-xs text-gray-500 mb-0.5">Layer net</div>
-                    <span className="text-sm text-rose-700" dir="ltr">{layer.semanticNet}</span>
+                    <span className="text-sm text-rose-700" dir="ltr">{formatAviOwedCopy(lang, layer.semanticNet, null)}</span>
                   </div>
                 </div>
               )}
@@ -305,7 +321,7 @@ function LayerBreakdownSection({
         })}
       </div>
       <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-t border-gray-200 font-semibold">
-        <span className="text-sm text-gray-900">Post-acquisition total</span>
+        <span className="text-sm text-gray-900">{AVI_REPORT_COPY[lang].postAcquisitionTotal}</span>
         <span className="text-sm text-rose-700" dir="ltr">{postAcquisitionSemantic}</span>
       </div>
     </div>
@@ -316,10 +332,12 @@ function PrintLayerSection({
   layers,
   postAcquisitionSemantic,
   visibleOnScreen = false,
+  lang,
 }: {
   layers: readonly AviReportLayerBreakdown[]
   postAcquisitionSemantic: string | null
   visibleOnScreen?: boolean
+  lang: AviReportLang
 }) {
   const operating = layers.filter((l) => {
     if (l.key === 'acquisition') return false
@@ -332,36 +350,34 @@ function PrintLayerSection({
       data-testid="avi-print-layers"
     >
       <SectionHeader
-        title="Post-acquisition layers"
-        subtitle="Certified Avi balances. Acquisition is covered by certified paid and is not added again."
+        title={AVI_REPORT_COPY[lang].postAcquisitionLayers}
+        subtitle={AVI_REPORT_COPY[lang].postAcquisitionSubtitle}
         className="mb-3"
       />
       <div className="jj-card overflow-hidden">
         <table className="w-full text-sm" dir="ltr">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th scope="col" className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wide text-gray-600">Layer</th>
-              <th scope="col" className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-gray-600">Certified charge</th>
-              <th scope="col" className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-gray-600">Avi share</th>
-              <th scope="col" className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-gray-600">Result</th>
+              <th scope="col" className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wide text-gray-600">{AVI_REPORT_COPY[lang].layer}</th>
+              <th scope="col" className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-gray-600">{AVI_REPORT_COPY[lang].certifiedCharge}</th>
+              <th scope="col" className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-gray-600">{AVI_REPORT_COPY[lang].aviShare}</th>
+              <th scope="col" className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-gray-600">{AVI_REPORT_COPY[lang].result}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {operating.map((layer) => (
               <tr key={layer.key}>
-                <td className="px-4 py-2 text-gray-900">{layer.label}</td>
+                <td className="px-4 py-2 text-gray-900">{aviLayerLabel(layer.key, layer.label, lang)}</td>
                 <td className="px-4 py-2 text-right"><MoneyValue amount={layer.totalChargeEur} size="sm" /></td>
                 <td className="px-4 py-2 text-right"><MoneyValue amount={layer.aviShareEur} size="sm" /></td>
-                <td className="px-4 py-2 text-right text-rose-700" dir="ltr">{layer.semanticNet}</td>
+                <td className="px-4 py-2 text-right text-rose-700" dir="ltr">{formatAviOwedCopy(lang, layer.semanticNet, null)}</td>
               </tr>
             ))}
-          </tbody>
-          <tfoot>
             <tr className="border-t border-gray-200 font-semibold">
-              <td className="px-4 py-2" colSpan={3}>Post-acquisition total</td>
+              <td className="px-4 py-2" colSpan={3}>{AVI_REPORT_COPY[lang].postAcquisitionTotal}</td>
               <td className="px-4 py-2 text-right text-rose-700" dir="ltr">{postAcquisitionSemantic}</td>
             </tr>
-          </tfoot>
+          </tbody>
         </table>
       </div>
     </section>
@@ -371,27 +387,30 @@ function PrintLayerSection({
 function PrintExpenseReconciliation({
   totals,
   visibleOnScreen = false,
+  lang,
 }: {
   totals: AviReportVisibleExpenseTotals
   visibleOnScreen?: boolean
+  lang: AviReportLang
 }) {
+  const copy = AVI_REPORT_COPY[lang]
   return (
     <section
       className={`${visibleOnScreen ? 'block' : 'hidden print:block'} avi-print-keep`}
       data-testid="avi-print-expense-recon"
     >
-      <SectionHeader title="Certified expense reconciliation" className="mb-3" />
+      <SectionHeader title={copy.expenseReconciliation} subtitle={copy.expenseReconciliationNote} className="mb-3" />
       <div className="jj-card p-4 grid grid-cols-3 gap-3">
         <div>
-          <div className="text-xs text-gray-500 mb-0.5">Certified expense rows</div>
+          <div className="text-xs text-gray-500 mb-0.5">{copy.certifiedExpenseRows}</div>
           <div className="text-sm font-semibold tabular-nums" dir="ltr">{totals.rowCount}</div>
         </div>
         <div>
-          <div className="text-xs text-gray-500 mb-0.5">Total charges</div>
+          <div className="text-xs text-gray-500 mb-0.5">{copy.totalCharges}</div>
           <MoneyValue amount={totals.totalChargeEur} size="sm" />
         </div>
         <div>
-          <div className="text-xs text-gray-500 mb-0.5">Avi 50% share</div>
+          <div className="text-xs text-gray-500 mb-0.5">{copy.aviExpenseShare}</div>
           <MoneyValue amount={totals.aviShareEur} size="sm" />
         </div>
       </div>
@@ -449,15 +468,17 @@ function DepartmentExpenseTable({
   subtitle,
   expenses,
   layerTotals,
+  lang,
 }: {
   layer: AviVisibleExpenseLayer
   title: string
   subtitle: string
   expenses: readonly AviReportPartnerExpense[]
   layerTotals: AviReportLayerBreakdown | undefined
+  lang: AviReportLang
 }) {
   const rows = expenses.map((e) => ({
-    date: e.date,
+    date: <AviReportDate iso={aviExpensePeriodKey(e.date)} lang={lang} mode="month" />,
     category: e.category ?? '—',
     subcategory: e.subcategory ?? '—',
     amount: <MoneyValue amount={e.amountEur} size="sm" />,
@@ -501,16 +522,18 @@ function DepartmentExpenseTable({
   )
 }
 
-function ExpenseTable({
+export function AviCertifiedExpenseAppendix({
   expenses,
   totals,
   layers,
   completeness,
+  lang = 'en',
 }: {
   expenses: readonly AviReportPartnerExpense[]
   totals: AviReportVisibleExpenseTotals
   layers: readonly AviReportLayerBreakdown[]
   completeness: AviReportExpenseCompleteness
+  lang?: AviReportLang
 }) {
   const missingTitles = completeness.departmentsMissingDetailRows.map((layer) => {
     const dept = EXPENSE_DEPARTMENTS.find((d) => d.layer === layer)
@@ -557,60 +580,67 @@ function ExpenseTable({
         }
         if (rows.length === 0) return null
         return (
-        <DepartmentExpenseTable
-          key={dept.layer}
-          layer={dept.layer}
-          title={dept.title}
-          subtitle={dept.subtitle}
-          expenses={rows}
-          layerTotals={layerTotals}
-        />
+          <DepartmentExpenseTable
+            key={dept.layer}
+            layer={dept.layer}
+            title={dept.title}
+            subtitle={dept.subtitle}
+            expenses={rows}
+            layerTotals={layerTotals}
+            lang={lang}
+          />
         )
       })}
     </div>
   )
 }
 
-const PAYMENT_COLUMNS: DataTableColumn[] = [
-  { key: 'date', label: 'Date', dir: 'ltr' },
-  { key: 'label', label: 'Label' },
-  { key: 'payer', label: 'Payer' },
-  { key: 'amount', label: 'Amount', align: 'right', dir: 'ltr' },
-]
+function paymentColumns(lang: AviReportLang): DataTableColumn[] {
+  const copy = AVI_REPORT_COPY[lang]
+  return [
+    { key: 'date', label: copy.date, dir: lang === 'he' ? 'rtl' : undefined },
+    { key: 'label', label: copy.label },
+    { key: 'amount', label: copy.amount, align: 'right', dir: 'ltr' },
+  ]
+}
 
-function AirbnbCreditsSection({ credits }: { credits: AviReportAirbnbCredits }) {
-  const stay = credits.certifiedDirectStay
+function AirbnbCreditsSection({
+  credits,
+  lang,
+}: {
+  credits: AviReportAirbnbCredits
+  lang: AviReportLang
+}) {
+  const copy = AVI_REPORT_COPY[lang]
+  // Partner body: aggregated Hostaway only — no guest names / reservation IDs.
   return (
     <section className="space-y-3 avi-print-keep" data-testid="avi-airbnb-credits">
-      <SectionHeader
-        title="Airbnb income credits"
-        subtitle="Private booking income and Hostaway rental income are separate. Hostaway uses the printed Net Owner Payout. Tax components that are not printed on the statement are not shown."
-      />
+      <SectionHeader title={copy.airbnbIncome} subtitle={copy.airbnbIncomeSubtitle} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="jj-card p-4" data-testid="avi-private-booking-credit">
-          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Private booking income</div>
-          <p className="mt-1 text-sm text-gray-700">Already-net private stays on the JJ ledger. Avi credit is 50% of the certified total.</p>
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">{copy.privateIncome}</div>
+          <p className="mt-1 text-sm text-gray-700">{copy.privateIncomeHelp}</p>
           <div className="mt-3 grid grid-cols-2 gap-3">
             <div data-testid="avi-private-booking-total">
-              <div className="text-xs text-gray-500 mb-0.5">Total</div>
+              <div className="text-xs text-gray-500 mb-0.5">{copy.property}</div>
               <MoneyValue amount={credits.privateBookingTotalEur} size="sm" />
             </div>
             <div data-testid="avi-private-booking-avi">
-              <div className="text-xs text-gray-500 mb-0.5">Avi 50% credit</div>
+              <div className="text-xs text-gray-500 mb-0.5">{copy.aviShareCredit}</div>
               <MoneyValue amount={credits.privateBookingAviEur} size="sm" />
             </div>
           </div>
         </div>
         <div className="jj-card p-4" data-testid="avi-hostaway-rental-credit">
-          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Hostaway rental income</div>
-          <p className="mt-1 text-sm text-gray-700">50% of printed Net Owner Payout for completed, paid stays.</p>
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">{copy.hostawayIncome}</div>
+          <p className="mt-1 text-sm text-gray-700">{copy.hostawayIncomeHelp}</p>
           <div className="mt-3 grid grid-cols-2 gap-3">
             <div>
-              <div className="text-xs text-gray-500 mb-0.5">Printed NTO</div>
+              <div className="text-xs text-gray-500 mb-0.5">{copy.printedNto}</div>
               <MoneyValue amount={credits.hostawayPrintedNtoTotalEur} size="sm" />
             </div>
             <div>
-              <div className="text-xs text-gray-500 mb-0.5">Avi 50%</div>
+              <div className="text-xs text-gray-500 mb-0.5">{copy.aviShare}</div>
               <MoneyValue amount={credits.hostawayAviEur} size="sm" />
             </div>
           </div>
@@ -620,33 +650,35 @@ function AirbnbCreditsSection({ credits }: { credits: AviReportAirbnbCredits }) 
         <table className="w-full text-sm" dir="ltr">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th scope="col" className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wide text-gray-600">Stay</th>
-              <th scope="col" className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-gray-600">Printed NTO</th>
-              <th scope="col" className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-gray-600">Avi 50%</th>
+              <th scope="col" className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wide text-gray-600">{copy.incomeSource}</th>
+              <th scope="col" className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-gray-600">{copy.printedNto}</th>
+              <th scope="col" className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-gray-600">{copy.aviShare}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            <tr data-testid="avi-hostaway-direct-stay">
+            <tr data-testid="avi-hostaway-aggregated-stays">
               <td className="px-4 py-2 text-gray-900">
-                <div>{stay.checkIn} · {stay.channel} · {stay.guestName}</div>
-                <div className="text-xs text-gray-500">Reservation {stay.reservationId}</div>
+                {copy.completedHostawayStays}
+                <span className="mt-0.5 block text-xs font-normal text-gray-500" dir="ltr">
+                  {credits.completedStayCount} {copy.stays} · {credits.completedNights} {copy.nights}
+                </span>
               </td>
-              <td className="px-4 py-2 text-right"><MoneyValue amount={stay.printedNtoEur} size="sm" /></td>
-              <td className="px-4 py-2 text-right"><MoneyValue amount={stay.aviShareEur} size="sm" /></td>
+              <td className="px-4 py-2 text-right"><MoneyValue amount={credits.hostawayPrintedNtoTotalEur} size="sm" /></td>
+              <td className="px-4 py-2 text-right"><MoneyValue amount={credits.hostawayAviEur} size="sm" /></td>
             </tr>
-            <tr>
-              <td className="px-4 py-2 text-gray-900">Other completed Hostaway stays</td>
-              <td className="px-4 py-2 text-right"><MoneyValue amount={credits.otherHostawayPrintedNtoEur} size="sm" /></td>
-              <td className="px-4 py-2 text-right"><MoneyValue amount={credits.otherHostawayAviEur} size="sm" /></td>
+            <tr data-testid="avi-private-booking-row">
+              <td className="px-4 py-2 text-gray-900">{copy.privateIncome}</td>
+              <td className="px-4 py-2 text-right"><MoneyValue amount={credits.privateBookingTotalEur} size="sm" /></td>
+              <td className="px-4 py-2 text-right"><MoneyValue amount={credits.privateBookingAviEur} size="sm" /></td>
             </tr>
           </tbody>
-          <tfoot>
+          <tbody>
             <tr className="border-t border-gray-200 font-semibold">
-              <td className="px-4 py-2">Airbnb income credits total</td>
+              <td className="px-4 py-2">{copy.airbnbCreditsTotal}</td>
               <td className="px-4 py-2 text-right" />
               <td className="px-4 py-2 text-right"><MoneyValue amount={credits.totalAviEur} size="sm" /></td>
             </tr>
-          </tfoot>
+          </tbody>
         </table>
       </div>
     </section>
@@ -662,15 +694,14 @@ function PaymentTable({
 }) {
   const copy = AVI_REPORT_COPY[lang]
   const rows = payments.map((p) => ({
-    date: formatAviFullDate(p.date, lang),
-    label: p.label,
-    payer: p.payer,
+    date: <AviReportDate iso={p.date} lang={lang} mode="full" />,
+    label: aviPaymentPurpose(p.id, lang, p.label),
     amount: <MoneyValue amount={p.amountEur} size="sm" />,
   }))
   return (
-    <div className="avi-print-payments" data-testid="avi-payment-table">
+    <div className="avi-print-payments" data-testid="avi-payment-table" data-avi-payments-lang={lang}>
       <SectionHeader title={copy.payments} subtitle={copy.paymentsSubtitle} className="mb-3" />
-      <DataTable columns={PAYMENT_COLUMNS} rows={rows} caption={copy.payments} />
+      <DataTable columns={paymentColumns(lang)} rows={rows} caption={copy.payments} />
     </div>
   )
 }
@@ -694,18 +725,80 @@ function AuditWarning() {
   )
 }
 
-function PrintMasthead({ snapshot }: { snapshot: AviReportSnapshotMeta }) {
+function PrintMasthead({
+  snapshot,
+  lang,
+}: {
+  snapshot: AviReportSnapshotMeta
+  lang: AviReportLang
+}) {
+  // Client-only generated ISO avoids SSR/client text mismatch hydration errors.
+  const [generatedIso, setGeneratedIso] = useState<string | null>(null)
+  useEffect(() => {
+    setGeneratedIso(new Date().toISOString().slice(0, 10))
+  }, [])
+  const copy = AVI_REPORT_COPY[lang]
+  const dir = aviReportDir(lang)
   return (
-    <header className="hidden print:block mb-6 border-b border-gray-300 pb-4" data-testid="avi-print-masthead" dir="ltr">
-      <p className="text-xs font-semibold uppercase tracking-widest text-gray-500">JJ Property</p>
-      <h1 className="text-xl font-semibold text-gray-900 mt-1">
-        External Partner Report — Avi
-      </h1>
-      <p className="text-sm text-gray-700 mt-2">Property: Villa Mazotos</p>
-      <p className="text-sm text-gray-700">Status: Certified</p>
-      <p className="text-sm text-gray-700">As of: {formatIsoDateEnGb(snapshot.cutoffDate)}</p>
-      <p className="text-xs text-gray-500 mt-1">Generated: {formatGeneratedEnGb(new Date())}</p>
+    <header
+      className="avi-print-only avi-print-masthead mb-6 border-b border-gray-300 pb-4"
+      data-testid="avi-print-masthead"
+      dir={dir}
+    >
+      <p className="text-xs font-semibold uppercase tracking-widest text-gray-500">{copy.brand}</p>
+      <h1 className="text-xl font-semibold text-gray-900 mt-1">{copy.reportTitle}</h1>
+      <p className="text-sm text-gray-700 mt-2">{copy.propertyName}</p>
+      <p className="text-sm text-gray-700">{copy.certified}</p>
+      <p className="text-sm text-gray-700" data-testid="avi-print-generated">
+        {lang === 'he' ? (
+          generatedIso ? <HebrewGeneratedSentence iso={generatedIso} /> : <span>—</span>
+        ) : (
+          <>
+            {copy.generatedOn}{' '}
+            {generatedIso ? formatAviFullDate(generatedIso, 'en') : '—'}
+          </>
+        )}
+      </p>
+      <p className="text-sm text-gray-700" data-testid="avi-print-cutoff">
+        {lang === 'he' ? (
+          <HebrewCutoffSentence iso={snapshot.cutoffDate} />
+        ) : (
+          <>
+            {copy.transactionsThrough} {formatAviFullDate(snapshot.cutoffDate, 'en')}
+          </>
+        )}
+      </p>
+      <p className="text-xs text-gray-500 mt-1">{copy.approvedChargesNote}</p>
+      <p className="text-xs text-gray-500 mt-2">{copy.confidentiality}</p>
     </header>
+  )
+}
+
+function PrintFooter({ lang }: { lang: AviReportLang }) {
+  const [generatedIso, setGeneratedIso] = useState<string | null>(null)
+  useEffect(() => {
+    setGeneratedIso(new Date().toISOString().slice(0, 10))
+  }, [])
+  const copy = AVI_REPORT_COPY[lang]
+  const dateLabel =
+    generatedIso == null ? '—' : formatAviFullDate(generatedIso, lang)
+  return (
+    <footer
+      className="avi-print-hide print:hidden avi-print-footer"
+      data-testid="avi-print-footer"
+      data-avi-footer-copy={`${copy.footerConfidential} · ${copy.propertyName} · ${copy.footerPartnerReport}`}
+      dir={aviReportDir(lang)}
+    >
+      <div className="avi-print-footer-inner">
+        <span>
+          {copy.footerConfidential} · {copy.propertyName} · {copy.footerPartnerReport} · {dateLabel}
+        </span>
+        <span className="avi-print-page-num" data-testid="avi-print-page-num">
+          {copy.pageLabel} <span className="avi-page-number" /> {copy.pageOf}{' '}
+          <span className="avi-page-count" />
+        </span>
+      </div>
+    </footer>
   )
 }
 
@@ -738,7 +831,7 @@ function PurchaseExpensesSection({
         <tbody className="divide-y divide-gray-100">
           {purchase.lines.map((line, i) => (
             <tr key={`${line.month}-${line.labelEn}-${i}`}>
-              <td className="px-3 py-2">{formatAviMonth(line.month, lang)}</td>
+              <td className="px-3 py-2">{<AviReportDate iso={line.month} lang={lang} mode="month" />}</td>
               <td className="px-3 py-2">{lang === 'he' ? line.labelHe : line.labelEn}</td>
               <td className="px-3 py-2 text-right"><MoneyValue amount={line.amountEur} size="sm" /></td>
               <td className="px-3 py-2 text-right"><MoneyValue amount={line.aviShareEur} size="sm" /></td>
@@ -780,7 +873,7 @@ function RenovationWorkSection({
           <tbody className="divide-y divide-gray-100">
             {renovation.groups.map((g) => (
               <tr key={g.subcategory}>
-                <td className="px-3 py-2">{g.subcategory}</td>
+                <td className="px-3 py-2">{aviRenovationCategoryLabel(g.subcategory, lang)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{g.rowCount}</td>
                 <td className="px-3 py-2 text-right"><MoneyValue amount={g.totalEur} size="sm" /></td>
                 <td className="px-3 py-2 text-right"><MoneyValue amount={g.aviShareEur} size="sm" /></td>
@@ -824,30 +917,44 @@ function AirbnbDepartmentSection({
   const copy = AVI_REPORT_COPY[lang]
   const title = lang === 'he' ? department.labelHe : department.labelEn
   const description = lang === 'he' ? department.descriptionHe : department.descriptionEn
+  const isOperations = department.key === 'operations'
   return (
     <section
-      className="jj-card p-4 avi-print-keep space-y-3"
+      className={`jj-card p-4 space-y-3 ${isOperations ? 'avi-print-ops' : 'avi-print-keep'}`}
       data-testid={`avi-airbnb-${department.key}`}
     >
-      <SectionHeader title={title} subtitle={description} />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="avi-print-section-title">
+        <SectionHeader title={title} subtitle={description} />
+      </div>
+      <div className="grid grid-cols-2 gap-3 avi-print-keep">
         <KpiCard label={copy.property} value={<MoneyValue amount={department.totalEur} />} />
         <KpiCard label={copy.aviShare} value={<MoneyValue amount={department.aviShareEur} />} />
       </div>
-      <table className="w-full text-sm" dir="ltr">
+      <table className="w-full text-sm avi-ops-table" dir={lang === 'he' ? 'rtl' : 'ltr'}>
         <thead className="bg-gray-50 border-b border-gray-200">
+          {isOperations && (
+            <tr className="avi-ops-continued-banner avi-print-only">
+              <th
+                colSpan={3}
+                scope="colgroup"
+                className="px-3 py-2 text-left text-xs font-semibold tracking-wide text-gray-700"
+              >
+                {copy.operationsContinued}
+              </th>
+            </tr>
+          )}
           <tr>
-            <th scope="col" className="px-3 py-2 text-left text-xs font-bold uppercase text-gray-600">{copy.month}</th>
-            <th scope="col" className="px-3 py-2 text-left text-xs font-bold uppercase text-gray-600">{title}</th>
-            <th scope="col" className="px-3 py-2 text-right text-xs font-bold uppercase text-gray-600">{copy.property}</th>
+            <th scope="col" className="px-3 py-2 text-start text-xs font-bold uppercase text-gray-600">{copy.month}</th>
+            <th scope="col" className="px-3 py-2 text-start text-xs font-bold uppercase text-gray-600">{title}</th>
+            <th scope="col" className="px-3 py-2 text-end text-xs font-bold uppercase text-gray-600">{copy.property}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
           {department.lines.map((line, i) => (
             <tr key={`${line.month}-${line.labelEn}-${i}`}>
-              <td className="px-3 py-2">{formatAviMonth(line.month, lang)}</td>
+              <td className="px-3 py-2"><AviReportDate iso={line.month} lang={lang} mode="month" /></td>
               <td className="px-3 py-2">{lang === 'he' ? line.labelHe : line.labelEn}</td>
-              <td className="px-3 py-2 text-right"><MoneyValue amount={line.amountEur} size="sm" /></td>
+              <td className="px-3 py-2 text-end"><MoneyValue amount={line.amountEur} size="sm" /></td>
             </tr>
           ))}
         </tbody>
@@ -886,23 +993,26 @@ function MonthlySection({
             return (
               <tr key={row.month}>
                 <td className="px-3 py-2">
-                  <button
-                    type="button"
-                    className="text-left text-sm font-medium text-gray-900"
-                    onClick={() => setOpenMonth(open ? null : row.month)}
-                  >
-                    {formatAviMonth(row.month, lang)}
-                    {row.stayCount > 0 && (
-                      <span className="block text-xs text-gray-500">
-                        {row.stayCount} {copy.stays} · {row.nights} {copy.nights} · {open ? copy.collapse : copy.expand}
-                      </span>
-                    )}
-                  </button>
+                  <div className="text-sm font-medium text-gray-900" data-avi-month-label>
+                    {<AviReportDate iso={row.month} lang={lang} mode="month" />}
+                  </div>
+                  {row.stayCount > 0 && (
+                    <div className="mt-0.5 text-xs text-gray-500" dir="ltr">
+                      {row.stayCount} {copy.stays} · {row.nights} {copy.nights}
+                      <button
+                        type="button"
+                        className="avi-print-hide ms-2 underline"
+                        onClick={() => setOpenMonth(open ? null : row.month)}
+                      >
+                        {open ? copy.collapse : copy.expand}
+                      </button>
+                    </div>
+                  )}
                   {open && row.stays.length > 0 && (
-                    <ul className="mt-2 space-y-1 text-xs text-gray-600">
+                    <ul className="mt-2 space-y-1 text-xs text-gray-600 avi-print-hide">
                       {row.stays.map((stay) => (
                         <li key={stay.reservationId}>
-                          {stay.checkIn} · {stay.channel} · {stay.reservationId} · <MoneyValue amount={stay.printedNtoEur} size="sm" />
+                          {stay.checkIn} · {stay.channel} · <MoneyValue amount={stay.printedNtoEur} size="sm" />
                         </li>
                       ))}
                     </ul>
@@ -915,16 +1025,14 @@ function MonthlySection({
               </tr>
             )
           })}
+            <tr className="border-t border-gray-200 font-semibold" data-testid="avi-monthly-totals">
+              <td className="px-3 py-2">{copy.finalResult}</td>
+              <td className="px-3 py-2 text-right"><MoneyValue amount={monthly.totals.incomeEur} size="sm" /></td>
+              <td className="px-3 py-2 text-right"><MoneyValue amount={monthly.totals.operationsEur} size="sm" /></td>
+              <td className="px-3 py-2 text-right"><MoneyValue amount={monthly.totals.setupEur} size="sm" /></td>
+              <td className="px-3 py-2 text-right"><MoneyValue amount={monthly.totals.aviResultEur} size="sm" /></td>
+            </tr>
         </tbody>
-        <tfoot>
-          <tr className="border-t border-gray-200 font-semibold">
-            <td className="px-3 py-2">{copy.finalResult}</td>
-            <td className="px-3 py-2 text-right"><MoneyValue amount={monthly.totals.incomeEur} size="sm" /></td>
-            <td className="px-3 py-2 text-right"><MoneyValue amount={monthly.totals.operationsEur} size="sm" /></td>
-            <td className="px-3 py-2 text-right"><MoneyValue amount={monthly.totals.setupEur} size="sm" /></td>
-            <td className="px-3 py-2 text-right"><MoneyValue amount={monthly.totals.aviResultEur} size="sm" /></td>
-          </tr>
-        </tfoot>
       </table>
     </section>
   )
@@ -972,19 +1080,25 @@ function FinalSettlementSection({
           value={<MoneyValue amount={summary.netEur} />}
         />
       </div>
+      <p
+        className="text-sm text-gray-700 leading-relaxed"
+        data-testid="avi-closing-narrative"
+      >
+        {copy.closingNarrative}
+      </p>
     </section>
   )
 }
 
-export function ExternalPartnerAviReportView({ report, audience = 'staff' }: Props) {
+export function ExternalPartnerAviReportView({ report, audience = 'staff', initialLang = 'en' }: Props) {
   const isPartner = audience === 'partner'
-  const [lang, setLang] = useState<AviReportLang>('en')
+  const [lang, setLang] = useState<AviReportLang>(initialLang)
   const dir = aviReportDir(lang)
 
   if (report.status === 'failed') {
     return (
       <div className="space-y-6">
-        <style>{AVI_REPORT_PRINT_CSS}</style>
+        <style dangerouslySetInnerHTML={{ __html: AVI_REPORT_PRINT_CSS }} />
         {!isPartner && (
           <div className="avi-print-hide">
             <ReportHeader status="failed" />
@@ -1007,8 +1121,10 @@ export function ExternalPartnerAviReportView({ report, audience = 'staff' }: Pro
       data-avi-lang={lang}
       dir={dir}
     >
-      <style>{AVI_REPORT_PRINT_CSS}</style>
-      <PrintMasthead snapshot={report.snapshot} />
+      {/* dangerouslySetInnerHTML avoids SSR/client quote-escaping mismatch inside <style>,
+          which previously caused a React hydration error and the Next.js “1 error” print overlay. */}
+      <style dangerouslySetInnerHTML={{ __html: AVI_REPORT_PRINT_CSS }} />
+      <PrintMasthead snapshot={report.snapshot} lang={lang} />
       <LanguageToggle lang={lang} onChange={setLang} />
       {!isPartner && (
         <>
@@ -1032,30 +1148,41 @@ export function ExternalPartnerAviReportView({ report, audience = 'staff' }: Pro
         <LayerBreakdownSection
           layers={report.layers}
           postAcquisitionSemantic={postAcquisitionSemantic}
+          lang={lang}
         />
       )}
       <PrintLayerSection
         layers={report.layers}
         postAcquisitionSemantic={postAcquisitionSemantic}
         visibleOnScreen={isPartner}
+        lang={lang}
       />
       <PrintExpenseReconciliation
         totals={report.visibleExpenseTotals}
         visibleOnScreen={isPartner}
+        lang={lang}
       />
-      <AirbnbCreditsSection credits={report.airbnbCredits} />
+      <AirbnbCreditsSection credits={report.airbnbCredits} lang={lang} />
       <HostawayIncomeSection income={report.hostawayIncome} lang={lang} />
       <AirbnbDepartmentSection department={report.airbnb.setup} lang={lang} />
       <AirbnbDepartmentSection department={report.airbnb.operations} lang={lang} />
       <MonthlySection monthly={report.monthly} lang={lang} />
-      <ExpenseTable
-        expenses={report.partnerExpenses}
-        totals={report.visibleExpenseTotals}
-        layers={report.layers}
-        completeness={report.expenseCompleteness}
-      />
+      <div
+        className="avi-print-hide print:hidden rounded-xl border border-gray-200 bg-white p-4"
+        data-testid="avi-expense-appendix-link"
+      >
+        <p className="text-sm font-medium text-gray-900">{AVI_REPORT_COPY[lang].appendixTitle}</p>
+        <p className="mt-1 text-xs text-gray-600">{AVI_REPORT_COPY[lang].appendixSubtitle}</p>
+        <a
+          href="/preview/avi-certified-compose/appendix"
+          className="mt-3 inline-flex text-sm font-semibold text-gray-900 underline"
+        >
+          {AVI_REPORT_COPY[lang].appendixButton}
+        </a>
+      </div>
       <PaymentTable payments={report.partnerPayments} lang={lang} />
       <FinalSettlementSection summary={report.finalSummary} lang={lang} />
+      <PrintFooter lang={lang} />
     </div>
   )
 }

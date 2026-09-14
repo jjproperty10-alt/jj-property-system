@@ -25,6 +25,7 @@ import { ExternalPartnerAviReportView } from '@/components/finance/ExternalPartn
 import { AviReportPrintButton } from '@/components/finance/AviReportPrintButton'
 import { AviShareLinkButton } from '@/components/finance/AviShareLinkButton'
 import { PageShell, WorkspaceHeader } from '@/components/ds'
+import { sanitizeAviReportClientPayload } from '@/components/finance/aviReportPresentation'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,7 +42,7 @@ export default async function ExternalPartnerAviPage() {
     notFound()
   }
 
-  const report = await buildAviExternalPartnerReport()
+  const report = sanitizeAviReportClientPayload(await buildAviExternalPartnerReport())
 
   return (
     <div className="min-h-screen bg-gray-50" data-avi-print-root dir="ltr">

@@ -12,14 +12,14 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { PageShell } from '@/components/ds'
 import { ExternalPartnerAviReportView } from '@/components/finance/ExternalPartnerAviReportView'
-import { AviReportPrintButton } from '@/components/finance/AviReportPrintButton'
 import { isSupabaseConfigured } from '@/lib/supabaseConfig'
 import { composeAviCertifiedCanonicalFixtureReport } from '@/lib/partner-settlement/external-partner/aviCanonicalComposeFixture'
+import { sanitizeAviReportClientPayload } from '@/components/finance/aviReportPresentation'
 
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: 'JJ — Avi certified compose fixture (Preview)',
+  title: 'JJ — External Partner Report — Avi',
   robots: { index: false, follow: false },
 }
 
@@ -28,7 +28,7 @@ export default async function AviCertifiedComposePreviewPage() {
     notFound()
   }
 
-  const report = composeAviCertifiedCanonicalFixtureReport()
+  const report = sanitizeAviReportClientPayload(composeAviCertifiedCanonicalFixtureReport())
   if (report.status !== 'certified') {
     notFound()
   }
@@ -53,9 +53,17 @@ export default async function AviCertifiedComposePreviewPage() {
             <h1 className="text-xl font-semibold text-gray-900">External Partner Report — Avi</h1>
             <p className="text-sm text-gray-500">Villa Mazotos · fixture Preview</p>
           </div>
-          <AviReportPrintButton />
+          <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
+            <a
+              href="/preview/avi-certified-compose/appendix"
+              className="text-sm font-semibold text-gray-900 underline"
+            >
+              Certified expense appendix
+            </a>
+            {/* Print control lives inside the report language toggle */}
+          </div>
         </div>
-        <ExternalPartnerAviReportView report={report} audience="staff" />
+        <ExternalPartnerAviReportView report={report} audience="partner" />
       </PageShell>
     </div>
   )

@@ -15,6 +15,7 @@ import { AviReportPrintButton } from '@/components/finance/AviReportPrintButton'
 import { buildAviExternalPartnerReport } from '@/lib/partner-settlement/external-partner/buildAviExternalPartnerReport'
 import { VM1_APPROVED_EXTERNAL_PARTNER_SNAPSHOT } from '@/lib/partner-settlement/external-partner/externalPartnerSnapshot'
 import { verifyAviShareToken } from '@/lib/partner-settlement/external-partner/aviShareToken'
+import { sanitizeAviReportClientPayload } from '@/components/finance/aviReportPresentation'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,7 +38,7 @@ export default async function AviExternalPartnerSharePage({ params }: Props) {
     notFound()
   }
 
-  const report = await buildAviExternalPartnerReport()
+  const report = sanitizeAviReportClientPayload(await buildAviExternalPartnerReport())
   if (report.status !== 'certified') {
     notFound()
   }

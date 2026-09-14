@@ -62,13 +62,13 @@ describe('Avi print view — certified DTO, no second formula', () => {
   it('print button uses browser-native window.print and documents Chrome headers', () => {
     const src = fs.readFileSync(path.join(process.cwd(), 'src/components/finance/AviReportPrintButton.tsx'), 'utf8')
     expect(src).toContain('window.print()')
-    expect(src).toContain('Print / Save PDF')
-    expect(src).toContain('Headers and footers')
+    expect(src).toContain('printButton')
+    expect(src).toMatch(/Headers and footers/i)
     const html = renderToStaticMarkup(<AviReportPrintButton />)
     expect(html).toContain('Print / Save PDF')
     expect(html).toContain('data-testid="avi-print-button"')
     expect(html).toContain('data-testid="avi-print-chrome-headers-note"')
-    expect(html).toContain('Headers and footers')
+    expect(html).toMatch(/Headers and footers/i)
     expect(html).toContain('A4 portrait')
     expect(html).toContain('print:hidden')
   })
@@ -134,8 +134,10 @@ describe('Avi print view — canonical 202-row certified compose', () => {
     expect(paymentSection).toContain('5,600.00')
     expect(paymentSection).toContain('5,000.00')
     expect(paymentSection).toContain('20,000.00')
-    const fundingInPayments = (paymentSection.match(/Partner funding/g) || []).length
-    expect(fundingInPayments).toBe(10)
+    expect((paymentSection.match(/Purchase funding/g) || []).length).toBeGreaterThanOrEqual(2)
+    expect((paymentSection.match(/Purchase-expense funding/g) || []).length).toBeGreaterThanOrEqual(1)
+    expect((paymentSection.match(/Renovation funding/g) || []).length).toBeGreaterThanOrEqual(2)
+    expect(paymentSection).not.toContain('Partner funding')
     expect(report.partnerPayments.reduce((s, p) => s + (p.amountEur ?? 0), 0)).toBe(280600)
   })
 
@@ -163,7 +165,9 @@ describe('Avi print view — canonical 202-row certified compose', () => {
     expect(report.expenseCompleteness.complete).toBe(true)
     expect(html).not.toContain('data-testid="avi-expense-completeness"')
     expect(html).not.toContain('No certified expenses')
-    expect(html).toContain('180 certified')
+    expect(html).not.toContain('180 certified')
+    expect(html).toContain('data-testid="avi-expense-appendix-link"')
+    expect(html).not.toContain('data-testid="avi-expense-table"')
     expect(html).toContain('99,207.00')
     expect(html).toContain('49,603.50')
     const recon = html.split('data-testid="avi-print-expense-recon"')[1] ?? ''
@@ -187,7 +191,7 @@ describe('Avi print view — canonical 202-row certified compose', () => {
       expect(p.obligationEur).toBeNull()
       expect(p.netEur).toBeNull()
       expect(html).toContain(name)
-      expect(html).toContain('PROVISIONAL')
+      expect(html).toContain('Provisional')
     }
   })
 
@@ -200,17 +204,12 @@ describe('Avi print view — canonical 202-row certified compose', () => {
       'management',
     ])
     expect(report.layers.find((l) => l.key === 'deal_expense')!.label).toBe('Acquisition / Deal expenses')
-    const dealAt = html.indexOf('data-testid="avi-expense-department-deal_expense"')
-    const renoAt = html.indexOf('data-testid="avi-expense-department-renovation"')
-    const airbnbAt = html.indexOf('data-testid="avi-expense-department-airbnb"')
-    expect(dealAt).toBeGreaterThan(-1)
-    expect(renoAt).toBeGreaterThan(dealAt)
-    expect(airbnbAt).toBeGreaterThan(renoAt)
+    // Main partner report no longer dumps department expense tables.
+    expect(html).not.toContain('data-testid="avi-expense-department-deal_expense"')
+    expect(html).not.toContain('data-testid="avi-expense-department-renovation"')
+    expect(html).not.toContain('data-testid="avi-expense-department-airbnb"')
     expect(html).not.toContain('data-testid="avi-expense-department-management"')
-    expect(html).toContain('Acquisition / Deal expenses')
-    expect(html).toContain('Renovation expenses')
-    expect(html).toContain('Airbnb expenses')
-    expect(html).not.toContain('Management expenses')
+    expect(html).toContain('data-testid="avi-expense-appendix-link"')
   })
 
   it('renders Garden Maintenance, Internet, Electricity, Pool Equipment, and nine 2026 Pool Service months from the DTO', () => {
@@ -240,23 +239,9 @@ describe('Avi print view — canonical 202-row certified compose', () => {
     expect(overlayRows.every((e) => e.amountEur === AVI_MONTHLY_POOL_CHARGE_EUR)).toBe(true)
     expect(overlayRows.every((e) => e.aviShareEur === AVI_MONTHLY_POOL_AVI_SHARE_EUR)).toBe(true)
 
-    const airbnbSection = html.slice(
-      html.indexOf('data-testid="avi-expense-department-airbnb"'),
-      html.indexOf('data-testid="avi-payment-table"'),
-    )
-    expect(airbnbSection).toContain('Garden Maintenance')
-    expect(airbnbSection).toContain('280.00')
-    expect(airbnbSection).toContain('140.00')
-    expect(airbnbSection).toContain('Internet')
-    expect(airbnbSection).toContain('30.00')
-    expect(airbnbSection).toContain('15.00')
-    expect(airbnbSection).toContain('Electricity')
-    expect(airbnbSection).toContain('181.79')
-    expect(airbnbSection).toContain('90.89')
-    expect(airbnbSection).toContain('Pool Equipment')
-    expect(airbnbSection).toContain('450.00')
-    expect(airbnbSection).toContain('225.00')
-    expect((airbnbSection.match(/Pool Service/g) || []).length).toBeGreaterThanOrEqual(20)
+    // Line-level expense dump lives in the optional appendix, not the main PDF body.
+    expect(html).not.toContain('data-testid="avi-expense-department-airbnb"')
+    expect(html).toContain('data-testid="avi-expense-appendix-link"')
   })
 
   it('print CSS declares A4 portrait, repeating headers, and no clipped rows', () => {
@@ -265,11 +250,16 @@ describe('Avi print view — canonical 202-row certified compose', () => {
     expect(AVI_REPORT_PRINT_CSS).toContain('Headers and footers')
     expect(AVI_REPORT_PRINT_CSS).toContain('.avi-print-hide')
     expect(AVI_REPORT_PRINT_CSS).toContain('nav[aria-label="Main navigation"]')
-    expect(AVI_REPORT_PRINT_CSS).toContain('button')
+    expect(AVI_REPORT_PRINT_CSS).toContain('avi-print-hide')
+    expect(AVI_REPORT_PRINT_CSS).not.toContain('button {')
     expect(AVI_REPORT_PRINT_CSS).toContain('display: table-header-group')
     expect(AVI_REPORT_PRINT_CSS).toContain('page-break-inside: avoid')
     expect(html).toContain('data-testid="avi-print-masthead"')
-    expect(html).toContain('As of: 29 August 2026')
+    expect(html).toContain('Transactions included through')
+    expect(html).toContain('29 August 2026')
+    expect(html).toContain('Generated on')
+    expect(html).not.toContain('As of:')
+    expect(html).not.toContain('As of ')
     const sidebar = fs.readFileSync(path.join(process.cwd(), 'src/components/nav/Sidebar.tsx'), 'utf8')
     expect(sidebar).toContain('print:hidden')
     const page = fs.readFileSync(path.join(process.cwd(), 'src/app/(app)/finance/external-partner/avi/page.tsx'), 'utf8')
@@ -280,24 +270,22 @@ describe('Avi print view — canonical 202-row certified compose', () => {
 
   it('print layout includes layers, expenses, and payments without private fields', () => {
     expect(html).toContain('data-testid="avi-print-layers"')
-    expect(html).toContain('data-testid="avi-expense-table"')
-    expect(html).toContain('data-testid="avi-expense-department-airbnb"')
+    expect(html).not.toContain('data-testid="avi-expense-table"')
+    expect(html).toContain('data-testid="avi-expense-appendix-link"')
     expect(html).not.toContain('data-testid="avi-expense-department-management"')
     expect(html).toContain('data-testid="avi-payment-table"')
     expect(html).toContain('72,214.14')
     expect(html).toContain('36,107.07')
     expect(html).toContain('11,900.00')
-    expect(html).toContain('Purchase Expenses')
+    expect(html).toContain('Purchase expenses')
     expect(html).not.toContain('Purchase Contract')
-    const airbnbSection = html.slice(
-      html.indexOf('data-testid="avi-expense-department-airbnb"'),
-      html.indexOf('data-testid="avi-payment-table"'),
-    )
-    expect(airbnbSection).toContain('Photography')
-    expect(airbnbSection).toContain('15,092.86')
-    expect(airbnbSection).toContain('Electricity')
-    expect(html).toContain('1,609.34')
-    expect(html).toContain('804.67')
+    expect(html).not.toContain('data-testid="avi-expense-department-airbnb"')
+    // Partner body shows aggregated Hostaway only — no per-stay NTO / reservation PII.
+    expect(html).toContain('data-testid="avi-hostaway-aggregated-stays"')
+    expect(html).toContain('38,128.87')
+    expect(html).toContain('19,064.44')
+    expect(html).not.toContain('46340130')
+    expect(html).not.toContain('Tomer Niazof')
     expect(html).not.toContain('190.35')
     expect(html).not.toContain('380.70')
     if (process.env.WRITE_AVI_PRINT_HTML === '1') {

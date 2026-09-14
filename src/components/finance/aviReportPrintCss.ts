@@ -1,21 +1,26 @@
 /**
- * Browser-native print stylesheet for the certified Avi External Partner report.
- * A4 portrait. No financial formulas — layout only.
+ * Dedicated A4 print stylesheet for the certified Avi External Partner report.
+ * Layout only — no financial formulas.
  *
- * Chrome print dialog still injects URL/date/page headers unless the operator
- * unchecks “Headers and footers”. That chrome is not controllable from CSS.
+ * Root cause (empty MONTH column): a previous rule hid every `button` in print,
+ * while month labels lived inside expand buttons. Month labels are plain text now.
+ * Interactive controls use `.avi-print-hide` instead of a global `button` hide.
+ *
+ * Chrome/Edge still inject URL/date headers unless the operator unchecks
+ * “Headers and footers”. Playwright PDF generation uses displayHeaderFooter with
+ * a custom footer (no URL / localhost) and omits Chrome chrome.
  */
 export const AVI_REPORT_PRINT_CSS = `
 @media print {
   /* Chrome “Headers and footers” cannot be disabled from CSS. Uncheck them in the print dialog. */
   @page {
     size: A4 portrait;
-    margin: 12mm 12mm 14mm 12mm;
+    margin: 14mm 12mm 18mm 12mm;
   }
 
   html, body {
     background: #ffffff !important;
-    color: #111111 !important;
+    color: #111827 !important;
   }
 
   * {
@@ -24,87 +29,72 @@ export const AVI_REPORT_PRINT_CSS = `
   }
 
   .avi-print-hide,
-  [data-avi-print-hide] {
-    display: none !important;
-  }
-
+  [data-avi-print-hide],
   nav[aria-label="Main navigation"],
   [aria-label="Open navigation menu"],
   [aria-label="Navigation menu"],
   [aria-label="Close navigation menu"],
   [aria-label="Go back"],
-  form[action="/api/auth/logout"],
-  button {
+  form[action="/api/auth/logout"] {
     display: none !important;
   }
 
   [data-avi-print-root] {
     background: #ffffff !important;
-    color: #111111 !important;
+    color: #111827 !important;
     max-width: none !important;
     padding: 0 !important;
     margin: 0 !important;
+    padding-bottom: 10mm !important;
+  }
+
+  .avi-print-page {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .avi-print-page:last-of-type {
+    break-after: auto;
+    page-break-after: auto;
   }
 
   .avi-print-keep,
+  .avi-final-hero,
   .jj-tile {
     break-inside: avoid;
     page-break-inside: avoid;
   }
 
-  .avi-print-keep-header h3,
-  .avi-print-keep-header .jj-label {
+  .avi-print-section-title {
     break-after: avoid;
     page-break-after: avoid;
   }
 
-  .avi-print-expenses .jj-card,
-  .avi-print-payments .jj-card {
-    break-inside: auto;
-    page-break-inside: auto;
-    box-shadow: none !important;
-  }
-
   [data-avi-print-root] table {
-    font-size: 9pt;
     width: 100%;
     border-collapse: collapse;
+    font-size: 9pt;
   }
 
   [data-avi-print-root] th,
   [data-avi-print-root] td {
-    padding: 4px 6px !important;
+    padding: 5px 6px !important;
     vertical-align: top;
-  }
-
-  [data-avi-print-root] th[dir="ltr"],
-  [data-avi-print-root] td[dir="ltr"] {
-    white-space: nowrap;
   }
 
   [data-avi-print-root] thead {
     display: table-header-group !important;
   }
 
+  /* Do NOT use table-footer-group: browsers reprint <tfoot> on every page
+     fragment when a table spans pages (duplicate “Final result” mid-table). */
   [data-avi-print-root] tfoot {
-    display: table-footer-group !important;
+    display: table-row-group !important;
   }
 
   [data-avi-print-root] tr {
     break-inside: avoid;
     page-break-inside: avoid;
-  }
-
-  [data-avi-print-root] h1,
-  [data-avi-print-root] h2,
-  [data-avi-print-root] h3 {
-    break-after: avoid;
-    page-break-after: avoid;
-  }
-
-  .avi-print-payments {
-    break-before: page;
-    page-break-before: always;
   }
 
   [data-avi-table-desktop] {
@@ -116,6 +106,47 @@ export const AVI_REPORT_PRINT_CSS = `
     display: none !important;
   }
 
+  .avi-screen-only {
+    display: none !important;
+  }
+
+  .avi-print-only {
+    display: block !important;
+  }
+
+  tr.avi-ops-continued-banner {
+    display: table-row !important;
+  }
+
+  .avi-print-masthead {
+    display: block !important;
+  }
+
+
+  .avi-he-date,
+  .avi-he-generated,
+  .avi-he-cutoff {
+    direction: rtl !important;
+    unicode-bidi: isolate !important;
+    white-space: nowrap !important;
+  }
+
+  .avi-he-date-day,
+  .avi-he-date-year {
+    direction: ltr !important;
+    unicode-bidi: isolate !important;
+  }
+
+  .avi-he-date-month {
+    direction: rtl !important;
+    unicode-bidi: isolate !important;
+  }
+
+  /* PDF page chrome comes from Playwright footerTemplate — not a CSS fixed footer. */
+  .avi-print-footer {
+    display: none !important;
+  }
+
   a {
     color: inherit !important;
     text-decoration: none !important;
@@ -123,6 +154,16 @@ export const AVI_REPORT_PRINT_CSS = `
 
   [dir="rtl"] {
     direction: rtl;
+  }
+}
+
+@media screen {
+  .avi-print-only {
+    display: none !important;
+  }
+
+  tr.avi-ops-continued-banner {
+    display: none !important;
   }
 }
 `

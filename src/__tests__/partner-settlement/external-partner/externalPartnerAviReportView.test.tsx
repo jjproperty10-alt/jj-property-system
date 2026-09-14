@@ -169,36 +169,33 @@ describe('ExternalPartnerAviReportView — certified', () => {
     expect(html).not.toContain('data-testid="avi-expense-department-management"')
   })
 
-  it('shows Avi as CERTIFIED and Yossi/Jacob as PROVISIONAL', () => {
-    expect(html).toContain('CERTIFIED')
-    expect(html).toContain('PROVISIONAL')
+  it('shows Avi as Certified and Yossi/Jacob as Provisional (localized labels)', () => {
+    expect(html).toContain('Certified')
+    expect(html).toContain('Provisional')
+    expect(html).not.toContain('>CERTIFIED<')
+    expect(html).not.toContain('>PROVISIONAL<')
   })
 
-  it('shows all five payments with Partner funding label', () => {
-    const fundingCount = (html.match(/Partner funding/g) || []).length
-    expect(fundingCount).toBeGreaterThanOrEqual(5)
+  it('shows all five payments with partner-facing purpose labels', () => {
+    expect(html).toContain('Purchase funding')
+    expect(html).toContain('Purchase-expense funding')
+    expect(html).toContain('Renovation funding')
+    expect((html.match(/Purchase funding/g) || []).length).toBeGreaterThanOrEqual(2)
+    expect(html).not.toContain('Partner funding')
   })
 
-  it('shows the expense table', () => {
-    expect(html).toContain('Certified Expenses')
-    expect(html).toContain('50%')
-    expect(html).toContain('Avi share')
+  it('links the certified expense appendix instead of dumping lines', () => {
+    expect(html).toContain('data-testid="avi-expense-appendix-link"')
+    expect(html).not.toContain('Certified Expenses')
+    expect(html).not.toContain('data-testid="avi-expense-table"')
   })
 
-  it('lists expense departments in certified order and skips incomplete empty tables', () => {
-    const dealAt = html.indexOf('data-testid="avi-expense-department-deal_expense"')
-    const airbnbAt = html.indexOf('data-testid="avi-expense-department-airbnb"')
-    expect(dealAt).toBeGreaterThan(-1)
-    expect(airbnbAt).toBeGreaterThan(dealAt)
-    expect(html).not.toContain('data-testid="avi-expense-department-renovation"')
+  it('keeps expense line dump out of the main certified view', () => {
+    expect(html).not.toContain('data-testid="avi-expense-department-deal_expense"')
+    expect(html).not.toContain('data-testid="avi-expense-department-airbnb"')
     expect(html).not.toContain('data-testid="avi-expense-department-management"')
-    expect(html).toContain('data-testid="avi-expense-completeness"')
-    expect(html).not.toContain('No certified expenses')
-    expect(html).toContain('Airbnb expenses')
-    expect(html).not.toContain('Management expenses')
-    const airbnbSection = html.slice(airbnbAt)
-    expect(airbnbSection).toContain('Photography')
-    expect(airbnbSection).toContain('Electricity')
+    expect(html).not.toContain('data-testid="avi-expense-completeness"')
+    expect(html).toContain('data-testid="avi-expense-appendix-link"')
   })
 
   it('renders certified private-booking total and Avi credit from the DTO', () => {
@@ -214,13 +211,16 @@ describe('ExternalPartnerAviReportView — certified', () => {
     expect(remaining).toContain('0.00')
   })
 
-  it('shows printed Hostaway NTO credit without tax lines', () => {
+  it('shows printed Hostaway NTO credit without tax lines or guest/reservation PII', () => {
     expect(html).toContain('data-testid="avi-airbnb-credits"')
     expect(html).toContain('Private booking income')
     expect(html).toContain('Hostaway rental income')
-    expect(html).toContain('46340130')
-    expect(html).toContain('1,609.34')
-    expect(html).toContain('804.67')
+    expect(html).toContain('data-testid="avi-hostaway-aggregated-stays"')
+    expect(html).toContain('38,128.87')
+    expect(html).toContain('19,064.44')
+    // Partner body must not expose guest name or reservation id
+    expect(html).not.toContain('46340130')
+    expect(html).not.toContain('Tomer Niazof')
     expect(html).not.toContain('190.35')
     expect(html).not.toContain('380.70')
   })
@@ -260,8 +260,9 @@ describe('ExternalPartnerAviReportView — partner audience', () => {
     expect(html).not.toMatch(/400,000/)
   })
 
-  it('keeps Airbnb expenses and hides empty Management for the partner audience', () => {
-    expect(html).toContain('Airbnb expenses')
+  it('does not dump department expense tables for the partner audience', () => {
+    expect(html).not.toContain('data-testid="avi-expense-table"')
+    expect(html).toContain('data-testid="avi-expense-appendix-link"')
     expect(html).not.toContain('Management expenses')
   })
 })
