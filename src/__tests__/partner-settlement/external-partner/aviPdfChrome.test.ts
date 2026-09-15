@@ -72,6 +72,30 @@ describe('resolveAviPdfLaunchOptions', () => {
     ])
   })
 
+  it('on Vercel sets AWS_LAMBDA_JS_RUNTIME so Sparticuz extracts AL libs', async () => {
+    const prevRuntime = process.env.AWS_LAMBDA_JS_RUNTIME
+    const prevExec = process.env.AWS_EXECUTION_ENV
+    delete process.env.AWS_LAMBDA_JS_RUNTIME
+    delete process.env.AWS_EXECUTION_ENV
+    try {
+      await resolveAviPdfLaunchOptions({
+        env: { VERCEL: '1' },
+        exists: () => false,
+        loadChromium: async () => ({
+          args: ['--single-process'],
+          executablePath: async () => '/tmp/chromium',
+          headless: 'shell',
+        }),
+      })
+      expect(process.env.AWS_LAMBDA_JS_RUNTIME).toMatch(/^nodejs\d+\.x$/)
+    } finally {
+      if (prevRuntime === undefined) delete process.env.AWS_LAMBDA_JS_RUNTIME
+      else process.env.AWS_LAMBDA_JS_RUNTIME = prevRuntime
+      if (prevExec === undefined) delete process.env.AWS_EXECUTION_ENV
+      else process.env.AWS_EXECUTION_ENV = prevExec
+    }
+  })
+
   it('AWS Lambda serverless also uses chromium-min pack URL', async () => {
     const executablePath = jest.fn(async () => '/tmp/chromium')
     const launch = await resolveAviPdfLaunchOptions({

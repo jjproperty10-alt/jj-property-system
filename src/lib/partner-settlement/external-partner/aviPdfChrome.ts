@@ -95,14 +95,27 @@ function mergeChromeArgs(
   return out
 }
 
+/**
+ * Sparticuz only extracts Amazon-Linux shared libs when it detects Lambda via
+ * AWS_EXECUTION_ENV / AWS_LAMBDA_JS_RUNTIME. Vercel is AL-compatible but omits
+ * those vars, which yields chromium_launch failures. Set the hint on process.env
+ * before the first @sparticuz/chromium-min import.
+ */
+export function ensureSparticuzVercelLambdaHint(
+  env: AviPdfChromeEnv = process.env,
+): void {
+  if (!env.VERCEL && !process.env.VERCEL) return
+  if (process.env.AWS_EXECUTION_ENV || process.env.AWS_LAMBDA_JS_RUNTIME) return
+  const major = Number(String(process.versions.node).split('.')[0] || '20')
+  process.env.AWS_LAMBDA_JS_RUNTIME = major >= 20 ? `nodejs${major}.x` : 'nodejs18.x'
+}
+
 async function defaultLoadChromium(): Promise<SparticuzChromiumLike> {
+  ensureSparticuzVercelLambdaHint()
   const mod = (await import('@sparticuz/chromium-min')) as unknown as {
     default?: SparticuzChromiumLike
   } & SparticuzChromiumLike
-  const chromium = mod.default ?? mod
-  // Disable WebGL / swiftshader work where possible — PDF export does not need it.
-  chromium.setGraphicsMode = false
-  return chromium
+  return mod.default ?? mod
 }
 
 function firstExistingLinuxChrome(
@@ -151,6 +164,7 @@ export async function resolveAviPdfLaunchOptions(
   }
 
   if (isServerlessPdfRuntime(env)) {
+    ensureSparticuzVercelLambdaHint(env)
     const loadChromium = probe.loadChromium ?? defaultLoadChromium
     const chromium = await loadChromium()
     const packUrl = probe.packUrl ?? AVI_PDF_SPARTICUZ_PACK_URL
