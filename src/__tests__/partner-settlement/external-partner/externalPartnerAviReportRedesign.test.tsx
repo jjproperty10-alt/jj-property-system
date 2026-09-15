@@ -229,6 +229,9 @@ describe('Avi redesign — settlement boxes', () => {
     expect(heHtml).toContain('>סיכום<')
     expect(heHtml).toContain('>סעיף<')
     expect(heHtml).toContain('סיכום התחשבנות')
+    expect(AVI_REPORT_PRINT_CSS).toContain('text-align: center')
+    expect(html).toContain('avi-account-bar--centered')
+    expect(html).toContain('avi-settlement-table')
   })
 })
 

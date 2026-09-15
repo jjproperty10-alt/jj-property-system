@@ -355,6 +355,17 @@ export const AVI_REPORT_PRINT_CSS = `
   text-align: end;
 }
 
+.avi-account-bar--centered {
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  gap: 0.35rem;
+}
+
+.avi-account-bar--centered .avi-account-bar-right {
+  text-align: center;
+}
+
 .avi-account-bar-amount {
   font-size: 11pt;
   font-weight: 700;
@@ -471,14 +482,19 @@ export const AVI_REPORT_PRINT_CSS = `
   color: #93c5fd !important;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  margin-bottom: 0.45rem;
+  margin-bottom: 0.35rem;
+  text-align: center;
 }
 
-.avi-settlement-box .avi-fin-summary-sub {
+.avi-settlement-box .avi-fin-summary-sub,
+.avi-settlement-box .avi-settlement-title {
   color: ${C.white} !important;
+  text-align: center;
+  margin: 0 0 0.55rem;
 }
 
-.avi-settlement-box table {
+.avi-settlement-box table,
+.avi-settlement-box .avi-settlement-table {
   width: 100%;
   border-collapse: collapse;
   margin-bottom: 0.55rem;
@@ -500,6 +516,7 @@ export const AVI_REPORT_PRINT_CSS = `
   color: ${C.grayDark} !important;
   font-size: 7.5pt;
   background: #ffffff !important;
+  text-align: center !important;
 }
 
 .avi-settlement-box th {
@@ -524,9 +541,15 @@ export const AVI_REPORT_PRINT_CSS = `
   font-weight: 700;
 }
 
+.avi-settlement-box .avi-fin-ops,
+.avi-settlement-box .avi-settlement-summary-row {
+  justify-items: center;
+}
+
 .avi-settlement-box .avi-fin-ops-label,
 .avi-settlement-box .avi-fin-balance-label {
   color: #93c5fd !important;
+  text-align: center;
 }
 
 .avi-settlement-box .avi-fin-ops-value,
@@ -534,6 +557,7 @@ export const AVI_REPORT_PRINT_CSS = `
 .avi-settlement-box .avi-fin-balance-value,
 .avi-settlement-box .avi-fin-balance-value span {
   color: ${C.white} !important;
+  text-align: center;
 }
 
 .avi-settlement-box .avi-fin-ops-cell[data-tone="summary"] .avi-fin-ops-value,
@@ -541,17 +565,32 @@ export const AVI_REPORT_PRINT_CSS = `
   color: #bbf7d0 !important;
 }
 
+.avi-settlement-box .avi-fin-balance {
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  gap: 0.25rem;
+}
+
+.avi-settlement-box .avi-fin-balance-value,
+.avi-settlement-box .avi-fin-balance-hint {
+  text-align: center;
+}
+
 .avi-settlement-narrative {
   font-size: 7.5pt;
   color: #bfdbfe !important;
   line-height: 1.45;
   margin-top: 0.45rem;
+  text-align: center;
 }
 
-.avi-ownership-list {
-  border: 1px solid ${C.grayBorder};
-  border-radius: 4px;
-  overflow: hidden;
+.avi-print-payments table th,
+.avi-print-payments table td,
+.avi-print-payments .text-left,
+.avi-print-payments .text-right,
+.avi-print-payments .text-center {
+  text-align: center !important;
 }
 
 .avi-ownership-row {
@@ -673,6 +712,10 @@ export const AVI_REPORT_PRINT_CSS = `
     background: #ffffff !important;
     color: ${C.grayDark} !important;
   }
+  .avi-settlement-box th,
+  .avi-settlement-box td {
+    text-align: center !important;
+  }
   .avi-settlement-box th {
     background: ${C.grayBg} !important;
     color: ${C.grayText} !important;
@@ -684,22 +727,39 @@ export const AVI_REPORT_PRINT_CSS = `
   .avi-settlement-box .avi-fin-ops-label,
   .avi-settlement-box .avi-fin-balance-label {
     color: #93c5fd !important;
+    text-align: center !important;
   }
   .avi-settlement-box .avi-fin-ops-value,
   .avi-settlement-box .avi-fin-ops-value span,
   .avi-settlement-box .avi-fin-balance-value,
   .avi-settlement-box .avi-fin-balance-value span {
     color: #ffffff !important;
+    text-align: center !important;
   }
   .avi-settlement-box .avi-fin-summary-sub,
   .avi-settlement-box .avi-settlement-kicker {
     color: #93c5fd !important;
+    text-align: center !important;
   }
   .avi-settlement-box .avi-fin-summary-sub {
     color: #ffffff !important;
   }
+  .avi-settlement-box .avi-fin-balance {
+    flex-direction: column !important;
+    justify-content: center !important;
+    text-align: center !important;
+  }
   .avi-settlement-narrative {
     color: #bfdbfe !important;
+    text-align: center !important;
+  }
+  .avi-print-payments .avi-account-bar--centered {
+    flex-direction: column !important;
+    text-align: center !important;
+  }
+  .avi-print-payments table th,
+  .avi-print-payments table td {
+    text-align: center !important;
   }
 
   [data-avi-print-root] thead { display: table-header-group !important; }

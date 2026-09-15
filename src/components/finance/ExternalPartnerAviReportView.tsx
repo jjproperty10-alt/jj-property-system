@@ -663,9 +663,9 @@ export function AviCertifiedExpenseAppendix({
 function paymentColumns(lang: AviReportLang): DataTableColumn[] {
   const copy = AVI_REPORT_COPY[lang]
   return [
-    { key: 'date', label: copy.date, dir: lang === 'he' ? 'rtl' : undefined },
-    { key: 'label', label: copy.label },
-    { key: 'amount', label: copy.amount, align: 'right', dir: 'ltr' },
+    { key: 'date', label: copy.date, align: 'center', dir: lang === 'he' ? 'rtl' : undefined },
+    { key: 'label', label: copy.label, align: 'center' },
+    { key: 'amount', label: copy.amount, align: 'center', dir: 'ltr' },
   ]
 }
 
@@ -760,7 +760,7 @@ function PaymentTable({
   const total = payments.reduce((s, p) => s + (p.amountEur ?? 0), 0)
   return (
     <div className="avi-section avi-print-payments" data-testid="avi-payment-table" data-avi-payments-lang={lang}>
-      <div className="avi-account-bar" data-tone="navy">
+      <div className="avi-account-bar avi-account-bar--centered" data-tone="navy">
         <div>
           <h2 className="avi-account-bar-title">{copy.payments}</h2>
           <p className="avi-account-bar-sub">{copy.paymentsSubtitle}</p>
@@ -1299,30 +1299,30 @@ function FinalSettlementSection({
     <section className="avi-print-keep" data-testid="avi-final-summary">
       <div className="avi-settlement-box">
         <div className="avi-settlement-kicker">{copy.settlementKicker}</div>
-        <p className="avi-fin-summary-sub" style={{ marginBottom: '0.45rem' }}>{copy.finalSettlement}</p>
-        <table dir="ltr">
+        <p className="avi-fin-summary-sub avi-settlement-title">{copy.finalSettlement}</p>
+        <table className="avi-settlement-table" dir="ltr">
           <thead>
             <tr>
               <th scope="col">{copy.settlementItem}</th>
-              <th scope="col" className="text-right">{copy.obligation}</th>
-              <th scope="col" className="text-right">{copy.paid}</th>
-              <th scope="col" className="text-right">{copy.credits}</th>
-              <th scope="col" className="text-right">{copy.remaining}</th>
+              <th scope="col">{copy.obligation}</th>
+              <th scope="col">{copy.paid}</th>
+              <th scope="col">{copy.credits}</th>
+              <th scope="col">{copy.remaining}</th>
             </tr>
           </thead>
           <tbody>
             {summary.rows.map((row) => (
               <tr key={row.key}>
                 <td>{lang === 'he' ? row.labelHe : row.labelEn}</td>
-                <td className="text-right"><MoneyValue amount={row.obligationEur} size="sm" /></td>
-                <td className="text-right"><MoneyValue amount={row.paidEur} size="sm" /></td>
-                <td className="text-right"><MoneyValue amount={row.creditEur} size="sm" /></td>
-                <td className="text-right"><MoneyValue amount={row.remainingEur} size="sm" /></td>
+                <td><MoneyValue amount={row.obligationEur} size="sm" /></td>
+                <td><MoneyValue amount={row.paidEur} size="sm" /></td>
+                <td><MoneyValue amount={row.creditEur} size="sm" /></td>
+                <td><MoneyValue amount={row.remainingEur} size="sm" /></td>
               </tr>
             ))}
           </tbody>
         </table>
-        <div className="avi-fin-ops" style={{ marginTop: '0.55rem' }}>
+        <div className="avi-fin-ops avi-settlement-summary-row" style={{ marginTop: '0.55rem' }}>
           <div className="avi-fin-ops-cell">
             <div className="avi-fin-ops-value"><MoneyValue amount={summary.obligationTotalEur} /></div>
             <div className="avi-fin-ops-label">{copy.obligation}</div>
