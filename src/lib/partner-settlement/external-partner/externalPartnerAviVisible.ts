@@ -286,7 +286,7 @@ export function projectAviVisiblePayments(
   payments: readonly AviReportPartnerPayment[],
 ): AviReportPartnerPayment[] {
   return payments
-    .map((p) => ({
+    .map((p): AviReportPartnerPayment => ({
       id: p.id,
       date: p.date,
       amountEur: p.amountEur,
