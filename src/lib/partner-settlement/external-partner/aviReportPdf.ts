@@ -12,6 +12,7 @@
 import puppeteer from 'puppeteer-core'
 import { AVI_REPORT_COPY, type AviReportLang } from '@/components/finance/aviReportCopy'
 import { formatAviFullDate } from '@/components/finance/aviReportCopy'
+import { resolveAviPdfLaunchOptions } from './aviPdfChrome'
 
 export const AVI_PDF_CHROME_FORBIDDEN = [
   'localhost',
@@ -25,14 +26,6 @@ export const AVI_PDF_CHROME_DATE_HEADER_RE =
 
 /** Chrome default page chrome like "1/9" (not "Page 1 of 9" / "עמוד 1 מתוך 9"). */
 export const AVI_PDF_CHROME_SLASH_PAGE_RE = /(?:^|\s)\d{1,2}\/\d{1,2}(?:\s|$)/
-
-function chromePath(): string {
-  return (
-    process.env.CHROME_PATH ||
-    process.env.PUPPETEER_EXECUTABLE_PATH ||
-    '/usr/bin/google-chrome'
-  )
-}
 
 function footerTemplate(lang: AviReportLang, generatedLabel: string): string {
   const copy = AVI_REPORT_COPY[lang]
@@ -68,10 +61,13 @@ export async function renderAviPartnerReportPdf(
 ): Promise<Buffer> {
   const lang = opts.lang
   const generatedLabel = formatAviFullDate(new Date().toISOString().slice(0, 10), lang)
+  const launch = await resolveAviPdfLaunchOptions({
+    explicitExecutablePath: opts.chromeExecutablePath,
+  })
   const browser = await puppeteer.launch({
-    executablePath: opts.chromeExecutablePath ?? chromePath(),
-    headless: true,
-    args: ['--no-sandbox', '--disable-gpu', '--font-render-hinting=none'],
+    executablePath: launch.executablePath,
+    headless: launch.headless,
+    args: [...launch.args],
   })
   try {
     const page = await browser.newPage()

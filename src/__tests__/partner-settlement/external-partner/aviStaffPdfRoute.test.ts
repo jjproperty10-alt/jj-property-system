@@ -90,4 +90,31 @@ describe('GET /finance/external-partner/avi/pdf', () => {
     expect(opts.cookieHeader).toBe('sb-access-token=abc')
     expect(opts.langAlreadyApplied).toBe(true)
   })
+
+  it('PDF launch failure returns a generic 500 without leaking cookies or paths', async () => {
+    authMock.mockResolvedValue({ ok: true, staffRole: 'ceo', userId: 'u1', isActive: true })
+    buildMock.mockResolvedValue({ status: 'certified' })
+    renderPdfMock.mockRejectedValueOnce(
+      new Error('Failed to launch /usr/bin/google-chrome cookie=sb-access-token=abc'),
+    )
+    const res = await GET(req('en', 'sb-access-token=abc'))
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body).toEqual({ error: 'avi_staff_pdf_export_failed' })
+    expect(JSON.stringify(body)).not.toMatch(/google-chrome|sb-access-token|cookie/i)
+  })
+
+  it('staff PDF route stays Node.js runtime and authentication-gated', () => {
+    const fs = require('fs') as typeof import('fs')
+    const path = require('path') as typeof import('path')
+    const src = fs.readFileSync(
+      path.join(process.cwd(), 'src/app/(app)/finance/external-partner/avi/pdf/route.ts'),
+      'utf8',
+    )
+    expect(src).toContain("export const runtime = 'nodejs'")
+    expect(src).not.toContain("runtime = 'edge'")
+    expect(src).toContain('authenticateStatementUser')
+    expect(src).toContain('cookieHeader: req.headers.get(\'cookie\')')
+    expect(src).not.toMatch(/console\.(log|info|debug|warn|error)/)
+  })
 })

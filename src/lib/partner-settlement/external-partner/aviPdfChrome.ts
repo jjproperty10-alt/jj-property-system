@@ -1,0 +1,163 @@
+/**
+ * Resolve a Chromium executable for Avi partner-report PDF export.
+ * Presentation/runtime only — no settlement math.
+ *
+ * Selection order:
+ * 1. Explicit caller path
+ * 2. CHROME_PATH
+ * 3. PUPPETEER_EXECUTABLE_PATH
+ * 4. Vercel / AWS serverless → @sparticuz/chromium
+ * 5. Existing local Linux Chrome/Chromium (exists-checked)
+ *
+ * Fail closed if none exist. Never include env values, cookies, tokens,
+ * or filesystem paths in the thrown error message.
+ */
+import { existsSync } from 'fs'
+
+export const AVI_PDF_CHROME_UNAVAILABLE = 'Avi PDF Chromium executable is unavailable'
+
+export class AviPdfChromeUnavailableError extends Error {
+  constructor() {
+    super(AVI_PDF_CHROME_UNAVAILABLE)
+    this.name = 'AviPdfChromeUnavailableError'
+  }
+}
+
+/** Existing local Linux binaries — used only after existsSync. */
+export const AVI_PDF_LOCAL_LINUX_CHROME_CANDIDATES = [
+  '/usr/bin/google-chrome',
+  '/usr/bin/google-chrome-stable',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
+] as const
+
+export const AVI_PDF_BASE_CHROME_ARGS = [
+  '--no-sandbox',
+  '--disable-gpu',
+  '--font-render-hinting=none',
+] as const
+
+export type AviPdfLaunchOptions = {
+  readonly executablePath: string
+  readonly args: readonly string[]
+  readonly headless: boolean | 'shell'
+}
+
+export type SparticuzChromiumLike = {
+  readonly args: readonly string[]
+  executablePath: () => Promise<string>
+  readonly headless?: boolean | 'shell'
+}
+
+export type AviPdfChromeEnv = {
+  readonly [key: string]: string | undefined
+}
+
+export type AviPdfChromeProbe = {
+  readonly env?: AviPdfChromeEnv
+  readonly explicitExecutablePath?: string | null
+  readonly exists?: (candidatePath: string) => boolean
+  readonly loadChromium?: () => Promise<SparticuzChromiumLike>
+}
+
+function configuredPath(value: string | undefined): string | null {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : null
+}
+
+export function isServerlessPdfRuntime(env: AviPdfChromeEnv): boolean {
+  return Boolean(env.VERCEL || env.AWS_LAMBDA_FUNCTION_NAME || env.AWS_EXECUTION_ENV)
+}
+
+function mergeChromeArgs(
+  serverlessArgs: readonly string[],
+  extra: readonly string[],
+): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const arg of [...serverlessArgs, ...extra]) {
+    if (!seen.has(arg)) {
+      seen.add(arg)
+      out.push(arg)
+    }
+  }
+  return out
+}
+
+async function defaultLoadChromium(): Promise<SparticuzChromiumLike> {
+  const mod = (await import('@sparticuz/chromium')) as unknown as {
+    default?: SparticuzChromiumLike
+  } & SparticuzChromiumLike
+  return mod.default ?? mod
+}
+
+function firstExistingLinuxChrome(
+  exists: (candidatePath: string) => boolean,
+): string | null {
+  for (const candidate of AVI_PDF_LOCAL_LINUX_CHROME_CANDIDATES) {
+    if (exists(candidate)) return candidate
+  }
+  return null
+}
+
+/**
+ * Resolve launch options for puppeteer-core. Probe hooks are for tests only.
+ */
+export async function resolveAviPdfLaunchOptions(
+  probe: AviPdfChromeProbe = {},
+): Promise<AviPdfLaunchOptions> {
+  const env = probe.env ?? process.env
+  const exists = probe.exists ?? existsSync
+
+  const explicit = configuredPath(probe.explicitExecutablePath ?? undefined)
+  if (explicit) {
+    return {
+      executablePath: explicit,
+      args: [...AVI_PDF_BASE_CHROME_ARGS],
+      headless: true,
+    }
+  }
+
+  const chromePath = configuredPath(env.CHROME_PATH)
+  if (chromePath) {
+    return {
+      executablePath: chromePath,
+      args: [...AVI_PDF_BASE_CHROME_ARGS],
+      headless: true,
+    }
+  }
+
+  const puppeteerPath = configuredPath(env.PUPPETEER_EXECUTABLE_PATH)
+  if (puppeteerPath) {
+    return {
+      executablePath: puppeteerPath,
+      args: [...AVI_PDF_BASE_CHROME_ARGS],
+      headless: true,
+    }
+  }
+
+  if (isServerlessPdfRuntime(env)) {
+    const loadChromium = probe.loadChromium ?? defaultLoadChromium
+    const chromium = await loadChromium()
+    const executablePath = await chromium.executablePath()
+    if (!configuredPath(executablePath)) {
+      throw new AviPdfChromeUnavailableError()
+    }
+    return {
+      executablePath,
+      args: mergeChromeArgs(chromium.args, AVI_PDF_BASE_CHROME_ARGS),
+      headless: chromium.headless ?? true,
+    }
+  }
+
+  const localLinux = firstExistingLinuxChrome(exists)
+  if (localLinux) {
+    return {
+      executablePath: localLinux,
+      args: [...AVI_PDF_BASE_CHROME_ARGS],
+      headless: true,
+    }
+  }
+
+  throw new AviPdfChromeUnavailableError()
+}

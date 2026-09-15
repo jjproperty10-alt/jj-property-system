@@ -15,6 +15,7 @@ import type { AviReportLang } from '@/components/finance/aviReportCopy'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
+export const maxDuration = 60
 
 function langFrom(req: Request): AviReportLang {
   const url = new URL(req.url)
@@ -46,10 +47,9 @@ export async function GET(req: Request) {
         'X-Avi-Pdf-Export': 'jj-sendable',
       },
     })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'pdf_export_failed'
+  } catch {
     return NextResponse.json(
-      { error: 'avi_pdf_export_failed', message },
+      { error: 'avi_pdf_export_failed' },
       { status: 500 },
     )
   }
