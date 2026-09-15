@@ -8,8 +8,9 @@
  * - Pool vendor payments never charge Avi again (including Management €480 on 2026-03-14).
  * - Internet 2026-08-10 €30 and Electricity 2026-08-11 €181.79 are Airbnb, not Management.
  * - From 1 Feb 2025, monthly Pool Service is a partner charge of €120 (Avi €60)
- *   even if the vendor has not yet been paid. Jan–Sep 2026 invoices are approved
- *   business charges not yet on the Production ledger. They are not `active`
+ *   even if the vendor has not yet been paid. Jan–Aug 2026 invoices are approved
+ *   business charges not yet on the Production ledger (Avi external report ends
+ *   2026-08-29; no September 2026 presentation overlay). They are not `active`
  *   ledger rows; they are `approved_business_overlay`. Dedup is by calendar
  *   month so a later Production insert is not counted twice.
  */
@@ -39,7 +40,6 @@ export const AVI_PENDING_POOL_MONTHS: readonly string[] = Object.freeze([
   '2026-06-01',
   '2026-07-01',
   '2026-08-01',
-  '2026-09-01',
 ])
 
 export function pendingPoolInvoiceId(isoDate: string): string {

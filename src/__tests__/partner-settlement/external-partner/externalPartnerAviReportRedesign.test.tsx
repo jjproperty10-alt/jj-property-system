@@ -253,13 +253,14 @@ describe('Avi redesign — month column print-safe', () => {
 })
 
 describe('Avi redesign — appendix split', () => {
-  it('keeps the 180-row dump out of the main report', () => {
+  it('keeps the expense dump out of the main report', () => {
     expect(html).not.toContain('data-testid="avi-expense-table"')
     expect(html).toContain('data-testid="avi-expense-appendix-link"')
     expect(html).not.toContain('180 certified')
+    expect(html).not.toContain('179 certified')
   })
 
-  it('appendix remains separate and still renders certified expense rows', () => {
+  it('appendix remains separate and still renders certified expense rows without September pool', () => {
     const appendix = renderToStaticMarkup(
       <AviCertifiedExpenseAppendix
         expenses={report.partnerExpenses}
@@ -270,7 +271,9 @@ describe('Avi redesign — appendix split', () => {
       />,
     )
     expect(appendix).toContain('data-testid="avi-expense-table"')
-    expect(report.partnerExpenses).toHaveLength(180)
+    expect(report.partnerExpenses).toHaveLength(179)
+    expect(report.partnerExpenses.some((e) => e.id === 'pending-ledger:pool-2026-09')).toBe(false)
+    expect(appendix).not.toContain('pending-ledger:pool-2026-09')
   })
 })
 

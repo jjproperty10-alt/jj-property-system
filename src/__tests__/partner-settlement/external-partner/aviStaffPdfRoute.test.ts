@@ -82,6 +82,8 @@ describe('GET /finance/external-partner/avi/pdf', () => {
     const res = await GET(req('he', 'sb-access-token=abc'))
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toBe('application/pdf')
+    expect(res.headers.get('cache-control')).toBe('private, no-store')
+    expect(res.headers.get('content-disposition')).toContain('avi-partner-report-he.pdf')
     expect(res.headers.get('x-avi-pdf-export')).toBe('jj-sendable-staff')
     expect(renderPdfMock).toHaveBeenCalledTimes(1)
     const opts = renderPdfMock.mock.calls[0][0]

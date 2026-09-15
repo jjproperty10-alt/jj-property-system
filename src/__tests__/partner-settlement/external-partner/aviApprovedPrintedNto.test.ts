@@ -449,11 +449,13 @@ describe('production Avi config is locked to the approved printed-NTO settlement
     const equipment = rows.find((r) => r.id === '4c40f610-c173-4027-b513-cffe12fcd288')!
     expect(equipment.subcategory).toBe('Pool Equipment')
     const overlayPool = rows.filter((r) => r.id.startsWith('pending-ledger:pool-2026-'))
-    expect(overlayPool).toHaveLength(9)
+    expect(overlayPool).toHaveLength(8)
     expect(overlayPool.every((r) => r.reviewStatus === AVI_APPROVED_BUSINESS_OVERLAY)).toBe(true)
     expect(overlayPool.every((r) => r.overlayKind === AVI_APPROVED_BUSINESS_OVERLAY)).toBe(true)
     expect(overlayPool.every((r) => r.reviewStatus !== 'active')).toBe(true)
     expect(overlayPool.every((r) => r.clientCharge === AVI_MONTHLY_POOL_CHARGE_EUR)).toBe(true)
+    expect(overlayPool.some((r) => r.id === 'pending-ledger:pool-2026-09')).toBe(false)
+    expect(overlayPool.some((r) => r.id === 'pending-ledger:pool-2026-08')).toBe(true)
   })
 
   it('dedups overlay Pool Service months against later Production billing-only rows', () => {
@@ -503,7 +505,7 @@ describe('production Avi config is locked to the approved printed-NTO settlement
     ])
     expect(rows.some((r) => r.id === pendingPoolInvoiceId('2026-01-01'))).toBe(false)
     expect(rows.some((r) => r.id === pendingPoolInvoiceId('2026-04-01'))).toBe(true)
-    expect(rows.filter((r) => r.id.startsWith('pending-ledger:pool-'))).toHaveLength(8)
+    expect(rows.filter((r) => r.id.startsWith('pending-ledger:pool-'))).toHaveLength(7)
     const equipment = rows.find((r) => r.id === '4c40f610-c173-4027-b513-cffe12fcd288')!
     expect(equipment.subcategory).toBe('Pool Equipment')
     expect(equipment.clientCharge).toBe(450)

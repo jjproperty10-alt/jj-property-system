@@ -161,15 +161,15 @@ describe('Avi print view — canonical 202-row certified compose', () => {
     }
   })
 
-  it('expenses remain exactly 180 rows and reconcile to €99,002.00 / €49,501.00', () => {
-    expect(report.partnerExpenses).toHaveLength(180)
-    expect(report.visibleExpenseTotals.rowCount).toBe(180)
+  it('expenses remain exactly 179 rows and reconcile to €99,002.00 / €49,501.00', () => {
+    expect(report.partnerExpenses).toHaveLength(179)
+    expect(report.visibleExpenseTotals.rowCount).toBe(179)
     expect(report.visibleExpenseTotals.totalChargeEur).toBe(99002)
     expect(report.visibleExpenseTotals.aviShareEur).toBe(49501)
     expect(report.expenseCompleteness.complete).toBe(true)
     expect(html).not.toContain('data-testid="avi-expense-completeness"')
     expect(html).not.toContain('No certified expenses')
-    expect(html).not.toContain('180 certified')
+    expect(html).not.toContain('179 certified')
     expect(html).toContain('data-testid="avi-expense-appendix-link"')
     expect(html).not.toContain('data-testid="avi-expense-table"')
     expect(html).toContain('99,002.00')
@@ -237,11 +237,15 @@ describe('Avi print view — canonical 202-row certified compose', () => {
 
     const overlayIds = AVI_PENDING_POOL_MONTHS.map((month) => pendingPoolInvoiceId(month))
     const overlayRows = overlayIds.map((id) => byId.get(id)!)
-    expect(overlayRows).toHaveLength(9)
-    expect(new Set(overlayRows.map((e) => e.id)).size).toBe(9)
+    expect(AVI_PENDING_POOL_MONTHS).not.toContain('2026-09-01')
+    expect(byId.has('pending-ledger:pool-2026-09')).toBe(false)
+    expect(overlayRows).toHaveLength(8)
+    expect(new Set(overlayRows.map((e) => e.id)).size).toBe(8)
     expect(overlayRows.every((e) => e.subcategory === 'Pool Service')).toBe(true)
     expect(overlayRows.every((e) => e.amountEur === AVI_MONTHLY_POOL_CHARGE_EUR)).toBe(true)
     expect(overlayRows.every((e) => e.aviShareEur === AVI_MONTHLY_POOL_AVI_SHARE_EUR)).toBe(true)
+    expect(overlayIds[overlayIds.length - 1]).toBe('pending-ledger:pool-2026-08')
+    expect(html).not.toMatch(/2026-09|September 2026|ספטמבר 2026/)
 
     // Line-level expense dump lives in the optional appendix, not the main PDF body.
     expect(html).not.toContain('data-testid="avi-expense-department-airbnb"')

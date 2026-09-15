@@ -61,7 +61,7 @@ export async function GET(req: Request) {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${filename}"`,
-        'Cache-Control': 'no-store',
+        'Cache-Control': 'private, no-store',
         'X-Avi-Pdf-Export': 'jj-sendable-staff',
       },
     })

@@ -162,7 +162,7 @@ describe('projectAviVisibleExpenses — 202-row certified artifact', () => {
   })
 
   it('shows the partner-chargeable work rows after hiding the contract, duplicate tax, and superseded supplies', () => {
-    expect(expenses).toHaveLength(180)
+    expect(expenses).toHaveLength(179)
     expect(expenses.some((e) => e.id === RENOVATION_CONTRACT_ID)).toBe(false)
     expect(expenses.some((e) => e.id === TX.purchaseExpAnastasia2400)).toBe(false)
     expect(expenses.some((e) => e.id === AVI_INTERNET_SPLIT_ROW_ID)).toBe(false)
@@ -195,21 +195,22 @@ describe('projectAviVisibleExpenses — 202-row certified artifact', () => {
     expect(gardener?.subcategory).toBe('Garden Maintenance')
     expect(gardener?.amountEur).toBe(280)
     expect(gardener?.aviShareEur).toBe(140)
-    expect(sumLayer('airbnb')).toBe(13672.86)
+    expect(sumLayer('airbnb')).toBe(13552.86)
     const billedPool = expenses.filter(
       (e) => e.category === 'Airbnb' && e.subcategory === 'Pool Service',
     )
-    expect(billedPool).toHaveLength(20)
+    expect(billedPool).toHaveLength(19)
     expect(billedPool.some((e) => e.id === TX.airbnbMarkup200)).toBe(false)
     const equipment = expenses.find((e) => e.id === TX.airbnbMarkup200)
     expect(equipment?.subcategory).toBe('Pool Equipment')
     expect(equipment?.amountEur).toBe(450)
     expect(equipment?.aviShareEur).toBe(225)
     const overlayPool = expenses.filter((e) => e.id.startsWith('pending-ledger:pool-2026-'))
-    expect(overlayPool).toHaveLength(9)
+    expect(overlayPool).toHaveLength(8)
     expect(overlayPool.every((e) => e.amountEur === 120)).toBe(true)
     expect(overlayPool.every((e) => e.aviShareEur === 60)).toBe(true)
-    expect(new Set(overlayPool.map((e) => e.id)).size).toBe(9)
+    expect(new Set(overlayPool.map((e) => e.id)).size).toBe(8)
+    expect(overlayPool.some((e) => e.id === 'pending-ledger:pool-2026-09')).toBe(false)
     const internet = expenses.find((e) => e.id === TX.mgmtInternet30)
     expect(internet?.layer).toBe('airbnb')
     expect(internet?.amountEur).toBe(30)
@@ -222,7 +223,7 @@ describe('projectAviVisibleExpenses — 202-row certified artifact', () => {
 
   it('totals by layer match the approved partner obligation', () => {
     expect(sumLayer('renovation')).toBe(72214.14)
-    expect(sumLayer('airbnb')).toBe(13672.86)
+    expect(sumLayer('airbnb')).toBe(13552.86)
     expect(sumLayer('management')).toBe(0)
     expect(sumLayer('deal_expense')).toBe(11900)
     expect(expenses.filter((e) => e.layer === 'management')).toHaveLength(0)
@@ -232,19 +233,19 @@ describe('projectAviVisibleExpenses — 202-row certified artifact', () => {
     expect(expenses.find((e) => e.id === TX.mgmtElectricity181)?.layer).toBe('airbnb')
   })
 
-  it('visible approved charges total 97787.00 and Avi 50% share 48893.50', () => {
+  it('visible approved charges total 97667.00 and Avi 50% share 48833.50', () => {
     const total = roundEur(expenses.reduce((s, e) => s + (e.amountEur ?? 0), 0))
-    expect(total).toBe(97787)
-    expect(roundEur(total * 0.5)).toBe(48893.5)
+    expect(total).toBe(97667)
+    expect(roundEur(total * 0.5)).toBe(48833.5)
     const sumShareCents = (layer: string) =>
       expenses
         .filter((e) => e.layer === layer)
         .reduce((s, e) => s + Math.round((e.aviShareEur ?? 0) * 100), 0)
     expect(sumShareCents('renovation')).toBe(3610707)
-    expect(sumShareCents('airbnb')).toBe(683643)
+    expect(sumShareCents('airbnb')).toBe(677643)
     expect(sumShareCents('management')).toBe(0)
     expect(sumShareCents('deal_expense')).toBe(595000)
-    expect(expenses.reduce((s, e) => s + Math.round((e.aviShareEur ?? 0) * 100), 0)).toBe(4889350)
+    expect(expenses.reduce((s, e) => s + Math.round((e.aviShareEur ?? 0) * 100), 0)).toBe(4883350)
   })
 
   it('replaces amount with client_charge once and never adds them', () => {
