@@ -593,6 +593,12 @@ export const AVI_REPORT_PRINT_CSS = `
   text-align: center !important;
 }
 
+.avi-ownership-list {
+  border: 1px solid ${C.grayBorder};
+  border-radius: 4px;
+  overflow: hidden;
+}
+
 .avi-ownership-row {
   display: flex;
   justify-content: space-between;

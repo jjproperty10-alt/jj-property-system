@@ -213,7 +213,7 @@ describe('Avi redesign — settlement boxes', () => {
         ? html.indexOf('data-testid="avi-expense-appendix-link"')
         : html.length,
     )
-    const ops = block.slice(block.indexOf('class="avi-fin-ops"'))
+    const ops = block.slice(block.indexOf('avi-fin-ops'))
     expect(ops.indexOf('avi-fin-ops-value')).toBeGreaterThan(-1)
     expect(ops.indexOf('avi-fin-ops-value')).toBeLessThan(ops.indexOf('avi-fin-ops-label'))
     expect(block).toContain('>Obligation<')
