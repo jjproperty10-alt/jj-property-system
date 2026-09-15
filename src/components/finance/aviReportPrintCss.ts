@@ -5,8 +5,8 @@
  * quiet uppercase table headers, gray total rows, document footer.
  * Layout only — no financial formulas.
  *
- * Partner-sendable PDFs: `renderAviPartnerReportPdf` (empty Chrome header +
- * JJ footer Page N of M). Interactive window.print() is not the send path.
+ * Partner-sendable PDFs: `AviPartnerReportPdf` via @react-pdf/renderer
+ * (JJ footer + page numbers). Interactive window.print() is not the send path.
  */
 import { AVI_REPORT_COLORS as C } from '@/components/finance/aviReportTokens'
 

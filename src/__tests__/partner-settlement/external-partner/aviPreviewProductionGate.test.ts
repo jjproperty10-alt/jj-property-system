@@ -23,8 +23,17 @@ jest.mock('@/components/ds', () => ({
   PageShell: (props: { children: unknown }) => props.children,
 }))
 
-jest.mock('@/lib/partner-settlement/external-partner/aviReportPdf', () => ({
-  renderAviPartnerReportPdf: jest.fn(async () => Buffer.from('%PDF')),
+jest.mock('@/lib/pdf/AviPartnerReportPdf', () => ({
+  AviPartnerReportPdf: 'AviPartnerReportPdf',
+}))
+
+jest.mock('@/lib/pdf/registerJjPdfFonts', () => ({
+  registerJjPdfFonts: jest.fn(),
+}))
+
+jest.mock('@react-pdf/renderer', () => ({
+  renderToBuffer: jest.fn(async () => Buffer.from('%PDF')),
+  Font: { register: jest.fn() },
 }))
 
 jest.mock('next/navigation', () => ({

@@ -2,21 +2,20 @@
  * @page /finance/external-partner/avi/pdf
  * Staff-authenticated partner-sendable A4 PDF (?lang=he|en).
  *
- * Fetches staff /print HTML in-process (Cookie + optional Vercel bypass), then
- * renders via headless Chromium setContent — avoids a second protected Chromium
- * navigation when possible. Fail-closed auth. No settlement math.
+ * Same certified DTO as the staff report screen. Renders via @react-pdf/renderer
+ * (no Chromium). Fail-closed: no session → login; non-staff / inactive /
+ * non-certified → 404.
  */
 import 'server-only'
+import React from 'react'
 import { NextResponse } from 'next/server'
+import { renderToBuffer } from '@react-pdf/renderer'
 import { authenticateStatementUser } from '@/lib/statements/statementAuthService'
 import { buildAviExternalPartnerReport } from '@/lib/partner-settlement/external-partner/buildAviExternalPartnerReport'
-import {
-  renderAviPartnerReportPdf,
-  type AviReportPdfOptions,
-} from '@/lib/partner-settlement/external-partner/aviReportPdf'
-import { fetchAviStaffPrintHtml } from '@/lib/partner-settlement/external-partner/aviStaffPrintFetch'
 import { sanitizeAviReportClientPayload } from '@/components/finance/aviReportPresentation'
 import type { AviReportLang } from '@/components/finance/aviReportCopy'
+import { AviPartnerReportPdf } from '@/lib/pdf/AviPartnerReportPdf'
+import { registerJjPdfFonts } from '@/lib/pdf/registerJjPdfFonts'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -25,19 +24,6 @@ export const maxDuration = 60
 function langFrom(req: Request): AviReportLang {
   const url = new URL(req.url)
   return url.searchParams.get('lang') === 'he' ? 'he' : 'en'
-}
-
-function failPdf(stage: string) {
-  return NextResponse.json(
-    { error: 'avi_staff_pdf_export_failed' },
-    {
-      status: 500,
-      headers: {
-        'Cache-Control': 'private, no-store',
-        'X-Avi-Pdf-Fail-Stage': stage,
-      },
-    },
-  )
 }
 
 export async function GET(req: Request) {
@@ -58,38 +44,32 @@ export async function GET(req: Request) {
   }
 
   const lang = langFrom(req)
-  const origin = new URL(req.url).origin
-  const printUrl = `${origin}/finance/external-partner/avi/print?lang=${lang}`
-  const cookieHeader = req.headers.get('cookie')
-
-  const fetched = await fetchAviStaffPrintHtml({ printUrl, cookieHeader })
-  if (!fetched.ok) {
-    return failPdf(fetched.stage)
-  }
 
   try {
-    const opts: AviReportPdfOptions = {
-      lang,
-      reportUrl: printUrl,
-      htmlContent: fetched.html,
-      cookieHeader,
-      langAlreadyApplied: true,
-    }
-    const pdf = await renderAviPartnerReportPdf(opts)
+    registerJjPdfFonts()
+    const element = React.createElement(AviPartnerReportPdf, { report, lang })
+    const buffer = await renderToBuffer(
+      element as Parameters<typeof renderToBuffer>[0],
+    )
     const filename =
       lang === 'he' ? 'avi-partner-report-he.pdf' : 'avi-partner-report-en.pdf'
-    return new NextResponse(new Uint8Array(pdf), {
+    return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${filename}"`,
         'Cache-Control': 'private, no-store',
         'X-Avi-Pdf-Export': 'jj-sendable-staff',
+        'X-Avi-Pdf-Engine': 'react-pdf',
       },
     })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : ''
-    const stageMatch = /^avi_pdf_stage:(.+)$/.exec(message)
-    return failPdf(stageMatch?.[1] ?? 'chromium_render')
+  } catch {
+    return NextResponse.json(
+      { error: 'avi_staff_pdf_export_failed' },
+      {
+        status: 500,
+        headers: { 'Cache-Control': 'private, no-store' },
+      },
+    )
   }
 }

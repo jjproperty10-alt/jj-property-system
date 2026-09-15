@@ -1,17 +1,18 @@
 /**
  * @page /preview/avi-certified-compose/pdf
- * Partner-sendable A4 PDF (no Chrome headers/footers, JJ page numbers).
+ * Partner-sendable A4 PDF from the certified compose fixture (@react-pdf).
  * Non-production + unconfigured Supabase only. Always 404 in Production.
  * Staff Production PDF: /finance/external-partner/avi/pdf
  */
 import 'server-only'
+import React from 'react'
 import { NextResponse } from 'next/server'
+import { renderToBuffer } from '@react-pdf/renderer'
 import { isAviCertifiedComposePreviewAllowed } from '@/lib/partner-settlement/external-partner/aviComposePreviewGate'
-import {
-  renderAviPartnerReportPdf,
-  type AviReportPdfOptions,
-} from '@/lib/partner-settlement/external-partner/aviReportPdf'
+import { composeAviCertifiedCanonicalFixtureReport } from '@/lib/partner-settlement/external-partner/aviCanonicalComposeFixture'
 import type { AviReportLang } from '@/components/finance/aviReportCopy'
+import { AviPartnerReportPdf } from '@/lib/pdf/AviPartnerReportPdf'
+import { registerJjPdfFonts } from '@/lib/pdf/registerJjPdfFonts'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -28,29 +29,30 @@ export async function GET(req: Request) {
   }
 
   const lang = langFrom(req)
-  const origin = new URL(req.url).origin
-  const reportUrl = `${origin}/preview/avi-certified-compose`
+  const report = composeAviCertifiedCanonicalFixtureReport()
+  if (report.status !== 'certified') {
+    return new NextResponse('Not Found', { status: 404 })
+  }
 
   try {
-    const opts: AviReportPdfOptions = { lang, reportUrl }
-    const pdf = await renderAviPartnerReportPdf(opts)
+    registerJjPdfFonts()
+    const element = React.createElement(AviPartnerReportPdf, { report, lang })
+    const buffer = await renderToBuffer(
+      element as Parameters<typeof renderToBuffer>[0],
+    )
     const filename =
-      lang === 'he'
-        ? 'avi-partner-report-he.pdf'
-        : 'avi-partner-report-en.pdf'
-    return new NextResponse(new Uint8Array(pdf), {
+      lang === 'he' ? 'avi-partner-report-he.pdf' : 'avi-partner-report-en.pdf'
+    return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${filename}"`,
         'Cache-Control': 'private, no-store',
         'X-Avi-Pdf-Export': 'jj-sendable',
+        'X-Avi-Pdf-Engine': 'react-pdf',
       },
     })
   } catch {
-    return NextResponse.json(
-      { error: 'avi_pdf_export_failed' },
-      { status: 500 },
-    )
+    return NextResponse.json({ error: 'avi_pdf_export_failed' }, { status: 500 })
   }
 }
