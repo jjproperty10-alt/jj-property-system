@@ -127,15 +127,27 @@ export async function renderAviPartnerReportPdf(
 ): Promise<Buffer> {
   const lang = opts.lang
   const generatedLabel = formatAviFullDate(new Date().toISOString().slice(0, 10), lang)
-  const launch = await resolveAviPdfLaunchOptions({
-    explicitExecutablePath: opts.chromeExecutablePath,
-    env: opts.env,
-  })
-  const browser = await puppeteer.launch({
-    executablePath: launch.executablePath,
-    headless: launch.headless,
-    args: [...launch.args],
-  })
+  let launch
+  try {
+    launch = await resolveAviPdfLaunchOptions({
+      explicitExecutablePath: opts.chromeExecutablePath,
+      env: opts.env,
+    })
+  } catch {
+    throw new Error('avi_pdf_stage:chromium_resolve')
+  }
+
+  let browser
+  try {
+    browser = await puppeteer.launch({
+      executablePath: launch.executablePath,
+      headless: launch.headless,
+      args: [...launch.args],
+    })
+  } catch {
+    throw new Error('avi_pdf_stage:chromium_launch')
+  }
+
   try {
     const page = await browser.newPage()
     await page.setViewport({ width: 1280, height: 1600, deviceScaleFactor: 1 })
@@ -159,18 +171,19 @@ export async function renderAviPartnerReportPdf(
         })),
       )
     }
-    if (opts.htmlContent) {
-      // Optional in-process HTML (preview/tests). Prefer goto for staff PDF.
-      await page.setContent(opts.htmlContent, {
-        waitUntil: 'domcontentloaded',
-        timeout: 60_000,
-      })
-    } else {
-      // Prefer domcontentloaded: Next.js preview pages rarely reach networkidle0,
-      // and Deployment Protection HTML would hang forever on networkidle.
-      await page.goto(opts.reportUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+    try {
+      if (opts.htmlContent) {
+        await page.setContent(opts.htmlContent, {
+          waitUntil: 'domcontentloaded',
+          timeout: 60_000,
+        })
+      } else {
+        await page.goto(opts.reportUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+      }
+      await page.waitForSelector('[data-testid="avi-report-certified"]', { timeout: 60_000 })
+    } catch {
+      throw new Error('avi_pdf_stage:chromium_content')
     }
-    await page.waitForSelector('[data-testid="avi-report-certified"]', { timeout: 60_000 })
 
     if (lang === 'he' && !opts.langAlreadyApplied) {
       await page.evaluate(() => {
@@ -187,23 +200,24 @@ export async function renderAviPartnerReportPdf(
       await new Promise((r) => setTimeout(r, 400))
     }
 
-    // Neutral title — never leave a preview/localhost hint in the document title
-    // even if an operator later re-prints with Chrome headers enabled.
     await page.evaluate((title) => {
       document.title = title
     }, AVI_REPORT_COPY[lang].reportTitle)
 
-    const pdf = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      preferCSSPageSize: false,
-      // Empty header = no Chrome date/title/URL band.
-      displayHeaderFooter: true,
-      headerTemplate: '<div></div>',
-      footerTemplate: footerTemplate(lang, generatedLabel),
-      margin: { top: '12mm', bottom: '16mm', left: '10mm', right: '10mm' },
-    })
-    return Buffer.from(pdf)
+    try {
+      const pdf = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        preferCSSPageSize: false,
+        displayHeaderFooter: true,
+        headerTemplate: '<div></div>',
+        footerTemplate: footerTemplate(lang, generatedLabel),
+        margin: { top: '12mm', bottom: '16mm', left: '10mm', right: '10mm' },
+      })
+      return Buffer.from(pdf)
+    } catch {
+      throw new Error('avi_pdf_stage:chromium_pdf')
+    }
   } finally {
     await browser.close()
   }

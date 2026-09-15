@@ -10,9 +10,9 @@ import {
 import { AVI_CERTIFIED_NET_EUR } from '@/lib/partner-settlement/external-partner/aviCertifiedIdentity'
 
 describe('Avi PDF npm module resolution', () => {
-  it('resolves puppeteer-core and @sparticuz/chromium from installed dependencies', () => {
+  it('resolves puppeteer-core and @sparticuz/chromium-min from installed dependencies', () => {
     expect(() => require('puppeteer-core')).not.toThrow()
-    expect(() => require('@sparticuz/chromium')).not.toThrow()
+    expect(() => require('@sparticuz/chromium-min')).not.toThrow()
     const puppeteer = require('puppeteer-core') as { launch?: unknown }
     expect(typeof puppeteer.launch).toBe('function')
   })

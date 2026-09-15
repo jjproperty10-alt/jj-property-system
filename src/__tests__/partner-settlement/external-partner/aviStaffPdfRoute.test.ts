@@ -132,15 +132,13 @@ describe('GET /finance/external-partner/avi/pdf', () => {
     expect(renderPdfMock).not.toHaveBeenCalled()
   })
 
-  it('PDF launch failure returns chromium_render stage without leaking paths', async () => {
+  it('PDF launch failure returns chromium stage without leaking paths', async () => {
     authMock.mockResolvedValue({ ok: true, staffRole: 'ceo', userId: 'u1', isActive: true })
     buildMock.mockResolvedValue({ status: 'certified' })
-    renderPdfMock.mockRejectedValueOnce(
-      new Error('Failed to launch /usr/bin/google-chrome cookie=sb-access-token=abc'),
-    )
+    renderPdfMock.mockRejectedValueOnce(new Error('avi_pdf_stage:chromium_launch'))
     const res = await GET(req('en', 'sb-access-token=abc'))
     expect(res.status).toBe(500)
-    expect(res.headers.get('x-avi-pdf-fail-stage')).toBe('chromium_render')
+    expect(res.headers.get('x-avi-pdf-fail-stage')).toBe('chromium_launch')
     const body = (await res.json()) as Record<string, unknown>
     expect(body).toEqual({ error: 'avi_staff_pdf_export_failed' })
     expect(JSON.stringify(body)).not.toMatch(/google-chrome|sb-access-token|cookie/i)

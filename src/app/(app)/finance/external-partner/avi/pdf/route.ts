@@ -87,7 +87,9 @@ export async function GET(req: Request) {
         'X-Avi-Pdf-Export': 'jj-sendable-staff',
       },
     })
-  } catch {
-    return failPdf('chromium_render')
+  } catch (err) {
+    const message = err instanceof Error ? err.message : ''
+    const stageMatch = /^avi_pdf_stage:(.+)$/.exec(message)
+    return failPdf(stageMatch?.[1] ?? 'chromium_render')
   }
 }

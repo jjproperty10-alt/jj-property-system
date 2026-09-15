@@ -47,8 +47,11 @@ describe('resolveAviPdfLaunchOptions', () => {
     expect(launch.args).toEqual([...AVI_PDF_BASE_CHROME_ARGS])
   })
 
-  it('Vercel/serverless uses @sparticuz/chromium executablePath and args', async () => {
-    const executablePath = jest.fn(async () => '/var/task/chromium')
+  it('Vercel/serverless uses @sparticuz/chromium-min pack URL and args', async () => {
+    const executablePath = jest.fn(async (location?: string) => {
+      expect(location).toContain('chromium-v131.0.1-pack.tar')
+      return '/tmp/chromium'
+    })
     const launch = await resolveAviPdfLaunchOptions({
       env: { VERCEL: '1' },
       exists: () => false,
@@ -59,7 +62,7 @@ describe('resolveAviPdfLaunchOptions', () => {
       }),
     })
     expect(executablePath).toHaveBeenCalledTimes(1)
-    expect(launch.executablePath).toBe('/var/task/chromium')
+    expect(launch.executablePath).toBe('/tmp/chromium')
     expect(launch.headless).toBe('shell')
     expect(launch.args).toEqual([
       '--single-process',
@@ -69,15 +72,19 @@ describe('resolveAviPdfLaunchOptions', () => {
     ])
   })
 
-  it('AWS Lambda serverless also uses @sparticuz/chromium', async () => {
+  it('AWS Lambda serverless also uses chromium-min pack URL', async () => {
+    const executablePath = jest.fn(async () => '/tmp/chromium')
     const launch = await resolveAviPdfLaunchOptions({
       env: { AWS_LAMBDA_FUNCTION_NAME: 'avi-pdf' },
       exists: () => false,
       loadChromium: async () => ({
         args: ['--hide-scrollbars'],
-        executablePath: async () => '/tmp/chromium',
+        executablePath,
       }),
     })
+    expect(executablePath).toHaveBeenCalledWith(
+      expect.stringContaining('chromium-v131.0.1-pack.tar'),
+    )
     expect(launch.executablePath).toBe('/tmp/chromium')
     expect(launch.args).toEqual(['--hide-scrollbars', ...AVI_PDF_BASE_CHROME_ARGS])
   })

@@ -6,7 +6,7 @@
  * 1. Explicit caller path
  * 2. CHROME_PATH
  * 3. PUPPETEER_EXECUTABLE_PATH
- * 4. Vercel / AWS serverless → @sparticuz/chromium
+ * 4. Vercel / AWS serverless → @sparticuz/chromium-min + remote pack
  * 5. Existing local Linux Chrome/Chromium (exists-checked)
  *
  * Fail closed if none exist. Never include env values, cookies, tokens,
@@ -15,6 +15,14 @@
 import { existsSync } from 'fs'
 
 export const AVI_PDF_CHROME_UNAVAILABLE = 'Avi PDF Chromium executable is unavailable'
+
+/**
+ * Matching pack for @sparticuz/chromium-min@131.0.1.
+ * Full @sparticuz/chromium binaries often exceed Vercel serverless size limits;
+ * chromium-min downloads this pack to /tmp at runtime.
+ */
+export const AVI_PDF_SPARTICUZ_PACK_URL =
+  'https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar'
 
 export class AviPdfChromeUnavailableError extends Error {
   constructor() {
@@ -45,8 +53,9 @@ export type AviPdfLaunchOptions = {
 
 export type SparticuzChromiumLike = {
   readonly args: readonly string[]
-  executablePath: () => Promise<string>
+  executablePath: (location?: string) => Promise<string>
   readonly headless?: boolean | 'shell'
+  setGraphicsMode?: boolean
 }
 
 export type AviPdfChromeEnv = {
@@ -58,6 +67,8 @@ export type AviPdfChromeProbe = {
   readonly explicitExecutablePath?: string | null
   readonly exists?: (candidatePath: string) => boolean
   readonly loadChromium?: () => Promise<SparticuzChromiumLike>
+  /** Test-only override for the remote chromium pack URL. */
+  readonly packUrl?: string
 }
 
 function configuredPath(value: string | undefined): string | null {
@@ -85,10 +96,13 @@ function mergeChromeArgs(
 }
 
 async function defaultLoadChromium(): Promise<SparticuzChromiumLike> {
-  const mod = (await import('@sparticuz/chromium')) as unknown as {
+  const mod = (await import('@sparticuz/chromium-min')) as unknown as {
     default?: SparticuzChromiumLike
   } & SparticuzChromiumLike
-  return mod.default ?? mod
+  const chromium = mod.default ?? mod
+  // Disable WebGL / swiftshader work where possible — PDF export does not need it.
+  chromium.setGraphicsMode = false
+  return chromium
 }
 
 function firstExistingLinuxChrome(
@@ -139,14 +153,15 @@ export async function resolveAviPdfLaunchOptions(
   if (isServerlessPdfRuntime(env)) {
     const loadChromium = probe.loadChromium ?? defaultLoadChromium
     const chromium = await loadChromium()
-    const executablePath = await chromium.executablePath()
+    const packUrl = probe.packUrl ?? AVI_PDF_SPARTICUZ_PACK_URL
+    const executablePath = await chromium.executablePath(packUrl)
     if (!configuredPath(executablePath)) {
       throw new AviPdfChromeUnavailableError()
     }
     return {
       executablePath,
       args: mergeChromeArgs(chromium.args, AVI_PDF_BASE_CHROME_ARGS),
-      headless: chromium.headless ?? true,
+      headless: chromium.headless ?? 'shell',
     }
   }
 
