@@ -2,10 +2,11 @@
  * @page /finance/external-partner/avi/pdf
  * Staff-authenticated partner-sendable A4 PDF (?lang=he|en).
  *
- * Same certified DTO as the staff report screen. Renders print HTML in-process
- * so headless Chromium does not depend on a second Vercel Deployment Protection
- * round-trip to /print. No settlement math. Fail-closed: no session → login
- * redirect; non-staff / inactive / non-certified → 404.
+ * Same certified DTO as the staff report screen. Headless Chromium loads the
+ * staff /print HTML with the caller's Cookie (staff session + Vercel
+ * Deployment Protection JWT when present) and optional automation bypass.
+ * No settlement math. Fail-closed: no session → login redirect; non-staff /
+ * inactive / non-certified → 404.
  */
 import 'server-only'
 import { NextResponse } from 'next/server'
@@ -15,7 +16,6 @@ import {
   renderAviPartnerReportPdf,
   type AviReportPdfOptions,
 } from '@/lib/partner-settlement/external-partner/aviReportPdf'
-import { buildAviStaffPdfHtmlDocument } from '@/lib/partner-settlement/external-partner/aviStaffPdfHtml'
 import { sanitizeAviReportClientPayload } from '@/components/finance/aviReportPresentation'
 import type { AviReportLang } from '@/components/finance/aviReportCopy'
 
@@ -48,13 +48,11 @@ export async function GET(req: Request) {
 
   const lang = langFrom(req)
   const origin = new URL(req.url).origin
-  const htmlContent = buildAviStaffPdfHtmlDocument({ report, lang, origin })
 
   try {
     const opts: AviReportPdfOptions = {
       lang,
       reportUrl: `${origin}/finance/external-partner/avi/print?lang=${lang}`,
-      htmlContent,
       cookieHeader: req.headers.get('cookie'),
       langAlreadyApplied: true,
     }

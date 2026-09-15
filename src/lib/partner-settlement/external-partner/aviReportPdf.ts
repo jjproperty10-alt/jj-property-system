@@ -10,9 +10,11 @@
  * (Page N of M / עמוד N מתוך M) so sendable PDFs never carry Chrome chrome.
  *
  * On Vercel Preview, Deployment Protection blocks the headless fetch of the
- * print HTML unless `VERCEL_AUTOMATION_BYPASS_SECRET` is forwarded as
- * `x-vercel-protection-bypass`. Session cookies are forwarded separately for
- * staff auth. Never log cookies, bypass secrets, or report HTML.
+ * print HTML unless the caller's `_vercel_jwt` is applied via page.setCookie
+ * and/or `VERCEL_AUTOMATION_BYPASS_SECRET` is forwarded as
+ * `x-vercel-protection-bypass`. Staff session cookies are applied the same way
+ * (Chromium strips Cookie from setExtraHTTPHeaders). Never log cookies, bypass
+ * secrets, or report HTML.
  */
 import puppeteer from 'puppeteer-core'
 import { AVI_REPORT_COPY, type AviReportLang } from '@/components/finance/aviReportCopy'
@@ -57,7 +59,7 @@ export type AviReportPdfOptions = {
   readonly chromeExecutablePath?: string
   /**
    * Forward the caller's Cookie header so staff-gated print URLs authenticate
-   * the headless browser as the same session. Never log this value.
+   * the headless browser as the same session (via page.setCookie). Never log.
    */
   readonly cookieHeader?: string | null
   /**
@@ -69,20 +71,46 @@ export type AviReportPdfOptions = {
   readonly env?: Readonly<Record<string, string | undefined>>
 }
 
+export type AviPdfCookiePair = {
+  readonly name: string
+  readonly value: string
+}
+
 /**
- * Headers for the headless navigation to print/report HTML.
- * Includes staff Cookie (when present) and Vercel automation bypass (when
- * configured). Values must never be logged.
+ * Parse a raw Cookie request header into name/value pairs.
+ * Chromium ignores Cookie in setExtraHTTPHeaders — callers must use setCookie.
+ * Never log the returned values.
+ */
+export function parseAviPdfCookieHeader(
+  cookieHeader: string | null | undefined,
+): readonly AviPdfCookiePair[] {
+  const raw = cookieHeader?.trim()
+  if (!raw) return []
+  const out: AviPdfCookiePair[] = []
+  for (const part of raw.split(';')) {
+    const trimmed = part.trim()
+    if (!trimmed) continue
+    const eq = trimmed.indexOf('=')
+    if (eq <= 0) continue
+    const name = trimmed.slice(0, eq).trim()
+    const value = trimmed.slice(eq + 1).trim()
+    if (!name) continue
+    out.push({ name, value })
+  }
+  return out
+}
+
+/**
+ * Extra HTTP headers for headless navigation (not Cookie).
+ * Cookie must be applied via page.setCookie — Chromium strips Cookie from
+ * setExtraHTTPHeaders. Values must never be logged.
  */
 export function buildAviPdfNavigationHeaders(
   cookieHeader: string | null | undefined,
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): Record<string, string> {
+  void cookieHeader
   const headers: Record<string, string> = {}
-  const cookie = cookieHeader?.trim()
-  if (cookie) {
-    headers.Cookie = cookie
-  }
   const bypass = env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()
   if (bypass) {
     headers['x-vercel-protection-bypass'] = bypass
@@ -111,13 +139,27 @@ export async function renderAviPartnerReportPdf(
   try {
     const page = await browser.newPage()
     await page.setViewport({ width: 1280, height: 1600, deviceScaleFactor: 1 })
-    const navHeaders = buildAviPdfNavigationHeaders(opts.cookieHeader, opts.env ?? process.env)
+    const env = opts.env ?? process.env
+    const navHeaders = buildAviPdfNavigationHeaders(opts.cookieHeader, env)
     if (Object.keys(navHeaders).length > 0) {
       await page.setExtraHTTPHeaders(navHeaders)
     }
+    // Cookie cannot be set via setExtraHTTPHeaders (Chromium strips it).
+    // Apply staff session + Vercel protection JWT for the print URL host.
+    const cookiePairs = parseAviPdfCookieHeader(opts.cookieHeader)
+    if (cookiePairs.length > 0) {
+      const host = new URL(opts.reportUrl).hostname
+      await page.setCookie(
+        ...cookiePairs.map((c) => ({
+          name: c.name,
+          value: c.value,
+          domain: host,
+          path: '/',
+        })),
+      )
+    }
     if (opts.htmlContent) {
-      // In-process HTML avoids a second Deployment-Protection-gated HTTP fetch.
-      // Keep Cookie + bypass headers so relative /fonts assets under <base href> load.
+      // Optional in-process HTML (preview/tests). Prefer goto for staff PDF.
       await page.setContent(opts.htmlContent, {
         waitUntil: 'domcontentloaded',
         timeout: 60_000,

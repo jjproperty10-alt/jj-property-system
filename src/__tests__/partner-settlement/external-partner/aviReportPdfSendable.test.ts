@@ -73,9 +73,11 @@ Avi is owed €594.25
       'utf8',
     )
     expect(src).toContain('cookieHeader')
-    expect(src).toContain('Never log this value')
+    expect(src).toContain('Never log')
     expect(src).toContain('x-vercel-protection-bypass')
     expect(src).toContain('buildAviPdfNavigationHeaders')
+    expect(src).toContain('parseAviPdfCookieHeader')
+    expect(src).toContain('page.setCookie')
     expect(src).toContain("waitUntil: 'domcontentloaded'")
     expect(src).not.toMatch(/console\.(log|info|debug|warn|error)/)
     expect(chrome).not.toMatch(/console\.(log|info|debug|warn|error)/)
@@ -83,19 +85,28 @@ Avi is owed €594.25
   })
 })
 
-describe('buildAviPdfNavigationHeaders', () => {
-  const { buildAviPdfNavigationHeaders } = require('@/lib/partner-settlement/external-partner/aviReportPdf') as typeof import('@/lib/partner-settlement/external-partner/aviReportPdf')
+describe('buildAviPdfNavigationHeaders + parseAviPdfCookieHeader', () => {
+  const {
+    buildAviPdfNavigationHeaders,
+    parseAviPdfCookieHeader,
+  } = require('@/lib/partner-settlement/external-partner/aviReportPdf') as typeof import('@/lib/partner-settlement/external-partner/aviReportPdf')
 
-  it('forwards Cookie and Vercel automation bypass without requiring either alone', () => {
-    const both = buildAviPdfNavigationHeaders('sb-access-token=abc', {
+  it('puts Vercel bypass in headers and parses Cookie pairs for setCookie', () => {
+    const both = buildAviPdfNavigationHeaders('sb-access-token=abc; _vercel_jwt=prot', {
       VERCEL_AUTOMATION_BYPASS_SECRET: 'bypass-secret',
     })
-    expect(both.Cookie).toBe('sb-access-token=abc')
+    expect(both.Cookie).toBeUndefined()
     expect(both['x-vercel-protection-bypass']).toBe('bypass-secret')
     expect(both['x-vercel-set-bypass-cookie']).toBe('true')
 
-    const cookieOnly = buildAviPdfNavigationHeaders('a=1', {})
-    expect(cookieOnly).toEqual({ Cookie: 'a=1' })
+    expect(parseAviPdfCookieHeader('sb-access-token=abc; _vercel_jwt=prot')).toEqual([
+      { name: 'sb-access-token', value: 'abc' },
+      { name: '_vercel_jwt', value: 'prot' },
+    ])
+
+    const cookieOnlyHeaders = buildAviPdfNavigationHeaders('a=1', {})
+    expect(cookieOnlyHeaders).toEqual({})
+    expect(parseAviPdfCookieHeader('a=1')).toEqual([{ name: 'a', value: '1' }])
 
     const bypassOnly = buildAviPdfNavigationHeaders(null, {
       VERCEL_AUTOMATION_BYPASS_SECRET: ' only-bypass ',
@@ -104,5 +115,6 @@ describe('buildAviPdfNavigationHeaders', () => {
       'x-vercel-protection-bypass': 'only-bypass',
       'x-vercel-set-bypass-cookie': 'true',
     })
+    expect(parseAviPdfCookieHeader(null)).toEqual([])
   })
 })
