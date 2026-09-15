@@ -8,8 +8,6 @@
  * redirect; non-staff / inactive / non-certified → 404.
  */
 import 'server-only'
-import React from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
 import { NextResponse } from 'next/server'
 import { authenticateStatementUser } from '@/lib/statements/statementAuthService'
 import { buildAviExternalPartnerReport } from '@/lib/partner-settlement/external-partner/buildAviExternalPartnerReport'
@@ -17,7 +15,7 @@ import {
   renderAviPartnerReportPdf,
   type AviReportPdfOptions,
 } from '@/lib/partner-settlement/external-partner/aviReportPdf'
-import { ExternalPartnerAviReportView } from '@/components/finance/ExternalPartnerAviReportView'
+import { buildAviStaffPdfHtmlDocument } from '@/lib/partner-settlement/external-partner/aviStaffPdfHtml'
 import { sanitizeAviReportClientPayload } from '@/components/finance/aviReportPresentation'
 import type { AviReportLang } from '@/components/finance/aviReportCopy'
 
@@ -28,17 +26,6 @@ export const maxDuration = 60
 function langFrom(req: Request): AviReportLang {
   const url = new URL(req.url)
   return url.searchParams.get('lang') === 'he' ? 'he' : 'en'
-}
-
-function buildStaffPrintHtmlDocument(opts: {
-  readonly markup: string
-  readonly lang: AviReportLang
-  readonly origin: string
-}): string {
-  const dir = opts.lang === 'he' ? 'rtl' : 'ltr'
-  // <base href> lets /fonts resolve against the deployment origin; Chromium still
-  // receives Cookie + Vercel bypass headers for those asset fetches.
-  return `<!DOCTYPE html><html lang="${opts.lang}" dir="${dir}"><head><meta charset="utf-8"/><base href="${opts.origin}/"/></head><body>${opts.markup}</body></html>`
 }
 
 export async function GET(req: Request) {
@@ -61,14 +48,7 @@ export async function GET(req: Request) {
 
   const lang = langFrom(req)
   const origin = new URL(req.url).origin
-  const markup = renderToStaticMarkup(
-    React.createElement(ExternalPartnerAviReportView, {
-      report,
-      audience: 'partner',
-      initialLang: lang,
-    }),
-  )
-  const htmlContent = buildStaffPrintHtmlDocument({ markup, lang, origin })
+  const htmlContent = buildAviStaffPdfHtmlDocument({ report, lang, origin })
 
   try {
     const opts: AviReportPdfOptions = {

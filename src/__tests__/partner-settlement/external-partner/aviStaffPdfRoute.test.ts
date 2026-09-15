@@ -17,13 +17,12 @@ jest.mock('@/components/finance/aviReportPresentation', () => ({
   sanitizeAviReportClientPayload: (report: unknown) => report,
 }))
 
-jest.mock('@/components/finance/ExternalPartnerAviReportView', () => ({
-  ExternalPartnerAviReportView: () =>
-    require('react').createElement(
-      'div',
-      { 'data-testid': 'avi-report-certified', 'data-avi-lang': 'he' },
-      'certified-print',
-    ),
+const buildHtmlMock = jest.fn(
+  () =>
+    '<!DOCTYPE html><html><body><div data-testid="avi-report-certified">ok</div></body></html>',
+)
+jest.mock('@/lib/partner-settlement/external-partner/aviStaffPdfHtml', () => ({
+  buildAviStaffPdfHtmlDocument: () => buildHtmlMock(),
 }))
 
 type PdfOpts = {
@@ -46,6 +45,7 @@ import { GET } from '@/app/(app)/finance/external-partner/avi/pdf/route'
 beforeEach(() => {
   authMock.mockReset()
   buildMock.mockReset()
+  buildHtmlMock.mockClear()
   renderPdfMock.mockClear()
 })
 
@@ -102,6 +102,7 @@ describe('GET /finance/external-partner/avi/pdf', () => {
     expect(res.headers.get('cache-control')).toBe('private, no-store')
     expect(res.headers.get('content-disposition')).toContain('avi-partner-report-he.pdf')
     expect(res.headers.get('x-avi-pdf-export')).toBe('jj-sendable-staff')
+    expect(buildHtmlMock).toHaveBeenCalledTimes(1)
     expect(renderPdfMock).toHaveBeenCalledTimes(1)
     const opts = renderPdfMock.mock.calls[0][0]
     expect(opts.lang).toBe('he')
@@ -109,6 +110,28 @@ describe('GET /finance/external-partner/avi/pdf', () => {
     expect(opts.htmlContent).toEqual(expect.stringContaining('data-testid="avi-report-certified"'))
     expect(opts.cookieHeader).toBe('sb-access-token=abc')
     expect(opts.langAlreadyApplied).toBe(true)
+  })
+
+  it('staff PDF HTML builder stays outside app/ (react-dom/server safe)', () => {
+    const fs = require('fs') as typeof import('fs')
+    const path = require('path') as typeof import('path')
+    const routeSrc = fs.readFileSync(
+      path.join(process.cwd(), 'src/app/(app)/finance/external-partner/avi/pdf/route.ts'),
+      'utf8',
+    )
+    const htmlSrc = fs.readFileSync(
+      path.join(
+        process.cwd(),
+        'src/lib/partner-settlement/external-partner/aviStaffPdfHtml.tsx',
+      ),
+      'utf8',
+    )
+    expect(routeSrc).not.toMatch(/react-dom\/server/)
+    expect(routeSrc).toContain('buildAviStaffPdfHtmlDocument')
+    expect(htmlSrc).toContain("createRequire")
+    expect(htmlSrc).toContain("nodeRequire('react-dom/server')")
+    expect(htmlSrc).toContain('buildAviStaffPdfHtmlDocument')
+    expect(htmlSrc).not.toMatch(/^import \{ renderToStaticMarkup \} from 'react-dom\/server'/m)
   })
 
   it('PDF launch failure returns a generic 500 without leaking cookies or paths', async () => {
