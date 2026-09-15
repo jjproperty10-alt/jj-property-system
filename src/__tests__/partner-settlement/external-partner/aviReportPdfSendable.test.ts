@@ -74,8 +74,35 @@ Avi is owed €594.25
     )
     expect(src).toContain('cookieHeader')
     expect(src).toContain('Never log this value')
+    expect(src).toContain('x-vercel-protection-bypass')
+    expect(src).toContain('buildAviPdfNavigationHeaders')
+    expect(src).toContain("waitUntil: 'domcontentloaded'")
     expect(src).not.toMatch(/console\.(log|info|debug|warn|error)/)
     expect(chrome).not.toMatch(/console\.(log|info|debug|warn|error)/)
     expect(chrome).not.toMatch(/cookieHeader|Cookie/)
+  })
+})
+
+describe('buildAviPdfNavigationHeaders', () => {
+  const { buildAviPdfNavigationHeaders } = require('@/lib/partner-settlement/external-partner/aviReportPdf') as typeof import('@/lib/partner-settlement/external-partner/aviReportPdf')
+
+  it('forwards Cookie and Vercel automation bypass without requiring either alone', () => {
+    const both = buildAviPdfNavigationHeaders('sb-access-token=abc', {
+      VERCEL_AUTOMATION_BYPASS_SECRET: 'bypass-secret',
+    })
+    expect(both.Cookie).toBe('sb-access-token=abc')
+    expect(both['x-vercel-protection-bypass']).toBe('bypass-secret')
+    expect(both['x-vercel-set-bypass-cookie']).toBe('true')
+
+    const cookieOnly = buildAviPdfNavigationHeaders('a=1', {})
+    expect(cookieOnly).toEqual({ Cookie: 'a=1' })
+
+    const bypassOnly = buildAviPdfNavigationHeaders(null, {
+      VERCEL_AUTOMATION_BYPASS_SECRET: ' only-bypass ',
+    })
+    expect(bypassOnly).toEqual({
+      'x-vercel-protection-bypass': 'only-bypass',
+      'x-vercel-set-bypass-cookie': 'true',
+    })
   })
 })

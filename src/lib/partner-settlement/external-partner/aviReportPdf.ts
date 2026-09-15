@@ -8,6 +8,11 @@
  * localhost/preview and is not partner-sendable. This exporter uses
  * Chromium Page.printToPDF with an empty header and a JJ footer template
  * (Page N of M / עמוד N מתוך M) so sendable PDFs never carry Chrome chrome.
+ *
+ * On Vercel Preview, Deployment Protection blocks the headless fetch of the
+ * print HTML unless `VERCEL_AUTOMATION_BYPASS_SECRET` is forwarded as
+ * `x-vercel-protection-bypass`. Session cookies are forwarded separately for
+ * staff auth. Never log cookies, bypass secrets, or report HTML.
  */
 import puppeteer from 'puppeteer-core'
 import { AVI_REPORT_COPY, type AviReportLang } from '@/components/finance/aviReportCopy'
@@ -38,8 +43,17 @@ function footerTemplate(lang: AviReportLang, generatedLabel: string): string {
 
 export type AviReportPdfOptions = {
   readonly lang: AviReportLang
-  /** Absolute URL of the live report page (staff print, preview, or share). */
+  /**
+   * Absolute URL of the live report page (staff print, preview, or share).
+   * Used for goto navigation when `htmlContent` is not provided. Also used as
+   * `<base href>` when rendering from in-process HTML so font/asset URLs resolve.
+   */
   readonly reportUrl: string
+  /**
+   * Full HTML document for in-process PDF rendering (preferred on Vercel so
+   * headless Chromium does not need a second protected HTTP round-trip).
+   */
+  readonly htmlContent?: string
   readonly chromeExecutablePath?: string
   /**
    * Forward the caller's Cookie header so staff-gated print URLs authenticate
@@ -51,6 +65,30 @@ export type AviReportPdfOptions = {
    * (e.g. /print?lang=he) — skip the in-page language toggle click.
    */
   readonly langAlreadyApplied?: boolean
+  /** Test-only env override for protection-bypass header resolution. */
+  readonly env?: Readonly<Record<string, string | undefined>>
+}
+
+/**
+ * Headers for the headless navigation to print/report HTML.
+ * Includes staff Cookie (when present) and Vercel automation bypass (when
+ * configured). Values must never be logged.
+ */
+export function buildAviPdfNavigationHeaders(
+  cookieHeader: string | null | undefined,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): Record<string, string> {
+  const headers: Record<string, string> = {}
+  const cookie = cookieHeader?.trim()
+  if (cookie) {
+    headers.Cookie = cookie
+  }
+  const bypass = env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()
+  if (bypass) {
+    headers['x-vercel-protection-bypass'] = bypass
+    headers['x-vercel-set-bypass-cookie'] = 'true'
+  }
+  return headers
 }
 
 /**
@@ -63,6 +101,7 @@ export async function renderAviPartnerReportPdf(
   const generatedLabel = formatAviFullDate(new Date().toISOString().slice(0, 10), lang)
   const launch = await resolveAviPdfLaunchOptions({
     explicitExecutablePath: opts.chromeExecutablePath,
+    env: opts.env,
   })
   const browser = await puppeteer.launch({
     executablePath: launch.executablePath,
@@ -72,10 +111,22 @@ export async function renderAviPartnerReportPdf(
   try {
     const page = await browser.newPage()
     await page.setViewport({ width: 1280, height: 1600, deviceScaleFactor: 1 })
-    if (opts.cookieHeader) {
-      await page.setExtraHTTPHeaders({ Cookie: opts.cookieHeader })
+    const navHeaders = buildAviPdfNavigationHeaders(opts.cookieHeader, opts.env ?? process.env)
+    if (Object.keys(navHeaders).length > 0) {
+      await page.setExtraHTTPHeaders(navHeaders)
     }
-    await page.goto(opts.reportUrl, { waitUntil: 'networkidle0', timeout: 120_000 })
+    if (opts.htmlContent) {
+      // In-process HTML avoids a second Deployment-Protection-gated HTTP fetch.
+      // Keep Cookie + bypass headers so relative /fonts assets under <base href> load.
+      await page.setContent(opts.htmlContent, {
+        waitUntil: 'domcontentloaded',
+        timeout: 60_000,
+      })
+    } else {
+      // Prefer domcontentloaded: Next.js preview pages rarely reach networkidle0,
+      // and Deployment Protection HTML would hang forever on networkidle.
+      await page.goto(opts.reportUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+    }
     await page.waitForSelector('[data-testid="avi-report-certified"]', { timeout: 60_000 })
 
     if (lang === 'he' && !opts.langAlreadyApplied) {

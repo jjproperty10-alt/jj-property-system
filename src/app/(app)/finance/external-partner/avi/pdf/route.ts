@@ -2,11 +2,14 @@
  * @page /finance/external-partner/avi/pdf
  * Staff-authenticated partner-sendable A4 PDF (?lang=he|en).
  *
- * Same renderAviPartnerReportPdf exporter and the same certified DTO as the
- * staff report screen. No settlement math. Fail-closed: no session → login
+ * Same certified DTO as the staff report screen. Renders print HTML in-process
+ * so headless Chromium does not depend on a second Vercel Deployment Protection
+ * round-trip to /print. No settlement math. Fail-closed: no session → login
  * redirect; non-staff / inactive / non-certified → 404.
  */
 import 'server-only'
+import React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { NextResponse } from 'next/server'
 import { authenticateStatementUser } from '@/lib/statements/statementAuthService'
 import { buildAviExternalPartnerReport } from '@/lib/partner-settlement/external-partner/buildAviExternalPartnerReport'
@@ -14,6 +17,8 @@ import {
   renderAviPartnerReportPdf,
   type AviReportPdfOptions,
 } from '@/lib/partner-settlement/external-partner/aviReportPdf'
+import { ExternalPartnerAviReportView } from '@/components/finance/ExternalPartnerAviReportView'
+import { sanitizeAviReportClientPayload } from '@/components/finance/aviReportPresentation'
 import type { AviReportLang } from '@/components/finance/aviReportCopy'
 
 export const dynamic = 'force-dynamic'
@@ -23,6 +28,17 @@ export const maxDuration = 60
 function langFrom(req: Request): AviReportLang {
   const url = new URL(req.url)
   return url.searchParams.get('lang') === 'he' ? 'he' : 'en'
+}
+
+function buildStaffPrintHtmlDocument(opts: {
+  readonly markup: string
+  readonly lang: AviReportLang
+  readonly origin: string
+}): string {
+  const dir = opts.lang === 'he' ? 'rtl' : 'ltr'
+  // <base href> lets /fonts resolve against the deployment origin; Chromium still
+  // receives Cookie + Vercel bypass headers for those asset fetches.
+  return `<!DOCTYPE html><html lang="${opts.lang}" dir="${dir}"><head><meta charset="utf-8"/><base href="${opts.origin}/"/></head><body>${opts.markup}</body></html>`
 }
 
 export async function GET(req: Request) {
@@ -37,19 +53,28 @@ export async function GET(req: Request) {
   }
 
   // Same certified builder as the staff page — refuse PDF if not certified.
-  const report = await buildAviExternalPartnerReport()
+  const built = await buildAviExternalPartnerReport()
+  const report = sanitizeAviReportClientPayload(built)
   if (report.status !== 'certified') {
     return new NextResponse('Not Found', { status: 404 })
   }
 
   const lang = langFrom(req)
   const origin = new URL(req.url).origin
-  const reportUrl = `${origin}/finance/external-partner/avi/print?lang=${lang}`
+  const markup = renderToStaticMarkup(
+    React.createElement(ExternalPartnerAviReportView, {
+      report,
+      audience: 'partner',
+      initialLang: lang,
+    }),
+  )
+  const htmlContent = buildStaffPrintHtmlDocument({ markup, lang, origin })
 
   try {
     const opts: AviReportPdfOptions = {
       lang,
-      reportUrl,
+      reportUrl: `${origin}/finance/external-partner/avi/print?lang=${lang}`,
+      htmlContent,
       cookieHeader: req.headers.get('cookie'),
       langAlreadyApplied: true,
     }

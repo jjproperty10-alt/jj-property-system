@@ -13,9 +13,23 @@ jest.mock('@/lib/partner-settlement/external-partner/buildAviExternalPartnerRepo
   buildAviExternalPartnerReport: () => buildMock(),
 }))
 
+jest.mock('@/components/finance/aviReportPresentation', () => ({
+  sanitizeAviReportClientPayload: (report: unknown) => report,
+}))
+
+jest.mock('@/components/finance/ExternalPartnerAviReportView', () => ({
+  ExternalPartnerAviReportView: () =>
+    require('react').createElement(
+      'div',
+      { 'data-testid': 'avi-report-certified', 'data-avi-lang': 'he' },
+      'certified-print',
+    ),
+}))
+
 type PdfOpts = {
   lang: string
   reportUrl: string
+  htmlContent?: string
   cookieHeader: string | null
   langAlreadyApplied: boolean
 }
@@ -78,7 +92,10 @@ describe('GET /finance/external-partner/avi/pdf', () => {
 
   it('authorized staff + certified → PDF with cookie forward and print URL', async () => {
     authMock.mockResolvedValue({ ok: true, staffRole: 'ceo', userId: 'u1', isActive: true })
-    buildMock.mockResolvedValue({ status: 'certified' })
+    buildMock.mockResolvedValue({
+      status: 'certified',
+      partners: [{ partner: 'Avi', netEur: 594.25 }],
+    })
     const res = await GET(req('he', 'sb-access-token=abc'))
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toBe('application/pdf')
@@ -89,6 +106,7 @@ describe('GET /finance/external-partner/avi/pdf', () => {
     const opts = renderPdfMock.mock.calls[0][0]
     expect(opts.lang).toBe('he')
     expect(opts.reportUrl).toContain('/finance/external-partner/avi/print?lang=he')
+    expect(opts.htmlContent).toEqual(expect.stringContaining('data-testid="avi-report-certified"'))
     expect(opts.cookieHeader).toBe('sb-access-token=abc')
     expect(opts.langAlreadyApplied).toBe(true)
   })
