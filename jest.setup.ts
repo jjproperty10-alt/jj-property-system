@@ -27,4 +27,6 @@ if (process.env.T38_LIVE_INTEGRATION === '1') {
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://mock-test.supabase.co'
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-mock-anon-key-000000000000'
   process.env.SUPABASE_SERVICE_KEY = 'test-mock-service-key-000000000000'
+  // Test-only mock HMAC secret for Avi share-token suites (never a real secret).
+  process.env.AVI_EXTERNAL_PARTNER_SHARE_SECRET = 'test-avi-share-secret-0000000000000000'
 }
