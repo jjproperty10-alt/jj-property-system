@@ -23,16 +23,16 @@ describe('Avi sendable PDF text guards', () => {
     const goodEn = `
 Confidential · Villa Mazotos · Avi partner report · 14 September 2026
 Page 1 of 8
-Avi is owed €740.94
+Avi is owed €594.25
 `
     const goodHe = `
 סודי · וילה מזוטוס · דוח שותף אבי · 14 בספטמבר 2026
 עמוד 1 מתוך 9
-מגיע לאבי €740.94
+מגיע לאבי €594.25
 `
     expect(assertAviSendablePdfText(goodEn).ok).toBe(true)
     expect(assertAviSendablePdfText(goodHe).ok).toBe(true)
-    expect(AVI_CERTIFIED_NET_EUR).toBe(740.94)
+    expect(AVI_CERTIFIED_NET_EUR).toBe(594.25)
   })
 
   it('rejects localhost / preview URL / Chrome date header / 1/9 chrome', () => {
@@ -41,7 +41,7 @@ Avi is owed €740.94
 JJ — External Partner Report — Avi
 localhost:47441/preview/avi-certified-compose
 1/9
-Avi is owed €740.94
+Avi is owed €594.25
 `
     const result = assertAviSendablePdfText(bad)
     expect(result.ok).toBe(false)

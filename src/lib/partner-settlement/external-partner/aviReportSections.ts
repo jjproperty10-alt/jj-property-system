@@ -348,12 +348,12 @@ export interface AviMonthlySection {
   readonly totals: Omit<AviMonthlyRow, 'month' | 'stays'>
   /**
    * Cent bridge so the sum of displayed monthly Avi halves matches the
-   * certified period share. Presentation only — does not change €740.94.
+   * certified period share. Presentation only — does not change €594.25.
    */
   readonly roundingAdjustmentEur: number
   /**
    * Cent bridge so displayed monthly income-halves match half of period income.
-   * Presentation only — does not change €740.94.
+   * Presentation only — does not change €594.25.
    */
   readonly incomeShareRoundingAdjustmentEur: number
 }
@@ -442,7 +442,7 @@ export function composeAviMonthly(): AviMonthlySection {
         resultAfterSetupEur,
         // Reader-verifiable half: (Income − Ops − Setup) ÷ 2 to the nearest cent.
         // Sum of these halves can differ from the certified period share by a few
-        // cents; `roundingAdjustmentEur` bridges that gap. Final net €740.94 unchanged.
+        // cents; `roundingAdjustmentEur` bridges that gap. Final net €594.25 unchanged.
         aviResultEur: Math.round(resultAfterSetupEur * 50) / 100,
         aviIncomeShareEur: Math.round(incomeEur * 50) / 100,
       }

@@ -5,7 +5,7 @@
  *
  * Uses Commit 1 formulas, 2A (reader), and 2B (attribution). A Certified Avi
  * report must match the single approved identity (paid €280,600, credits
- * €19,744.44, obligation €299,603.50, net +€740.94). Inputs that do not reach
+ * €19,495.25, obligation €299,501.00, net +€594.25). Inputs that do not reach
  * that identity fail closed and never attach partners, layers, or print copy.
  *
  * Not imported by routes. No UI, PDF, Partner B, RC3, or lifecycle dependency.

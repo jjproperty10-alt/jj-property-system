@@ -46,7 +46,7 @@ export default async function AviCertifiedComposePreviewPage() {
           <p className="mt-1">
             This Preview has no Supabase keys, so staff login cannot reach the account
             service. The report below is composed from the frozen 202-row canonical CSV
-            and the approved Avi identity (Avi is owed €740.94). It is not a live
+            and the approved Avi identity (Avi is owed €594.25). It is not a live
             database read and not an auth bypass for Production.
           </p>
           <p className="mt-2 font-medium">

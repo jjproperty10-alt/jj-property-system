@@ -235,18 +235,18 @@ describe('external-partner Avi report service — certified golden', () => {
     expect(report.controlStatus.failures).toHaveLength(0)
   })
 
-  it('Avi partner summary: paid 280600, credits 19744.44, obligation 299603.50, net +740.94', () => {
+  it('Avi partner summary: paid 280600, credits 19495.25, obligation 2995010, net +594.25', () => {
     if (report.status !== 'certified') return
     const avi = report.partners.find((p) => p.partner === 'Avi')!
     expect(avi.ownershipPct).toBe(50)
     expect(avi.isJjPrincipal).toBe(false)
     expect(avi.status).toBe('CERTIFIED')
     expect(avi.paidEur).toBe(280600)
-    expect(avi.creditsEur).toBe(19744.44)
-    expect(avi.obligationEur).toBe(299603.5)
-    expect(avi.netEur).toBe(740.94)
+    expect(avi.creditsEur).toBe(19495.25)
+    expect(avi.obligationEur).toBe(299501)
+    expect(avi.netEur).toBe(594.25)
     expect(avi.direction).toBe('to_refund')
-    expect(avi.semanticNet).toBe('Avi is owed €740.94')
+    expect(avi.semanticNet).toBe('Avi is owed €594.25')
   })
 
   it('Yossi and Jacob are PROVISIONAL with no amounts', () => {
@@ -565,11 +565,11 @@ describe('external-partner Avi report service — Avi-visible presentation', () 
     if (report.status !== 'certified') return
     const avi = report.partners.find((p) => p.partner === 'Avi')!
     expect(avi.paidEur).toBe(280600)
-    expect(avi.creditsEur).toBe(19744.44)
-    expect(avi.obligationEur).toBe(299603.5)
-    expect(avi.netEur).toBe(740.94)
+    expect(avi.creditsEur).toBe(19495.25)
+    expect(avi.obligationEur).toBe(299501)
+    expect(avi.netEur).toBe(594.25)
     expect(avi.direction).toBe('to_refund')
-    expect(avi.semanticNet).toBe('Avi is owed €740.94')
+    expect(avi.semanticNet).toBe('Avi is owed €594.25')
   })
 
   it('shows agreed value 500000 and Avi acquisition obligation 250000', () => {
@@ -633,12 +633,12 @@ describe('external-partner Avi report service — Avi-visible presentation', () 
         .filter((l) => l.key !== 'acquisition')
         .reduce((s, l) => s + (l.aviShareEur ?? 0), 0),
     )
-    expect(layerAviShare).toBe(49603.5)
+    expect(layerAviShare).toBe(49501)
     expect(roundEur(report.partnerExpenses.reduce((s, e) => s + (e.aviShareEur ?? 0), 0))).toBe(14181.27)
     expect(report.partnerExpenses).toHaveLength(19)
     expect(report.visibleExpenseTotals.rowCount).toBe(19)
-    expect(report.visibleExpenseTotals.totalChargeEur).toBe(99207)
-    expect(report.visibleExpenseTotals.aviShareEur).toBe(49603.5)
+    expect(report.visibleExpenseTotals.totalChargeEur).toBe(99002)
+    expect(report.visibleExpenseTotals.aviShareEur).toBe(49501)
     expect(report.partnerExpenses.some((e) => e.id === TX.mgmtPool480)).toBe(false)
   })
 
@@ -655,8 +655,8 @@ describe('external-partner Avi report service — Avi-visible presentation', () 
     expect(report.partnerExpenses.some((e) => e.subcategory === 'Workers')).toBe(true)
     expect(report.renovation.groups.some((g) => g.subcategory === 'Workers')).toBe(true)
     expect(report.airbnb.setup.totalEur).toBe(5706.06)
-    expect(report.airbnb.operations.totalEur).toBe(9386.8)
-    expect(report.finalSummary.netEur).toBe(740.94)
+    expect(report.airbnb.operations.totalEur).toBe(9181.8)
+    expect(report.finalSummary.netEur).toBe(594.25)
   })
 
   it('does not list internal Airbnb pool cash; overlay recodes utilities and pending pool invoices', () => {
@@ -707,7 +707,7 @@ describe('external-partner Avi report service — Avi-visible presentation', () 
     const mgmt = report.layers.find((l) => l.key === 'management')!
     const deal = report.layers.find((l) => l.key === 'deal_expense')!
     expect(reno.semanticNet).toBe('Avi owes €11,107.07')
-    expect(airbnb.semanticNet).toBe('Avi is owed €12,198.01')
+    expect(airbnb.semanticNet).toBe('Avi is owed €12,051.32')
     expect(mgmt.semanticNet).toBe('Settled')
     expect(deal.semanticNet).toBe('Avi owes €350.00')
     expect(report.layers.find((l) => l.key === 'acquisition')!.semanticNet).toBeNull()

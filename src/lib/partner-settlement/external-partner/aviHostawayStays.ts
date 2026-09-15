@@ -4,10 +4,12 @@
  *
  * Yossi 2026-09-08: income is the printed Net Owner Payout from two owner
  * statements, unioned with no double count. Statement P1 covers
- * 2025-08-04–2026-09-08 (26 stays, €34,614.17). Statement P2 covers
+ * 2025-08-04–2026-09-08 (historically 26 stays including a September 2026
+ * stay). Partner report scope ends with the last August 2026 checkout; the
+ * September 2026 stay is excluded from this ledger. Statement P2 covers
  * 2025-07-01–2026-08-05 and is used only for the three July 2025 stays that
- * pre-date P1 (€3,514.70). The 23 stays present in both carry identical
- * printed NTO, so the overlap is exact.
+ * pre-date P1. The stays present in both carry identical printed NTO, so the
+ * overlap is exact.
  *
  * Totals here are summed from the rows, never asserted. Tax components are not
  * reconstructed and are not displayed.
@@ -68,7 +70,6 @@ export const AVI_HOSTAWAY_STAYS: readonly AviHostawayStay[] = Object.freeze([
   { reservationId: '60931110', channel: 'Airbnb', checkIn: '2026-08-04', checkOut: '2026-08-08', nights: 4, printedNtoEur: 1513.81, statementSource: 'P1' },
   { reservationId: '48168608', channel: 'Airbnb', checkIn: '2026-08-08', checkOut: '2026-08-15', nights: 7, printedNtoEur: 1806.32, statementSource: 'P1' },
   { reservationId: '53139113', channel: 'Airbnb', checkIn: '2026-08-15', checkOut: '2026-08-29', nights: 14, printedNtoEur: 4420.46, statementSource: 'P1' },
-  { reservationId: '65733679', channel: 'Airbnb', checkIn: '2026-09-03', checkOut: '2026-09-06', nights: 3, printedNtoEur: 498.37, statementSource: 'P1' },
 ])
 
 export interface AviExcludedReservation {

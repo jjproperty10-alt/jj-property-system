@@ -1,5 +1,5 @@
 /**
- * Fixture Preview composer must certify Avi is owed €740.94 from the canonical CSV.
+ * Fixture Preview composer must certify Avi is owed €594.25 from the canonical CSV.
  */
 jest.mock('server-only', () => ({}))
 
@@ -12,7 +12,7 @@ import {
 } from '@/lib/partner-settlement/external-partner/aviCertifiedIdentity'
 
 describe('aviCanonicalComposeFixture', () => {
-  it('composes a certified report at Avi is owed €740.94', () => {
+  it('composes a certified report at Avi is owed €594.25', () => {
     const report = composeAviCertifiedCanonicalFixtureReport()
     expect(report.status).toBe('certified')
     if (report.status !== 'certified') return
@@ -21,6 +21,6 @@ describe('aviCanonicalComposeFixture', () => {
     expect(avi.creditsEur).toBe(AVI_CERTIFIED_CREDITS_EUR)
     expect(avi.obligationEur).toBe(AVI_CERTIFIED_OBLIGATION_EUR)
     expect(avi.netEur).toBe(AVI_CERTIFIED_NET_EUR)
-    expect(avi.semanticNet).toBe('Avi is owed €740.94')
+    expect(avi.semanticNet).toBe('Avi is owed €594.25')
   })
 })

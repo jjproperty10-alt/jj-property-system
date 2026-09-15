@@ -44,8 +44,8 @@ function certifiedReport(): Extract<ExternalPartnerAviReport, { status: 'certifi
   const partners: AviReportPartnerSummary[] = [
     {
       partner: 'Avi', ownershipPct: 50, isJjPrincipal: false, status: 'CERTIFIED',
-      paidEur: 280600, creditsEur: 19744.44, obligationEur: 299603.50, netEur: 740.94,
-      direction: 'to_refund', semanticNet: 'Avi is owed €740.94',
+      paidEur: 280600, creditsEur: 19495.25, obligationEur: 2995010, netEur: 594.25,
+      direction: 'to_refund', semanticNet: 'Avi is owed €594.25',
     },
     {
       partner: 'Yossi', ownershipPct: 25, isJjPrincipal: true, status: 'PROVISIONAL',
@@ -62,7 +62,7 @@ function certifiedReport(): Extract<ExternalPartnerAviReport, { status: 'certifi
     { key: 'acquisition', label: 'Acquisition', totalChargeEur: 500000, aviShareEur: 250000, aviFundingEur: null, semanticNet: null },
     { key: 'deal_expense', label: 'Acquisition / Deal expenses', totalChargeEur: 11900, aviShareEur: 5950, aviFundingEur: 5600, semanticNet: 'Avi owes €350.00' },
     { key: 'renovation', label: 'Renovation', totalChargeEur: 72214.14, aviShareEur: 36107.07, aviFundingEur: 25000, semanticNet: 'Avi owes €11,107.07' },
-    { key: 'airbnb', label: 'Airbnb', totalChargeEur: 15092.86, aviShareEur: 7546.43, aviFundingEur: 19744.44, semanticNet: 'Avi is owed €12,198.01' },
+    { key: 'airbnb', label: 'Airbnb', totalChargeEur: 14887.86, aviShareEur: 7443.93, aviFundingEur: 19495.25, semanticNet: 'Avi is owed €12,051.32' },
     { key: 'management', label: 'Management', totalChargeEur: 0, aviShareEur: 0, aviFundingEur: null, semanticNet: 'Settled' },
   ]
   const partnerPayments: AviReportPartnerPayment[] = [
@@ -121,7 +121,7 @@ function certifiedReport(): Extract<ExternalPartnerAviReport, { status: 'certifi
       acquisitionPaidEur: 250000,
       renovationObligationEur: 36107.07,
       renovationPaidEur: 25000,
-      creditsEur: 19744.44,
+      creditsEur: 19495.25,
     }),
   }
 }
@@ -153,7 +153,7 @@ describe('ExternalPartnerAviReportView — certified', () => {
 
   it('displays Avi semantic net', () => {
     expect(html).toContain('Avi is owed')
-    expect(html).toContain('740.94')
+    expect(html).toContain('594.25')
     expect(html).not.toContain('18,900.84')
     expect(html).not.toContain('380.50')
   })
@@ -216,8 +216,8 @@ describe('ExternalPartnerAviReportView — certified', () => {
     expect(html).toContain('Private booking income')
     expect(html).toContain('Hostaway rental income')
     expect(html).toContain('data-testid="avi-hostaway-aggregated-stays"')
-    expect(html).toContain('38,128.87')
-    expect(html).toContain('19,064.44')
+    expect(html).toContain('37,630.50')
+    expect(html).toContain('18,815.25')
     // Partner body must not expose guest name or reservation id
     expect(html).not.toContain('46340130')
     expect(html).not.toContain('Tomer Niazof')
@@ -255,7 +255,7 @@ describe('ExternalPartnerAviReportView — partner audience', () => {
     expect(html).not.toContain('JJ Internal — Certified snapshot report')
     expect(html).not.toContain('Control Status')
     expect(html).toContain('Avi is owed')
-    expect(html).toContain('740.94')
+    expect(html).toContain('594.25')
     expect(html).toContain('500,000.00')
     expect(html).not.toMatch(/400,000/)
   })

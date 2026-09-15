@@ -94,18 +94,18 @@ describe('Avi Hebrew partner HTML — presentation QA', () => {
     <ExternalPartnerAviReportView report={report} audience="partner" initialLang="he" />,
   )
 
-  it('keeps certified identity €740.94', () => {
+  it('keeps certified identity €594.25', () => {
     expect(AVI_CERTIFIED_PAID_EUR).toBe(280600)
-    expect(AVI_CERTIFIED_CREDITS_EUR).toBe(19744.44)
-    expect(AVI_CERTIFIED_OBLIGATION_EUR).toBe(299603.5)
-    expect(AVI_CERTIFIED_NET_EUR).toBe(740.94)
+    expect(AVI_CERTIFIED_CREDITS_EUR).toBe(19495.25)
+    expect(AVI_CERTIFIED_OBLIGATION_EUR).toBe(299501)
+    expect(AVI_CERTIFIED_NET_EUR).toBe(594.25)
     const avi = report.partners.find((p) => p.partner === 'Avi')!
-    expect(avi.netEur).toBe(740.94)
-    expect(enHtml).toContain('740.94')
-    expect(heHtml).toContain('740.94')
+    expect(avi.netEur).toBe(594.25)
+    expect(enHtml).toContain('594.25')
+    expect(heHtml).toContain('594.25')
     expect(heHtml).toContain('280,600.00')
-    expect(heHtml).toContain('19,744.44')
-    expect(heHtml).toContain('299,603.50')
+    expect(heHtml).toContain('19,495.25')
+    expect(heHtml).toContain('299,501.00')
   })
 
   it('includes print footer and page numbering hooks', () => {

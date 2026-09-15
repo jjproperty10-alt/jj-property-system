@@ -50,7 +50,7 @@ export interface AviAirbnbLine {
 }
 
 export const AVI_AIRBNB_START_MONTH = '2025-02'
-export const AVI_AIRBNB_END_MONTH = '2026-09'
+export const AVI_AIRBNB_END_MONTH = '2026-08'
 
 export const AVI_MONTHLY_HOSTAWAY_LICENCE_EUR = 40
 export const AVI_MONTHLY_INTERNET_EUR = 30

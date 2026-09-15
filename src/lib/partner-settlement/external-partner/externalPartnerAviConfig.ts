@@ -7,7 +7,7 @@
  * Hostaway credit is the union of both printed owner statements; purchase
  * expenses are €11,900 after removing a duplicated €2,400 purchase-tax row;
  * the Airbnb charge is the sum of the certified Setup and Operations lines;
- * approved balance is Avi is owed €740.94. The 202-row classification hash is
+ * approved balance is Avi is owed €594.25. The 202-row classification hash is
  * unchanged. No Production ledger writes.
  *
  * Not imported by Partner B, RC3, lifecycle, or PDF.

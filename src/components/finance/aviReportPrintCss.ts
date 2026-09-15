@@ -366,6 +366,11 @@ export const AVI_REPORT_PRINT_CSS = `
   text-align: center;
 }
 
+.avi-print-payments .avi-account-bar--centered {
+  margin-top: 0.45rem;
+  margin-bottom: 0;
+}
+
 .avi-account-bar-amount {
   font-size: 11pt;
   font-weight: 700;
@@ -546,6 +551,49 @@ export const AVI_REPORT_PRINT_CSS = `
   justify-items: center;
 }
 
+.avi-settlement-box .avi-settlement-totals-row td {
+  background: transparent !important;
+  border-bottom: none !important;
+  padding: 0.45rem 0.25rem 0.15rem !important;
+  vertical-align: top;
+}
+
+.avi-settlement-box .avi-settlement-col-total {
+  border: 1px solid rgba(134, 239, 172, 0.35);
+  border-radius: 4px;
+  background: rgba(15, 40, 70, 0.55);
+  padding: 0.45rem 0.35rem 0.35rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  min-height: 2.6rem;
+}
+
+.avi-settlement-box .avi-settlement-col-total[data-tone="summary"] {
+  background: rgba(22, 101, 52, 0.45);
+  border-color: rgba(134, 239, 172, 0.55);
+}
+
+.avi-settlement-box .avi-settlement-col-total .avi-fin-ops-label {
+  color: #93c5fd !important;
+  text-align: center;
+}
+
+.avi-settlement-box .avi-settlement-col-total .avi-fin-ops-value,
+.avi-settlement-box .avi-settlement-col-total .avi-fin-ops-value span {
+  color: ${C.white} !important;
+  text-align: center;
+  font-size: 9.5pt;
+}
+
+.avi-settlement-box .avi-settlement-col-total[data-tone="summary"] .avi-fin-ops-value,
+.avi-settlement-box .avi-settlement-col-total[data-tone="summary"] .avi-fin-ops-value span {
+  color: #bbf7d0 !important;
+}
+
 .avi-settlement-box .avi-fin-ops-label,
 .avi-settlement-box .avi-fin-balance-label {
   color: #93c5fd !important;
@@ -585,11 +633,8 @@ export const AVI_REPORT_PRINT_CSS = `
   text-align: center;
 }
 
-.avi-print-payments table th,
-.avi-print-payments table td,
-.avi-print-payments .text-left,
-.avi-print-payments .text-right,
-.avi-print-payments .text-center {
+.avi-monthly-table th,
+.avi-monthly-table td {
   text-align: center !important;
 }
 
@@ -754,6 +799,23 @@ export const AVI_REPORT_PRINT_CSS = `
     flex-direction: column !important;
     justify-content: center !important;
     text-align: center !important;
+  }
+  .avi-settlement-box .avi-settlement-totals-row td {
+    background: transparent !important;
+    border-bottom: none !important;
+  }
+  .avi-settlement-box .avi-settlement-col-total .avi-fin-ops-label {
+    color: #93c5fd !important;
+    text-align: center !important;
+  }
+  .avi-settlement-box .avi-settlement-col-total .avi-fin-ops-value,
+  .avi-settlement-box .avi-settlement-col-total .avi-fin-ops-value span {
+    color: #ffffff !important;
+    text-align: center !important;
+  }
+  .avi-settlement-box .avi-settlement-col-total[data-tone="summary"] .avi-fin-ops-value,
+  .avi-settlement-box .avi-settlement-col-total[data-tone="summary"] .avi-fin-ops-value span {
+    color: #bbf7d0 !important;
   }
   .avi-settlement-narrative {
     color: #bfdbfe !important;

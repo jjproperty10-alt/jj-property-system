@@ -760,6 +760,7 @@ function PaymentTable({
   const total = payments.reduce((s, p) => s + (p.amountEur ?? 0), 0)
   return (
     <div className="avi-section avi-print-payments" data-testid="avi-payment-table" data-avi-payments-lang={lang}>
+      <DataTable columns={paymentColumns(lang)} rows={rows} caption={copy.payments} />
       <div className="avi-account-bar avi-account-bar--centered" data-tone="navy">
         <div>
           <h2 className="avi-account-bar-title">{copy.payments}</h2>
@@ -770,7 +771,6 @@ function PaymentTable({
           <div className="avi-account-bar-amount-hint">{copy.paid}</div>
         </div>
       </div>
-      <DataTable columns={paymentColumns(lang)} rows={rows} caption={copy.payments} />
     </div>
   )
 }
@@ -1212,6 +1212,7 @@ function MonthlySection({
   const copy = AVI_REPORT_COPY[lang]
   const [openMonth, setOpenMonth] = useState<string | null>(null)
   const incomeRows = monthly.rows.filter((row) => row.incomeEur !== 0 || row.stayCount > 0)
+  const tableDir = lang === 'he' ? 'rtl' : 'ltr'
   return (
     <section className="avi-section avi-print-keep-header" data-testid="avi-monthly">
       <div className="avi-account-bar" data-tone="blue">
@@ -1224,12 +1225,14 @@ function MonthlySection({
           <div className="avi-account-bar-amount-hint">{copy.monthlyGrandTotal}</div>
         </div>
       </div>
-      <table className="w-full text-sm avi-table" dir="ltr">
+      <table className="w-full text-sm avi-table avi-monthly-table" dir={tableDir}>
         <thead>
           <tr>
-            <th scope="col">{copy.month}</th>
-            <th scope="col" className="text-right">{copy.income}</th>
-            <th scope="col" className="text-right">{copy.aviIncomeShare}</th>
+            <th scope="col" className="text-center">{copy.month}</th>
+            <th scope="col" className="text-center">{copy.staysColumn}</th>
+            <th scope="col" className="text-center">{copy.bookings}</th>
+            <th scope="col" className="text-center">{copy.income}</th>
+            <th scope="col" className="text-center">{copy.aviIncomeShare}</th>
           </tr>
         </thead>
         <tbody>
@@ -1237,24 +1240,21 @@ function MonthlySection({
             const open = openMonth === row.month
             return (
               <tr key={row.month}>
-                <td>
+                <td className="text-center">
                   <div className="text-sm font-medium text-slate-900" data-avi-month-label>
                     <AviReportDate iso={row.month} lang={lang} mode="month" />
                   </div>
                   {row.stayCount > 0 && (
-                    <div className="mt-0.5 text-xs text-slate-500" dir="ltr">
-                      {formatAviStayNightLabel(lang, row.stayCount, row.nights)}
-                      <button
-                        type="button"
-                        className="avi-print-hide ms-2 underline"
-                        onClick={() => setOpenMonth(open ? null : row.month)}
-                      >
-                        {open ? copy.collapse : copy.expand}
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      className="avi-print-hide mt-0.5 text-xs underline text-slate-500"
+                      onClick={() => setOpenMonth(open ? null : row.month)}
+                    >
+                      {open ? copy.collapse : copy.expand}
+                    </button>
                   )}
                   {open && row.stays.length > 0 && (
-                    <ul className="mt-2 space-y-1 text-xs text-slate-600 avi-print-hide">
+                    <ul className="mt-2 space-y-1 text-xs text-slate-600 avi-print-hide text-center">
                       {row.stays.map((stay) => (
                         <li key={stay.reservationId}>
                           {stay.checkIn} · {stay.channel} · <MoneyValue amount={stay.printedNtoEur} size="sm" />
@@ -1263,23 +1263,27 @@ function MonthlySection({
                     </ul>
                   )}
                 </td>
-                <td className="text-right"><MoneyValue amount={row.incomeEur} size="sm" /></td>
-                <td className="text-right"><MoneyValue amount={row.aviIncomeShareEur} size="sm" /></td>
+                <td className="text-center tabular-nums">{row.stayCount}</td>
+                <td className="text-center tabular-nums">{row.nights}</td>
+                <td className="text-center"><MoneyValue amount={row.incomeEur} size="sm" /></td>
+                <td className="text-center"><MoneyValue amount={row.aviIncomeShareEur} size="sm" /></td>
               </tr>
             )
           })}
           {monthly.incomeShareRoundingAdjustmentEur !== 0 && (
             <tr data-testid="avi-monthly-rounding-adjustment">
-              <td colSpan={2}>{copy.roundingAdjustment}</td>
-              <td className="text-right">
+              <td colSpan={4} className="text-center">{copy.roundingAdjustment}</td>
+              <td className="text-center">
                 <MoneyValue amount={monthly.incomeShareRoundingAdjustmentEur} size="sm" />
               </td>
             </tr>
           )}
           <tr className="avi-total-row" data-testid="avi-monthly-totals">
-            <td>{copy.monthlyGrandTotal}</td>
-            <td className="text-right"><MoneyValue amount={monthly.totals.incomeEur} size="sm" /></td>
-            <td className="text-right"><MoneyValue amount={monthly.totals.aviIncomeShareEur} size="sm" /></td>
+            <td className="text-center">{copy.monthlyGrandTotal}</td>
+            <td className="text-center tabular-nums">{monthly.totals.stayCount}</td>
+            <td className="text-center tabular-nums">{monthly.totals.nights}</td>
+            <td className="text-center"><MoneyValue amount={monthly.totals.incomeEur} size="sm" /></td>
+            <td className="text-center"><MoneyValue amount={monthly.totals.aviIncomeShareEur} size="sm" /></td>
           </tr>
         </tbody>
       </table>
@@ -1321,21 +1325,36 @@ function FinalSettlementSection({
               </tr>
             ))}
           </tbody>
+          <tfoot>
+            <tr className="avi-settlement-totals-row" data-testid="avi-settlement-column-totals">
+              <td aria-hidden="true" />
+              <td>
+                <div className="avi-settlement-col-total">
+                  <div className="avi-fin-ops-value"><MoneyValue amount={summary.obligationTotalEur} /></div>
+                  <div className="avi-fin-ops-label">{copy.obligation}</div>
+                </div>
+              </td>
+              <td>
+                <div className="avi-settlement-col-total">
+                  <div className="avi-fin-ops-value"><MoneyValue amount={summary.paidTotalEur} /></div>
+                  <div className="avi-fin-ops-label">{copy.paid}</div>
+                </div>
+              </td>
+              <td>
+                <div className="avi-settlement-col-total">
+                  <div className="avi-fin-ops-value"><MoneyValue amount={summary.creditsTotalEur} /></div>
+                  <div className="avi-fin-ops-label">{copy.incomeCredit}</div>
+                </div>
+              </td>
+              <td>
+                <div className="avi-settlement-col-total" data-tone="summary">
+                  <div className="avi-fin-ops-value"><MoneyValue amount={summary.netEur} /></div>
+                  <div className="avi-fin-ops-label">{copy.summary}</div>
+                </div>
+              </td>
+            </tr>
+          </tfoot>
         </table>
-        <div className="avi-fin-ops avi-settlement-summary-row" style={{ marginTop: '0.55rem' }}>
-          <div className="avi-fin-ops-cell">
-            <div className="avi-fin-ops-value"><MoneyValue amount={summary.obligationTotalEur} /></div>
-            <div className="avi-fin-ops-label">{copy.obligation}</div>
-          </div>
-          <div className="avi-fin-ops-cell">
-            <div className="avi-fin-ops-value"><MoneyValue amount={summary.paidTotalEur} /></div>
-            <div className="avi-fin-ops-label">{copy.paid}</div>
-          </div>
-          <div className="avi-fin-ops-cell" data-tone="summary">
-            <div className="avi-fin-ops-value"><MoneyValue amount={summary.netEur} /></div>
-            <div className="avi-fin-ops-label">{copy.summary}</div>
-          </div>
-        </div>
         <p className="avi-fin-formula" data-testid="avi-settlement-formula">
           {copy.formula}
         </p>

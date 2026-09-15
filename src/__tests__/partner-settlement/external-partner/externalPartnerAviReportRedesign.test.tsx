@@ -49,59 +49,59 @@ const heHtml = renderToStaticMarkup(
 describe('Avi redesign — locked identity', () => {
   it('keeps Paid / Credits / Obligation / Net anchors', () => {
     expect(AVI_CERTIFIED_PAID_EUR).toBe(280600)
-    expect(AVI_CERTIFIED_CREDITS_EUR).toBe(19744.44)
-    expect(AVI_CERTIFIED_OBLIGATION_EUR).toBe(299603.5)
-    expect(AVI_CERTIFIED_NET_EUR).toBe(740.94)
+    expect(AVI_CERTIFIED_CREDITS_EUR).toBe(19495.25)
+    expect(AVI_CERTIFIED_OBLIGATION_EUR).toBe(299501)
+    expect(AVI_CERTIFIED_NET_EUR).toBe(594.25)
     const avi = report.partners.find((p) => p.partner === 'Avi')!
     expect(avi.paidEur).toBe(280600)
-    expect(avi.creditsEur).toBe(19744.44)
-    expect(avi.obligationEur).toBe(299603.5)
-    expect(avi.netEur).toBe(740.94)
-    expect(html).toContain('740.94')
+    expect(avi.creditsEur).toBe(19495.25)
+    expect(avi.obligationEur).toBe(299501)
+    expect(avi.netEur).toBe(594.25)
+    expect(html).toContain('594.25')
     expect(html).toContain('Avi is owed')
     expect(
       Number((avi.paidEur! + avi.creditsEur! - avi.obligationEur!).toFixed(2)),
-    ).toBe(740.94)
+    ).toBe(594.25)
   })
 
   it('keeps Setup / Operations / Airbnb totals unchanged', () => {
     expect(AVI_AIRBNB_SETUP_TOTAL_EUR).toBe(5706.06)
     expect(AVI_AIRBNB_SETUP_AVI_EUR).toBe(2853.03)
-    expect(AVI_AIRBNB_OPERATIONS_TOTAL_EUR).toBe(9386.8)
-    expect(AVI_AIRBNB_OPERATIONS_AVI_EUR).toBe(4693.4)
-    expect(AVI_AIRBNB_CHARGE_TOTAL_EUR).toBe(15092.86)
-    expect(AVI_AIRBNB_CHARGE_AVI_EUR).toBe(7546.43)
+    expect(AVI_AIRBNB_OPERATIONS_TOTAL_EUR).toBe(9181.8)
+    expect(AVI_AIRBNB_OPERATIONS_AVI_EUR).toBe(4590.9)
+    expect(AVI_AIRBNB_CHARGE_TOTAL_EUR).toBe(14887.86)
+    expect(AVI_AIRBNB_CHARGE_AVI_EUR).toBe(7443.93)
     expect(report.airbnb.setup.totalEur).toBe(5706.06)
-    expect(report.airbnb.operations.totalEur).toBe(9386.8)
+    expect(report.airbnb.operations.totalEur).toBe(9181.8)
     expect(
       Number(
         (report.airbnb.setup.totalEur + report.airbnb.operations.totalEur).toFixed(2),
       ),
-    ).toBe(15092.86)
+    ).toBe(14887.86)
     expect(
       Number(
         (report.airbnb.setup.aviShareEur + report.airbnb.operations.aviShareEur).toFixed(2),
       ),
-    ).toBe(7546.43)
+    ).toBe(7443.93)
   })
 
-  it('keeps Hostaway aggregation 29 / 152 / €38,128.87', () => {
-    expect(AVI_HOSTAWAY_STAY_COUNT).toBe(29)
-    expect(AVI_HOSTAWAY_NIGHTS).toBe(152)
-    expect(AVI_HOSTAWAY_UNION_NTO_EUR).toBe(38128.87)
-    expect(report.hostawayIncome.stayCount).toBe(29)
-    expect(report.hostawayIncome.nights).toBe(152)
-    expect(report.hostawayIncome.printedNtoTotalEur).toBe(38128.87)
-    expect(html).toContain('29')
-    expect(html).toContain('152')
-    expect(html).toContain('38,128.87')
-    expect(AVI_HOSTAWAY_LAST_CHECKOUT_DATE).toBe('2026-09-06')
+  it('keeps Hostaway aggregation 28 / 149 / €37,630.50', () => {
+    expect(AVI_HOSTAWAY_STAY_COUNT).toBe(28)
+    expect(AVI_HOSTAWAY_NIGHTS).toBe(149)
+    expect(AVI_HOSTAWAY_UNION_NTO_EUR).toBe(37630.5)
+    expect(report.hostawayIncome.stayCount).toBe(28)
+    expect(report.hostawayIncome.nights).toBe(149)
+    expect(report.hostawayIncome.printedNtoTotalEur).toBe(37630.5)
+    expect(html).toContain('28')
+    expect(html).toContain('149')
+    expect(html).toContain('37,630.50')
+    expect(AVI_HOSTAWAY_LAST_CHECKOUT_DATE).toBe('2026-08-29')
   })
 })
 
 describe('Avi redesign — bilingual final wording', () => {
-  it('English contains Avi is owed €740.94', () => {
-    expect(html).toContain('Avi is owed €740.94')
+  it('English contains Avi is owed €594.25', () => {
+    expect(html).toContain('Avi is owed €594.25')
     expect(html).not.toContain('מגיע לאבי')
   })
 
@@ -134,61 +134,60 @@ describe('Avi redesign — dates', () => {
     const incomeMonths = report.monthly.rows.filter((row) => row.incomeEur !== 0 || row.stayCount > 0)
     const monthLabelCount = (html.match(/data-avi-month-label/g) ?? []).length
     expect(monthLabelCount).toBe(incomeMonths.length)
-    expect(incomeMonths.some((row) => row.month === '2026-09')).toBe(true)
+    expect(incomeMonths.some((row) => row.month === '2026-09')).toBe(false)
+    expect(incomeMonths.some((row) => row.month === '2026-08')).toBe(true)
   })
 
-  it('shows ledger cutoff 29 August and Hostaway income through 6 September', () => {
+  it('shows ledger cutoff and Hostaway income through 29 August', () => {
     expect(html).toContain('data-testid="avi-print-cutoff"')
     expect(html).toContain('Ledger transactions through')
     expect(html).toContain('29 August 2026')
     expect(html).toContain('data-testid="avi-hostaway-period"')
     expect(html).toContain('Hostaway income through')
-    expect(html).toContain('6 September 2026')
     expect(heHtml).toContain('data-avi-he-sentence="עסקאות בספר עד 29 באוגוסט 2026"')
     expect(heHtml).toContain('הכנסות Hostaway עד')
-    expect(heHtml).toContain('data-avi-he-date-text="6 בספטמבר 2026"')
+    expect(heHtml).toContain('data-avi-he-date-text="29 באוגוסט 2026"')
   })
 })
 
 describe('Avi redesign — monthly rounding bridge', () => {
-  it('keeps the engine net-of-expense halves and −€0.05 bridge for identity, but the income table shows 50% of income', () => {
+  it('keeps the engine net-of-expense halves with a cent bridge, while the income table shows 50% of income', () => {
     const rowSum = Math.round(
       report.monthly.rows.reduce((s, r) => s + r.aviResultEur, 0) * 100,
     ) / 100
-    expect(rowSum).toBe(12198.06)
-    expect(report.monthly.roundingAdjustmentEur).toBe(-0.05)
-    expect(report.monthly.totals.aviResultEur).toBe(12198.01)
-    expect(Math.round((rowSum + report.monthly.roundingAdjustmentEur) * 100) / 100).toBe(12198.01)
-    expect(report.monthly.totals.aviIncomeShareEur).toBe(19744.44)
+    expect(Math.round((rowSum + report.monthly.roundingAdjustmentEur) * 100) / 100).toBe(
+      report.monthly.totals.aviResultEur,
+    )
+    expect(report.monthly.totals.aviIncomeShareEur).toBe(19495.25)
     const incomeShareSum = Math.round(
       report.monthly.rows.reduce((s, r) => s + r.aviIncomeShareEur, 0) * 100,
     ) / 100
     expect(
       Math.round((incomeShareSum + report.monthly.incomeShareRoundingAdjustmentEur) * 100) / 100,
-    ).toBe(19744.44)
+    ).toBe(19495.25)
   })
 
-  it('pluralizes stay and night labels', () => {
-    expect(html).toContain('1 stay · 1 night')
-    expect(html).toContain('1 stay · 3 nights')
-    expect(html).not.toContain('1 stays · 1 nights')
-    expect(heHtml).toContain('שהייה אחת · לילה אחד')
-    expect(heHtml).toContain('שהייה אחת · 3 לילות')
-    expect(heHtml).not.toContain('1 שהיות · 1 לילות')
+  it('shows stay and night counts in dedicated monthly columns', () => {
+    expect(html).toContain('>Stays<')
+    expect(html).toContain('>Nights<')
+    expect(heHtml).toContain('>שהיות<')
+    expect(heHtml).toContain('>הזמנות<')
+    expect(report.monthly.totals.stayCount).toBe(28)
+    expect(report.monthly.totals.nights).toBe(149)
   })
 })
 
 describe('Avi redesign — monthly grand total once', () => {
-  it('shows €39,488.87 once as the monthly grand total and not as Final result', () => {
+  it('shows €38,990.50 once as the monthly grand total and not as Final result', () => {
     const incomeTotal = report.monthly.totals.incomeEur
-    expect(incomeTotal).toBe(39488.87)
+    expect(incomeTotal).toBe(38990.5)
     expect(
       Number(
         (report.airbnbCredits.hostawayPrintedNtoTotalEur +
           report.airbnbCredits.privateBookingTotalEur).toFixed(2),
       ),
-    ).toBe(39488.87)
-    const occurrences = (html.match(/39,488\.87/g) ?? []).length
+    ).toBe(38990.5)
+    const occurrences = (html.match(/38,990\.50/g) ?? []).length
     expect(occurrences).toBeGreaterThanOrEqual(1)
     expect(html).toContain('data-testid="avi-monthly-totals"')
     expect(html).toContain('Grand total')
@@ -201,37 +200,47 @@ describe('Avi redesign — monthly grand total once', () => {
     expect(monthlyBlock).not.toContain('>Airbnb setup<')
     expect(monthlyBlock).toContain('>Income<')
     expect(monthlyBlock).toContain('>Avi income share (50%)<')
-    expect(monthlyBlock).toContain('19,744.44')
+    expect(monthlyBlock).toContain('>Stays<')
+    expect(monthlyBlock).toContain('>Nights<')
+    expect(monthlyBlock).toContain('19,495.25')
+    expect(heHtml).toContain('>שהיות<')
+    expect(heHtml).toContain('>הזמנות<')
   })
 })
 
 describe('Avi redesign — settlement boxes', () => {
-  it('puts amount above Obligation / Paid / Summary under the accounts table', () => {
-    const block = html.slice(
-      html.indexOf('data-testid="avi-final-summary"'),
-      html.indexOf('data-testid="avi-expense-appendix-link"') > html.indexOf('data-testid="avi-final-summary"')
-        ? html.indexOf('data-testid="avi-expense-appendix-link"')
-        : html.length,
-    )
-    const ops = block.slice(block.indexOf('avi-fin-ops'))
-    expect(ops.indexOf('avi-fin-ops-value')).toBeGreaterThan(-1)
-    expect(ops.indexOf('avi-fin-ops-value')).toBeLessThan(ops.indexOf('avi-fin-ops-label'))
+  it('places Obligation / Paid / Summary totals under matching table columns', () => {
+    const block = html.slice(html.indexOf('data-testid="avi-final-summary"'))
+    expect(block).toContain('data-testid="avi-settlement-column-totals"')
+    expect(block).toContain('avi-settlement-col-total')
     expect(block).toContain('>Obligation<')
     expect(block).toContain('>Paid<')
+    expect(block).toContain('>Income credit<')
     expect(block).toContain('>Summary<')
     expect(block).toContain('>Item<')
     expect(block).toContain('Settlement summary')
-    expect(block).toContain('299,603.50')
+    expect(block).toContain('299,501.00')
     expect(block).toContain('280,600.00')
-    expect(block).toContain('740.94')
+    expect(block).toContain('19,495.25')
+    expect(block).toContain('594.25')
     expect(heHtml).toContain('>התחייבות<')
     expect(heHtml).toContain('>שולם<')
+    expect(heHtml).toContain('>זיכוי הכנסה<')
     expect(heHtml).toContain('>סיכום<')
     expect(heHtml).toContain('>סעיף<')
     expect(heHtml).toContain('סיכום התחשבנות')
     expect(AVI_REPORT_PRINT_CSS).toContain('text-align: center')
     expect(html).toContain('avi-account-bar--centered')
     expect(html).toContain('avi-settlement-table')
+    const totalsIdx = block.indexOf('avi-settlement-column-totals')
+    const obligationIdx = block.indexOf('Obligation', totalsIdx)
+    const paidIdx = block.indexOf('Paid', totalsIdx)
+    const creditIdx = block.indexOf('Income credit', totalsIdx)
+    const summaryIdx = block.indexOf('Summary', totalsIdx)
+    expect(obligationIdx).toBeGreaterThan(-1)
+    expect(paidIdx).toBeGreaterThan(obligationIdx)
+    expect(creditIdx).toBeGreaterThan(paidIdx)
+    expect(summaryIdx).toBeGreaterThan(creditIdx)
   })
 })
 
@@ -339,7 +348,7 @@ describe('Avi redesign — fail-closed', () => {
       <ExternalPartnerAviReportView report={failed} audience="partner" />,
     )
     expect(failedHtml).not.toContain('Avi is owed')
-    expect(failedHtml).not.toContain('740.94')
+    expect(failedHtml).not.toContain('594.25')
     expect(failedHtml).not.toContain('280,600')
     expect(failedHtml).not.toContain('data-testid="avi-final-hero"')
     expect(failedHtml).not.toContain('data-testid="avi-payment-table"')

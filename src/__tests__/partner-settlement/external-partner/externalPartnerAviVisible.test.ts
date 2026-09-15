@@ -291,7 +291,7 @@ describe('projectAviVisibleExpenses — 202-row certified artifact', () => {
         { key: 'acquisition', label: 'Acquisition', totalChargeEur: 500000, aviShareEur: 250000, aviFundingEur: null, semanticNet: null },
         { key: 'deal_expense', label: 'Acquisition / Deal expenses', totalChargeEur: 11900, aviShareEur: 5950, aviFundingEur: 5600, semanticNet: null },
         { key: 'renovation', label: 'Renovation', totalChargeEur: 72214.14, aviShareEur: 36107.07, aviFundingEur: 25000, semanticNet: null },
-        { key: 'airbnb', label: 'Airbnb', totalChargeEur: 15092.86, aviShareEur: 7546.43, aviFundingEur: 19744.44, semanticNet: null },
+        { key: 'airbnb', label: 'Airbnb', totalChargeEur: 14887.86, aviShareEur: 7443.93, aviFundingEur: 19495.25, semanticNet: null },
         { key: 'management', label: 'Management', totalChargeEur: 0, aviShareEur: 0, aviFundingEur: null, semanticNet: 'Settled' },
       ],
       expenses.filter((e) => e.layer === 'airbnb'),
