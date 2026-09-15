@@ -363,8 +363,7 @@ describe('Avi print view — staff authorization unchanged', () => {
       'utf8',
     )
     expect(pdfRoute).toContain('authenticateStatementUser')
-    expect(pdfRoute).toContain('AviPartnerReportPdf')
-    expect(pdfRoute).toContain('renderToBuffer')
+    expect(pdfRoute).toContain('renderAviPartnerReportPdf')
     expect(pdfRoute).toContain("X-Avi-Pdf-Engine': 'react-pdf'")
     expect(pdfRoute).not.toMatch(/puppeteer|chromium|cookieHeader|htmlContent/)
     expect(printPage).toContain('authenticateStatementUser')

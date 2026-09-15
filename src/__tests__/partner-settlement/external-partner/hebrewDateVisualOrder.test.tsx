@@ -144,8 +144,8 @@ describe('Avi Hebrew partner HTML — presentation QA', () => {
   })
 
   it('uses required Hebrew copy phrases in HE HTML', () => {
-    expect(heHtml).toContain('הכנסות Airbnb')
-    expect(heHtml).toContain('הכנסות Hostaway')
+    expect(heHtml).toContain('הכנסה משכירות קצרה')
+    expect(heHtml).toContain('שהיות Hostaway')
     expect(heHtml).toContain('תשלום נטו לבעלים (Net Owner Payout)')
     expect(heHtml).toContain('חלק אבי בהוצאות')
     expect(heHtml).toContain('הוצאות מאושרות לאחר רכישת חלקו')

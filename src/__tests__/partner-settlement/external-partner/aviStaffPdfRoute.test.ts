@@ -17,19 +17,11 @@ jest.mock('@/components/finance/aviReportPresentation', () => ({
   sanitizeAviReportClientPayload: (report: unknown) => report,
 }))
 
-const registerFontsMock = jest.fn()
-jest.mock('@/lib/pdf/registerJjPdfFonts', () => ({
-  registerJjPdfFonts: () => registerFontsMock(),
-}))
-
-jest.mock('@/lib/pdf/AviPartnerReportPdf', () => ({
-  AviPartnerReportPdf: 'AviPartnerReportPdf',
-}))
-
-const renderToBufferMock = jest.fn(async (_el?: unknown) => Buffer.from('%PDF-staff-react'))
-jest.mock('@react-pdf/renderer', () => ({
-  renderToBuffer: (el: unknown) => renderToBufferMock(el),
-  Font: { register: jest.fn() },
+const renderPdfMock = jest.fn(
+  async (_report?: unknown, _lang?: unknown) => Buffer.from('%PDF-staff-react'),
+)
+jest.mock('@/lib/pdf/renderAviPartnerReportPdf', () => ({
+  renderAviPartnerReportPdf: (report: unknown, lang: unknown) => renderPdfMock(report, lang),
 }))
 
 import { GET } from '@/app/(app)/finance/external-partner/avi/pdf/route'
@@ -37,9 +29,8 @@ import { GET } from '@/app/(app)/finance/external-partner/avi/pdf/route'
 beforeEach(() => {
   authMock.mockReset()
   buildMock.mockReset()
-  registerFontsMock.mockClear()
-  renderToBufferMock.mockClear()
-  renderToBufferMock.mockResolvedValue(Buffer.from('%PDF-staff-react'))
+  renderPdfMock.mockClear()
+  renderPdfMock.mockResolvedValue(Buffer.from('%PDF-staff-react'))
 })
 
 function req(lang: 'he' | 'en' = 'en', cookie = 'sb=session') {
@@ -56,14 +47,14 @@ describe('GET /finance/external-partner/avi/pdf', () => {
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain('/login')
     expect(buildMock).not.toHaveBeenCalled()
-    expect(renderToBufferMock).not.toHaveBeenCalled()
+    expect(renderPdfMock).not.toHaveBeenCalled()
   })
 
   it('non-staff → 404, no PDF render', async () => {
     authMock.mockResolvedValue({ ok: false, error: 'NOT_STAFF' })
     const res = await GET(req())
     expect(res.status).toBe(404)
-    expect(renderToBufferMock).not.toHaveBeenCalled()
+    expect(renderPdfMock).not.toHaveBeenCalled()
   })
 
   it('staff but non-certified report → 404, no PDF render', async () => {
@@ -71,17 +62,18 @@ describe('GET /finance/external-partner/avi/pdf', () => {
     buildMock.mockResolvedValue({ status: 'failed', failures: ['x'] })
     const res = await GET(req())
     expect(res.status).toBe(404)
-    expect(renderToBufferMock).not.toHaveBeenCalled()
+    expect(renderPdfMock).not.toHaveBeenCalled()
   })
 
   it('authorized staff + certified → react-pdf buffer with identity-bearing DTO', async () => {
     authMock.mockResolvedValue({ ok: true, staffRole: 'ceo', userId: 'u1', isActive: true })
-    buildMock.mockResolvedValue({
-      status: 'certified',
+    const certified = {
+      status: 'certified' as const,
       partners: [{ partner: 'Avi', netEur: 594.25, semanticNet: 'Avi is owed €594.25' }],
       finalSummary: { netEur: 594.25 },
       acquisition: { agreedTransactionValueEur: 500_000 },
-    })
+    }
+    buildMock.mockResolvedValue(certified)
     const res = await GET(req('he', 'sb-access-token=abc'))
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toBe('application/pdf')
@@ -89,14 +81,19 @@ describe('GET /finance/external-partner/avi/pdf', () => {
     expect(res.headers.get('content-disposition')).toContain('avi-partner-report-he.pdf')
     expect(res.headers.get('x-avi-pdf-export')).toBe('jj-sendable-staff')
     expect(res.headers.get('x-avi-pdf-engine')).toBe('react-pdf')
-    expect(registerFontsMock).toHaveBeenCalledTimes(1)
-    expect(renderToBufferMock).toHaveBeenCalledTimes(1)
+    expect(renderPdfMock).toHaveBeenCalledTimes(1)
+    expect(renderPdfMock.mock.calls[0][0]).toMatchObject({
+      status: 'certified',
+      finalSummary: { netEur: 594.25 },
+      acquisition: { agreedTransactionValueEur: 500_000 },
+    })
+    expect(renderPdfMock.mock.calls[0][1]).toBe('he')
   })
 
   it('PDF render failure returns generic 500 without leaking internals', async () => {
     authMock.mockResolvedValue({ ok: true, staffRole: 'ceo', userId: 'u1', isActive: true })
     buildMock.mockResolvedValue({ status: 'certified' })
-    renderToBufferMock.mockRejectedValueOnce(new Error('font missing /tmp/secret'))
+    renderPdfMock.mockRejectedValueOnce(new Error('font missing /tmp/secret'))
     const res = await GET(req('en'))
     expect(res.status).toBe(500)
     const body = (await res.json()) as Record<string, unknown>
@@ -113,8 +110,7 @@ describe('GET /finance/external-partner/avi/pdf', () => {
     )
     expect(src).toContain("export const runtime = 'nodejs'")
     expect(src).toContain('authenticateStatementUser')
-    expect(src).toContain('AviPartnerReportPdf')
-    expect(src).toContain('renderToBuffer')
+    expect(src).toContain('renderAviPartnerReportPdf')
     expect(src).not.toMatch(/puppeteer|chromium|aviReportPdf|htmlContent|fetchAviStaffPrintHtml/)
   })
 })

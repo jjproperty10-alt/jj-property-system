@@ -671,15 +671,17 @@ function paymentColumns(lang: AviReportLang): DataTableColumn[] {
 
 function AirbnbCreditsSection({
   credits,
+  hostaway,
   lang,
 }: {
   credits: AviReportAirbnbCredits
+  hostaway: AviHostawayIncomeSection
   lang: AviReportLang
 }) {
   const copy = AVI_REPORT_COPY[lang]
   return (
     <section className="avi-section avi-print-keep" data-testid="avi-airbnb-credits">
-      <div className="avi-account-bar" data-tone="orange">
+      <div className="avi-account-bar" data-tone="green">
         <div>
           <h2 className="avi-account-bar-title">{copy.airbnbIncome}</h2>
           <p className="avi-account-bar-sub">{copy.airbnbIncomeSubtitle}</p>
@@ -690,14 +692,13 @@ function AirbnbCreditsSection({
         </div>
       </div>
       <div className="avi-kpi-strip">
-        <div className="avi-kpi-tile" data-testid="avi-private-booking-credit">
-          <div className="avi-kpi-label">{copy.privateIncome}</div>
-          <div className="avi-kpi-value" data-testid="avi-private-booking-total">
-            <MoneyValue amount={credits.privateBookingTotalEur} size="sm" />
-          </div>
-          <div className="text-[10px] text-slate-500 mt-0.5" data-testid="avi-private-booking-avi">
-            {copy.aviShareCredit}: <MoneyValue amount={credits.privateBookingAviEur} size="sm" />
-          </div>
+        <div className="avi-kpi-tile" data-testid="avi-hostaway-stay-count">
+          <div className="avi-kpi-label">{copy.stays}</div>
+          <div className="avi-kpi-value" dir="ltr">{hostaway.stayCount}</div>
+        </div>
+        <div className="avi-kpi-tile" data-testid="avi-hostaway-nights">
+          <div className="avi-kpi-label">{copy.nights}</div>
+          <div className="avi-kpi-value" dir="ltr">{hostaway.nights}</div>
         </div>
         <div className="avi-kpi-tile" data-testid="avi-hostaway-rental-credit">
           <div className="avi-kpi-label">{copy.hostawayIncome}</div>
@@ -706,6 +707,15 @@ function AirbnbCreditsSection({
           </div>
           <div className="text-[10px] text-slate-500 mt-0.5">
             {copy.aviShare}: <MoneyValue amount={credits.hostawayAviEur} size="sm" />
+          </div>
+        </div>
+        <div className="avi-kpi-tile" data-testid="avi-private-booking-credit">
+          <div className="avi-kpi-label">{copy.privateIncome}</div>
+          <div className="avi-kpi-value" data-testid="avi-private-booking-total">
+            <MoneyValue amount={credits.privateBookingTotalEur} size="sm" />
+          </div>
+          <div className="text-[10px] text-slate-500 mt-0.5" data-testid="avi-private-booking-avi">
+            {copy.aviShareCredit}: <MoneyValue amount={credits.privateBookingAviEur} size="sm" />
           </div>
         </div>
       </div>
@@ -1093,47 +1103,6 @@ function RenovationWorkSection({
   )
 }
 
-function HostawayIncomeSection({
-  income,
-  lang,
-}: {
-  income: AviHostawayIncomeSection
-  lang: AviReportLang
-}) {
-  const copy = AVI_REPORT_COPY[lang]
-  return (
-    <section className="avi-section avi-print-keep" data-testid="avi-hostaway-income">
-      <div className="avi-account-bar" data-tone="blue">
-        <div>
-          <h2 className="avi-account-bar-title">{copy.hostawayIncome}</h2>
-        </div>
-        <div className="avi-account-bar-right">
-          <div className="avi-account-bar-amount"><MoneyValue amount={income.printedNtoTotalEur} /></div>
-          <div className="avi-account-bar-amount-hint">{copy.printedNto}</div>
-        </div>
-      </div>
-      <div className="avi-kpi-strip">
-        <div className="avi-kpi-tile">
-          <div className="avi-kpi-label">{copy.stays}</div>
-          <div className="avi-kpi-value" dir="ltr">{income.stayCount}</div>
-        </div>
-        <div className="avi-kpi-tile">
-          <div className="avi-kpi-label">{copy.nights}</div>
-          <div className="avi-kpi-value" dir="ltr">{income.nights}</div>
-        </div>
-        <div className="avi-kpi-tile">
-          <div className="avi-kpi-label">{copy.income}</div>
-          <div className="avi-kpi-value"><MoneyValue amount={income.printedNtoTotalEur} /></div>
-        </div>
-        <div className="avi-kpi-tile">
-          <div className="avi-kpi-label">{copy.aviShare}</div>
-          <div className="avi-kpi-value"><MoneyValue amount={income.aviShareEur} /></div>
-        </div>
-      </div>
-    </section>
-  )
-}
-
 function AirbnbDepartmentSection({
   department,
   lang,
@@ -1216,7 +1185,7 @@ function MonthlySection({
   const tableDir = lang === 'he' ? 'rtl' : 'ltr'
   return (
     <section className="avi-section avi-print-keep-header" data-testid="avi-monthly">
-      <div className="avi-account-bar" data-tone="blue">
+      <div className="avi-account-bar" data-tone="green">
         <div>
           <h2 className="avi-account-bar-title">{copy.monthly}</h2>
           <p className="avi-account-bar-sub">{copy.monthlySubtitle}</p>
@@ -1449,8 +1418,11 @@ export function ExternalPartnerAviReportView({
         visibleOnScreen={isPartner}
         lang={lang}
       />
-      <AirbnbCreditsSection credits={report.airbnbCredits} lang={lang} />
-      <HostawayIncomeSection income={report.hostawayIncome} lang={lang} />
+      <AirbnbCreditsSection
+        credits={report.airbnbCredits}
+        hostaway={report.hostawayIncome}
+        lang={lang}
+      />
       <AirbnbDepartmentSection department={report.airbnb.setup} lang={lang} />
       <AirbnbDepartmentSection department={report.airbnb.operations} lang={lang} />
       <p className="avi-note-plain avi-print-keep" data-testid="avi-internet-split-note">

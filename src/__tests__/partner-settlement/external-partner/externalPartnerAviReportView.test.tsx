@@ -214,7 +214,7 @@ describe('ExternalPartnerAviReportView — certified', () => {
   it('shows printed Hostaway NTO credit without tax lines or guest/reservation PII', () => {
     expect(html).toContain('data-testid="avi-airbnb-credits"')
     expect(html).toContain('Private booking income')
-    expect(html).toContain('Hostaway rental income')
+    expect(html).toContain('Hostaway stays (Net Owner Payout)')
     expect(html).toContain('data-testid="avi-hostaway-aggregated-stays"')
     expect(html).toContain('37,630.50')
     expect(html).toContain('18,815.25')

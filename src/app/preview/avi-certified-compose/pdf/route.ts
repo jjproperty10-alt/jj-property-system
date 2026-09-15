@@ -5,14 +5,11 @@
  * Staff Production PDF: /finance/external-partner/avi/pdf
  */
 import 'server-only'
-import React from 'react'
 import { NextResponse } from 'next/server'
-import { renderToBuffer } from '@react-pdf/renderer'
 import { isAviCertifiedComposePreviewAllowed } from '@/lib/partner-settlement/external-partner/aviComposePreviewGate'
 import { composeAviCertifiedCanonicalFixtureReport } from '@/lib/partner-settlement/external-partner/aviCanonicalComposeFixture'
 import type { AviReportLang } from '@/components/finance/aviReportCopy'
-import { AviPartnerReportPdf } from '@/lib/pdf/AviPartnerReportPdf'
-import { registerJjPdfFonts } from '@/lib/pdf/registerJjPdfFonts'
+import { renderAviPartnerReportPdf } from '@/lib/pdf/renderAviPartnerReportPdf'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -35,11 +32,7 @@ export async function GET(req: Request) {
   }
 
   try {
-    registerJjPdfFonts()
-    const element = React.createElement(AviPartnerReportPdf, { report, lang })
-    const buffer = await renderToBuffer(
-      element as Parameters<typeof renderToBuffer>[0],
-    )
+    const buffer = await renderAviPartnerReportPdf(report, lang)
     const filename =
       lang === 'he' ? 'avi-partner-report-he.pdf' : 'avi-partner-report-en.pdf'
     return new NextResponse(new Uint8Array(buffer), {

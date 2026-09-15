@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2019",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "strict": false,
+    "skipLibCheck": true,
+    "baseUrl": "..",
+    "paths": {
+      "@/*": ["src/*"],
+      "server-only": ["jest.serverOnly.js"]
+    }
+  },
+  "include": ["./render-avi-full-pdf-qa.ts", "../src/**/*.ts", "../src/**/*.tsx"]
+}

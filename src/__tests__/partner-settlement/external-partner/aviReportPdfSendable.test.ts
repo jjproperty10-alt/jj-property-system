@@ -49,7 +49,7 @@ describe('Avi react-pdf identity lock', () => {
     expect(pdfSrc).toContain('agreedTransactionValueEur')
     expect(pdfSrc).toContain('pageNumber')
     expect(pdfSrc).not.toMatch(/puppeteer|chromium|setContent|goto/)
-    expect(routeSrc).toContain('renderToBuffer')
+    expect(routeSrc).toContain('renderAviPartnerReportPdf')
     expect(routeSrc).not.toMatch(/puppeteer|chromium/)
     expect(
       fs.existsSync(
