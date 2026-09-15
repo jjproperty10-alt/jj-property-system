@@ -179,6 +179,7 @@ describe('certified identity remains Avi is owed €740.94', () => {
     expect(monthly.totals.nights).toBe(152)
     expect(monthly.totals.hostawayNtoEur).toBe(38128.87)
     expect(monthly.totals.privateIncomeEur).toBe(1360)
+    expect(monthly.totals.aviIncomeShareEur).toBe(19744.44)
     const june = monthly.rows.find((r) => r.month === '2025-06')
     expect(june?.internetEur).toBe(30)
     expect(june?.setupEur).toBe(347.99)

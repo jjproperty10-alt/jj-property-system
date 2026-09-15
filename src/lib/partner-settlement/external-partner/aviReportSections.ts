@@ -256,7 +256,7 @@ export function composeAviAirbnbSection(): AviAirbnbSection {
       labelEn: 'Airbnb setup',
       labelHe: 'הקמת Airbnb',
       descriptionEn: 'One-off cost of making the property rentable.',
-      descriptionHe: 'עלות חד-פעמית של הכשרת הנכס להשכרה.',
+      descriptionHe: 'עלות חד־פעמית להכנת הנכס להשכרה קצרת טווח.',
       lines: AVI_AIRBNB_SETUP_LINES,
       monthGroups: aviAirbnbLinesByMonth('setup'),
       totalEur: AVI_AIRBNB_SETUP_TOTAL_EUR,
@@ -267,7 +267,7 @@ export function composeAviAirbnbSection(): AviAirbnbSection {
       labelEn: 'Airbnb operations',
       labelHe: 'תפעול Airbnb',
       descriptionEn: 'Recurring cost of running the property.',
-      descriptionHe: 'עלות שוטפת של הפעלת הנכס.',
+      descriptionHe: 'עלות שוטפת להפעלת הנכס.',
       lines: AVI_AIRBNB_OPERATIONS_LINES,
       monthGroups: aviAirbnbLinesByMonth('operations'),
       totalEur: AVI_AIRBNB_OPERATIONS_TOTAL_EUR,
@@ -339,6 +339,8 @@ export interface AviMonthlyRow {
   readonly setupEur: number
   readonly resultAfterSetupEur: number
   readonly aviResultEur: number
+  /** Half of that month's income (not net of setup/operations). */
+  readonly aviIncomeShareEur: number
 }
 
 export interface AviMonthlySection {
@@ -349,6 +351,11 @@ export interface AviMonthlySection {
    * certified period share. Presentation only — does not change €740.94.
    */
   readonly roundingAdjustmentEur: number
+  /**
+   * Cent bridge so displayed monthly income-halves match half of period income.
+   * Presentation only — does not change €740.94.
+   */
+  readonly incomeShareRoundingAdjustmentEur: number
 }
 
 function bucketOperations(month: string): {
@@ -437,6 +444,7 @@ export function composeAviMonthly(): AviMonthlySection {
         // Sum of these halves can differ from the certified period share by a few
         // cents; `roundingAdjustmentEur` bridges that gap. Final net €740.94 unchanged.
         aviResultEur: Math.round(resultAfterSetupEur * 50) / 100,
+        aviIncomeShareEur: Math.round(incomeEur * 50) / 100,
       }
     })
 
@@ -449,10 +457,16 @@ export function composeAviMonthly(): AviMonthlySection {
     (add((r) => r.resultAfterSetupEur) * AVI_SHARE_PCT) / 100,
   )
   const roundingAdjustmentEur = roundEur(certifiedAviResultEur - displayedAviSumEur)
+  const displayedIncomeShareSumEur = add((r) => r.aviIncomeShareEur)
+  const certifiedIncomeShareEur = half(add((r) => r.incomeEur))
+  const incomeShareRoundingAdjustmentEur = roundEur(
+    certifiedIncomeShareEur - displayedIncomeShareSumEur,
+  )
 
   return {
     rows,
     roundingAdjustmentEur,
+    incomeShareRoundingAdjustmentEur,
     totals: {
       stayCount: rows.reduce((s, r) => s + r.stayCount, 0),
       nights: rows.reduce((s, r) => s + r.nights, 0),
@@ -469,6 +483,7 @@ export function composeAviMonthly(): AviMonthlySection {
       setupEur: add((r) => r.setupEur),
       resultAfterSetupEur: add((r) => r.resultAfterSetupEur),
       aviResultEur: certifiedAviResultEur,
+      aviIncomeShareEur: certifiedIncomeShareEur,
     },
   }
 }

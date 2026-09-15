@@ -38,7 +38,7 @@ const PAYMENT_DATES = [
 describe('HebrewDate — exact visual-order text', () => {
   it('formats generated / cutoff / payment dates exactly', () => {
     expect(formatHebrewGeneratedSentenceText(GENERATED_ISO)).toBe('הופק ב־14 בספטמבר 2026')
-    expect(formatHebrewCutoffSentenceText(CUTOFF_ISO)).toBe('עסקאות שנכללו עד 29 באוגוסט 2026')
+    expect(formatHebrewCutoffSentenceText(CUTOFF_ISO)).toBe('עסקאות בספר עד 29 באוגוסט 2026')
     expect(formatHebrewFullDateText('2024-06-16')).toBe('16 ביוני 2024')
     expect(formatHebrewFullDateText('2024-10-10')).toBe('10 באוקטובר 2024')
     expect(formatHebrewFullDateText('2024-11-16')).toBe('16 בנובמבר 2024')
@@ -62,7 +62,7 @@ describe('HebrewDate — exact visual-order text', () => {
     )
 
     const cutoff = renderToStaticMarkup(<HebrewCutoffSentence iso={CUTOFF_ISO} />)
-    expect(cutoff).toContain('data-avi-he-sentence="עסקאות שנכללו עד 29 באוגוסט 2026"')
+    expect(cutoff).toContain('data-avi-he-sentence="עסקאות בספר עד 29 באוגוסט 2026"')
     expect(cutoff).toMatch(
       /data-avi-he-prefix="cutoff"[\s\S]*data-avi-he-seg="day"[^>]*>29[\s\S]*data-avi-he-seg="month"[^>]*>באוגוסט[\s\S]*data-avi-he-seg="year"[^>]*>2026/,
     )
@@ -149,15 +149,21 @@ describe('Avi Hebrew partner HTML — presentation QA', () => {
     expect(heHtml).toContain('תשלום נטו לבעלים (Net Owner Payout)')
     expect(heHtml).toContain('חלק אבי בהוצאות')
     expect(heHtml).toContain('הוצאות מאושרות לאחר רכישת חלקו')
-    expect(heHtml).toContain('שכבות התחשבנות לאחר הרכישה')
+    expect(heHtml).toContain('יתרות לאחר הרכישה')
     expect(heHtml).toContain('תפעול Airbnb — המשך')
-    expect(heHtml).toContain('עסקאות שנכללו עד')
-    expect(heHtml).toContain('data-avi-he-sentence="עסקאות שנכללו עד 29 באוגוסט 2026"')
-    expect(AVI_REPORT_COPY.en.operationsContinued).toBe('Airbnb Operations — continued')
+    expect(heHtml).toContain('עסקאות בספר עד')
+    expect(heHtml).toContain('data-avi-he-sentence="עסקאות בספר עד 29 באוגוסט 2026"')
+    expect(AVI_REPORT_COPY.en.operationsContinued).toBe('Airbnb operations — continued')
     // Ownership display names (IDs unchanged)
     expect(heHtml).toContain('אבי')
     expect(heHtml).toContain('יוסי')
     expect(heHtml).toContain('יעקב')
+    expect(heHtml).toContain('חודש כניסה לנכס')
+    expect(heHtml).toContain('עלות לנכס')
+    expect(heHtml).toContain('סיכום התחשבנות')
+    expect(heHtml).toContain('לא מאושר בדוח זה')
+    expect(heHtml).not.toContain('צ׳ק-אין')
+    expect(heHtml).not.toContain('שכבות התחשבנות')
   })
 
   it('HE HTML rejects forbidden date sequences and uses payment date segments', () => {

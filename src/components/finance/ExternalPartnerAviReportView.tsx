@@ -34,6 +34,7 @@ import {
 import {
   AviReportDate,
   HebrewCutoffSentence,
+  HebrewFullDate,
   HebrewGeneratedSentence,
 } from '@/components/finance/HebrewDate'
 import { useEffect, useState } from 'react'
@@ -46,6 +47,7 @@ import type {
   AviPurchaseExpensesSection,
   AviRenovationSection,
 } from '@/lib/partner-settlement/external-partner/aviReportSections'
+import { AVI_HOSTAWAY_LAST_CHECKOUT_DATE } from '@/lib/partner-settlement/external-partner/aviHostawayStays'
 
 interface Props {
   report: ExternalPartnerAviReport
@@ -890,11 +892,27 @@ function ScreenMasthead({
             )}
           </span>
         </div>
-        <div className="avi-meta-row">
-          <span className="avi-meta-label">{lang === 'he' ? 'הופק' : 'Generated'}</span>
+        <div className="avi-meta-row" data-testid="avi-hostaway-period">
+          <span className="avi-meta-label">{copy.hostawayIncome}</span>
           <span className="avi-meta-value">
             {lang === 'he' ? (
-              generatedIso ? <HebrewGeneratedSentence iso={generatedIso} /> : <span>—</span>
+              <>
+                {copy.hostawayIncomeThrough}{' '}
+                <HebrewFullDate iso={AVI_HOSTAWAY_LAST_CHECKOUT_DATE} />
+              </>
+            ) : (
+              <>
+                {copy.hostawayIncomeThrough}{' '}
+                {formatAviFullDate(AVI_HOSTAWAY_LAST_CHECKOUT_DATE, 'en')}
+              </>
+            )}
+          </span>
+        </div>
+        <div className="avi-meta-row">
+          <span className="avi-meta-label">{copy.generatedLabel}</span>
+          <span className="avi-meta-value">
+            {lang === 'he' ? (
+              generatedIso ? <HebrewFullDate iso={generatedIso} /> : <span>—</span>
             ) : (
               generatedIso ? formatAviFullDate(generatedIso, 'en') : '—'
             )}
@@ -956,7 +974,7 @@ function PurchaseExpensesSection({
       </div>
       <div className="avi-kpi-strip">
         <div className="avi-kpi-tile">
-          <div className="avi-kpi-label">{copy.property}</div>
+          <div className="avi-kpi-label">{copy.propertyTotal}</div>
           <div className="avi-kpi-value"><MoneyValue amount={purchase.totalEur} /></div>
         </div>
         <div className="avi-kpi-tile">
@@ -978,7 +996,7 @@ function PurchaseExpensesSection({
           <tr>
             <th scope="col">{copy.month}</th>
             <th scope="col">{copy.purchaseExpenses}</th>
-            <th scope="col" className="text-right">{copy.property}</th>
+            <th scope="col" className="text-right">{copy.propertyTotal}</th>
             <th scope="col" className="text-right">{copy.aviShare}</th>
           </tr>
         </thead>
@@ -1024,7 +1042,7 @@ function RenovationWorkSection({
       </div>
       <div className="avi-kpi-strip">
         <div className="avi-kpi-tile">
-          <div className="avi-kpi-label">{copy.property}</div>
+          <div className="avi-kpi-label">{copy.propertyTotal}</div>
           <div className="avi-kpi-value"><MoneyValue amount={renovation.certifiedChargeEur} /></div>
         </div>
         <div className="avi-kpi-tile">
@@ -1048,7 +1066,7 @@ function RenovationWorkSection({
               <tr>
                 <th scope="col">{copy.renovation}</th>
                 <th scope="col" className="text-right">{copy.rows}</th>
-                <th scope="col" className="text-right">{copy.property}</th>
+                <th scope="col" className="text-right">{copy.propertyTotal}</th>
                 <th scope="col" className="text-right">{copy.aviShare}</th>
               </tr>
             </thead>
@@ -1138,12 +1156,12 @@ function AirbnbDepartmentSection({
         </div>
         <div className="avi-account-bar-right">
           <div className="avi-account-bar-amount"><MoneyValue amount={department.totalEur} /></div>
-          <div className="avi-account-bar-amount-hint">{copy.property}</div>
+          <div className="avi-account-bar-amount-hint">{copy.propertyTotal}</div>
         </div>
       </div>
       <div className="avi-kpi-strip avi-print-keep">
         <div className="avi-kpi-tile">
-          <div className="avi-kpi-label">{copy.property}</div>
+          <div className="avi-kpi-label">{copy.propertyTotal}</div>
           <div className="avi-kpi-value"><MoneyValue amount={department.totalEur} /></div>
         </div>
         <div className="avi-kpi-tile">
@@ -1163,7 +1181,7 @@ function AirbnbDepartmentSection({
           <tr>
             <th scope="col">{copy.month}</th>
             <th scope="col">{title}</th>
-            <th scope="col" className="text-end">{copy.property}</th>
+            <th scope="col" className="text-end">{copy.propertyTotal}</th>
           </tr>
         </thead>
         <tbody>
@@ -1193,6 +1211,7 @@ function MonthlySection({
 }) {
   const copy = AVI_REPORT_COPY[lang]
   const [openMonth, setOpenMonth] = useState<string | null>(null)
+  const incomeRows = monthly.rows.filter((row) => row.incomeEur !== 0 || row.stayCount > 0)
   return (
     <section className="avi-section avi-print-keep-header" data-testid="avi-monthly">
       <div className="avi-account-bar" data-tone="blue">
@@ -1210,13 +1229,11 @@ function MonthlySection({
           <tr>
             <th scope="col">{copy.month}</th>
             <th scope="col" className="text-right">{copy.income}</th>
-            <th scope="col" className="text-right">{copy.operations}</th>
-            <th scope="col" className="text-right">{copy.setup}</th>
-            <th scope="col" className="text-right">{copy.aviShare}</th>
+            <th scope="col" className="text-right">{copy.aviIncomeShare}</th>
           </tr>
         </thead>
         <tbody>
-          {monthly.rows.map((row) => {
+          {incomeRows.map((row) => {
             const open = openMonth === row.month
             return (
               <tr key={row.month}>
@@ -1247,26 +1264,22 @@ function MonthlySection({
                   )}
                 </td>
                 <td className="text-right"><MoneyValue amount={row.incomeEur} size="sm" /></td>
-                <td className="text-right"><MoneyValue amount={row.operationsEur} size="sm" /></td>
-                <td className="text-right"><MoneyValue amount={row.setupEur} size="sm" /></td>
-                <td className="text-right"><MoneyValue amount={row.aviResultEur} size="sm" /></td>
+                <td className="text-right"><MoneyValue amount={row.aviIncomeShareEur} size="sm" /></td>
               </tr>
             )
           })}
-          {monthly.roundingAdjustmentEur !== 0 && (
+          {monthly.incomeShareRoundingAdjustmentEur !== 0 && (
             <tr data-testid="avi-monthly-rounding-adjustment">
-              <td colSpan={4}>{copy.roundingAdjustment}</td>
+              <td colSpan={2}>{copy.roundingAdjustment}</td>
               <td className="text-right">
-                <MoneyValue amount={monthly.roundingAdjustmentEur} size="sm" />
+                <MoneyValue amount={monthly.incomeShareRoundingAdjustmentEur} size="sm" />
               </td>
             </tr>
           )}
           <tr className="avi-total-row" data-testid="avi-monthly-totals">
             <td>{copy.monthlyGrandTotal}</td>
             <td className="text-right"><MoneyValue amount={monthly.totals.incomeEur} size="sm" /></td>
-            <td className="text-right"><MoneyValue amount={monthly.totals.operationsEur} size="sm" /></td>
-            <td className="text-right"><MoneyValue amount={monthly.totals.setupEur} size="sm" /></td>
-            <td className="text-right"><MoneyValue amount={monthly.totals.aviResultEur} size="sm" /></td>
+            <td className="text-right"><MoneyValue amount={monthly.totals.aviIncomeShareEur} size="sm" /></td>
           </tr>
         </tbody>
       </table>
@@ -1285,12 +1298,12 @@ function FinalSettlementSection({
   return (
     <section className="avi-print-keep" data-testid="avi-final-summary">
       <div className="avi-settlement-box">
-        <div className="avi-settlement-kicker">{copy.notesControls}</div>
+        <div className="avi-settlement-kicker">{copy.settlementKicker}</div>
         <p className="avi-fin-summary-sub" style={{ marginBottom: '0.45rem' }}>{copy.finalSettlement}</p>
         <table dir="ltr">
           <thead>
             <tr>
-              <th scope="col">{copy.finalSettlement}</th>
+              <th scope="col">{copy.settlementItem}</th>
               <th scope="col" className="text-right">{copy.obligation}</th>
               <th scope="col" className="text-right">{copy.paid}</th>
               <th scope="col" className="text-right">{copy.credits}</th>
@@ -1311,22 +1324,21 @@ function FinalSettlementSection({
         </table>
         <div className="avi-fin-ops" style={{ marginTop: '0.55rem' }}>
           <div className="avi-fin-ops-cell">
-            <div className="avi-fin-ops-label">{copy.obligation}</div>
             <div className="avi-fin-ops-value"><MoneyValue amount={summary.obligationTotalEur} /></div>
+            <div className="avi-fin-ops-label">{copy.obligation}</div>
           </div>
           <div className="avi-fin-ops-cell">
-            <div className="avi-fin-ops-label">{copy.paid}</div>
             <div className="avi-fin-ops-value"><MoneyValue amount={summary.paidTotalEur} /></div>
+            <div className="avi-fin-ops-label">{copy.paid}</div>
           </div>
-          <div className="avi-fin-ops-cell">
-            <div className="avi-fin-ops-label">{copy.credits}</div>
-            <div className="avi-fin-ops-value"><MoneyValue amount={summary.creditsTotalEur} /></div>
+          <div className="avi-fin-ops-cell" data-tone="summary">
+            <div className="avi-fin-ops-value"><MoneyValue amount={summary.netEur} /></div>
+            <div className="avi-fin-ops-label">{copy.summary}</div>
           </div>
         </div>
-        <div className="avi-fin-balance" style={{ marginTop: '0.55rem' }}>
-          <div className="avi-fin-balance-label">{copy.finalNet}</div>
-          <div className="avi-fin-balance-value"><MoneyValue amount={summary.netEur} /></div>
-        </div>
+        <p className="avi-fin-formula" data-testid="avi-settlement-formula">
+          {copy.formula}
+        </p>
         <p className="avi-settlement-narrative" data-testid="avi-closing-narrative">
           {copy.closingNarrative}
         </p>

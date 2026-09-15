@@ -145,7 +145,7 @@ export function aviLayerLabel(
 ): string {
   const byKey: Record<string, { en: string; he: string }> = {
     acquisition: { en: 'Acquisition', he: 'רכישה' },
-    deal_expense: { en: 'Acquisition / Deal expenses', he: 'הוצאות רכישה / עסקה' },
+    deal_expense: { en: 'Purchase / deal expenses', he: 'הוצאות רכישה / עסקה' },
     renovation: { en: 'Renovation', he: 'שיפוץ' },
     airbnb: { en: 'Airbnb', he: 'Airbnb' },
     management: { en: 'Management', he: 'ניהול' },

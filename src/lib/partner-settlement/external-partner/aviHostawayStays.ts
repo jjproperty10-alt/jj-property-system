@@ -98,6 +98,12 @@ export const AVI_EXCLUDED_RESERVATIONS: readonly AviExcludedReservation[] = Obje
 
 export const AVI_REPORT_CUTOFF_DATE = '2026-09-08'
 
+/** Latest completed-stay checkout included in the certified Hostaway union. */
+export const AVI_HOSTAWAY_LAST_CHECKOUT_DATE = AVI_HOSTAWAY_STAYS.reduce(
+  (latest, stay) => (stay.checkOut > latest ? stay.checkOut : latest),
+  AVI_HOSTAWAY_STAYS[0].checkOut,
+)
+
 export const AVI_HOSTAWAY_STAY_COUNT = AVI_HOSTAWAY_STAYS.length
 
 export const AVI_HOSTAWAY_NIGHTS = AVI_HOSTAWAY_STAYS.reduce((s, r) => s + r.nights, 0)

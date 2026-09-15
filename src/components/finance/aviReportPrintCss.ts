@@ -236,8 +236,18 @@ export const AVI_REPORT_PRINT_CSS = `
   border: 1px solid rgba(134, 239, 172, 0.35);
   border-radius: 4px;
   background: rgba(15, 40, 70, 0.55);
-  padding: 0.45rem 0.5rem;
+  padding: 0.55rem 0.5rem 0.45rem;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+}
+
+.avi-fin-ops-cell[data-tone="summary"] {
+  background: rgba(22, 101, 52, 0.45);
+  border-color: rgba(134, 239, 172, 0.55);
 }
 
 .avi-fin-ops-label {
@@ -246,7 +256,7 @@ export const AVI_REPORT_PRINT_CSS = `
   color: #93c5fd;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  margin-bottom: 0.2rem;
+  margin: 0;
 }
 
 .avi-fin-ops-value {
@@ -254,6 +264,10 @@ export const AVI_REPORT_PRINT_CSS = `
   font-weight: 700;
   color: ${C.white};
   font-variant-numeric: tabular-nums;
+}
+
+.avi-fin-ops-cell[data-tone="summary"] .avi-fin-ops-value {
+  color: #bbf7d0;
 }
 
 .avi-fin-formula {
@@ -392,8 +406,9 @@ export const AVI_REPORT_PRINT_CSS = `
   color: ${C.grayText};
   font-size: 7pt;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  /* Keep brand names (Airbnb / Hostaway) readable — never force ALL CAPS. */
+  text-transform: none;
   padding: 0.28rem 0.4rem;
   border-top: 1px solid ${C.grayBorder};
   border-bottom: 1px solid ${C.grayBorder};
@@ -492,8 +507,8 @@ export const AVI_REPORT_PRINT_CSS = `
   color: ${C.grayText} !important;
   font-size: 6.5pt;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  text-transform: none;
+  letter-spacing: 0.02em;
   border-bottom: 1px solid ${C.grayBorder};
 }
 
@@ -519,6 +534,11 @@ export const AVI_REPORT_PRINT_CSS = `
 .avi-settlement-box .avi-fin-balance-value,
 .avi-settlement-box .avi-fin-balance-value span {
   color: ${C.white} !important;
+}
+
+.avi-settlement-box .avi-fin-ops-cell[data-tone="summary"] .avi-fin-ops-value,
+.avi-settlement-box .avi-fin-ops-cell[data-tone="summary"] .avi-fin-ops-value span {
+  color: #bbf7d0 !important;
 }
 
 .avi-settlement-narrative {

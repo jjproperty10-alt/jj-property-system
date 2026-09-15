@@ -85,7 +85,7 @@ export function formatHebrewGeneratedSentenceText(iso: string): string {
 }
 
 export function formatHebrewCutoffSentenceText(iso: string): string {
-  return `עסקאות שנכללו עד ${formatHebrewFullDateText(iso)}`
+  return `עסקאות בספר עד ${formatHebrewFullDateText(iso)}`
 }
 
 /** Incorrect visible sequences that must never appear in Hebrew output. */
@@ -222,7 +222,7 @@ export function HebrewGeneratedSentence({
   )
 }
 
-/** “עסקאות שנכללו עד 29 באוגוסט 2026” */
+/** “עסקאות בספר עד 29 באוגוסט 2026” */
 export function HebrewCutoffSentence({
   iso,
   className,
@@ -241,7 +241,7 @@ export function HebrewCutoffSentence({
       data-avi-he-sentence={formatHebrewCutoffSentenceText(iso)}
       dir="rtl"
     >
-      <span data-avi-he-prefix="cutoff">עסקאות שנכללו עד{' '}</span>
+      <span data-avi-he-prefix="cutoff">עסקאות בספר עד{' '}</span>
       <SegmentDay day={p.day} />
       {'\u00a0'}
       <SegmentMonth label={HEBREW_MONTH_WITH_BE[p.month]!} />

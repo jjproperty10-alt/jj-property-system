@@ -31,6 +31,7 @@ import {
   AVI_HOSTAWAY_STAY_COUNT,
   AVI_HOSTAWAY_NIGHTS,
   AVI_HOSTAWAY_UNION_NTO_EUR,
+  AVI_HOSTAWAY_LAST_CHECKOUT_DATE,
 } from '@/lib/partner-settlement/external-partner/aviHostawayStays'
 import type { ExternalPartnerAviReport } from '@/lib/partner-settlement/external-partner/externalPartnerAviReportTypes'
 
@@ -94,6 +95,7 @@ describe('Avi redesign — locked identity', () => {
     expect(html).toContain('29')
     expect(html).toContain('152')
     expect(html).toContain('38,128.87')
+    expect(AVI_HOSTAWAY_LAST_CHECKOUT_DATE).toBe('2026-09-06')
   })
 })
 
@@ -124,19 +126,32 @@ describe('Avi redesign — dates', () => {
     expect(html).toContain('data-avi-month-label')
     expect(heHtml).toContain('data-avi-he-date="month-year"')
     for (const row of report.monthly.rows) {
-      expect(html).toContain(`data-avi-month-label`)
       expect(row.month).toMatch(/^\d{4}-\d{2}$/)
     }
   })
 
-  it('renders every monthly row with a visible month label', () => {
+  it('renders an income-month label for every month that has income or stays', () => {
+    const incomeMonths = report.monthly.rows.filter((row) => row.incomeEur !== 0 || row.stayCount > 0)
     const monthLabelCount = (html.match(/data-avi-month-label/g) ?? []).length
-    expect(monthLabelCount).toBe(report.monthly.rows.length)
+    expect(monthLabelCount).toBe(incomeMonths.length)
+    expect(incomeMonths.some((row) => row.month === '2026-09')).toBe(true)
+  })
+
+  it('shows ledger cutoff 29 August and Hostaway income through 6 September', () => {
+    expect(html).toContain('data-testid="avi-print-cutoff"')
+    expect(html).toContain('Ledger transactions through')
+    expect(html).toContain('29 August 2026')
+    expect(html).toContain('data-testid="avi-hostaway-period"')
+    expect(html).toContain('Hostaway income through')
+    expect(html).toContain('6 September 2026')
+    expect(heHtml).toContain('data-avi-he-sentence="עסקאות בספר עד 29 באוגוסט 2026"')
+    expect(heHtml).toContain('הכנסות Hostaway עד')
+    expect(heHtml).toContain('data-avi-he-date-text="6 בספטמבר 2026"')
   })
 })
 
 describe('Avi redesign — monthly rounding bridge', () => {
-  it('shows month halves that sum to €12,198.06 and a −€0.05 adjustment to the certified €12,198.01', () => {
+  it('keeps the engine net-of-expense halves and −€0.05 bridge for identity, but the income table shows 50% of income', () => {
     const rowSum = Math.round(
       report.monthly.rows.reduce((s, r) => s + r.aviResultEur, 0) * 100,
     ) / 100
@@ -144,9 +159,13 @@ describe('Avi redesign — monthly rounding bridge', () => {
     expect(report.monthly.roundingAdjustmentEur).toBe(-0.05)
     expect(report.monthly.totals.aviResultEur).toBe(12198.01)
     expect(Math.round((rowSum + report.monthly.roundingAdjustmentEur) * 100) / 100).toBe(12198.01)
-    expect(html).toContain('data-testid="avi-monthly-rounding-adjustment"')
-    expect(html).toContain('Rounding adjustment')
-    expect(heHtml).toContain('התאמת עיגול')
+    expect(report.monthly.totals.aviIncomeShareEur).toBe(19744.44)
+    const incomeShareSum = Math.round(
+      report.monthly.rows.reduce((s, r) => s + r.aviIncomeShareEur, 0) * 100,
+    ) / 100
+    expect(
+      Math.round((incomeShareSum + report.monthly.incomeShareRoundingAdjustmentEur) * 100) / 100,
+    ).toBe(19744.44)
   })
 
   it('pluralizes stay and night labels', () => {
@@ -178,6 +197,38 @@ describe('Avi redesign — monthly grand total once', () => {
       html.indexOf('data-testid="avi-expense-appendix-link"'),
     )
     expect(monthlyBlock).not.toContain('>Final result<')
+    expect(monthlyBlock).not.toContain('>Airbnb operations<')
+    expect(monthlyBlock).not.toContain('>Airbnb setup<')
+    expect(monthlyBlock).toContain('>Income<')
+    expect(monthlyBlock).toContain('>Avi income share (50%)<')
+    expect(monthlyBlock).toContain('19,744.44')
+  })
+})
+
+describe('Avi redesign — settlement boxes', () => {
+  it('puts amount above Obligation / Paid / Summary under the accounts table', () => {
+    const block = html.slice(
+      html.indexOf('data-testid="avi-final-summary"'),
+      html.indexOf('data-testid="avi-expense-appendix-link"') > html.indexOf('data-testid="avi-final-summary"')
+        ? html.indexOf('data-testid="avi-expense-appendix-link"')
+        : html.length,
+    )
+    const ops = block.slice(block.indexOf('class="avi-fin-ops"'))
+    expect(ops.indexOf('avi-fin-ops-value')).toBeGreaterThan(-1)
+    expect(ops.indexOf('avi-fin-ops-value')).toBeLessThan(ops.indexOf('avi-fin-ops-label'))
+    expect(block).toContain('>Obligation<')
+    expect(block).toContain('>Paid<')
+    expect(block).toContain('>Summary<')
+    expect(block).toContain('>Item<')
+    expect(block).toContain('Settlement summary')
+    expect(block).toContain('299,603.50')
+    expect(block).toContain('280,600.00')
+    expect(block).toContain('740.94')
+    expect(heHtml).toContain('>התחייבות<')
+    expect(heHtml).toContain('>שולם<')
+    expect(heHtml).toContain('>סיכום<')
+    expect(heHtml).toContain('>סעיף<')
+    expect(heHtml).toContain('סיכום התחשבנות')
   })
 })
 
