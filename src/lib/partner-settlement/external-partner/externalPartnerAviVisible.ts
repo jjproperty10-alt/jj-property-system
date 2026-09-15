@@ -285,13 +285,15 @@ export function projectAviVisibleExpenses(
 export function projectAviVisiblePayments(
   payments: readonly AviReportPartnerPayment[],
 ): AviReportPartnerPayment[] {
-  return payments.map((p) => ({
-    id: p.id,
-    date: p.date,
-    amountEur: p.amountEur,
-    label: 'Partner funding',
-    payer: 'Avi',
-  }))
+  return payments
+    .map((p) => ({
+      id: p.id,
+      date: p.date,
+      amountEur: p.amountEur,
+      label: 'Partner funding',
+      payer: 'Avi',
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
 }
 
 /**

@@ -752,15 +752,15 @@ function PaymentTable({
   lang: AviReportLang
 }) {
   const copy = AVI_REPORT_COPY[lang]
-  const rows = payments.map((p) => ({
+  const ordered = [...payments].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
+  const rows = ordered.map((p) => ({
     date: <AviReportDate iso={p.date} lang={lang} mode="full" />,
     label: aviPaymentPurpose(p.id, lang, p.label),
     amount: <MoneyValue amount={p.amountEur} size="sm" />,
   }))
-  const total = payments.reduce((s, p) => s + (p.amountEur ?? 0), 0)
+  const total = ordered.reduce((s, p) => s + (p.amountEur ?? 0), 0)
   return (
     <div className="avi-section avi-print-payments" data-testid="avi-payment-table" data-avi-payments-lang={lang}>
-      <DataTable columns={paymentColumns(lang)} rows={rows} caption={copy.payments} />
       <div className="avi-account-bar avi-account-bar--centered" data-tone="navy">
         <div>
           <h2 className="avi-account-bar-title">{copy.payments}</h2>
@@ -771,6 +771,7 @@ function PaymentTable({
           <div className="avi-account-bar-amount-hint">{copy.paid}</div>
         </div>
       </div>
+      <DataTable columns={paymentColumns(lang)} rows={rows} caption={copy.payments} />
     </div>
   )
 }

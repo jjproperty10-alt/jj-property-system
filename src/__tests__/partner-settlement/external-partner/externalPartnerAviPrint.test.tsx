@@ -143,6 +143,12 @@ describe('Avi print view — canonical 202-row certified compose', () => {
     expect((paymentSection.match(/Renovation funding/g) || []).length).toBeGreaterThanOrEqual(2)
     expect(paymentSection).not.toContain('Partner funding')
     expect(report.partnerPayments.reduce((s, p) => s + (p.amountEur ?? 0), 0)).toBe(280600)
+    const dates = report.partnerPayments.map((p) => p.date)
+    expect(dates).toEqual([...dates].sort((a, b) => a.localeCompare(b)))
+    const barIdx = paymentSection.indexOf('avi-account-bar--centered')
+    const tableIdx = paymentSection.indexOf('<table')
+    expect(barIdx).toBeGreaterThanOrEqual(0)
+    expect(tableIdx).toBeGreaterThan(barIdx)
   })
 
   it('payment privacy fields remain absent', () => {
