@@ -54,7 +54,7 @@ describe('resolveAviPdfLaunchOptions', () => {
     })
     const launch = await resolveAviPdfLaunchOptions({
       env: { VERCEL: '1' },
-      exists: () => false,
+      exists: (p) => p === '/tmp/chromium' || /\/tmp\/al\d+\/lib$/.test(p),
       loadChromium: async () => ({
         args: ['--single-process', '--no-sandbox'],
         executablePath,
@@ -80,7 +80,7 @@ describe('resolveAviPdfLaunchOptions', () => {
     try {
       await resolveAviPdfLaunchOptions({
         env: { VERCEL: '1' },
-        exists: () => false,
+        exists: (p) => p === '/tmp/chromium' || /\/tmp\/al\d+\/lib$/.test(p),
         loadChromium: async () => ({
           args: ['--single-process'],
           executablePath: async () => '/tmp/chromium',
@@ -96,11 +96,35 @@ describe('resolveAviPdfLaunchOptions', () => {
     }
   })
 
+  it('sets LD_LIBRARY_PATH on Vercel after chromium resolve', async () => {
+    const prevLd = process.env.LD_LIBRARY_PATH
+    const prevHome = process.env.HOME
+    delete process.env.LD_LIBRARY_PATH
+    try {
+      await resolveAviPdfLaunchOptions({
+        env: { VERCEL: '1' },
+        exists: (p) => p === '/tmp/chromium' || /\/tmp\/al\d+\/lib$/.test(p),
+        loadChromium: async () => ({
+          args: ['--single-process'],
+          executablePath: async () => '/tmp/chromium',
+          headless: 'shell',
+        }),
+      })
+      expect(process.env.LD_LIBRARY_PATH).toMatch(/\/tmp\/al\d+\/lib/)
+      expect(process.env.HOME).toBeTruthy()
+    } finally {
+      if (prevLd === undefined) delete process.env.LD_LIBRARY_PATH
+      else process.env.LD_LIBRARY_PATH = prevLd
+      if (prevHome === undefined) delete process.env.HOME
+      else process.env.HOME = prevHome
+    }
+  })
+
   it('AWS Lambda serverless also uses chromium-min pack URL', async () => {
     const executablePath = jest.fn(async () => '/tmp/chromium')
     const launch = await resolveAviPdfLaunchOptions({
       env: { AWS_LAMBDA_FUNCTION_NAME: 'avi-pdf' },
-      exists: () => false,
+      exists: (p) => p === '/tmp/chromium',
       loadChromium: async () => ({
         args: ['--hide-scrollbars'],
         executablePath,
@@ -111,6 +135,20 @@ describe('resolveAviPdfLaunchOptions', () => {
     )
     expect(launch.executablePath).toBe('/tmp/chromium')
     expect(launch.args).toEqual(['--hide-scrollbars', ...AVI_PDF_BASE_CHROME_ARGS])
+  })
+
+  it('Vercel fails closed with chromium_launch_nolibs when AL lib dir missing', async () => {
+    await expect(
+      resolveAviPdfLaunchOptions({
+        env: { VERCEL: '1' },
+        exists: (p) => p === '/tmp/chromium',
+        loadChromium: async () => ({
+          args: ['--single-process'],
+          executablePath: async () => '/tmp/chromium',
+          headless: 'shell',
+        }),
+      }),
+    ).rejects.toThrow('avi_pdf_stage:chromium_launch_nolibs')
   })
 
   it('local Linux uses an existing candidate path only after exists check', async () => {

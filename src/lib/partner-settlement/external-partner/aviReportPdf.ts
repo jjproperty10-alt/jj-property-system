@@ -133,18 +133,46 @@ export async function renderAviPartnerReportPdf(
       explicitExecutablePath: opts.chromeExecutablePath,
       env: opts.env,
     })
-  } catch {
-    throw new Error('avi_pdf_stage:chromium_resolve')
+  } catch (err) {
+    const message = err instanceof Error ? err.message : ''
+    const staged = /^avi_pdf_stage:(.+)$/.exec(message)
+    throw new Error(staged ? message : 'avi_pdf_stage:chromium_resolve')
   }
 
   let browser
   try {
+    // Official Sparticuz + puppeteer-core launch shape for serverless.
+    const args =
+      typeof (puppeteer as { defaultArgs?: Function }).defaultArgs === 'function'
+        ? (
+            puppeteer as {
+              defaultArgs: (opts: {
+                args?: string[]
+                headless?: boolean | 'shell'
+              }) => string[]
+            }
+          ).defaultArgs({
+            args: [...launch.args],
+            headless: launch.headless,
+          })
+        : [...launch.args]
     browser = await puppeteer.launch({
       executablePath: launch.executablePath,
       headless: launch.headless,
-      args: [...launch.args],
+      args,
+      acceptInsecureCerts: true,
     })
-  } catch {
+  } catch (err) {
+    const message = err instanceof Error ? err.message : ''
+    if (/shared librar|\.so\.|error while loading/i.test(message)) {
+      throw new Error('avi_pdf_stage:chromium_launch_libs')
+    }
+    if (/ENOENT|no such file|does not exist/i.test(message)) {
+      throw new Error('avi_pdf_stage:chromium_launch_missing')
+    }
+    if (/Timed out|timeout/i.test(message)) {
+      throw new Error('avi_pdf_stage:chromium_launch_timeout')
+    }
     throw new Error('avi_pdf_stage:chromium_launch')
   }
 

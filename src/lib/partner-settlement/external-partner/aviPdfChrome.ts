@@ -12,7 +12,7 @@
  * Fail closed if none exist. Never include env values, cookies, tokens,
  * or filesystem paths in the thrown error message.
  */
-import { existsSync } from 'fs'
+import { existsSync, unlinkSync } from 'fs'
 
 export const AVI_PDF_CHROME_UNAVAILABLE = 'Avi PDF Chromium executable is unavailable'
 
@@ -110,6 +110,32 @@ export function ensureSparticuzVercelLambdaHint(
   process.env.AWS_LAMBDA_JS_RUNTIME = major >= 20 ? `nodejs${major}.x` : 'nodejs18.x'
 }
 
+/**
+ * Module init of chromium-min may have run before the Lambda hint existed, so
+ * LD_LIBRARY_PATH was never set. Always apply it on Vercel after extract.
+ */
+export function ensureVercelChromiumLibPath(
+  env: AviPdfChromeEnv = process.env,
+): string {
+  if (!env.VERCEL && !process.env.VERCEL) return ''
+  process.env.HOME ??= '/tmp'
+  process.env.FONTCONFIG_PATH ??= '/tmp/fonts'
+  const major = Number(String(process.versions.node).split('.')[0] || '20')
+  const lib = major >= 20 ? '/tmp/al2023/lib' : '/tmp/al2/lib'
+  const parts = (process.env.LD_LIBRARY_PATH ?? '').split(':').filter(Boolean)
+  if (!parts.includes(lib)) {
+    process.env.LD_LIBRARY_PATH = [lib, ...parts].join(':')
+  }
+  return lib
+}
+
+export function vercelChromiumLibDir(
+  env: AviPdfChromeEnv = process.env,
+): string {
+  const major = Number(String(process.versions.node).split('.')[0] || '20')
+  return major >= 20 ? '/tmp/al2023/lib' : '/tmp/al2/lib'
+}
+
 async function defaultLoadChromium(): Promise<SparticuzChromiumLike> {
   ensureSparticuzVercelLambdaHint()
   const mod = (await import('@sparticuz/chromium-min')) as unknown as {
@@ -165,12 +191,33 @@ export async function resolveAviPdfLaunchOptions(
 
   if (isServerlessPdfRuntime(env)) {
     ensureSparticuzVercelLambdaHint(env)
+    const libExpected = vercelChromiumLibDir(env)
+    // Warm instance may keep /tmp/chromium from a prior extract that skipped
+    // AL libs; Sparticuz then short-circuits and never extracts libs again.
+    if (
+      (env.VERCEL || process.env.VERCEL) &&
+      exists('/tmp/chromium') &&
+      !exists(libExpected)
+    ) {
+      try {
+        unlinkSync('/tmp/chromium')
+      } catch {
+        // ignore — executablePath will still try
+      }
+    }
     const loadChromium = probe.loadChromium ?? defaultLoadChromium
     const chromium = await loadChromium()
     const packUrl = probe.packUrl ?? AVI_PDF_SPARTICUZ_PACK_URL
     const executablePath = await chromium.executablePath(packUrl)
     if (!configuredPath(executablePath)) {
       throw new AviPdfChromeUnavailableError()
+    }
+    const libDir = ensureVercelChromiumLibPath(env)
+    if (libDir && !exists(libDir)) {
+      throw new Error('avi_pdf_stage:chromium_launch_nolibs')
+    }
+    if (!exists(executablePath)) {
+      throw new Error('avi_pdf_stage:chromium_launch_missing')
     }
     return {
       executablePath,
