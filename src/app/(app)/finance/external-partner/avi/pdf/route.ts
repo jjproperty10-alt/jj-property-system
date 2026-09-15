@@ -2,11 +2,9 @@
  * @page /finance/external-partner/avi/pdf
  * Staff-authenticated partner-sendable A4 PDF (?lang=he|en).
  *
- * Same certified DTO as the staff report screen. Headless Chromium loads the
- * staff /print HTML with the caller's Cookie (staff session + Vercel
- * Deployment Protection JWT when present) and optional automation bypass.
- * No settlement math. Fail-closed: no session → login redirect; non-staff /
- * inactive / non-certified → 404.
+ * Fetches staff /print HTML in-process (Cookie + optional Vercel bypass), then
+ * renders via headless Chromium setContent — avoids a second protected Chromium
+ * navigation when possible. Fail-closed auth. No settlement math.
  */
 import 'server-only'
 import { NextResponse } from 'next/server'
@@ -16,6 +14,7 @@ import {
   renderAviPartnerReportPdf,
   type AviReportPdfOptions,
 } from '@/lib/partner-settlement/external-partner/aviReportPdf'
+import { fetchAviStaffPrintHtml } from '@/lib/partner-settlement/external-partner/aviStaffPrintFetch'
 import { sanitizeAviReportClientPayload } from '@/components/finance/aviReportPresentation'
 import type { AviReportLang } from '@/components/finance/aviReportCopy'
 
@@ -26,6 +25,19 @@ export const maxDuration = 60
 function langFrom(req: Request): AviReportLang {
   const url = new URL(req.url)
   return url.searchParams.get('lang') === 'he' ? 'he' : 'en'
+}
+
+function failPdf(stage: string) {
+  return NextResponse.json(
+    { error: 'avi_staff_pdf_export_failed' },
+    {
+      status: 500,
+      headers: {
+        'Cache-Control': 'private, no-store',
+        'X-Avi-Pdf-Fail-Stage': stage,
+      },
+    },
+  )
 }
 
 export async function GET(req: Request) {
@@ -39,7 +51,6 @@ export async function GET(req: Request) {
     return new NextResponse('Not Found', { status: 404 })
   }
 
-  // Same certified builder as the staff page — refuse PDF if not certified.
   const built = await buildAviExternalPartnerReport()
   const report = sanitizeAviReportClientPayload(built)
   if (report.status !== 'certified') {
@@ -48,12 +59,20 @@ export async function GET(req: Request) {
 
   const lang = langFrom(req)
   const origin = new URL(req.url).origin
+  const printUrl = `${origin}/finance/external-partner/avi/print?lang=${lang}`
+  const cookieHeader = req.headers.get('cookie')
+
+  const fetched = await fetchAviStaffPrintHtml({ printUrl, cookieHeader })
+  if (!fetched.ok) {
+    return failPdf(fetched.stage)
+  }
 
   try {
     const opts: AviReportPdfOptions = {
       lang,
-      reportUrl: `${origin}/finance/external-partner/avi/print?lang=${lang}`,
-      cookieHeader: req.headers.get('cookie'),
+      reportUrl: printUrl,
+      htmlContent: fetched.html,
+      cookieHeader,
       langAlreadyApplied: true,
     }
     const pdf = await renderAviPartnerReportPdf(opts)
@@ -69,9 +88,6 @@ export async function GET(req: Request) {
       },
     })
   } catch {
-    return NextResponse.json(
-      { error: 'avi_staff_pdf_export_failed' },
-      { status: 500 },
-    )
+    return failPdf('chromium_render')
   }
 }

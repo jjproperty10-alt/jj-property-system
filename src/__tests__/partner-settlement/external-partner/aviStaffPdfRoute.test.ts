@@ -17,6 +17,11 @@ jest.mock('@/components/finance/aviReportPresentation', () => ({
   sanitizeAviReportClientPayload: (report: unknown) => report,
 }))
 
+const fetchPrintMock = jest.fn()
+jest.mock('@/lib/partner-settlement/external-partner/aviStaffPrintFetch', () => ({
+  fetchAviStaffPrintHtml: (opts: unknown) => fetchPrintMock(opts),
+}))
+
 type PdfOpts = {
   lang: string
   reportUrl: string
@@ -37,7 +42,12 @@ import { GET } from '@/app/(app)/finance/external-partner/avi/pdf/route'
 beforeEach(() => {
   authMock.mockReset()
   buildMock.mockReset()
+  fetchPrintMock.mockReset()
   renderPdfMock.mockClear()
+  fetchPrintMock.mockResolvedValue({
+    ok: true,
+    html: '<div data-testid="avi-report-certified">ok</div>',
+  })
 })
 
 function req(lang: 'he' | 'en' = 'en', cookie = 'sb=session') {
@@ -54,6 +64,7 @@ describe('GET /finance/external-partner/avi/pdf', () => {
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain('/login')
     expect(buildMock).not.toHaveBeenCalled()
+    expect(fetchPrintMock).not.toHaveBeenCalled()
     expect(renderPdfMock).not.toHaveBeenCalled()
   })
 
@@ -81,7 +92,7 @@ describe('GET /finance/external-partner/avi/pdf', () => {
     expect(renderPdfMock).not.toHaveBeenCalled()
   })
 
-  it('authorized staff + certified → PDF with cookie forward and print URL', async () => {
+  it('authorized staff + certified → PDF via print HTML fetch + setContent', async () => {
     authMock.mockResolvedValue({ ok: true, staffRole: 'ceo', userId: 'u1', isActive: true })
     buildMock.mockResolvedValue({
       status: 'certified',
@@ -93,35 +104,35 @@ describe('GET /finance/external-partner/avi/pdf', () => {
     expect(res.headers.get('cache-control')).toBe('private, no-store')
     expect(res.headers.get('content-disposition')).toContain('avi-partner-report-he.pdf')
     expect(res.headers.get('x-avi-pdf-export')).toBe('jj-sendable-staff')
+    expect(fetchPrintMock).toHaveBeenCalledTimes(1)
+    expect(fetchPrintMock.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        printUrl: expect.stringContaining('/finance/external-partner/avi/print?lang=he'),
+        cookieHeader: 'sb-access-token=abc; _vercel_jwt=prot',
+      }),
+    )
     expect(renderPdfMock).toHaveBeenCalledTimes(1)
     const opts = renderPdfMock.mock.calls[0][0]
     expect(opts.lang).toBe('he')
-    expect(opts.reportUrl).toContain('/finance/external-partner/avi/print?lang=he')
-    expect(opts.htmlContent).toBeUndefined()
+    expect(opts.htmlContent).toContain('avi-report-certified')
     expect(opts.cookieHeader).toBe('sb-access-token=abc; _vercel_jwt=prot')
     expect(opts.langAlreadyApplied).toBe(true)
   })
 
-  it('staff PDF route does not use react-dom/server or in-process HTML', () => {
-    const fs = require('fs') as typeof import('fs')
-    const path = require('path') as typeof import('path')
-    const routeSrc = fs.readFileSync(
-      path.join(process.cwd(), 'src/app/(app)/finance/external-partner/avi/pdf/route.ts'),
-      'utf8',
-    )
-    expect(routeSrc).not.toMatch(/react-dom\/server|buildAviStaffPdfHtmlDocument|htmlContent/)
-    expect(routeSrc).toContain('cookieHeader: req.headers.get(\'cookie\')')
-    expect(
-      fs.existsSync(
-        path.join(
-          process.cwd(),
-          'src/lib/partner-settlement/external-partner/aviStaffPdfHtml.tsx',
-        ),
-      ),
-    ).toBe(false)
+  it('print fetch failure returns staged 500 without leaking cookies', async () => {
+    authMock.mockResolvedValue({ ok: true, staffRole: 'ceo', userId: 'u1', isActive: true })
+    buildMock.mockResolvedValue({ status: 'certified' })
+    fetchPrintMock.mockResolvedValueOnce({ ok: false, stage: 'print_http_401' })
+    const res = await GET(req('en', 'sb-access-token=abc'))
+    expect(res.status).toBe(500)
+    expect(res.headers.get('x-avi-pdf-fail-stage')).toBe('print_http_401')
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body).toEqual({ error: 'avi_staff_pdf_export_failed' })
+    expect(JSON.stringify(body)).not.toMatch(/sb-access-token|cookie/i)
+    expect(renderPdfMock).not.toHaveBeenCalled()
   })
 
-  it('PDF launch failure returns a generic 500 without leaking cookies or paths', async () => {
+  it('PDF launch failure returns chromium_render stage without leaking paths', async () => {
     authMock.mockResolvedValue({ ok: true, staffRole: 'ceo', userId: 'u1', isActive: true })
     buildMock.mockResolvedValue({ status: 'certified' })
     renderPdfMock.mockRejectedValueOnce(
@@ -129,6 +140,7 @@ describe('GET /finance/external-partner/avi/pdf', () => {
     )
     const res = await GET(req('en', 'sb-access-token=abc'))
     expect(res.status).toBe(500)
+    expect(res.headers.get('x-avi-pdf-fail-stage')).toBe('chromium_render')
     const body = (await res.json()) as Record<string, unknown>
     expect(body).toEqual({ error: 'avi_staff_pdf_export_failed' })
     expect(JSON.stringify(body)).not.toMatch(/google-chrome|sb-access-token|cookie/i)
@@ -144,7 +156,8 @@ describe('GET /finance/external-partner/avi/pdf', () => {
     expect(src).toContain("export const runtime = 'nodejs'")
     expect(src).not.toContain("runtime = 'edge'")
     expect(src).toContain('authenticateStatementUser')
-    expect(src).toContain('cookieHeader: req.headers.get(\'cookie\')')
+    expect(src).toContain('fetchAviStaffPrintHtml')
+    expect(src).toContain('X-Avi-Pdf-Fail-Stage')
     expect(src).not.toMatch(/console\.(log|info|debug|warn|error)/)
   })
 })

@@ -145,15 +145,16 @@ export async function renderAviPartnerReportPdf(
       await page.setExtraHTTPHeaders(navHeaders)
     }
     // Cookie cannot be set via setExtraHTTPHeaders (Chromium strips it).
-    // Apply staff session + Vercel protection JWT for the print URL host.
+    // Prefer url+secure so host-only HTTPS cookies (_vercel_jwt, session) stick.
     const cookiePairs = parseAviPdfCookieHeader(opts.cookieHeader)
     if (cookiePairs.length > 0) {
-      const host = new URL(opts.reportUrl).hostname
+      const secure = opts.reportUrl.startsWith('https:')
       await page.setCookie(
         ...cookiePairs.map((c) => ({
           name: c.name,
           value: c.value,
-          domain: host,
+          url: opts.reportUrl,
+          secure,
           path: '/',
         })),
       )
