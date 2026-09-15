@@ -61,6 +61,11 @@ import { getReservations, getReservationActivity } from './ownerReservationServi
 import { selectStrProperties } from './selectStrProperties'
 import { getPortfolio } from './ownerPortfolioAdapter'
 import { fetchAllSettlements, fetchSettlementByName } from './ownerSettlementAdapter'
+import { fetchOwnerLevelPaymentsForEntity } from '@/lib/finance/ownerLevelPaymentAdapter'
+import {
+  applyOwnerLevelToPosition,
+  composeOwnerLevelSettlement,
+} from '@/lib/finance/ownerLevelPaymentComposition'
 import type {
   OwnersRoomDTO,
   OwnerRoomItemDTO,
@@ -68,6 +73,7 @@ import type {
   OwnerWorkspaceResolutionResult,
   OwnerOverviewDTO,
   OwnerFinancialDTO,
+  OwnerOverallNetDTO,
   OwnerReservationSummaryDTO,
   OwnerDocumentDTO,
   OwnerMaintenanceItemDTO,
@@ -332,6 +338,23 @@ export async function getOwnerOverview(slug: string): Promise<OwnerOverviewDTO> 
   }
 }
 
+function withOwnerLevelReview(
+  overallNet: OwnerOverallNetDTO | null,
+  reason: string,
+): OwnerOverallNetDTO {
+  if (overallNet) {
+    return { ...overallNet, reviewStatus: 'needs_review', reviewReason: reason }
+  }
+  return {
+    departments: [],
+    netEur: '0',
+    label: 'settled',
+    displayAmountEur: '0',
+    reviewStatus: 'needs_review',
+    reviewReason: reason,
+  }
+}
+
 // ─────────────────────────────────────────────────────────────
 // Tab 2 — Financial
 // ─────────────────────────────────────────────────────────────
@@ -405,6 +428,72 @@ export async function getOwnerFinancial(
       financial.position = {
         ...financial.position,
         closingBalanceEur: settlement.netJjSettlement,
+      }
+    }
+
+    // Owner-level unallocated payments (finance.owner_transaction_links).
+    // not_deployed → skip overlay (deployment compatibility).
+    // blocked → NEEDS REVIEW, do not silently keep a possibly wrong closing.
+    const overlay = await fetchOwnerLevelPaymentsForEntity(workspace.identity.id)
+    if (overlay.status === 'not_deployed') {
+      financial.ownerLevelPayments = {
+        totalEur: '0',
+        countedCount: 0,
+        needsReviewCount: 0,
+        fetchStatus: 'not_deployed',
+        rows: [],
+      }
+    } else if (overlay.status === 'blocked') {
+      financial.overallNet = withOwnerLevelReview(
+        financial.overallNet,
+        `Owner-level overlay blocked: ${overlay.reason}`,
+      )
+      financial.ownerLevelPayments = {
+        totalEur: '0',
+        countedCount: 0,
+        needsReviewCount: 0,
+        fetchStatus: 'blocked',
+        rows: [],
+      }
+    } else if (overlay.candidates.length > 0) {
+      const propertyBalances = (workspace.identity.properties ?? []).map(propertyName => ({
+        propertyName,
+        dueToOwnerEur: 0,
+      }))
+      const composed = composeOwnerLevelSettlement({
+        ownerEntityId: workspace.identity.id,
+        propertyLevelDueToOwnerEur: 0,
+        propertyBalances,
+        candidates: overlay.candidates,
+        jacobClearingEur: 0,
+        periodStart: startDate ?? null,
+        periodEnd: endDate ?? null,
+      })
+      const convention = settlement ? 'settlement' : 'rc3'
+      financial.position = {
+        ...financial.position,
+        ...applyOwnerLevelToPosition(financial.position, composed, convention),
+      }
+      financial.ownerLevelPayments = {
+        totalEur: String(composed.countableTotalEur),
+        countedCount: composed.countable.length,
+        needsReviewCount: composed.needsReview.length,
+        fetchStatus: 'ok',
+        rows: composed.countable.map(r => ({
+          transactionId: r.transactionId,
+          date: r.date,
+          payer: r.payer,
+          amountEur: String(r.amountEur),
+          description: r.description,
+          idempotencyKey: r.idempotencyKey,
+          reviewStatus: r.reviewStatus,
+        })),
+      }
+      if (composed.needsReview.length > 0) {
+        financial.overallNet = withOwnerLevelReview(
+          financial.overallNet,
+          composed.needsReview.map(f => f.reason).join('; '),
+        )
       }
     }
 
