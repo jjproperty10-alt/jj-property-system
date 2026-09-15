@@ -353,7 +353,7 @@ describe('Avi print view — staff authorization unchanged', () => {
     expect(page).toContain("'/finance/external-partner/avi/pdf'")
   })
 
-  it('staff PDF and print routes exist and stay staff-gated', () => {
+  it('staff PDF route is react-pdf and staff-gated; print HTML page remains separate', () => {
     const pdfRoute = fs.readFileSync(
       path.join(process.cwd(), 'src/app/(app)/finance/external-partner/avi/pdf/route.ts'),
       'utf8',
@@ -363,8 +363,10 @@ describe('Avi print view — staff authorization unchanged', () => {
       'utf8',
     )
     expect(pdfRoute).toContain('authenticateStatementUser')
-    expect(pdfRoute).toContain('/finance/external-partner/avi/print?lang=')
-    expect(pdfRoute).toContain('cookieHeader')
+    expect(pdfRoute).toContain('AviPartnerReportPdf')
+    expect(pdfRoute).toContain('renderToBuffer')
+    expect(pdfRoute).toContain("X-Avi-Pdf-Engine': 'react-pdf'")
+    expect(pdfRoute).not.toMatch(/puppeteer|chromium|cookieHeader|htmlContent/)
     expect(printPage).toContain('authenticateStatementUser')
     expect(printPage).toContain('searchParams')
     expect(printPage).toContain('initialLang={lang}')
