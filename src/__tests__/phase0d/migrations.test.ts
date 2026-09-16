@@ -1,8 +1,8 @@
 import fs from 'fs'
 import path from 'path'
 
-const M1 = path.join(__dirname, '..', '..', '..', 'supabase', 'migrations', '20260916_003_v_certified_ledger_and_rc3.sql')
-const M2 = path.join(__dirname, '..', '..', '..', 'supabase', 'migrations', '20260916_004_agent_transaction_drafts.sql')
+const M1 = path.join(__dirname, '..', '..', '..', 'supabase', 'migrations', '20260917090000_v_certified_ledger_and_rc3.sql')
+const M2 = path.join(__dirname, '..', '..', '..', 'supabase', 'migrations', '20260917090100_agent_transaction_drafts.sql')
 
 describe('Phase 0D migrations (unapplied)', () => {
   const rc3 = fs.readFileSync(M1, 'utf8')
