@@ -27,8 +27,12 @@
  * → v_rc3_classified (account_type + flags)
  * → v_rc3_sale | v_rc3_renovation | v_rc3_rental | v_rc3_airbnb
  *
- * All views apply base filters automatically:
- * (review_status = 'active' OR review_status IS NULL) AND reporting_name IS NOT NULL
+ * All views inherit certified ledger admission from v_rc3_classified:
+ * COALESCE(is_deleted, false) = false
+ * AND (review_status = 'active' OR review_status IS NULL)
+ * AND NOT EXISTS (active transaction_exclusions)
+ * AND reporting_name IS NOT NULL
+ * Billing-only rows remain. Do not re-filter in UI.
  */
 
 import 'server-only'
