@@ -11,7 +11,7 @@ const DRAFT_FILES = [
   'src/app/(app)/transactions/new/page.tsx',
   'src/lib/transactions/agentDraftActions.ts',
   'src/lib/ledger/agentDraft.ts',
-  'supabase/migrations/20260916_002_agent_transaction_drafts.sql',
+  'supabase/migrations/20260916_004_agent_transaction_drafts.sql',
 ]
 
 const LEDGER_FILES = [
@@ -21,7 +21,7 @@ const LEDGER_FILES = [
   'src/lib/owners/ownerStrAuditAdapter.ts',
   'src/lib/hostaway-audit/propertyAuditService.ts',
   'src/lib/report/fetchReport.ts',
-  'supabase/migrations/20260916_001_v_certified_ledger_and_rc3.sql',
+  'supabase/migrations/20260916_003_v_certified_ledger_and_rc3.sql',
 ]
 
 describe('Phase 0D static security', () => {
@@ -35,7 +35,7 @@ describe('Phase 0D static security', () => {
 
   it('no draft approval/post function exists', () => {
     const action = read('src/lib/transactions/agentDraftActions.ts')
-    const sql = read('supabase/migrations/20260916_002_agent_transaction_drafts.sql')
+    const sql = read('supabase/migrations/20260916_004_agent_transaction_drafts.sql')
     expect(action).not.toMatch(/postDraft|approveAndPost/)
     expect(action).toMatch(/posted_transaction_id:\s*null/)
     expect(sql).toMatch(/agent_drafts_posted_forbidden/)
@@ -61,8 +61,8 @@ describe('Phase 0D static security', () => {
   })
 
   it('RC3/STR migrations do not touch cashbox, P&L, money position, or Anastasia', () => {
-    const rc3 = read('supabase/migrations/20260916_001_v_certified_ledger_and_rc3.sql')
-    const drafts = read('supabase/migrations/20260916_002_agent_transaction_drafts.sql')
+    const rc3 = read('supabase/migrations/20260916_003_v_certified_ledger_and_rc3.sql')
+    const drafts = read('supabase/migrations/20260916_004_agent_transaction_drafts.sql')
     for (const src of [rc3, drafts]) {
       expect(src).not.toMatch(/v_cashbox_audit/)
       expect(src).not.toMatch(/v_money_position/)
@@ -74,7 +74,7 @@ describe('Phase 0D static security', () => {
   })
 
   it('certified ledger view is not granted to authenticated/anon', () => {
-    const rc3 = read('supabase/migrations/20260916_001_v_certified_ledger_and_rc3.sql')
+    const rc3 = read('supabase/migrations/20260916_003_v_certified_ledger_and_rc3.sql')
     expect(rc3).toMatch(/GRANT SELECT ON public\.v_certified_ledger_transactions TO service_role/)
     expect(rc3).not.toMatch(/GRANT SELECT ON public\.v_certified_ledger_transactions TO authenticated/)
     expect(rc3).toMatch(/REVOKE ALL ON public\.v_certified_ledger_transactions FROM anon/)
