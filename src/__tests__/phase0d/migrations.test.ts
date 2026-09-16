@@ -3,10 +3,12 @@ import path from 'path'
 
 const M1 = path.join(__dirname, '..', '..', '..', 'supabase', 'migrations', '20260917090000_v_certified_ledger_and_rc3.sql')
 const M2 = path.join(__dirname, '..', '..', '..', 'supabase', 'migrations', '20260917090100_agent_transaction_drafts.sql')
+const M3 = path.join(__dirname, '..', '..', '..', 'supabase', 'migrations', '20260917120000_agent_transaction_draft_public_rpcs.sql')
 
 describe('Phase 0D migrations (unapplied)', () => {
   const rc3 = fs.readFileSync(M1, 'utf8')
   const drafts = fs.readFileSync(M2, 'utf8')
+  const rpcs = fs.readFileSync(M3, 'utf8')
 
   it('adds the certified predicate to RC3 without DROP CASCADE or cashbox/P&L edits', () => {
     expect(rc3).toMatch(/COALESCE\(t\.is_deleted,\s*false\)\s*=\s*false/)
@@ -44,5 +46,27 @@ describe('Phase 0D migrations (unapplied)', () => {
     expect(drafts).toMatch(/auth\.uid\(\)/)
     expect(drafts).toMatch(/public\.require_jj_staff/)
     expect(drafts).toMatch(/ENABLE ROW LEVEL SECURITY/)
+  })
+
+  it('public draft RPCs stay in public, hide finance, and never post transactions', () => {
+    expect(rpcs).toMatch(/CREATE OR REPLACE FUNCTION public\.create_agent_transaction_draft\(/)
+    expect(rpcs).toMatch(/CREATE OR REPLACE FUNCTION public\.list_agent_transaction_drafts\(/)
+    expect(rpcs).toMatch(/CREATE OR REPLACE FUNCTION public\.update_agent_transaction_draft\(/)
+    expect(rpcs).toMatch(/SECURITY DEFINER/)
+    expect(rpcs).toMatch(/SET search_path = ''/)
+    expect(rpcs).toMatch(/finance\.is_active_jj_staff\(\)/)
+    expect(rpcs).toMatch(/auth\.uid\(\) IS NULL/)
+    expect(rpcs).toMatch(/created_by,\s*\n\s*status,/m)
+    expect(rpcs).toMatch(/ON CONFLICT \(idempotency_key\) DO NOTHING/)
+    expect(rpcs).toMatch(/GRANT EXECUTE ON FUNCTION public\.create_agent_transaction_draft/)
+    expect(rpcs).toMatch(/GRANT EXECUTE ON FUNCTION public\.list_agent_transaction_drafts/)
+    expect(rpcs).toMatch(/GRANT EXECUTE ON FUNCTION public\.update_agent_transaction_draft/)
+    expect(rpcs).toMatch(/REVOKE EXECUTE ON FUNCTION public\.create_agent_transaction_draft[\s\S]*FROM anon/)
+    expect(rpcs).toMatch(/REVOKE EXECUTE ON FUNCTION public\.create_agent_transaction_draft[\s\S]*FROM service_role/)
+    expect(rpcs).not.toMatch(/INSERT INTO public\.transactions/i)
+    expect(rpcs).not.toMatch(/UPDATE public\.transactions/i)
+    expect(rpcs).not.toMatch(/p_created_by/)
+    expect(rpcs).not.toMatch(/p_posted_transaction_id/)
+    expect(rpcs).not.toMatch(/posted_transaction_id\s*=/)
   })
 })

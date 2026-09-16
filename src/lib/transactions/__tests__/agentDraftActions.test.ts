@@ -6,13 +6,10 @@ jest.mock('@/lib/statements/statementAuthService', () => ({
 }))
 
 const mockFrom = jest.fn()
-const mockFinanceFrom = jest.fn()
+const mockRpc = jest.fn()
 const mockSession = {
   from: (...args: unknown[]) => mockFrom(...args),
-  schema: (name: string) => {
-    if (name !== 'finance') throw new Error(`unexpected schema ${name}`)
-    return { from: (...args: unknown[]) => mockFinanceFrom(...args) }
-  },
+  rpc: (...args: unknown[]) => mockRpc(...args),
 }
 
 jest.mock('@/lib/supabaseServer', () => ({
@@ -32,20 +29,11 @@ function staffAuth() {
   return { ok: true as const, userId: 'staff-user-1', staffRole: 'operations', isActive: true }
 }
 
-function chainInsert(result: { data: unknown; error: { code?: string; message?: string } | null }) {
-  const api: Record<string, unknown> = {}
-  api.insert = jest.fn(() => api)
-  api.select = jest.fn(() => api)
-  api.eq = jest.fn(() => api)
-  api.maybeSingle = jest.fn(() => Promise.resolve(result))
-  return api
-}
-
 describe('createAgentTransactionDraft', () => {
   beforeEach(() => {
     mockAuth.mockReset()
     mockFrom.mockReset()
-    mockFinanceFrom.mockReset()
+    mockRpc.mockReset()
   })
 
   it('denies partner/owner (not staff)', async () => {
@@ -60,7 +48,7 @@ describe('createAgentTransactionDraft', () => {
     })
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.error).toMatch(/not authorized/i)
-    expect(mockFinanceFrom).not.toHaveBeenCalled()
+    expect(mockRpc).not.toHaveBeenCalled()
   })
 
   it('authorized staff can create a draft with NULL empty amount', async () => {
@@ -69,8 +57,10 @@ describe('createAgentTransactionDraft', () => {
       expect(table).toBe('properties')
       return { select: () => Promise.resolve({ data: [{ id: 'vm1', name: 'Villa Mazotos' }], error: null }) }
     })
-    const inserted = chainInsert({ data: { id: 'draft-1', status: 'draft' }, error: null })
-    mockFinanceFrom.mockReturnValue(inserted)
+    mockRpc.mockResolvedValue({
+      data: [{ id: 'draft-1', status: 'draft', reused_existing: false }],
+      error: null,
+    })
 
     const r = await createAgentTransactionDraft({
       date: '2026-09-16',
@@ -89,11 +79,16 @@ describe('createAgentTransactionDraft', () => {
       message: DRAFT_NOT_POSTED_MESSAGE,
       reusedExisting: false,
     })
-    const payload = (inserted.insert as jest.Mock).mock.calls[0][0][0]
-    expect(payload.amount_eur).toBeNull()
-    expect(payload.created_by).toBe('staff-user-1')
-    expect(payload.posted_transaction_id).toBeNull()
-    expect(payload.status).toBe('draft')
+    expect(mockRpc).toHaveBeenCalledTimes(1)
+    expect(mockRpc.mock.calls[0][0]).toBe('create_agent_transaction_draft')
+    const payload = mockRpc.mock.calls[0][1] as Record<string, unknown>
+    expect(payload.p_amount_eur).toBeNull()
+    expect(payload.p_property_id).toBe('vm1')
+    expect(payload.p_status).toBe('draft')
+    expect(payload).not.toHaveProperty('created_by')
+    expect(payload).not.toHaveProperty('p_created_by')
+    expect(payload).not.toHaveProperty('posted_transaction_id')
+    expect(payload).not.toHaveProperty('p_posted_transaction_id')
     expect(mockFrom).not.toHaveBeenCalledWith('transactions')
   })
 
@@ -102,8 +97,10 @@ describe('createAgentTransactionDraft', () => {
     mockFrom.mockReturnValue({
       select: () => Promise.resolve({ data: [{ id: 'vm1', name: 'Villa Mazotos' }], error: null }),
     })
-    const inserted = chainInsert({ data: { id: 'draft-2', status: 'needs_review' }, error: null })
-    mockFinanceFrom.mockReturnValue(inserted)
+    mockRpc.mockResolvedValue({
+      data: [{ id: 'draft-2', status: 'needs_review', reused_existing: false }],
+      error: null,
+    })
 
     const r = await createAgentTransactionDraft({
       date: '2026-09-16',
@@ -113,9 +110,9 @@ describe('createAgentTransactionDraft', () => {
       idempotency_key: 'k3',
     })
     expect(r.ok).toBe(true)
-    const payload = (inserted.insert as jest.Mock).mock.calls[0][0][0]
-    expect(payload.property_id).toBeNull()
-    expect(payload.status).toBe('needs_review')
+    const payload = mockRpc.mock.calls[0][1] as Record<string, unknown>
+    expect(payload.p_property_id).toBeNull()
+    expect(payload.p_status).toBe('needs_review')
   })
 
   it('duplicate idempotency key does not insert a second draft', async () => {
@@ -123,19 +120,10 @@ describe('createAgentTransactionDraft', () => {
     mockFrom.mockReturnValue({
       select: () => Promise.resolve({ data: [{ id: 'vm1', name: 'Villa Mazotos' }], error: null }),
     })
-    let calls = 0
-    const api: Record<string, unknown> = {}
-    api.insert = jest.fn(() => api)
-    api.select = jest.fn(() => api)
-    api.eq = jest.fn(() => api)
-    api.maybeSingle = jest.fn(() => {
-      calls += 1
-      if (calls === 1) {
-        return Promise.resolve({ data: null, error: { code: '23505', message: 'duplicate key' } })
-      }
-      return Promise.resolve({ data: { id: 'existing-draft', status: 'draft' }, error: null })
+    mockRpc.mockResolvedValue({
+      data: [{ id: 'existing-draft', status: 'draft', reused_existing: true }],
+      error: null,
     })
-    mockFinanceFrom.mockReturnValue(api)
 
     const r = await createAgentTransactionDraft({
       date: '2026-09-16',
@@ -149,6 +137,6 @@ describe('createAgentTransactionDraft', () => {
       expect(r.draftId).toBe('existing-draft')
       expect(r.reusedExisting).toBe(true)
     }
-    expect(api.insert).toHaveBeenCalledTimes(1)
+    expect(mockRpc).toHaveBeenCalledTimes(1)
   })
 })

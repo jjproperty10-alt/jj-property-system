@@ -12,6 +12,7 @@ const DRAFT_FILES = [
   'src/lib/transactions/agentDraftActions.ts',
   'src/lib/ledger/agentDraft.ts',
   'supabase/migrations/20260917090100_agent_transaction_drafts.sql',
+  'supabase/migrations/20260917120000_agent_transaction_draft_public_rpcs.sql',
 ]
 
 const LEDGER_FILES = [
@@ -36,11 +37,16 @@ describe('Phase 0D static security', () => {
   it('no draft approval/post function exists', () => {
     const action = read('src/lib/transactions/agentDraftActions.ts')
     const sql = read('supabase/migrations/20260917090100_agent_transaction_drafts.sql')
+    const rpcs = read('supabase/migrations/20260917120000_agent_transaction_draft_public_rpcs.sql')
     expect(action).not.toMatch(/postDraft|approveAndPost/)
-    expect(action).toMatch(/posted_transaction_id:\s*null/)
+    expect(action).not.toMatch(/posted_transaction_id/)
+    expect(action).not.toContain("schema('finance')")
+    expect(action).toContain("rpc('create_agent_transaction_draft'")
     expect(sql).toMatch(/agent_drafts_posted_forbidden/)
     expect(sql).toMatch(/Phase 0D forbids posting drafts/)
     expect(sql).not.toMatch(/INSERT INTO public\.transactions/i)
+    expect(rpcs).not.toMatch(/INSERT INTO public\.transactions/i)
+    expect(rpcs).not.toMatch(/p_posted_transaction_id/)
   })
 
   it('client page does not import a service-role client', () => {
@@ -63,7 +69,8 @@ describe('Phase 0D static security', () => {
   it('RC3/STR migrations do not touch cashbox, P&L, money position, or Anastasia', () => {
     const rc3 = read('supabase/migrations/20260917090000_v_certified_ledger_and_rc3.sql')
     const drafts = read('supabase/migrations/20260917090100_agent_transaction_drafts.sql')
-    for (const src of [rc3, drafts]) {
+    const rpcs = read('supabase/migrations/20260917120000_agent_transaction_draft_public_rpcs.sql')
+    for (const src of [rc3, drafts, rpcs]) {
       expect(src).not.toMatch(/v_cashbox_audit/)
       expect(src).not.toMatch(/v_money_position/)
       expect(src).not.toMatch(/v_jj_company_pl/)
