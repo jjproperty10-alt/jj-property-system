@@ -127,7 +127,8 @@ describe('owner-level payments — Tamir C1 composition', () => {
       'utf8',
     )
     expect(strSrc).not.toMatch(/v_owner_level_payments/)
-    expect(strSrc).toMatch(/\.in\('property_name', names\)/)
+    expect(strSrc).toContain('fetchCertifiedLedgerRows(sb, {')
+    expect(strSrc).toMatch(/propertyNames:\s*names/)
   })
 
   test('8. C1 is absent from LTR activity', () => {
