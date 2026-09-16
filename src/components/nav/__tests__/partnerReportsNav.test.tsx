@@ -146,6 +146,7 @@ describe('Partner Reports sidebar item', () => {
       '/finance',
       INDEX_ROUTE,
       '/transactions',
+      '/transactions/drafts',
       '/validation',
     ])
     const clientReports = getAllWorkspaces().find((ws) => ws.id === 'clientReports')

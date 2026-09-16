@@ -95,14 +95,43 @@ export function Sidebar({ workspaces, activeWorkspaceId, user }: SidebarProps) {
 
       {/* Navigation items */}
       <nav aria-label="Main navigation" className="flex-1 px-3 py-4 space-y-1">
-        {workspaces.map((ws) => (
-          <NavItem
-            key={ws.id}
-            workspace={ws}
-            isActive={ws.id === activeWorkspaceId}
-            attention={attention.get(ws.id) ?? null}
-          />
-        ))}
+        {workspaces.map((ws) => {
+          const draftsActive =
+            ws.id === 'transactions' &&
+            (pathname === '/transactions/drafts' || pathname.startsWith('/transactions/drafts/'))
+
+          return (
+            <div key={ws.id} className="space-y-0.5">
+              <NavItem
+                workspace={ws}
+                isActive={ws.id === activeWorkspaceId}
+                attention={attention.get(ws.id) ?? null}
+              />
+              {ws.id === 'transactions' ? (
+                <Link
+                  href="/transactions/drafts"
+                  data-testid="nav-transactions-drafts"
+                  onClick={() => setMobileMenu(false)}
+                  className={`
+                    ml-7 flex items-center gap-2 rounded-lg px-3 py-2
+                    text-sm font-medium transition-colors
+                    ${draftsActive
+                      ? 'bg-white/10 text-white'
+                      : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                    }
+                  `}
+                  aria-current={draftsActive ? 'page' : undefined}
+                >
+                  <FileText className="h-4 w-4 flex-shrink-0" />
+                  <span>
+                    Drafts
+                    <span className="block text-xs font-normal text-gray-400">טיוטות</span>
+                  </span>
+                </Link>
+              ) : null}
+            </div>
+          )
+        })}
       </nav>
 
       {/* User identity + sign-out (A-R3) */}
