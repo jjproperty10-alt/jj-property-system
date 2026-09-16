@@ -9,6 +9,7 @@ function read(rel: string): string {
 
 const DRAFT_FILES = [
   'src/app/(app)/transactions/new/page.tsx',
+  'src/app/(app)/transactions/drafts/page.tsx',
   'src/lib/transactions/agentDraftActions.ts',
   'src/lib/ledger/agentDraft.ts',
   'supabase/migrations/20260917090100_agent_transaction_drafts.sql',
@@ -42,6 +43,7 @@ describe('Phase 0D static security', () => {
     expect(action).not.toMatch(/posted_transaction_id/)
     expect(action).not.toContain("schema('finance')")
     expect(action).toContain("rpc('create_agent_transaction_draft'")
+    expect(action).toContain("rpc('list_agent_transaction_drafts'")
     expect(sql).toMatch(/agent_drafts_posted_forbidden/)
     expect(sql).toMatch(/Phase 0D forbids posting drafts/)
     expect(sql).not.toMatch(/INSERT INTO public\.transactions/i)

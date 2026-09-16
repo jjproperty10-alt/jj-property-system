@@ -63,6 +63,7 @@ describe('public agent draft RPCs', () => {
 
   it('action uses session JWT public RPC and does not touch schema finance or transactions', () => {
     expect(action).toContain("rpc('create_agent_transaction_draft'")
+    expect(action).toContain("rpc('list_agent_transaction_drafts'")
     expect(action).toContain('authenticateStatementUser')
     expect(action).toContain('createSupabaseServerClient')
     expect(action).not.toContain("schema('finance')")
