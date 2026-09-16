@@ -72,6 +72,7 @@ export type RegisteredWorkspaceId =
   | 'owners'
   | 'clientReports'
   | 'finance'
+  | 'partnerReports'
   | 'transactions'
   | 'validation'
 
@@ -86,6 +87,7 @@ export type WorkspaceIconId =
   | 'owners'
   | 'clientReports'
   | 'finance'
+  | 'partnerReports'
   | 'transactions'
   | 'validation'
 

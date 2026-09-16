@@ -107,6 +107,7 @@ describe('workspaceRegistry', () => {
         'owners',
         'clientReports',
         'finance',
+        'partnerReports',
         'transactions',
         'validation',
       ])

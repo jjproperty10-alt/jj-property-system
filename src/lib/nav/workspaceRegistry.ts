@@ -21,7 +21,7 @@
  * @see NAV-1_PHASE2_NAVIGATION_CONTRACT.md — Contract B, Contract E, Appendix
  */
 
-import { Home, Users, BarChart3, Building2, FileText, ListOrdered, ShieldCheck } from 'lucide-react'
+import { Home, Users, BarChart3, Building2, FileText, Handshake, ListOrdered, ShieldCheck } from 'lucide-react'
 import type {
   WorkspaceRegistration,
   WorkspaceNavItem,
@@ -42,6 +42,7 @@ import type {
  *   owners        — active — identityResolverService — R11
  *   clientReports — active — existing /client-report-rc3 route (nav link only)
  *   finance       — active — Finance KG — R5+R6
+ *   partnerReports — active — external-partner report index (nav link only)
  *   transactions  — active — M1 correction workspace
  *   validation    — active — M1 validation workspace
  *
@@ -93,6 +94,17 @@ const WORKSPACES: readonly WorkspaceRegistration[] = [
     attentionProvider: async () => null, // v1: Finance attention not yet wired
   },
   {
+    id: 'partnerReports',
+    label: 'Partner Reports',
+    labelHe: 'דוחות שותפים',
+    icon: Handshake,
+    // Index of certified external-partner reports. Nested under /finance, so the
+    // longest-prefix matcher keeps this item active on /avi instead of Finance.
+    landingRoute: '/finance/external-partner',
+    routePrefix: '/finance/external-partner',
+    attentionProvider: async () => null,
+  },
+  {
     id: 'transactions',
     label: 'Transactions / עסקאות',
     icon: ListOrdered,
@@ -125,6 +137,7 @@ const WORKSPACE_ICON_IDS: Record<RegisteredWorkspaceId, WorkspaceIconId> = {
   owners: 'owners',
   clientReports: 'clientReports',
   finance: 'finance',
+  partnerReports: 'partnerReports',
   transactions: 'transactions',
   validation: 'validation',
 }
@@ -165,6 +178,15 @@ const ROLE_VISIBILITY: Record<string, Record<FrameUser['role'], 'visible' | 'rea
     staff: 'hidden',
   },
   finance: {
+    ceo: 'visible',
+    finance: 'visible',
+    operations: 'hidden',
+    staff: 'hidden',
+  },
+  // Mirrors finance: the route lives under /finance, so anyone who cannot see
+  // Finance must not see a link into it. Route access is enforced separately by
+  // authenticateStatementUser (jj_staff_config), which this matrix cannot read.
+  partnerReports: {
     ceo: 'visible',
     finance: 'visible',
     operations: 'hidden',

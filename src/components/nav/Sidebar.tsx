@@ -33,7 +33,7 @@ import Link from 'next/link'
 import { useEffect, useRef } from 'react'
 import { usePathname } from 'next/navigation'
 import type { ComponentType } from 'react'
-import { Menu, X, LogOut, Home, Users, BarChart3, Building2, FileText, Settings2, ListOrdered, ShieldCheck } from 'lucide-react'
+import { Menu, X, LogOut, Home, Users, BarChart3, Building2, FileText, Handshake, Settings2, ListOrdered, ShieldCheck } from 'lucide-react'
 import type { FrameUser, WorkspaceNavItem, WorkspaceIconId, WorkspaceAttention } from '@/lib/nav/types'
 import { useGlobalContext, useSetMobileMenu } from './GlobalContextProvider'
 
@@ -53,6 +53,7 @@ const WORKSPACE_ICONS: Record<WorkspaceIconId, ComponentType<{ className?: strin
   owners: Users,
   clientReports: FileText,
   finance: BarChart3,
+  partnerReports: Handshake,
   transactions: ListOrdered,
   validation: ShieldCheck,
 }
