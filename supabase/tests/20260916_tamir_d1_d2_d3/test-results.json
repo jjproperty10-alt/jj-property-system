@@ -1,0 +1,251 @@
+{
+  "server": "PostgreSQL 17.6 on x86_64-windows",
+  "results": [
+    {
+      "id": "T1",
+      "name": "anon rejected",
+      "passed": true,
+      "detail": "rejected: permission denied for schema finance"
+    },
+    {
+      "id": "T2",
+      "name": "authenticated non-staff rejected",
+      "passed": true,
+      "detail": "rejected: [jj_auth] User 11111111-2222-3333-4444-555555555555 is not in jj_staff_config. Contact Yossi to be registered as JJ internal staff."
+    },
+    {
+      "id": "T3",
+      "name": "missing JWT rejected",
+      "passed": true,
+      "detail": "rejected: [jj_auth] Authenticated session required. auth.uid() returned NULL - include a valid JWT in the request."
+    },
+    {
+      "id": "T3b",
+      "name": "owner session without JWT rejected",
+      "passed": true,
+      "detail": "rejected: [jj_auth] Authenticated session required. auth.uid() returned NULL - include a valid JWT in the request."
+    },
+    {
+      "id": "T4",
+      "name": "authenticated CEO accepted + receipt correct",
+      "passed": true,
+      "detail": "{\"applied_at\":\"2026-09-16T14:56:04.882827+00:00\",\"d1_link_id\":\"dde7bea7-f2a3-4ef5-86f8-dec874951922\",\"executed_by\":\"277f81e0-3b89-41ed-a099-22585959b77a\",\"closing_after\":2548.75,\"executed_role\":\"authenticated\",\"function_name\":\"finance.apply_tamir_d1_d2_d3_20260916\",\"closing_before\":3248.75,\"economic_delta\":-700,\"receipt_version\":1,\"kiti1_rent_after\":9610,\"d1_transaction_id\":\"e7204266-1e0d-4e41-bd18-c64e09432382\",\"d2_transaction_id\":\"fcd33403-663b-4ec0-9b16-f1f2edb2769d\",\"d3_transaction_id\":\"1a063699-7fab-4f5c-8205-4d049d2f9087\",\"expected_audit_rows\":3,\"rental_month_status\":\"UNKNOWN - pending kiti_rent_consolidated_review\",\"inserted_owner_links\":1,\"inserted_transactions\":3,\"payments_to_owner_after\":21725}"
+    },
+    {
+      "id": "T5",
+      "name": "service_role accepted",
+      "passed": true,
+      "detail": "executed_by=null role=service_role"
+    },
+    {
+      "id": "T6",
+      "name": "D1/D2/D3 created together (4 writes, 1 transaction)",
+      "passed": true,
+      "detail": "tx 2270 -> 2273"
+    },
+    {
+      "id": "T7",
+      "name": "owner link created, approved, active, correct owner",
+      "passed": true,
+      "detail": "links 1 -> 2, status=approved"
+    },
+    {
+      "id": "T13",
+      "name": "D2/D3 counted by reporting filters while rental_month pending",
+      "passed": true,
+      "detail": "rent=9610/14 rows, pending-month rows=2"
+    },
+    {
+      "id": "T14",
+      "name": "D1 counted once (and D2/D3 once each)",
+      "passed": true,
+      "detail": "d1=1 d2=1 d3=1 link=1 owner-level rows=2"
+    },
+    {
+      "id": "T15",
+      "name": "JJ P&L delta = EUR 0",
+      "passed": true,
+      "detail": "JJ sum 1061 -> 1061, mgmt fee rows 0 -> 0"
+    },
+    {
+      "id": "T16",
+      "name": "other properties delta = EUR 0",
+      "passed": true,
+      "detail": "5 other properties compared, all unchanged"
+    },
+    {
+      "id": "T17",
+      "name": "closing = EUR 2,548.75",
+      "passed": true,
+      "detail": "recomputed 2548.75, receipt 2548.75"
+    },
+    {
+      "id": "T6b",
+      "name": "exactly 3 audit rows appended by the existing trigger",
+      "passed": true,
+      "detail": "audit 0 -> 3"
+    },
+    {
+      "id": "T8",
+      "name": "replay rejected",
+      "passed": true,
+      "detail": "rejected: ALREADY_APPLIED_OR_PREIMAGE_CHANGED: transactions total = 2273 (expected 2270)"
+    },
+    {
+      "id": "T9",
+      "name": "duplicate pre-image rejected",
+      "passed": true,
+      "detail": "rejected: ALREADY_APPLIED_OR_PREIMAGE_CHANGED: transactions total = 2271 (expected 2270)"
+    },
+    {
+      "id": "T10",
+      "name": "renamed canonical property rejected",
+      "passed": true,
+      "detail": "rejected: ALREADY_APPLIED_OR_PREIMAGE_CHANGED: canonical property b54e015f-05f9-4f75-a3e7-9362c6e2e0ae / Tamir Kiti 1 not found active (matches = 0)"
+    },
+    {
+      "id": "T10b",
+      "name": "soft-deleted canonical property rejected",
+      "passed": true,
+      "detail": "rejected: ALREADY_APPLIED_OR_PREIMAGE_CHANGED: canonical property b54e015f-05f9-4f75-a3e7-9362c6e2e0ae / Tamir Kiti 1 not found active (matches = 0)"
+    },
+    {
+      "id": "T10c",
+      "name": "inactive owner entity rejected",
+      "passed": true,
+      "detail": "rejected: ALREADY_APPLIED_OR_PREIMAGE_CHANGED: owner entity 0f352012-1403-4e3b-982a-7c019ee89f1b not found active"
+    },
+    {
+      "id": "T11",
+      "name": "postcondition failure raises",
+      "passed": true,
+      "detail": "POSTCONDITION_FAILED: Kiti 1 rent through cutoff = 9560 across 14 rows (expected 9610 / 14)"
+    },
+    {
+      "id": "T12",
+      "name": "no partial state after failure (0 of 4 rows, 0 audit rows)",
+      "passed": true,
+      "detail": "tx 2270->2270, links 1->1, audit 0->0"
+    },
+    {
+      "id": "T18",
+      "name": "rollback plan validated (soft-delete only, history retained)",
+      "passed": true,
+      "detail": "links=1, rent back to 7685, soft-deleted=3, rows retained=2273, delete blocked=true, amount update blocked=true"
+    },
+    {
+      "id": "W1",
+      "name": "wrapper: anon rejected",
+      "passed": true,
+      "detail": "rejected: permission denied for function apply_tamir_d1_d2_d3_20260916"
+    },
+    {
+      "id": "W2",
+      "name": "wrapper: authenticated non-staff rejected",
+      "passed": true,
+      "detail": "rejected: [jj_auth] User 11111111-2222-3333-4444-555555555555 is not in jj_staff_config. Contact Yossi to be registered as JJ internal staff."
+    },
+    {
+      "id": "W3",
+      "name": "wrapper: missing JWT rejected",
+      "passed": true,
+      "detail": "rejected: [jj_auth] Authenticated session required. auth.uid() returned NULL - include a valid JWT in the request."
+    },
+    {
+      "id": "W4",
+      "name": "wrapper: authenticated CEO accepted, identical result",
+      "passed": true,
+      "detail": "tx=2273, links=2, closing=2548.75"
+    },
+    {
+      "id": "W5",
+      "name": "wrapper: service_role accepted",
+      "passed": true,
+      "detail": "role=service_role"
+    },
+    {
+      "id": "W6",
+      "name": "wrapper: replay rejected",
+      "passed": true,
+      "detail": "rejected: ALREADY_APPLIED_OR_PREIMAGE_CHANGED: transactions total = 2273 (expected 2270)"
+    },
+    {
+      "id": "T19",
+      "name": "cleanup migration refuses to drop before the Apply exists",
+      "passed": true,
+      "detail": "CLEANUP_BLOCKED: expected the Apply to be complete before dropping the function (D1 rows = 0, D1 links = 0; expected 1 / 1)."
+    },
+    {
+      "id": "T20",
+      "name": "cleanup drops both functions; rows, link and audit remain",
+      "passed": true,
+      "detail": "fn=0, tx=2273, links=2, audit=3"
+    },
+    {
+      "id": "T21",
+      "name": "all tests rolled back: harness back to pre-image",
+      "passed": true,
+      "detail": "tx=2270, links=1, audit=0"
+    }
+  ],
+  "accessMatrix": [
+    {
+      "role_name": "anon",
+      "can_execute_inner": false,
+      "can_execute_wrapper": false,
+      "finance_usage": false,
+      "direct_link_insert": false,
+      "direct_tx_insert": true
+    },
+    {
+      "role_name": "authenticated",
+      "can_execute_inner": true,
+      "can_execute_wrapper": true,
+      "finance_usage": true,
+      "direct_link_insert": false,
+      "direct_tx_insert": true
+    },
+    {
+      "role_name": "service_role",
+      "can_execute_inner": true,
+      "can_execute_wrapper": true,
+      "finance_usage": true,
+      "direct_link_insert": false,
+      "direct_tx_insert": true
+    },
+    {
+      "role_name": "dbowner",
+      "can_execute_inner": true,
+      "can_execute_wrapper": true,
+      "finance_usage": true,
+      "direct_link_insert": true,
+      "direct_tx_insert": true
+    }
+  ],
+  "objects": [
+    {
+      "schema": "finance",
+      "proname": "apply_tamir_d1_d2_d3_20260916",
+      "prosecdef": true,
+      "provolatile": "v",
+      "language": "plpgsql",
+      "ret": "jsonb",
+      "args": "",
+      "owner": "dbowner",
+      "acl": "dbowner=X/dbowner | authenticated=X/dbowner | service_role=X/dbowner",
+      "config": "search_path=\"\""
+    },
+    {
+      "schema": "public",
+      "proname": "apply_tamir_d1_d2_d3_20260916",
+      "prosecdef": false,
+      "provolatile": "v",
+      "language": "sql",
+      "ret": "jsonb",
+      "args": "",
+      "owner": "dbowner",
+      "acl": "dbowner=X/dbowner | authenticated=X/dbowner | service_role=X/dbowner",
+      "config": "search_path=\"\""
+    }
+  ]
+}

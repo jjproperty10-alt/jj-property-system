@@ -1,0 +1,34 @@
+[
+  {
+    "role_name": "anon",
+    "can_execute_inner": false,
+    "can_execute_wrapper": false,
+    "finance_usage": false,
+    "direct_link_insert": false,
+    "direct_tx_insert": true
+  },
+  {
+    "role_name": "authenticated",
+    "can_execute_inner": true,
+    "can_execute_wrapper": true,
+    "finance_usage": true,
+    "direct_link_insert": false,
+    "direct_tx_insert": true
+  },
+  {
+    "role_name": "service_role",
+    "can_execute_inner": true,
+    "can_execute_wrapper": true,
+    "finance_usage": true,
+    "direct_link_insert": false,
+    "direct_tx_insert": true
+  },
+  {
+    "role_name": "dbowner",
+    "can_execute_inner": true,
+    "can_execute_wrapper": true,
+    "finance_usage": true,
+    "direct_link_insert": true,
+    "direct_tx_insert": true
+  }
+]
