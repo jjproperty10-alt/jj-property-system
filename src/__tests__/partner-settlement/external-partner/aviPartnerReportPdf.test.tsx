@@ -211,4 +211,14 @@ describe('AviPartnerReportPdf certified fixture contract', () => {
     expect(src).toContain('moneySigned(report.monthly.incomeShareRoundingAdjustmentEur)')
     expect(src).not.toContain('money(report.monthly.incomeShareRoundingAdjustmentEur)')
   })
+
+  it('W — amount columns are fixed width so LTR neighbours cannot collide', () => {
+    const src = fs.readFileSync(
+      path.join(process.cwd(), 'src/lib/pdf/AviPartnerReportPdf.tsx'),
+      'utf8',
+    )
+    // A flexed amount column hugs its content in LTR and touches the
+    // right-aligned column before it (EN monthly table: "149€38,990.50").
+    expect(src).not.toMatch(/\{\s*flexGrow:\s*1\s*\}\s*,\s*rtlColumnOrder\(lang\)/)
+  })
 })

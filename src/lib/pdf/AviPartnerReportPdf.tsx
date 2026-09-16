@@ -864,7 +864,7 @@ export function AviPartnerReportPdf({
             amountHint={copy.monthlyGrandTotal}
           />
           <View style={[shared.tableHeader, rtlRowDirection(lang)]} wrap={false}>
-            <HeText lang={lang} style={[shared.th, { width: 78 }]}>
+            <HeText lang={lang} style={[shared.th, { width: 78, flexGrow: 1 }]}>
               {copy.month}
             </HeText>
             <HeText lang={lang} style={[shared.th, { width: 40 }, rtlColumnOrder(lang)]}>
@@ -873,7 +873,7 @@ export function AviPartnerReportPdf({
             <HeText lang={lang} style={[shared.th, { width: 40 }, rtlColumnOrder(lang)]}>
               {copy.bookings}
             </HeText>
-            <HeText lang={lang} style={[shared.th, { flexGrow: 1 }, rtlColumnOrder(lang)]}>
+            <HeText lang={lang} style={[shared.th, { width: 80 }, rtlColumnOrder(lang)]}>
               {copy.income}
             </HeText>
             <HeText lang={lang} style={[shared.th, { width: 80 }, rtlColumnOrder(lang)]}>
@@ -886,7 +886,7 @@ export function AviPartnerReportPdf({
               style={[shared.tableRow, rtlRowDirection(lang)]}
               wrap={false}
             >
-              <View style={{ width: 78 }}>
+              <View style={{ width: 78, flexGrow: 1 }}>
                 <PdfAviDate iso={row.month} lang={lang} mode="month" />
               </View>
               <LtrText style={[shared.td, { width: 40 }, rtlColumnOrder(lang)]}>
@@ -895,7 +895,7 @@ export function AviPartnerReportPdf({
               <LtrText style={[shared.td, { width: 40 }, rtlColumnOrder(lang)]}>
                 {row.nights}
               </LtrText>
-              <LtrText style={[shared.td, { flexGrow: 1 }, rtlColumnOrder(lang)]}>
+              <LtrText style={[shared.td, { width: 80 }, rtlColumnOrder(lang)]}>
                 {money(row.incomeEur)}
               </LtrText>
               <LtrText style={[shared.td, { width: 80 }, rtlColumnOrder(lang)]}>
@@ -914,7 +914,7 @@ export function AviPartnerReportPdf({
             </View>
           ) : null}
           <View style={[shared.tableTotal, rtlRowDirection(lang)]} wrap={false}>
-            <HeText lang={lang} style={[shared.tdBold, { width: 78 }]}>
+            <HeText lang={lang} style={[shared.tdBold, { width: 78, flexGrow: 1 }]}>
               {copy.monthlyGrandTotal}
             </HeText>
             <LtrText style={[shared.tdBold, { width: 40 }, rtlColumnOrder(lang)]}>
@@ -923,7 +923,7 @@ export function AviPartnerReportPdf({
             <LtrText style={[shared.tdBold, { width: 40 }, rtlColumnOrder(lang)]}>
               {report.monthly.totals.nights}
             </LtrText>
-            <LtrText style={[shared.tdBold, { flexGrow: 1 }, rtlColumnOrder(lang)]}>
+            <LtrText style={[shared.tdBold, { width: 80 }, rtlColumnOrder(lang)]}>
               {money(report.monthly.totals.incomeEur)}
             </LtrText>
             <LtrText style={[shared.tdBold, { width: 80 }, rtlColumnOrder(lang)]}>
