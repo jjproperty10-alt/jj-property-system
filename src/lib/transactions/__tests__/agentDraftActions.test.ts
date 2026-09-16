@@ -22,7 +22,7 @@ jest.mock('@/lib/supabase', () => ({
   },
 }))
 
-import { createAgentTransactionDraft } from '../agentDraftActions'
+import { createAgentTransactionDraft, listAgentTransactionDrafts } from '../agentDraftActions'
 import { DRAFT_NOT_POSTED_MESSAGE } from '@/lib/ledger/agentDraft'
 
 function staffAuth() {
@@ -138,5 +138,63 @@ describe('createAgentTransactionDraft', () => {
       expect(r.reusedExisting).toBe(true)
     }
     expect(mockRpc).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('listAgentTransactionDrafts', () => {
+  beforeEach(() => {
+    mockAuth.mockReset()
+    mockFrom.mockReset()
+    mockRpc.mockReset()
+  })
+
+  it('denies partner/owner (not staff)', async () => {
+    mockAuth.mockResolvedValue({ ok: false, error: 'NOT_STAFF' })
+    const r = await listAgentTransactionDrafts()
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/not authorized/i)
+    expect(mockRpc).not.toHaveBeenCalled()
+  })
+
+  it('authorized staff loads drafts through the public list RPC', async () => {
+    mockAuth.mockResolvedValue(staffAuth())
+    mockRpc.mockResolvedValue({
+      data: [{
+        date: '2026-08-31',
+        property_name_input: 'Liron and Alon',
+        category: 'Management',
+        subcategory: 'Tenant Payment',
+        description: 'rent',
+        payer_input: 'Tenant',
+        payee_input: 'Yossi',
+        amount_eur: '550.00',
+        client_charge: null,
+        status: 'draft',
+        created_at: '2026-09-16T20:53:16.517073+00:00',
+      }],
+      error: null,
+    })
+
+    const r = await listAgentTransactionDrafts()
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.drafts).toHaveLength(1)
+      expect(r.drafts[0]).toEqual({
+        date: '2026-08-31',
+        property: 'Liron and Alon',
+        category: 'Management',
+        subcategory: 'Tenant Payment',
+        description: 'rent',
+        payer: 'Tenant',
+        payee: 'Yossi',
+        amount_eur: '550.00',
+        client_charge: null,
+        status: 'draft',
+        created_at: '2026-09-16T20:53:16.517073+00:00',
+      })
+    }
+    expect(mockRpc).toHaveBeenCalledTimes(1)
+    expect(mockRpc.mock.calls[0][0]).toBe('list_agent_transaction_drafts')
+    expect(mockFrom).not.toHaveBeenCalled()
   })
 })

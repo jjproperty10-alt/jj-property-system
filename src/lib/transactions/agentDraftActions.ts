@@ -37,6 +37,24 @@ export type CreateAgentDraftResult =
   | { readonly ok: true; readonly draftId: string; readonly status: string; readonly message: string; readonly reusedExisting: boolean }
   | { readonly ok: false; readonly error: string }
 
+export interface AgentDraftInboxRow {
+  readonly date: string
+  readonly property: string
+  readonly category: string
+  readonly subcategory: string
+  readonly description: string | null
+  readonly payer: string | null
+  readonly payee: string | null
+  readonly amount_eur: string | null
+  readonly client_charge: string | null
+  readonly status: string
+  readonly created_at: string
+}
+
+export type ListAgentDraftsResult =
+  | { readonly ok: true; readonly drafts: readonly AgentDraftInboxRow[] }
+  | { readonly ok: false; readonly error: string }
+
 interface CreateDraftRpcRow {
   readonly id: string
   readonly status: string
@@ -108,5 +126,60 @@ export async function createAgentTransactionDraft(
     status: String(row.status),
     message: DRAFT_NOT_POSTED_MESSAGE,
     reusedExisting: Boolean(row.reused_existing),
+  }
+}
+
+interface ListDraftRpcRow {
+  readonly date?: string | null
+  readonly property_name_input?: string | null
+  readonly category?: string | null
+  readonly subcategory?: string | null
+  readonly description?: string | null
+  readonly payer_input?: string | null
+  readonly payee_input?: string | null
+  readonly amount_eur?: string | number | null
+  readonly client_charge?: string | number | null
+  readonly status?: string | null
+  readonly created_at?: string | null
+}
+
+function asOptionalText(value: string | number | null | undefined): string | null {
+  if (value == null) return null
+  const text = String(value).trim()
+  return text === '' ? null : text
+}
+
+function mapListRow(row: ListDraftRpcRow): AgentDraftInboxRow {
+  return {
+    date: String(row.date ?? ''),
+    property: String(row.property_name_input ?? ''),
+    category: String(row.category ?? ''),
+    subcategory: String(row.subcategory ?? ''),
+    description: asOptionalText(row.description),
+    payer: asOptionalText(row.payer_input),
+    payee: asOptionalText(row.payee_input),
+    amount_eur: asOptionalText(row.amount_eur),
+    client_charge: asOptionalText(row.client_charge),
+    status: String(row.status ?? ''),
+    created_at: String(row.created_at ?? ''),
+  }
+}
+
+export async function listAgentTransactionDrafts(): Promise<ListAgentDraftsResult> {
+  const auth = await authenticateStatementUser()
+  if (!auth.ok) {
+    return { ok: false, error: auth.error === 'NO_SESSION' ? 'You must be signed in' : 'Not authorized' }
+  }
+
+  const session = createSupabaseServerClient()
+  const { data, error } = await session.rpc('list_agent_transaction_drafts')
+  if (error) {
+    return { ok: false, error: error.message ?? 'Drafts could not be loaded.' }
+  }
+
+  const rows = Array.isArray(data) ? data : data == null ? [] : [data]
+  return {
+    ok: true,
+    drafts: (rows as ListDraftRpcRow[]).map(mapListRow),
   }
 }

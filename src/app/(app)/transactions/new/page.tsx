@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
 import { createAgentTransactionDraft } from '@/lib/transactions/agentDraftActions'
 import { DRAFT_NOT_POSTED_MESSAGE } from '@/lib/ledger/agentDraft'
@@ -39,7 +39,6 @@ const INITIAL: FormState = {
 }
 
 export default function NewTransactionPage() {
-  const router = useRouter()
   const [form, setForm]               = useState<FormState>(INITIAL)
   const [properties, setProperties]   = useState<string[]>([])
   const [saving, setSaving]           = useState(false)
@@ -124,12 +123,12 @@ export default function NewTransactionPage() {
           </div>
           <p className="text-sm text-gray-500 mt-0.5">Saves as a draft only. Not posted to accounts.</p>
         </div>
-        <button
-          onClick={() => router.push('/transactions')}
+        <Link
+          href="/transactions/drafts"
           className="btn-secondary text-sm"
         >
           View all →
-        </button>
+        </Link>
       </div>
 
       {/* Success / Error banners */}
