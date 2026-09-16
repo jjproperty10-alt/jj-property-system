@@ -7,6 +7,8 @@
  */
 import 'server-only'
 import { createServiceClient } from '@/lib/supabase'
+import { fetchCertifiedLedgerRows } from '@/lib/ledger/certifiedTransactionsReader'
+import { CertifiedLedgerUnavailableError } from '@/lib/ledger/certifiedLedger'
 import { PropertyAuditService, isRevenueEligible, parsePeriodFromDescription } from '@/lib/hostaway-audit'
 import { maskGuestName } from '@/lib/owners/ownerReservationAdapter'
 import { composeOwnerStrStatement, isOwnerStatementExtra, isOwnerStatementExtraCategory, isOwnerStatementPayment, OWNER_STATEMENT_EXTRA_CATEGORIES, type OwnerStrStatement, type StatementReservationEvidence, type StatementExtra } from './ownerStrStatement'
@@ -114,74 +116,77 @@ export async function buildOwnerStrStatement(input: OwnerStrStatementInput): Pro
   //    Management Fee stays out of extras regardless of payer (already deducted in-chain).
   const extras: StatementExtra[] = []
   const ownerPayments: StatementExtra[] = []
-  if (names.length) {
-    const { data: exRows } = await sb.from('transactions')
-      .select('date, property_name, category, subcategory, description, payer, amount_eur, client_charge')
-      .in('property_name', names)
-      .in('category', [...OWNER_STATEMENT_EXTRA_CATEGORIES])
-      .gte('date', input.startDate).lte('date', input.endDate)
-      .or('review_status.eq.active,review_status.is.null')
-    for (const t of exRows ?? []) {
-      const cat = String(t.category ?? '')
-      const sub = String(t.subcategory ?? '')
-      const payer = t.payer != null ? String(t.payer) : null
-      if (!isOwnerStatementExtraCategory(cat)) continue
-      const ownerFacing = num(t.client_charge) ?? num(t.amount_eur) ?? 0
-      if (ownerFacing === 0) continue
-      const rounded = Math.round(ownerFacing * 100) / 100
-      const row = {
-        name: (t.description as string) || sub || 'Expense',
-        date: String(t.date),
-        subcategory: sub,
-        propertyName: String(t.property_name),
-        provenance: 'jj_transaction' as const,
-      }
-      if (isOwnerStatementPayment(sub)) {
-        ownerPayments.push({ ...row, amountEur: Math.abs(rounded) })
-        continue
-      }
-      if (!isOwnerStatementExtra(sub, payer)) continue
-      extras.push({ ...row, amountEur: -Math.abs(rounded) })
-    }
-  }
-
-  // 3) JJ Platform Income coverage — aggregate-aware, identical semantics to the certified cockpit
-  //    reconciliation (ownerStrAuditAdapter.getStrReconciliation). Fetch ALL Platform Income rows for
-  //    the owner's properties (any transaction date) and classify each by its RECORDED period using the
-  //    reused parser (parsePeriodFromDescription) — no second parser, no monthly allocation, no split.
-  //    A row whose period spans beyond the selected window is a MULTI-MONTH aggregate that must never be
-  //    presented as a clean monthly match.
   let jjPI: number | null = null
   let piAggregate = false
+  let ledgerUnavailable = false
   if (names.length) {
-    const { data: piRows } = await sb.from('transactions')
-      .select('date, description, amount_eur')
-      .in('property_name', names)
-      .eq('category', 'Airbnb').eq('subcategory', 'Platform Income')
-      .or('review_status.eq.active,review_status.is.null')
-    let monthSpecificSum = 0, monthSpecificCount = 0
-    let aggregateSum = 0, aggregateCount = 0
-    for (const t of piRows ?? []) {
-      const parsed = parsePeriodFromDescription((t.description as string | null) ?? null)
-      const from = parsed?.from ?? String(t.date)   // ISO 'YYYY-MM-DD' — lexical compare is date-correct
-      const to = parsed?.to ?? String(t.date)
-      const overlaps = from <= input.endDate && to >= input.startDate
-      if (!overlaps) continue
-      const amt = num(t.amount_eur) ?? 0
-      const spansBeyondMonth = from < input.startDate || to > input.endDate
-      if (spansBeyondMonth) { aggregateSum += amt; aggregateCount++ }
-      else { monthSpecificSum += amt; monthSpecificCount++ }
-    }
-    if (aggregateCount > 0) {
-      // Any multi-month aggregate touching this window → aggregate_only (context sum, never compared).
-      jjPI = Math.round((aggregateSum + monthSpecificSum) * 100) / 100
-      piAggregate = true
-    } else if (monthSpecificCount > 0) {
-      jjPI = Math.round(monthSpecificSum * 100) / 100   // genuinely month-specific → normal reconciliation
+    try {
+      const exRows = await fetchCertifiedLedgerRows(sb, {
+        select: 'id, date, property_name, category, subcategory, description, payer, amount_eur, client_charge',
+        propertyNames: names,
+        categories: [...OWNER_STATEMENT_EXTRA_CATEGORIES],
+        dateGte: input.startDate,
+        dateLte: input.endDate,
+      })
+      for (const t of exRows) {
+        const cat = String(t.category ?? '')
+        const sub = String(t.subcategory ?? '')
+        const payer = t.payer != null ? String(t.payer) : null
+        if (!isOwnerStatementExtraCategory(cat)) continue
+        const ownerFacing = num(t.client_charge) ?? num(t.amount_eur) ?? 0
+        if (ownerFacing === 0) continue
+        const rounded = Math.round(ownerFacing * 100) / 100
+        const row = {
+          name: (t.description as string) || sub || 'Expense',
+          date: String(t.date),
+          subcategory: sub,
+          propertyName: String(t.property_name),
+          provenance: 'jj_transaction' as const,
+        }
+        if (isOwnerStatementPayment(sub)) {
+          ownerPayments.push({ ...row, amountEur: Math.abs(rounded) })
+          continue
+        }
+        if (!isOwnerStatementExtra(sub, payer)) continue
+        extras.push({ ...row, amountEur: -Math.abs(rounded) })
+      }
+
+      const piRows = await fetchCertifiedLedgerRows(sb, {
+        select: 'date, description, amount_eur',
+        propertyNames: names,
+        eq: { category: 'Airbnb', subcategory: 'Platform Income' },
+      })
+      let monthSpecificSum = 0, monthSpecificCount = 0
+      let aggregateSum = 0, aggregateCount = 0
+      for (const t of piRows) {
+        const parsed = parsePeriodFromDescription((t.description as string | null) ?? null)
+        const from = parsed?.from ?? String(t.date)
+        const to = parsed?.to ?? String(t.date)
+        const overlaps = from <= input.endDate && to >= input.startDate
+        if (!overlaps) continue
+        const amt = num(t.amount_eur) ?? 0
+        const spansBeyondMonth = from < input.startDate || to > input.endDate
+        if (spansBeyondMonth) { aggregateSum += amt; aggregateCount++ }
+        else { monthSpecificSum += amt; monthSpecificCount++ }
+      }
+      if (aggregateCount > 0) {
+        jjPI = Math.round((aggregateSum + monthSpecificSum) * 100) / 100
+        piAggregate = true
+      } else if (monthSpecificCount > 0) {
+        jjPI = Math.round(monthSpecificSum * 100) / 100
+      }
+    } catch (err) {
+      if (!(err instanceof CertifiedLedgerUnavailableError)) throw err
+      // Fail-closed for extras/PI: include none. Hostaway reservations already composed above.
+      ledgerUnavailable = true
+      extras.length = 0
+      ownerPayments.length = 0
+      jjPI = null
+      piAggregate = false
     }
   }
 
-  return composeOwnerStrStatement({
+  const composed = composeOwnerStrStatement({
     ownerName: input.ownerName,
     properties: names,
     periodStart: input.startDate,
@@ -194,4 +199,18 @@ export async function buildOwnerStrStatement(input: OwnerStrStatementInput): Pro
     jjPlatformIncomeInPeriodEur: jjPI,
     jjPlatformIncomeIsAggregate: piAggregate,
   })
+  if (!ledgerUnavailable) return composed
+  return {
+    ...composed,
+    statementTotalEur: null,
+    totals: {
+      ...composed.totals,
+      needsReviewCount: composed.totals.needsReviewCount + 1,
+    },
+    reconciliation: {
+      ...composed.reconciliation,
+      jjPlatformIncomeEur: null,
+      note: 'Certified ledger unavailable. Hostaway reservation figures are shown. JJ extras and Platform Income are Needs Review — not assumed zero.',
+    },
+  }
 }

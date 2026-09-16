@@ -7,6 +7,8 @@
  */
 import 'server-only';
 import { createServiceClient } from '@/lib/supabase';
+import { fetchCertifiedLedgerRows } from '@/lib/ledger/certifiedTransactionsReader';
+import { CertifiedLedgerUnavailableError } from '@/lib/ledger/certifiedLedger';
 import {
   PropertyAuditService, buildStrReconciliation, resolveActiveStrEngagement, classifyStrPeriodAttribution,
   parsePeriodFromDescription,
@@ -59,16 +61,22 @@ export async function getStrReconciliation(input: OwnerStrAuditInput): Promise<S
   // date) and classify each by its RECORDED period (existing description parser, reused — no second
   // parser, no splitting). A row whose period spans beyond the selected month is a MULTI-MONTH
   // aggregate that must never be compared against one month of Hostaway payout.
-  const { data: piRows } = await sb.from('transactions')
-    .select('date, description, amount_eur')
-    .eq('property_name', jjPropertyName)
-    .eq('category', 'Airbnb')
-    .eq('subcategory', 'Platform Income')
-    .or('review_status.eq.active,review_status.is.null');
+  let piRows: Record<string, unknown>[] = [];
+  try {
+    piRows = await fetchCertifiedLedgerRows(sb, {
+      select: 'date, description, amount_eur',
+      propertyNames: [jjPropertyName],
+      eq: { category: 'Airbnb', subcategory: 'Platform Income' },
+    });
+  } catch (err) {
+    if (!(err instanceof CertifiedLedgerUnavailableError)) throw err;
+    // Hostaway audit already ran. Do not include unfiltered Platform Income.
+    piRows = [];
+  }
 
   let monthSpecificSum = 0, monthSpecificCount = 0;
   let aggregateSum = 0, aggregateCount = 0;
-  for (const t of piRows ?? []) {
+  for (const t of piRows) {
     const parsed = parsePeriodFromDescription((t.description as string | null) ?? null);
     const from = parsed?.from ?? String(t.date);   // ISO 'YYYY-MM-DD' — lexical compare is date-correct
     const to = parsed?.to ?? String(t.date);

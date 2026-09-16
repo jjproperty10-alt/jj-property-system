@@ -5,18 +5,20 @@
  *           AuditLimitations, EvidenceQuality.
  *
  * Implements IPropertyAuditService.
- * Queries pms schema + public.transactions, produces audit DTOs.
+ * Queries pms schema + v_certified_ledger_transactions, produces audit DTOs.
  * No writes. No mutations. No UI.
  *
  * Data access pattern:
  *   1. pms.property_mappings     → resolve Hostaway ↔ JJ mapping
  *   2. pms.canonical_reservations → get reservation list
  *   3. pms.raw_reservations      → get raw financials (JSONB)
- *   4. public.transactions       → get JJ Airbnb records
+ *   4. v_certified_ledger_transactions → certified JJ Airbnb records
  *   5. Build period comparisons + audit states → produce DTOs
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { CertifiedLedgerUnavailableError } from '../ledger/certifiedLedger';
+import { fetchCertifiedLedgerRows } from '../ledger/certifiedTransactionsReader';
 import type {
   IPropertyAuditService,
   PropertyAuditRequest,
@@ -191,7 +193,16 @@ export class PropertyAuditService implements IPropertyAuditService {
       });
 
       // ── Step 3: Fetch JJ Airbnb transactions ──
-      const jjTx = await this.fetchJjTransactions(jjPropertyName, dateFrom, dateTo);
+      // Ledger unavailability must not drop Hostaway reservations already fetched.
+      // Fail-closed for JJ rows: include none, never unfiltered public.transactions.
+      let jjTx: JjAirbnbTransaction[] = [];
+      let jjLedgerUnavailable = false;
+      try {
+        jjTx = await this.fetchJjTransactions(jjPropertyName, dateFrom, dateTo);
+      } catch (err) {
+        if (!(err instanceof CertifiedLedgerUnavailableError)) throw err;
+        jjLedgerUnavailable = true;
+      }
       dataSources.push({
         source: 'public.transactions',
         queryTimestamp: new Date().toISOString(),
@@ -301,7 +312,7 @@ export class PropertyAuditService implements IPropertyAuditService {
         comparisonGranularity: periodComparisons.length > 0 ? 'period_aggregate' : 'total_only',
         unparseableJjPeriods,
         reservationsWithMissingFinancials,
-        notes: buildLimitationNotes(unparseableJjPeriods, reservationsWithMissingFinancials, unmatchedJj.length),
+        notes: buildLimitationNotes(unparseableJjPeriods, reservationsWithMissingFinancials, unmatchedJj.length, jjLedgerUnavailable),
       };
 
       const evidenceQuality = buildEvidenceQuality(canonicalRows);
@@ -431,26 +442,23 @@ export class PropertyAuditService implements IPropertyAuditService {
     dateFrom: string,
     dateTo: string,
   ): Promise<JjAirbnbTransaction[]> {
-    const { data, error } = await this.supabase
-      .from('transactions')
-      .select('id, date, property_name, subcategory, amount_eur, description, payer, payee')
-      .eq('category', 'Airbnb')
-      .eq('property_name', jjPropertyName)
-      .gte('date', dateFrom)
-      .lte('date', dateTo)
-      .or('review_status.eq.active,review_status.is.null');
+    const data = await fetchCertifiedLedgerRows(this.supabase, {
+      select: 'id, date, property_name, subcategory, amount_eur, description, payer, payee',
+      propertyNames: [jjPropertyName],
+      eq: { category: 'Airbnb' },
+      dateGte: dateFrom,
+      dateLte: dateTo,
+    });
 
-    if (error) throw new Error(`transactions query failed: ${error.message}`);
-
-    return (data ?? []).map((r): JjAirbnbTransaction => ({
-      id: r.id,
-      date: r.date,
-      propertyName: r.property_name,
-      subcategory: r.subcategory,
+    return data.map((r): JjAirbnbTransaction => ({
+      id: String(r.id),
+      date: String(r.date),
+      propertyName: String(r.property_name),
+      subcategory: String(r.subcategory ?? ''),
       amountEur: Number(r.amount_eur),
-      description: r.description,
-      payer: r.payer,
-      payee: r.payee,
+      description: (r.description as string | null) ?? null,
+      payer: (r.payer as string | null) ?? null,
+      payee: (r.payee as string | null) ?? null,
     }));
   }
 }
@@ -461,8 +469,13 @@ function buildLimitationNotes(
   unparseableJjPeriods: number,
   missingFinancials: number,
   unmatchedJjCount: number,
+  jjLedgerUnavailable = false,
 ): readonly string[] {
   const notes: string[] = [];
+
+  if (jjLedgerUnavailable) {
+    notes.push('Certified JJ ledger was unavailable. Hostaway reservation evidence is shown. JJ transaction matching is Needs Review — unfiltered transactions were not used.');
+  }
 
   if (unparseableJjPeriods > 0) {
     notes.push(`${unparseableJjPeriods} JJ Platform Income row(s) have descriptions that could not be parsed into date ranges. These cannot participate in period-aggregate comparison.`);
