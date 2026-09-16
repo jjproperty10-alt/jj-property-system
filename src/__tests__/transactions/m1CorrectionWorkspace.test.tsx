@@ -131,6 +131,41 @@ describe('M1 register status columns', () => {
         </tbody>
       </table>,
     )
+    expect(html).toContain('data-testid="col-status"')
+    expect(html).toContain('data-testid="col-review-status"')
+    expect(html).toContain('data-testid="col-is-deleted"')
+    expect(html).toContain('data-testid="col-exclusion"')
+    expect(html).toContain('data-testid="col-correction-case"')
+    expect(html).toContain('Deleted')
+    expect(html).toContain('Excluded')
+    expect(html).toContain('Corrected (2)')
+    expect(html).toContain('Review: active')
+    expect(html).toContain('Deleted: yes')
+    expect(html).toContain('Exclusion: active')
+    expect(html).toContain('Correction: yes (2)')
+    expect((html.match(/<td/g) || []).length).toBe(1)
+  })
+
+  it('shows Active when every underlying status is normal', () => {
+    const html = renderToStaticMarkup(
+      <table>
+        <tbody>
+          <tr>
+            <RegisterStatusBadges
+              reviewStatus="active"
+              isDeleted={false}
+              hasActiveExclusion={false}
+              hasCorrectionCase={false}
+            />
+          </tr>
+        </tbody>
+      </table>,
+    )
+    expect(html).toContain('Active')
+    expect(html).not.toContain('>Deleted<')
+    expect(html).not.toContain('Excluded')
+    expect(html).not.toContain('Corrected')
+    expect(html).toContain('Deleted: no')
     expect(html).toContain('data-testid="col-review-status"')
     expect(html).toContain('data-testid="col-is-deleted"')
     expect(html).toContain('data-testid="col-exclusion"')

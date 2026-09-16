@@ -24,12 +24,39 @@ describe('Transactions register UI — drafts discoverability and money columns'
   it('renders Amount and Client Charge headers', () => {
     expect(page).toContain('data-testid="col-amount-header"')
     expect(page).toContain('data-testid="col-client-charge-header"')
-    expect(page).toMatch(/data-testid="col-amount-header"[\s\S]{0,120}Amount/)
-    expect(page).toMatch(/data-testid="col-client-charge-header"[\s\S]{0,120}Client Charge/)
+    expect(page).toMatch(/data-testid="col-amount-header"[\s\S]{0,160}Amount/)
+    expect(page).toMatch(/data-testid="col-client-charge-header"[\s\S]{0,160}Client Charge/)
     expect(page).toContain('table-fixed')
     expect(page).toContain('min-w-[960px]')
     expect(page).toContain('tabular-nums')
     expect(page).toContain('title={text}')
+  })
+
+  it('uses one Status header instead of four audit headers', () => {
+    expect(page).toContain('data-testid="col-status-header"')
+    expect(page).toMatch(/data-testid="col-status-header"[\s\S]{0,80}Status/)
+    expect(page).not.toMatch(/<th[^>]*>\s*Review\s*</)
+    expect(page).not.toMatch(/<th[^>]*>\s*Deleted\s*</)
+    expect(page).not.toMatch(/<th[^>]*>\s*Exclusion\s*</)
+    expect(page).not.toMatch(/<th[^>]*>\s*Correction\s*</)
+    expect(page).toContain('data-testid="col-subcategory-header"')
+    expect(page).toContain('data-testid="col-description-header"')
+    expect(page).toContain('w-[7rem]')
+    expect(page).toContain('w-[9rem]')
+  })
+
+  it('still represents all four underlying status fields', () => {
+    const badges = read('src/components/transactions/RegisterStatusBadges.tsx')
+    expect(badges).toContain('data-testid="col-status"')
+    expect(badges).toContain('data-testid="col-review-status"')
+    expect(badges).toContain('data-testid="col-is-deleted"')
+    expect(badges).toContain('data-testid="col-exclusion"')
+    expect(badges).toContain('data-testid="col-correction-case"')
+    expect(badges).toContain('buildRegisterStatusTitle')
+    expect(badges).toContain('Review:')
+    expect(badges).toContain('Deleted:')
+    expect(badges).toContain('Exclusion:')
+    expect(badges).toContain('Correction:')
   })
 
   it('does not change register data-access or EUR formatting', () => {
@@ -51,6 +78,10 @@ describe('Transactions register UI — drafts discoverability and money columns'
     expect(actions).not.toContain("schema('finance')")
     expect(draftsPage).toContain('authenticateStatementUser')
     expect(draftsPage).toContain('listAgentTransactionDrafts')
+    expect(draftsPage).toContain('data-testid="col-created-header"')
+    expect(draftsPage).toContain('stamp(row.created_at)')
+    expect(draftsPage).not.toContain('postDraft')
+    expect(draftsPage).not.toContain('approveDraft')
   })
 
   it('keeps Drafts nested under Transactions and off partner surfaces', () => {

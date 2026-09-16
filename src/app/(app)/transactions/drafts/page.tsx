@@ -51,7 +51,7 @@ export default async function TransactionDraftsPage() {
   const drafts = listed.ok ? listed.drafts : []
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="p-8">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Transaction Drafts</h1>
@@ -79,36 +79,63 @@ export default async function TransactionDraftsPage() {
 
       {listed.ok && drafts.length > 0 && (
         <div className="card overflow-x-auto">
-          <table className="min-w-full text-sm">
+          <table className="w-full min-w-[960px] table-fixed text-sm" data-testid="drafts-inbox-table">
+            <colgroup>
+              <col className="w-[5.5rem]" />
+              <col className="w-[6rem]" />
+              <col className="w-[5.5rem]" />
+              <col className="w-[6rem]" />
+              <col className="w-[7rem]" />
+              <col className="w-[4.25rem]" />
+              <col className="w-[4.25rem]" />
+              <col className="w-[5.75rem]" />
+              <col className="w-[6rem]" />
+              <col className="w-[4.25rem]" />
+              <col className="w-[9.5rem]" />
+            </colgroup>
             <thead className="bg-gray-50 text-left text-gray-500">
               <tr>
-                <th className="px-3 py-2 font-medium">Date</th>
-                <th className="px-3 py-2 font-medium">Property</th>
-                <th className="px-3 py-2 font-medium">Category</th>
-                <th className="px-3 py-2 font-medium">Subcategory</th>
-                <th className="px-3 py-2 font-medium">Description</th>
-                <th className="px-3 py-2 font-medium">Payer</th>
-                <th className="px-3 py-2 font-medium">Payee</th>
-                <th className="px-3 py-2 font-medium text-right">Amount</th>
-                <th className="px-3 py-2 font-medium text-right">Client charge</th>
-                <th className="px-3 py-2 font-medium">Status</th>
-                <th className="px-3 py-2 font-medium">Created</th>
+                <th className="px-2 py-2 font-medium overflow-hidden text-ellipsis whitespace-nowrap" title="Date">Date</th>
+                <th className="px-2 py-2 font-medium overflow-hidden text-ellipsis whitespace-nowrap" title="Property">Property</th>
+                <th className="px-2 py-2 font-medium overflow-hidden text-ellipsis whitespace-nowrap" title="Category">Category</th>
+                <th className="px-2 py-2 font-medium overflow-hidden text-ellipsis whitespace-nowrap" title="Subcategory">Subcategory</th>
+                <th className="px-2 py-2 font-medium overflow-hidden text-ellipsis whitespace-nowrap" title="Description">Description</th>
+                <th className="px-2 py-2 font-medium overflow-hidden text-ellipsis whitespace-nowrap" title="Payer">Payer</th>
+                <th className="px-2 py-2 font-medium overflow-hidden text-ellipsis whitespace-nowrap" title="Payee">Payee</th>
+                <th className="px-2 py-2 font-medium text-right overflow-hidden text-ellipsis whitespace-nowrap" title="Amount">Amount</th>
+                <th className="px-2 py-2 font-medium text-right overflow-hidden text-ellipsis whitespace-nowrap" title="Client charge">Client charge</th>
+                <th className="px-2 py-2 font-medium overflow-hidden text-ellipsis whitespace-nowrap" title="Status">Status</th>
+                <th className="px-2 py-2 font-medium overflow-hidden text-ellipsis whitespace-nowrap" title="Created" data-testid="col-created-header">Created</th>
               </tr>
             </thead>
             <tbody>
               {drafts.map((row, index) => (
                 <tr key={`${row.created_at}-${row.date}-${index}`} className="border-t border-gray-100">
-                  <td className="px-3 py-2 whitespace-nowrap">{row.date || '—'}</td>
-                  <td className="px-3 py-2">{row.property || '—'}</td>
-                  <td className="px-3 py-2">{row.category || '—'}</td>
-                  <td className="px-3 py-2">{row.subcategory || '—'}</td>
-                  <td className="px-3 py-2">{row.description ?? '—'}</td>
-                  <td className="px-3 py-2">{row.payer ?? '—'}</td>
-                  <td className="px-3 py-2">{row.payee ?? '—'}</td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap">{money(row.amount_eur)}</td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap">{money(row.client_charge)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{row.status || '—'}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-500">{stamp(row.created_at)}</td>
+                  <td className="px-2 py-2 whitespace-nowrap overflow-hidden text-ellipsis" title={row.date || undefined}>{row.date || '—'}</td>
+                  <td className="px-2 py-2 overflow-hidden">
+                    <span className="block truncate" title={row.property || undefined}>{row.property || '—'}</span>
+                  </td>
+                  <td className="px-2 py-2 overflow-hidden">
+                    <span className="block truncate" title={row.category || undefined}>{row.category || '—'}</span>
+                  </td>
+                  <td className="px-2 py-2 overflow-hidden">
+                    <span className="block truncate" title={row.subcategory || undefined}>{row.subcategory || '—'}</span>
+                  </td>
+                  <td className="px-2 py-2 overflow-hidden">
+                    <span className="block truncate" title={row.description || undefined}>{row.description ?? '—'}</span>
+                  </td>
+                  <td className="px-2 py-2 overflow-hidden">
+                    <span className="block truncate" title={row.payer || undefined}>{row.payer ?? '—'}</span>
+                  </td>
+                  <td className="px-2 py-2 overflow-hidden">
+                    <span className="block truncate" title={row.payee || undefined}>{row.payee ?? '—'}</span>
+                  </td>
+                  <td className="px-2 py-2 text-right whitespace-nowrap tabular-nums">{money(row.amount_eur)}</td>
+                  <td className="px-2 py-2 text-right whitespace-nowrap tabular-nums">{money(row.client_charge)}</td>
+                  <td className="px-2 py-2 whitespace-nowrap overflow-hidden text-ellipsis" title={row.status || undefined}>{row.status || '—'}</td>
+                  <td className="px-2 py-2 whitespace-nowrap text-gray-500 tabular-nums" title={stamp(row.created_at)}>
+                    {stamp(row.created_at)}
+                  </td>
                 </tr>
               ))}
             </tbody>

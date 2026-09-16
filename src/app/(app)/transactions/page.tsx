@@ -255,68 +255,70 @@ function TransactionsRegisterInner() {
           >
             <colgroup>
               <col className="w-[4.25rem]" />
-              <col className="w-[4.75rem]" />
-              <col className="w-[5rem]" />
-              <col className="w-[4.75rem]" />
               <col className="w-[6.5rem]" />
-              <col className="w-[4.25rem]" />
-              <col className="w-[4.25rem]" />
-              <col className="w-[5.5rem]" />
+              <col className="w-[6rem]" />
               <col className="w-[7rem]" />
-              <col className="w-[3.5rem]" />
-              <col className="w-[3.25rem]" />
-              <col className="w-[3.75rem]" />
-              <col className="w-[3.75rem]" />
+              <col className="w-[9rem]" />
               <col className="w-[4.75rem]" />
+              <col className="w-[4.75rem]" />
+              <col className="w-[5.5rem]" />
+              <col className="w-[6.75rem]" />
+              <col className="w-[5.5rem]" />
+              <col className="w-[5.25rem]" />
             </colgroup>
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="text-left px-1.5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-normal overflow-hidden text-ellipsis whitespace-nowrap" title="Date">
                   Date
                 </th>
-                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="text-left px-1.5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-normal overflow-hidden text-ellipsis whitespace-nowrap" title="Property">
                   Property
                 </th>
-                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="text-left px-1.5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-normal overflow-hidden text-ellipsis whitespace-nowrap" title="Category">
                   Category
                 </th>
-                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th
+                  className="text-left px-1.5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-normal overflow-hidden text-ellipsis whitespace-nowrap"
+                  title="Subcategory"
+                  data-testid="col-subcategory-header"
+                >
                   Subcategory
                 </th>
-                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th
+                  className="text-left px-1.5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-normal overflow-hidden text-ellipsis whitespace-nowrap"
+                  title="Description"
+                  data-testid="col-description-header"
+                >
                   Description
                 </th>
-                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="text-left px-1.5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-normal overflow-hidden text-ellipsis whitespace-nowrap" title="Payer">
                   Payer
                 </th>
-                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="text-left px-1.5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-normal overflow-hidden text-ellipsis whitespace-nowrap" title="Payee">
                   Payee
                 </th>
                 <th
-                  className="text-right px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap"
+                  className="text-right px-1.5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-normal overflow-hidden text-ellipsis whitespace-nowrap"
                   data-testid="col-amount-header"
+                  title="Amount"
                 >
                   Amount
                 </th>
                 <th
-                  className="text-right px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap"
+                  className="text-right px-1.5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-normal overflow-hidden text-ellipsis whitespace-nowrap"
                   data-testid="col-client-charge-header"
+                  title="Client Charge"
                 >
                   Client Charge
                 </th>
-                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Review
+                <th
+                  className="text-left px-1.5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-normal overflow-hidden text-ellipsis whitespace-nowrap"
+                  data-testid="col-status-header"
+                  title="Status"
+                >
+                  Status
                 </th>
-                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Deleted
-                </th>
-                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Exclusion
-                </th>
-                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Correction
-                </th>
-                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="text-left px-1.5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-normal overflow-hidden text-ellipsis whitespace-nowrap" title="Action">
                   Action
                 </th>
               </tr>
@@ -324,14 +326,14 @@ function TransactionsRegisterInner() {
             <tbody className="divide-y divide-gray-50">
               {loading && (
                 <tr>
-                  <td colSpan={14} className="px-2 py-8 text-center text-sm text-gray-400">
+                  <td colSpan={11} className="px-2 py-8 text-center text-sm text-gray-400">
                     Loading...
                   </td>
                 </tr>
               )}
               {!loading && transactions.length === 0 && (
                 <tr>
-                  <td colSpan={14} className="px-2 py-8 text-center text-sm text-gray-400">
+                  <td colSpan={11} className="px-2 py-8 text-center text-sm text-gray-400">
                     No transactions found
                   </td>
                 </tr>
@@ -344,13 +346,13 @@ function TransactionsRegisterInner() {
                 }
                 return (
                   <tr key={tx.id} className="hover:bg-gray-50 transition-colors" data-testid={`tx-row-${tx.id}`}>
-                    <td className="px-2 py-2.5 text-xs text-gray-500 whitespace-nowrap">
+                    <td className="px-1.5 py-2.5 text-xs text-gray-500 whitespace-nowrap">
                       {format(new Date(tx.date), 'dd/MM/yy')}
                     </td>
-                    <td className="px-2 py-2.5 text-xs text-gray-700 overflow-hidden">
+                    <td className="px-1.5 py-2.5 text-xs text-gray-700 overflow-hidden">
                       <TruncateText value={tx.property_name} />
                     </td>
-                    <td className="px-2 py-2.5 overflow-hidden">
+                    <td className="px-1.5 py-2.5 overflow-hidden">
                       <span
                         className={`badge text-xs max-w-full truncate ${CATEGORY_COLORS[tx.category as Category] ?? 'bg-gray-100 text-gray-700'}`}
                         title={String(tx.category)}
@@ -358,24 +360,24 @@ function TransactionsRegisterInner() {
                         {tx.category}
                       </span>
                     </td>
-                    <td className="px-2 py-2.5 text-xs text-gray-600 overflow-hidden">
+                    <td className="px-1.5 py-2.5 text-xs text-gray-600 overflow-hidden">
                       <TruncateText value={tx.subcategory} />
                     </td>
-                    <td className="px-2 py-2.5 overflow-hidden">
+                    <td className="px-1.5 py-2.5 overflow-hidden">
                       <span className="block truncate text-xs font-medium text-gray-800" title={tx.description?.trim() || undefined}>
                         {tx.description?.trim() || '—'}
                       </span>
                     </td>
-                    <td className="px-2 py-2.5 text-xs text-gray-600 overflow-hidden">
+                    <td className="px-1.5 py-2.5 text-xs text-gray-600 overflow-hidden">
                       <TruncateText value={tx.payer} />
                     </td>
-                    <td className="px-2 py-2.5 text-xs text-gray-600 overflow-hidden">
+                    <td className="px-1.5 py-2.5 text-xs text-gray-600 overflow-hidden">
                       <TruncateText value={tx.payee} />
                     </td>
-                    <td className="px-2 py-2.5 text-sm font-semibold text-gray-900 text-right whitespace-nowrap tabular-nums">
+                    <td className="px-1.5 py-2.5 text-sm font-semibold text-gray-900 text-right whitespace-nowrap tabular-nums">
                       {EUR(Number(tx.amount_eur))}
                     </td>
-                    <td className="px-2 py-2.5 text-sm text-right whitespace-nowrap tabular-nums">
+                    <td className="px-1.5 py-2.5 text-sm text-right whitespace-nowrap tabular-nums">
                       {tx.client_charge != null ? (
                         <span className="text-blue-600 font-medium">{EUR(Number(tx.client_charge))}</span>
                       ) : (
@@ -389,7 +391,7 @@ function TransactionsRegisterInner() {
                       hasCorrectionCase={rowMeta.hasCorrectionCase}
                       correctionCaseCount={rowMeta.correctionCaseCount}
                     />
-                    <td className="px-2 py-2.5 overflow-hidden">
+                    <td className="px-1.5 py-2.5 overflow-hidden">
                       <ReviewCorrectButton onClick={() => setDialogTx(tx)} />
                     </td>
                   </tr>
@@ -401,14 +403,14 @@ function TransactionsRegisterInner() {
                 <tr className="bg-gray-50 border-t-2 border-gray-200">
                   <td
                     colSpan={7}
-                    className="px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                    className="px-1.5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
                   >
                     Page total ({transactions.length} rows)
                   </td>
-                  <td className="px-2 py-3 text-sm font-bold text-gray-900 text-right tabular-nums whitespace-nowrap">
+                  <td className="px-1.5 py-3 text-sm font-bold text-gray-900 text-right tabular-nums whitespace-nowrap">
                     {EUR(totalAmount)}
                   </td>
-                  <td colSpan={6} />
+                  <td colSpan={3} />
                 </tr>
               </tfoot>
             )}

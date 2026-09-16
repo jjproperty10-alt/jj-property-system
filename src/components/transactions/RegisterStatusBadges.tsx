@@ -8,7 +8,57 @@ export interface RegisterStatusFlags {
   readonly correctionCaseCount?: number
 }
 
-/** Pure presentational cells for M1 register status columns (SSR-testable). */
+function reviewLabel(reviewStatus: string | null | undefined): string {
+  return reviewStatus?.trim() || '—'
+}
+
+function needsReview(reviewStatus: string | null | undefined): boolean {
+  const status = reviewLabel(reviewStatus).toLowerCase()
+  return status !== '—' && status !== 'active'
+}
+
+export function isRegisterStatusNormal(flags: RegisterStatusFlags): boolean {
+  return (
+    !flags.isDeleted &&
+    !flags.hasActiveExclusion &&
+    !flags.hasCorrectionCase &&
+    !needsReview(flags.reviewStatus)
+  )
+}
+
+export function buildRegisterStatusTitle(flags: RegisterStatusFlags): string {
+  const correction =
+    flags.hasCorrectionCase
+      ? `yes${(flags.correctionCaseCount ?? 0) > 1 ? ` (${flags.correctionCaseCount})` : ''}`
+      : '—'
+  return [
+    `Review: ${reviewLabel(flags.reviewStatus)}`,
+    `Deleted: ${flags.isDeleted ? 'yes' : 'no'}`,
+    `Exclusion: ${flags.hasActiveExclusion ? 'active' : '—'}`,
+    `Correction: ${correction}`,
+  ].join(' · ')
+}
+
+function StatusBadge({
+  testId,
+  className,
+  children,
+}: {
+  testId: string
+  className: string
+  children: React.ReactNode
+}) {
+  return (
+    <span
+      data-testid={testId}
+      className={`inline-flex max-w-full items-center truncate rounded px-1.5 py-0.5 text-[10px] font-medium leading-tight ${className}`}
+    >
+      {children}
+    </span>
+  )
+}
+
+/** Pure presentational status cell for the M1 register (SSR-testable). */
 export function RegisterStatusBadges({
   reviewStatus,
   isDeleted,
@@ -16,36 +66,85 @@ export function RegisterStatusBadges({
   hasCorrectionCase,
   correctionCaseCount = 0,
 }: RegisterStatusFlags) {
-  const status = reviewStatus?.trim() || '—'
+  const flags: RegisterStatusFlags = {
+    reviewStatus,
+    isDeleted,
+    hasActiveExclusion,
+    hasCorrectionCase,
+    correctionCaseCount,
+  }
+  const review = reviewLabel(reviewStatus)
+  const deletedText = isDeleted ? 'yes' : 'no'
+  const exclusionText = hasActiveExclusion ? 'active' : '—'
+  const correctionText = hasCorrectionCase
+    ? `yes${correctionCaseCount > 1 ? ` (${correctionCaseCount})` : ''}`
+    : '—'
+  const title = buildRegisterStatusTitle(flags)
+  const normal = isRegisterStatusNormal(flags)
+
   return (
-    <>
-      <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap" data-testid="col-review-status">
-        {status}
-      </td>
-      <td className="px-3 py-2.5 text-xs whitespace-nowrap" data-testid="col-is-deleted">
-        {isDeleted ? (
-          <span className="text-red-600 font-medium">yes</span>
-        ) : (
-          <span className="text-gray-400">no</span>
-        )}
-      </td>
-      <td className="px-3 py-2.5 text-xs whitespace-nowrap" data-testid="col-exclusion">
-        {hasActiveExclusion ? (
-          <span className="text-amber-700 font-medium">active</span>
-        ) : (
-          <span className="text-gray-400">—</span>
-        )}
-      </td>
-      <td className="px-3 py-2.5 text-xs whitespace-nowrap" data-testid="col-correction-case">
-        {hasCorrectionCase ? (
-          <span className="text-blue-700 font-medium">
-            yes{correctionCaseCount > 1 ? ` (${correctionCaseCount})` : ''}
+    <td
+      className="px-1.5 py-2 overflow-hidden"
+      data-testid="col-status"
+      title={title}
+    >
+      {normal ? (
+        <span className="text-xs text-gray-500">
+          Active
+          <span data-testid="col-review-status" className="sr-only">
+            {review}
           </span>
-        ) : (
-          <span className="text-gray-400">—</span>
-        )}
-      </td>
-    </>
+          <span data-testid="col-is-deleted" className="sr-only">
+            {deletedText}
+          </span>
+          <span data-testid="col-exclusion" className="sr-only">
+            {exclusionText}
+          </span>
+          <span data-testid="col-correction-case" className="sr-only">
+            {correctionText}
+          </span>
+        </span>
+      ) : (
+        <span className="flex flex-wrap gap-0.5">
+          {isDeleted ? (
+            <StatusBadge testId="col-is-deleted" className="bg-red-50 text-red-700">
+              Deleted
+            </StatusBadge>
+          ) : (
+            <span data-testid="col-is-deleted" className="sr-only">
+              {deletedText}
+            </span>
+          )}
+          {hasActiveExclusion ? (
+            <StatusBadge testId="col-exclusion" className="bg-amber-50 text-amber-800">
+              Excluded
+            </StatusBadge>
+          ) : (
+            <span data-testid="col-exclusion" className="sr-only">
+              {exclusionText}
+            </span>
+          )}
+          {needsReview(reviewStatus) ? (
+            <StatusBadge testId="col-review-status" className="bg-orange-50 text-orange-800">
+              {review.toLowerCase() === 'needs_review' ? 'Needs review' : review}
+            </StatusBadge>
+          ) : (
+            <span data-testid="col-review-status" className="sr-only">
+              {review}
+            </span>
+          )}
+          {hasCorrectionCase ? (
+            <StatusBadge testId="col-correction-case" className="bg-blue-50 text-blue-800">
+              Corrected{correctionCaseCount > 1 ? ` (${correctionCaseCount})` : ''}
+            </StatusBadge>
+          ) : (
+            <span data-testid="col-correction-case" className="sr-only">
+              {correctionText}
+            </span>
+          )}
+        </span>
+      )}
+    </td>
   )
 }
 
