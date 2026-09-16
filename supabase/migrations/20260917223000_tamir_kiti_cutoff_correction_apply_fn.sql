@@ -425,10 +425,13 @@ BEGIN
     RAISE EXCEPTION 'ALREADY_APPLIED_OR_PREIMAGE_CHANGED: historical Kiti 1 rent rows with NULL property_id = % (expected 12)', v_pre_hist_null_k1;
   END IF;
 
+  -- Active rows only: Kiti 2 also carries soft-deleted historical rent rows, which are
+  -- outside every other anchor in this pack and must not shift this one.
   SELECT count(*) INTO v_pre_hist_null_k2 FROM public.transactions
-  WHERE property_name = c_kiti2_name AND subcategory = 'Tenant Payment' AND property_id IS NULL;
+  WHERE property_name = c_kiti2_name AND subcategory = 'Tenant Payment' AND property_id IS NULL
+    AND NOT coalesce(is_deleted, false);
   IF v_pre_hist_null_k2 <> 14 THEN
-    RAISE EXCEPTION 'ALREADY_APPLIED_OR_PREIMAGE_CHANGED: historical Kiti 2 rent rows with NULL property_id = % (expected 14)', v_pre_hist_null_k2;
+    RAISE EXCEPTION 'ALREADY_APPLIED_OR_PREIMAGE_CHANGED: active historical Kiti 2 rent rows with NULL property_id = % (expected 14)', v_pre_hist_null_k2;
   END IF;
 
   -- ==========================================================================
@@ -722,9 +725,10 @@ BEGIN
   END IF;
 
   SELECT count(*) INTO v_n FROM public.transactions
-  WHERE property_name = c_kiti2_name AND subcategory = 'Tenant Payment' AND property_id IS NULL;
+  WHERE property_name = c_kiti2_name AND subcategory = 'Tenant Payment' AND property_id IS NULL
+    AND NOT coalesce(is_deleted, false);
   IF v_n <> v_pre_hist_null_k2 THEN
-    RAISE EXCEPTION 'POSTCONDITION_FAILED: historical Kiti 2 rent rows changed (% -> %)', v_pre_hist_null_k2, v_n;
+    RAISE EXCEPTION 'POSTCONDITION_FAILED: active historical Kiti 2 rent rows changed (% -> %)', v_pre_hist_null_k2, v_n;
   END IF;
 
   SELECT count(*), coalesce(sum(amount_eur), 0) INTO v_n, v_sum

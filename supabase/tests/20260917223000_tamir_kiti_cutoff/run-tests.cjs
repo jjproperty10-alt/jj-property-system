@@ -107,7 +107,16 @@ async function main() {
              (SELECT count(*) FROM public.transactions
                 WHERE property_name IS NULL AND subcategory='Bank Payment to Owner') AS ol_rows,
              (SELECT coalesce(sum(amount_eur),0) FROM public.transactions
-                WHERE property_name='Tamir Kiti 2' AND subcategory='Plumber') AS plumb_sum
+                WHERE property_name='Tamir Kiti 2' AND subcategory='Plumber') AS plumb_sum,
+             (SELECT count(*) FROM public.transactions
+                WHERE property_name='Tamir Kiti 2' AND subcategory='Tenant Payment'
+                  AND property_id IS NULL AND NOT coalesce(is_deleted,false)) AS k2_hist_null_active,
+             (SELECT count(*) FROM public.transactions
+                WHERE property_name='Tamir Kiti 2' AND subcategory='Tenant Payment'
+                  AND property_id IS NULL) AS k2_hist_null_all,
+             (SELECT count(*) FROM public.transactions
+                WHERE property_name='Tamir Kiti 1' AND subcategory='Tenant Payment'
+                  AND property_id IS NULL AND NOT coalesce(is_deleted,false)) AS k1_hist_null_active
     `)
     ).rows[0];
 
@@ -133,6 +142,13 @@ async function main() {
         Number(pre.k2_rent) === 11716.86 && Number(pre.k2_rows) === 14 &&
         Number(pre.links) === 1 && Number(pre.ol_rows) === 1 && Number(pre.plumb_sum) === 0,
       `k1=${pre.k1_rent}/${pre.k1_rows}, k2=${pre.k2_rent}/${pre.k2_rows}, tx=${pre.tx} (context only)`,
+    );
+    record(
+      'F1',
+      'fixture reproduces the Production soft-delete shape: 16 Kiti 2 rent rows with NULL property_id, 14 of them active',
+      Number(pre.k2_hist_null_active) === 14 && Number(pre.k2_hist_null_all) === 16 &&
+        Number(pre.k1_hist_null_active) === 12,
+      `Kiti 2 active=${pre.k2_hist_null_active} of ${pre.k2_hist_null_all}; Kiti 1 active=${pre.k1_hist_null_active}`,
     );
 
     // ---- deploy the state Production is in today, then apply the new pack ----
@@ -576,6 +592,109 @@ async function main() {
         'a 40-row unrelated import batch and new deposit activity do NOT block the Apply',
         r.inserted_transactions === 5 && Number(r.closing_after) === 3263.75 && Number(r.custody_delta.yossi) === 1465,
         `closing=${r.closing_after} with 42 unrelated rows added first`,
+      );
+    });
+
+    // ---------------- the historical property_id guard counts ACTIVE rows only
+    record(
+      'G0',
+      'the Kiti 2 historical guard filters soft-deleted rows, the Kiti 1 twin is unchanged',
+      (src.match(/property_name = c_kiti2_name AND subcategory = 'Tenant Payment' AND property_id IS NULL\s*\r?\n\s*AND NOT coalesce\(is_deleted, false\)/g) || []).length === 2 &&
+        (src.match(/property_name = c_kiti1_name AND subcategory = 'Tenant Payment' AND property_id IS NULL;/g) || []).length === 2 &&
+        /active historical Kiti 2 rent rows with NULL property_id = % \(expected 14\)/.test(src),
+      'pre-check and postcondition both scoped to active rows, expected value still 14',
+    );
+
+    await tx(async () => {
+      const b = await snapshot();
+      await asIdentity('service_role', { role: 'service_role' });
+      const r = (await callApply()).rows[0].receipt;
+      await client.query('RESET ROLE');
+      const ev = r.events;
+      record(
+        'G1',
+        '14 active NULL-property_id rows pass while 2 soft-deleted rows sit in the same scope',
+        Number(b.k2_hist_null_active) === 14 && Number(b.k2_hist_null_all) === 16 &&
+          r.inserted_transactions === 5 && r.inserted_owner_links === 1 &&
+          Number(r.closing_after) === 3263.75,
+        `active=${b.k2_hist_null_active} of ${b.k2_hist_null_all}, closing=${r.closing_after}`,
+      );
+      record(
+        'G1b',
+        'all five events keep their locked values and the closing stays EUR 3,263.75',
+        Number(ev.e1_owner_payment.amount) === 2625 &&
+          Number(ev.e2_kiti1_receipt.amount) === 1175 &&
+          Number(ev.e2_kiti1_receipt.allocation.may_partial_2026_05_19_to_2026_05_31) === 425 &&
+          Number(ev.e2_kiti1_receipt.allocation.june_2026_rent) === 700 &&
+          Number(ev.e2_kiti1_receipt.allocation.june_2026_electricity_credit) === 50 &&
+          Number(ev.e3_kiti1_receipt.amount) === 750 &&
+          Number(ev.e3_kiti1_receipt.allocation.july_2026_rent) === 700 &&
+          Number(ev.e3_kiti1_receipt.allocation.july_2026_electricity_credit) === 50 &&
+          Number(ev.e4_kiti2_rent_gross.gross_amount) === 800 &&
+          Number(ev.e4_kiti2_rent_gross.net_cash_received) === 715 &&
+          Number(ev.e5_kiti2_drain_cost.amount) === 85 &&
+          Number(r.custody_delta.yossi) === 1465 && Number(r.custody_delta.jacob_received) === 1175 &&
+          Number(r.custody_delta.jacob_paid_out) === 2625 && Number(r.economic_delta) === 15,
+        `2625 / 1175 (425+700+50) / 750 (700+50) / 800 gross - 85 / closing ${r.closing_after}`,
+      );
+    });
+
+    await tx(async () => {
+      await client.query(
+        `INSERT INTO public.transactions (date, property_id, property_name, category, subcategory,
+                                          payer, payee, amount_eur, is_deleted, deleted_at, deleted_by)
+         VALUES ('2026-02-14', NULL, 'Tamir Kiti 2', 'Management', 'Tenant Payment', 'Tenant', 'Anastasia', 800,
+                 true, now(), 'dedupe'),
+                ('2026-05-14', NULL, 'Tamir Kiti 2', 'Management', 'Tenant Payment', 'Tenant', 'Anastasia', 800,
+                 true, now(), 'dedupe')`,
+      );
+      const b = await snapshot();
+      await asIdentity('service_role', { role: 'service_role' });
+      const r = (await callApply()).rows[0].receipt;
+      await client.query('RESET ROLE');
+      record(
+        'G2',
+        'two further soft-deleted rows in the same scope do not move the guard or any number',
+        Number(b.k2_hist_null_all) === 18 && Number(b.k2_hist_null_active) === 14 &&
+          Number(b.k2_rent) === 11716.86 && r.inserted_transactions === 5 &&
+          Number(r.closing_after) === 3263.75 && Number(r.custody_delta.yossi) === 1465,
+        `18 rows in scope, 14 active, closing=${r.closing_after}`,
+      );
+    });
+
+    for (const [id, rowId, label] of [
+      ['G3', '07859b5d-5d04-4a1b-ba87-c5f51374546d', 'the 2026-06-16 EUR 1,600 row'],
+      ['G4', 'c556f764-38c0-49cc-9694-e009e181ae8d', 'the 2026-03-02 EUR 1,600 duplicate'],
+    ]) {
+      await tx(async () => {
+        await client.query(
+          `UPDATE public.transactions SET is_deleted=false, deleted_at=NULL, deleted_by=NULL WHERE id=$1`,
+          [rowId],
+        );
+        await asIdentity('service_role', { role: 'service_role' });
+        await expectFail(
+          callApply,
+          'ALREADY_APPLIED_OR_PREIMAGE_CHANGED',
+          id,
+          `restoring ${label} to active blocks the Apply`,
+        );
+      });
+    }
+
+    await tx(async () => {
+      // Dated after the cutoff on purpose: the rent-through-cutoff anchor cannot see it,
+      // so only the active-historical guard can catch this drift.
+      await client.query(
+        `INSERT INTO public.transactions (date, property_id, property_name, category, subcategory,
+                                          payer, payee, amount_eur)
+         VALUES ('2026-09-20', NULL, 'Tamir Kiti 2', 'Management', 'Tenant Payment', 'Tenant', 'Yossi', 800)`,
+      );
+      await asIdentity('service_role', { role: 'service_role' });
+      await expectFail(
+        callApply,
+        'active historical Kiti 2 rent rows with NULL property_id = 15',
+        'G5',
+        'a new ACTIVE unparented Kiti 2 rent row trips exactly this guard',
       );
     });
 

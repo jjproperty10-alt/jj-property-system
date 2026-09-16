@@ -1,7 +1,8 @@
 -- Fixture data reproducing the exact Production pre-image the Apply asserts.
 -- Re-snapshotted 2026-09-16 19:33 UTC, after the certified ledger / RC3 layer moved.
 -- Targeted anchors: Kiti 1 rent through cutoff = EUR 7,685 / 12 rows (all property_id NULL)
---                   Kiti 2 rent through cutoff = EUR 11,716.86 / 14 rows (all property_id NULL)
+--                   Kiti 2 rent through cutoff = EUR 11,716.86 / 14 rows (all property_id NULL),
+--                   plus 2 soft-deleted Kiti 2 rent rows with property_id NULL (16 rows, 14 active)
 --                   owner-level BPO rows = 1 · active owner links = 1 · payments anchor = EUR 19,100 / 4
 --                   zero Kiti 2 July-2026 rent rows · zero Kiti 2 Plumber rows
 -- The 2,310 row total mirrors Production for realism only; the Apply never anchors on it.
@@ -81,6 +82,20 @@ VALUES
   ('2026-06-16', NULL, 'Tamir Kiti 2', 'Management', 'Tenant Payment', 'Tenant', 'Yossi',     1600),
   ('2026-08-11', NULL, 'Tamir Kiti 2', 'Management', 'Tenant Payment', 'Tenant', 'Yossi',      800);
 
+-- Kiti 2: two SOFT-DELETED historical rent rows, also property_id NULL, reproduced from
+-- Production (ids kept). They are outside every economic anchor, so the historical
+-- property_id guard must count active rows only: 16 rows exist, 14 of them active.
+INSERT INTO public.transactions (id, date, property_id, property_name, category, subcategory,
+                                 payer, payee, amount_eur, description, review_status,
+                                 is_deleted, deleted_at, deleted_by)
+VALUES
+  ('c556f764-38c0-49cc-9694-e009e181ae8d', '2026-03-02', NULL, 'Tamir Kiti 2', 'Management',
+   'Tenant Payment', 'tenant', 'Anastasia', 1600, 'January and February',
+   'confirmed_duplicate', true, '2026-07-10 02:08:04+00', 'dedupe'),
+  ('07859b5d-5d04-4a1b-ba87-c5f51374546d', '2026-06-16', NULL, 'Tamir Kiti 2', 'Management',
+   'Tenant Payment', 'tenant', 'Anastasia', 1600, 'tamir kiti may and june rent 2 bed.',
+   'active', true, '2026-07-11 19:12:09+00', 'dedupe');
+
 -- payments anchor: the four rows composing EUR 19,100 (fixed ids, as in Production)
 INSERT INTO public.transactions (id, date, property_id, property_name, category, subcategory, payer, payee, amount_eur, k_note)
 VALUES
@@ -100,7 +115,7 @@ VALUES ('0e8f119f-c126-45a1-a342-2fe6e99b20fb', '0f352012-1403-4e3b-982a-7c019ee
         'owner_level_payment', 'tamir_owner_pmt_yaakov_2026-08-24_10000', 'yossi',
         'YOSSI_VERIFIED - OWNER_LEVEL_UNALLOCATED');
 
--- filler rows to reach exactly 2,310 (38 specific rows already inserted)
+-- filler rows to reach exactly 2,310 (40 specific rows already inserted)
 INSERT INTO public.transactions (date, property_id, property_name, category, subcategory, payer, payee, amount_eur)
 SELECT
   DATE '2025-01-01' + (g % 600),
@@ -113,7 +128,7 @@ SELECT
   'JJ',
   'company',
   1
-FROM generate_series(1, 2272) g;
+FROM generate_series(1, 2270) g;
 
 -- clear the audit rows produced while loading fixtures, so audit deltas start from zero
 DELETE FROM public.audit_logs;
