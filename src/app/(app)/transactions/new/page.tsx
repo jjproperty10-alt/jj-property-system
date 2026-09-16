@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
+import { createAgentTransactionDraft } from '@/lib/transactions/agentDraftActions'
+import { DRAFT_NOT_POSTED_MESSAGE } from '@/lib/ledger/agentDraft'
 import {
   CATEGORY_SUBCATEGORIES, CATEGORIES, KNOWN_PAYERS,
   KNOWN_PAYEES, CATEGORY_COLORS, type Category,
@@ -43,8 +45,8 @@ export default function NewTransactionPage() {
   const [saving, setSaving]           = useState(false)
   const [saved, setSaved]             = useState(false)
   const [error, setError]             = useState('')
-  const [startTime]                   = useState(Date.now())
   const amountRef                     = useRef<HTMLInputElement>(null)
+  const idempotencyRef                = useRef<string>(crypto.randomUUID())
   const [propFilter, setPropFilter]   = useState('')
   const [showPropDrop, setShowPropDrop] = useState(false)
 
@@ -63,7 +65,6 @@ export default function NewTransactionPage() {
     setForm(prev => ({
       ...prev,
       [field]: value,
-      // Auto-reset subcategory when category changes
       ...(field === 'category' ? { subcategory: '' } : {}),
     }))
   }
@@ -78,48 +79,33 @@ export default function NewTransactionPage() {
     }
 
     setSaving(true)
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
-    const supabase = createSupabaseBrowserClient()
-
-    // Find property ID
-    let property_id: string | null = null
-    if (form.property_name) {
-      const { data } = await supabase
-        .from('properties')
-        .select('id')
-        .eq('name', form.property_name)
-        .single()
-      property_id = data?.id ?? null
-    }
-
-    const payload = {
-      date:          form.date,
-      property_id,
-      property_name: form.property_name || null,
-      category:      form.category,
-      subcategory:   form.subcategory,
-      description:   form.description || null,
-      payer:         form.payer || null,
-      payee:         form.payee || null,
-      amount_eur:    parseFloat(form.amount_eur) || 0,
-      client_charge: form.client_charge ? parseFloat(form.client_charge) : null,
-      notes:         form.notes || null,
-    }
-
-    const { error: insertError } = await supabase.from('transactions').insert([payload])
-
+    const result = await createAgentTransactionDraft({
+      date: form.date,
+      property_name: form.property_name,
+      category: form.category,
+      subcategory: form.subcategory,
+      description: form.description,
+      notes: form.notes,
+      payer: form.payer,
+      payee: form.payee,
+      amount_eur: form.amount_eur,
+      client_charge: form.client_charge,
+      idempotency_key: idempotencyRef.current,
+    })
     setSaving(false)
-    if (insertError) {
-      setError(insertError.message)
-    } else {
-      setSaved(true)
-      // Show success briefly, then reset for next entry
-      setTimeout(() => {
-        setSaved(false)
-        setForm({ ...INITIAL, date: form.date, category: form.category })
-        amountRef.current?.focus()
-      }, 1500)
+
+    if (!result.ok) {
+      setError(result.error)
+      return
     }
+
+    setSaved(true)
+    idempotencyRef.current = crypto.randomUUID()
+    setTimeout(() => {
+      setSaved(false)
+      setForm({ ...INITIAL, date: form.date, category: form.category })
+      amountRef.current?.focus()
+    }, 1800)
   }
 
   const subcategories = CATEGORY_SUBCATEGORIES[form.category] ?? []
@@ -134,9 +120,9 @@ export default function NewTransactionPage() {
         <div>
           <div className="flex items-center gap-2">
             <Zap size={20} className="text-brand-500" />
-            <h1 className="text-2xl font-bold text-gray-900">New Transaction</h1>
+            <h1 className="text-2xl font-bold text-gray-900">New Transaction Draft</h1>
           </div>
-          <p className="text-sm text-gray-500 mt-0.5">Target: under 10 seconds per entry</p>
+          <p className="text-sm text-gray-500 mt-0.5">Saves as a draft only. Not posted to accounts.</p>
         </div>
         <button
           onClick={() => router.push('/transactions')}
@@ -151,7 +137,7 @@ export default function NewTransactionPage() {
         <div className="flex items-center gap-2 bg-green-50 border border-green-200 text-green-700
                         rounded-lg px-4 py-3 mb-6 text-sm font-medium">
           <CheckCircle size={16} />
-          Transaction saved! Ready for next entry.
+          {DRAFT_NOT_POSTED_MESSAGE}
         </div>
       )}
       {error && (
@@ -291,7 +277,7 @@ export default function NewTransactionPage() {
         {/* Row 5: Amount + Client Charge */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="label">Amount (EUR) *</label>
+            <label className="label">Amount (EUR)</label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">
                 €
@@ -364,7 +350,7 @@ export default function NewTransactionPage() {
               disabled={saving}
               className="btn-primary text-sm min-w-[120px]"
             >
-              {saving ? 'Saving...' : '⚡ Save Entry'}
+              {saving ? 'Saving draft...' : 'Save draft'}
             </button>
           </div>
         </div>
