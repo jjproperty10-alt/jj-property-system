@@ -22,6 +22,16 @@ const EUR = (n: number) =>
 
 const PAGE_SIZE = 50
 
+function TruncateText({ value }: { value: string | null | undefined }) {
+  const text = (value ?? '').trim()
+  if (!text) return <span className="text-gray-300">—</span>
+  return (
+    <span className="block truncate" title={text}>
+      {text}
+    </span>
+  )
+}
+
 /** Register row — extends the base transaction shape with status columns used by M1. */
 export interface RegisterTransaction {
   id: string
@@ -159,10 +169,19 @@ function TransactionsRegisterInner() {
             {total.toLocaleString()} total records · controlled manual correction workspace
           </p>
         </div>
-        <Link href="/transactions/new" className="btn-primary flex items-center gap-2 text-sm">
-          <PlusCircle size={15} />
-          New Transaction
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/transactions/drafts"
+            className="btn-secondary text-sm"
+            data-testid="view-drafts-link"
+          >
+            View Drafts / הצג טיוטות
+          </Link>
+          <Link href="/transactions/new" className="btn-primary flex items-center gap-2 text-sm">
+            <PlusCircle size={15} />
+            New Transaction
+          </Link>
+        </div>
       </div>
 
       {focusError && (
@@ -230,49 +249,74 @@ function TransactionsRegisterInner() {
 
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm" data-testid="transactions-register-table">
+          <table
+            className="w-full min-w-[960px] table-fixed text-sm"
+            data-testid="transactions-register-table"
+          >
+            <colgroup>
+              <col className="w-[4.25rem]" />
+              <col className="w-[4.75rem]" />
+              <col className="w-[5rem]" />
+              <col className="w-[4.75rem]" />
+              <col className="w-[6.5rem]" />
+              <col className="w-[4.25rem]" />
+              <col className="w-[4.25rem]" />
+              <col className="w-[5.5rem]" />
+              <col className="w-[7rem]" />
+              <col className="w-[3.5rem]" />
+              <col className="w-[3.25rem]" />
+              <col className="w-[3.75rem]" />
+              <col className="w-[3.75rem]" />
+              <col className="w-[4.75rem]" />
+            </colgroup>
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">
+                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   Date
                 </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   Property
                 </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   Category
                 </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   Subcategory
                 </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   Description
                 </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   Payer
                 </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   Payee
                 </th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th
+                  className="text-right px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap"
+                  data-testid="col-amount-header"
+                >
                   Amount
                 </th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th
+                  className="text-right px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap"
+                  data-testid="col-client-charge-header"
+                >
                   Client Charge
                 </th>
-                <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   Review
                 </th>
-                <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   Deleted
                 </th>
-                <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   Exclusion
                 </th>
-                <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   Correction
                 </th>
-                <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="text-left px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   Action
                 </th>
               </tr>
@@ -280,14 +324,14 @@ function TransactionsRegisterInner() {
             <tbody className="divide-y divide-gray-50">
               {loading && (
                 <tr>
-                  <td colSpan={14} className="px-4 py-8 text-center text-sm text-gray-400">
+                  <td colSpan={14} className="px-2 py-8 text-center text-sm text-gray-400">
                     Loading...
                   </td>
                 </tr>
               )}
               {!loading && transactions.length === 0 && (
                 <tr>
-                  <td colSpan={14} className="px-4 py-8 text-center text-sm text-gray-400">
+                  <td colSpan={14} className="px-2 py-8 text-center text-sm text-gray-400">
                     No transactions found
                   </td>
                 </tr>
@@ -300,31 +344,38 @@ function TransactionsRegisterInner() {
                 }
                 return (
                   <tr key={tx.id} className="hover:bg-gray-50 transition-colors" data-testid={`tx-row-${tx.id}`}>
-                    <td className="px-4 py-2.5 text-xs text-gray-500 whitespace-nowrap">
+                    <td className="px-2 py-2.5 text-xs text-gray-500 whitespace-nowrap">
                       {format(new Date(tx.date), 'dd/MM/yy')}
                     </td>
-                    <td className="px-4 py-2.5 text-xs text-gray-700 max-w-[120px] truncate">
-                      {tx.property_name || <span className="text-gray-300">—</span>}
+                    <td className="px-2 py-2.5 text-xs text-gray-700 overflow-hidden">
+                      <TruncateText value={tx.property_name} />
                     </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap">
+                    <td className="px-2 py-2.5 overflow-hidden">
                       <span
-                        className={`badge text-xs ${CATEGORY_COLORS[tx.category as Category] ?? 'bg-gray-100 text-gray-700'}`}
+                        className={`badge text-xs max-w-full truncate ${CATEGORY_COLORS[tx.category as Category] ?? 'bg-gray-100 text-gray-700'}`}
+                        title={String(tx.category)}
                       >
                         {tx.category}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-xs text-gray-600 max-w-[120px] truncate">
-                      {tx.subcategory || <span className="text-gray-300">—</span>}
+                    <td className="px-2 py-2.5 text-xs text-gray-600 overflow-hidden">
+                      <TruncateText value={tx.subcategory} />
                     </td>
-                    <td className="px-4 py-2.5 max-w-[180px]">
-                      <div className="text-xs font-medium text-gray-800 truncate">{tx.description || '—'}</div>
+                    <td className="px-2 py-2.5 overflow-hidden">
+                      <span className="block truncate text-xs font-medium text-gray-800" title={tx.description?.trim() || undefined}>
+                        {tx.description?.trim() || '—'}
+                      </span>
                     </td>
-                    <td className="px-4 py-2.5 text-xs text-gray-600">{tx.payer || '—'}</td>
-                    <td className="px-4 py-2.5 text-xs text-gray-600">{tx.payee || '—'}</td>
-                    <td className="px-4 py-2.5 text-sm font-semibold text-gray-900 text-right whitespace-nowrap">
+                    <td className="px-2 py-2.5 text-xs text-gray-600 overflow-hidden">
+                      <TruncateText value={tx.payer} />
+                    </td>
+                    <td className="px-2 py-2.5 text-xs text-gray-600 overflow-hidden">
+                      <TruncateText value={tx.payee} />
+                    </td>
+                    <td className="px-2 py-2.5 text-sm font-semibold text-gray-900 text-right whitespace-nowrap tabular-nums">
                       {EUR(Number(tx.amount_eur))}
                     </td>
-                    <td className="px-4 py-2.5 text-sm text-right whitespace-nowrap">
+                    <td className="px-2 py-2.5 text-sm text-right whitespace-nowrap tabular-nums">
                       {tx.client_charge != null ? (
                         <span className="text-blue-600 font-medium">{EUR(Number(tx.client_charge))}</span>
                       ) : (
@@ -338,7 +389,7 @@ function TransactionsRegisterInner() {
                       hasCorrectionCase={rowMeta.hasCorrectionCase}
                       correctionCaseCount={rowMeta.correctionCaseCount}
                     />
-                    <td className="px-3 py-2.5">
+                    <td className="px-2 py-2.5 overflow-hidden">
                       <ReviewCorrectButton onClick={() => setDialogTx(tx)} />
                     </td>
                   </tr>
@@ -350,11 +401,13 @@ function TransactionsRegisterInner() {
                 <tr className="bg-gray-50 border-t-2 border-gray-200">
                   <td
                     colSpan={7}
-                    className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                    className="px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
                   >
                     Page total ({transactions.length} rows)
                   </td>
-                  <td className="px-4 py-3 text-sm font-bold text-gray-900 text-right">{EUR(totalAmount)}</td>
+                  <td className="px-2 py-3 text-sm font-bold text-gray-900 text-right tabular-nums whitespace-nowrap">
+                    {EUR(totalAmount)}
+                  </td>
                   <td colSpan={6} />
                 </tr>
               </tfoot>

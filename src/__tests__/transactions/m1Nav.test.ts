@@ -36,4 +36,11 @@ describe('M1 navigation workspaces', () => {
       expect(ws.routePrefix).not.toMatch(/^\/partner/)
     }
   })
+
+  it('does not register Drafts as a separate workspace', () => {
+    expect(getAllWorkspaces().map((w) => w.id)).not.toContain('drafts')
+    const tx = getAllWorkspaces().find((w) => w.id === 'transactions')!
+    expect(tx.landingRoute).toBe('/transactions')
+    expect(tx.routePrefix).toBe('/transactions')
+  })
 })

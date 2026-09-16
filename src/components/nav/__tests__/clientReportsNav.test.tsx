@@ -77,6 +77,7 @@ describe('Client Reports sidebar item', () => {
       '/finance',
       '/finance/external-partner',
       '/transactions',
+      '/transactions/drafts',
       '/validation',
     ])
   })
