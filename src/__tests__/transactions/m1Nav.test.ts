@@ -10,7 +10,9 @@ describe('M1 navigation workspaces', () => {
     expect(ids).toContain('transactions')
     expect(ids).toContain('validation')
     expect(ids.indexOf('clientReports')).toBe(ids.indexOf('owners') + 1)
-    expect(ids.indexOf('transactions')).toBe(ids.indexOf('finance') + 1)
+    // partnerReports sits between finance and transactions.
+    expect(ids.indexOf('transactions')).toBe(ids.indexOf('partnerReports') + 1)
+    expect(ids.indexOf('partnerReports')).toBe(ids.indexOf('finance') + 1)
     expect(ids.indexOf('validation')).toBe(ids.indexOf('transactions') + 1)
     const tx = getAllWorkspaces().find((w) => w.id === 'transactions')!
     const val = getAllWorkspaces().find((w) => w.id === 'validation')!

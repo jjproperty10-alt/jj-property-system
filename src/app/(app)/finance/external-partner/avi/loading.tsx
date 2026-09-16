@@ -14,10 +14,12 @@ export default function ExternalPartnerAviLoading() {
   return (
     <div className="min-h-screen bg-gray-50">
       <PageShell maxWidth="xl">
+        {/* Must match the loaded page's back target so the arrow does not
+            change destination mid-load — and /finance has no page yet. */}
         <WorkspaceHeader
           title="External Partner Report"
           subtitle="Avi — Villa Mazotos"
-          backRoute="/finance"
+          backRoute="/finance/external-partner"
         />
 
         <div className="space-y-6">

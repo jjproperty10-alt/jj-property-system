@@ -48,10 +48,12 @@ export default async function ExternalPartnerAviPage() {
     <div className="min-h-screen bg-gray-50" data-avi-print-root dir="ltr">
       <PageShell maxWidth="xl" className="print:max-w-none print:px-0 print:py-0">
         <div className="avi-print-hide print:hidden" data-avi-print-hide>
+          {/* Back goes up to the partner-report index, not /finance — that
+              route has no page yet and would dead-end on a 404. */}
           <WorkspaceHeader
             title="External Partner Report"
             subtitle="Avi — Villa Mazotos"
-            backRoute="/finance"
+            backRoute="/finance/external-partner"
             actions={
               report.status === 'certified' ? (
                 <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-start">
