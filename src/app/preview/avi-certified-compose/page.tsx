@@ -1,0 +1,88 @@
+/**
+ * @page /preview/avi-certified-compose
+ * @description Unconfigured-environment Preview of the certified Avi compose
+ * fixture (canonical 202-row CSV). Not live Supabase. Not a staff auth bypass.
+ *
+ * Available only when Preview is allowed (non-production AND Supabase
+ * unconfigured). Production always 404s — even if keys are missing.
+ * Staff sendable PDF: /finance/external-partner/avi/pdf
+ */
+
+import 'server-only'
+import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
+import { PageShell } from '@/components/ds'
+import { ExternalPartnerAviReportView } from '@/components/finance/ExternalPartnerAviReportView'
+import { isAviCertifiedComposePreviewAllowed } from '@/lib/partner-settlement/external-partner/aviComposePreviewGate'
+import { composeAviCertifiedCanonicalFixtureReport } from '@/lib/partner-settlement/external-partner/aviCanonicalComposeFixture'
+import { sanitizeAviReportClientPayload } from '@/components/finance/aviReportPresentation'
+
+export const dynamic = 'force-dynamic'
+
+export const metadata: Metadata = {
+  title: 'External Partner Report — Avi',
+  robots: { index: false, follow: false },
+}
+
+export default async function AviCertifiedComposePreviewPage() {
+  // Production always 404s — even when Supabase keys are missing.
+  if (!isAviCertifiedComposePreviewAllowed()) {
+    notFound()
+  }
+
+  const report = sanitizeAviReportClientPayload(composeAviCertifiedCanonicalFixtureReport())
+  if (report.status !== 'certified') {
+    notFound()
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50" data-avi-print-root data-avi-fixture-preview dir="ltr">
+      <PageShell maxWidth="xl" className="print:max-w-none print:px-0 print:py-0">
+        <div
+          data-testid="avi-certified-compose-fixture-banner"
+          className="avi-print-hide print:hidden mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+        >
+          <p className="font-semibold">Certified compose fixture — not live Supabase</p>
+          <p className="mt-1">
+            This Preview has no Supabase keys, so staff login cannot reach the account
+            service. The report below is composed from the frozen 202-row canonical CSV
+            and the approved Avi identity (Avi is owed €594.25). It is not a live
+            database read and not an auth bypass for Production.
+          </p>
+          <p className="mt-2 font-medium">
+            Partner-sendable PDF:{' '}
+            <a className="underline" href="/preview/avi-certified-compose/pdf?lang=he">
+              Hebrew
+            </a>
+            {' · '}
+            <a className="underline" href="/preview/avi-certified-compose/pdf?lang=en">
+              English
+            </a>
+            {' — '}
+            JJ page numbers, no Chrome date/URL/localhost chrome.
+          </p>
+        </div>
+        <div className="avi-print-hide print:hidden mb-6 flex items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">External Partner Report — Avi</h1>
+            <p className="text-sm text-gray-500">Villa Mazotos · fixture Preview</p>
+          </div>
+          <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
+            <a
+              href="/preview/avi-certified-compose/appendix"
+              className="text-sm font-semibold text-gray-900 underline"
+            >
+              Certified expense appendix
+            </a>
+            {/* Print / sendable PDF controls live inside the report language toggle */}
+          </div>
+        </div>
+        <ExternalPartnerAviReportView
+          report={report}
+          audience="partner"
+          sendablePdfPath="/preview/avi-certified-compose/pdf"
+        />
+      </PageShell>
+    </div>
+  )
+}

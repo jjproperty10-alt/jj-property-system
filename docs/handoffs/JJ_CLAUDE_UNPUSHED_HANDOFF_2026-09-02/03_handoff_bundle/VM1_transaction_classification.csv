@@ -1,0 +1,203 @@
+txn_id,date,category,subcategory,funding_source,custodian_conduit,payer,payee,amount_eur,client_charge,treatment,layer
+bbbeb041-0f22-40a1-ac63-9615c1b44c61,2024-02-04,Renovation,Workers,Yossi,,Yossi,company,2000.00,0.00,property_expense,renovation
+652f0da0-7419-439a-bc2b-39e7c8137db4,2024-02-12,Renovation,Workers,Yossi,,Yossi,company,2000.00,0.00,property_expense,renovation
+2a849b99-cd61-47cd-8f65-d924a481336a,2024-02-13,Renovation,Contractors,Yossi,,Yossi,company,1800.00,0.00,property_expense,renovation
+33b1e18c-7ca1-487b-b6fa-2e862461eea0,2024-04-15,Purchase,Purchase Contract,,,,,400000.00,0.00,self_artifact,self_artifact
+3b5cb5da-dc7e-44bf-8189-a6c8f672e51f,2024-04-16,Purchase,Purchase Payment,Yossi,,Yossi,Owner,10000.00,0.00,partner_funding,purchase_price
+ac160ac7-9c0c-418e-bc43-9739cba5deab,2024-04-16,Purchase,Purchase Payment,Jacob,,Jacob,Owner,10000.00,0.00,partner_funding,purchase_price
+a8305608-a424-49ac-8194-feb5e84b00b6,2024-04-17,Purchase,Purchase Expenses,Yossi,,Yossi,Yanis,750.00,0.00,property_expense,purchase_expenses
+372cf021-f659-480a-8647-98a84e718d67,2024-06-16,Purchase,Purchase Payment,Avi,,AVI,Yossi,50000.00,0.00,partner_funding,premium
+38e137db-b89d-492f-9bd8-7ffa37066e9f,2024-10-08,Purchase,Purchase Expenses,CASHBOX,Anastasia,Anastasia,company,2400.00,0.00,property_expense,purchase_expenses
+9363b7c1-c536-4e35-b3ed-98bff7c3db40,2024-10-08,Purchase,Purchase Expenses,Jacob,,Jacob,Yanis,1400.00,0.00,property_expense,purchase_expenses
+c2a9dff0-83f4-441b-96ca-01cb272993ff,2024-10-08,Purchase,Purchase Expenses,Yossi,,Yossi,company,1000.00,0.00,property_expense,purchase_expenses
+06479e39-4019-4428-a57b-84339052f17a,2024-10-10,Purchase,Purchase Payment,Yossi,,Yossi,Owner,100000.00,0.00,partner_funding,purchase_price
+1cc117ba-94c7-463b-8e72-f9d021613ac5,2024-10-10,Purchase,Purchase Payment,Avi,,AVI,Owner,200000.00,0.00,partner_funding,purchase_price
+a46734d7-c081-44cb-bc54-67e6ec46d530,2024-10-10,Purchase,Purchase Payment,Jacob,,Jacob,Owner,70000.00,0.00,partner_funding,purchase_price
+c00380bb-8fca-46e8-89e8-d1bd3f5e9572,2024-10-10,Purchase,Purchase Payment,,,Owner,Owner,200000.00,0.00,self_artifact,self_artifact
+fa51910c-67f8-4782-97b4-f7ad332ac5d1,2024-10-10,Renovation,Plumber,Yossi,,Yossi,company,15.00,0.00,property_expense,renovation
+a6584bd1-630e-4b2e-8214-15d368d05c53,2024-10-21,Purchase,Purchase Payment,Yossi,,Yossi,Owner,10000.00,0.00,partner_funding,purchase_price
+dd58af71-1765-438e-936c-a77fbffa2448,2024-10-21,Purchase,Purchase Expenses,Jacob,,Jacob,Yanis,2000.00,0.00,property_expense,purchase_expenses
+52996647-a802-42ca-9964-677a58ef4c06,2024-10-22,Purchase,Purchase Expenses,Jacob,,Jacob,Yanis,6750.00,0.00,property_expense,purchase_expenses
+dd6e66f0-7758-431c-a8d3-7a7489ee06f9,2024-10-23,Renovation,Pool Service,Yossi,,Yossi,company,450.00,0.00,property_expense,renovation
+b71e4098-39fb-4562-a0b4-1d8db9fbdfd1,2024-11-16,Purchase,Purchase Payment,Avi,Jacob,Client,Jacob,5600.00,0.00,partner_funding,purchase_expenses
+c51df847-5275-47b2-b104-1a57aea0c293,2024-11-16,Renovation,Client Payment,Avi,Jacob,Client,Jacob,5000.00,0.00,partner_funding,renovation
+4133d57d-fa00-4ac9-a55e-da28fbc5bb41,2024-12-11,Airbnb,Electricity bill,Yossi,,Yossi,company,154.10,0.00,property_expense,airbnb
+1547e068-ffd7-46c0-9434-d38d783d2407,2024-12-30,Renovation,Workers,Yossi,,Yossi,company,800.00,0.00,property_expense,renovation
+e13ba29f-fe92-4fb3-9334-e8a21b2975b9,2024-12-31,Renovation,Workers,Yossi,,Yossi,company,1000.00,0.00,property_expense,renovation
+255b4d35-30ec-4713-878f-26a3e08b3531,2025-01-12,Renovation,Materials,Yossi,,Yossi,company,1200.00,0.00,property_expense,renovation
+64c1cc7e-f6d9-468c-bce8-aa89a7d00877,2025-01-12,Renovation,Contractors,Yossi,,Yossi,company,1035.00,0.00,property_expense,renovation
+c4649f16-e861-4125-b787-5264e340156b,2025-01-12,Renovation,Materials,Yossi,,Yossi,company,650.00,0.00,property_expense,renovation
+d81f1f3b-3830-4d18-abeb-009b1efd12ce,2025-01-12,Renovation,Workers,Yossi,,Yossi,company,825.00,0.00,property_expense,renovation
+f807dbf2-5d87-415f-9d57-842ddae0ad1a,2025-01-16,Renovation,Workers,Yossi,,Yossi,GARMAN,650.00,0.00,property_expense,renovation
+8203b0bc-6997-44bc-aa85-2baa4f7223b5,2025-01-17,Renovation,Workers,Yossi,,Yossi,company,400.00,0.00,property_expense,renovation
+9b101b16-37d1-4d24-b087-c3872f4b7775,2025-01-17,Renovation,Contractors,Jacob,,Jacob,company,2500.00,0.00,property_expense,renovation
+84274de1-eb56-4451-b888-746c5e6c9c97,2025-01-23,Renovation,Workers,Yossi,,Yossi,company,1800.00,0.00,property_expense,renovation
+1c24b989-33e2-4abd-a639-5cf291795132,2025-01-27,Renovation,Contractors,CASHBOX,Anastasia,Anastasia,company,1750.00,0.00,property_expense,renovation
+c7253519-acb8-4e6e-a496-42caeada2dc9,2025-02-01,Airbnb,Pool Service,,,Owner,JJ,0.00,120.00,billing_only,airbnb
+f3082308-db67-4451-80e7-2088582f18d1,2025-02-13,Renovation,Materials,Yossi,,Yossi,company,830.00,0.00,property_expense,renovation
+16f260c4-c793-42cb-8ad5-8b0da5fc8d8f,2025-03-01,Renovation,Workers,Yossi,,Yossi,company,650.00,0.00,property_expense,renovation
+2c0fe4c7-fcd8-41ed-b421-5082d8b33248,2025-03-01,Airbnb,Pool Service,,,Owner,JJ,0.00,120.00,billing_only,airbnb
+10eb197b-84d9-4beb-9598-28588393a51a,2025-03-12,Renovation,Workers,CASHBOX,Anastasia,Anastasia,German,1600.00,0.00,property_expense,renovation
+26763b6f-2668-49a1-a7de-fdcbdb5a35bc,2025-03-12,Renovation,Workers,Yossi,,Yossi,company,400.00,0.00,property_expense,renovation
+489df792-f6e0-4b52-8005-67228ac92973,2025-04-01,Airbnb,Pool Service,,,Owner,JJ,0.00,120.00,billing_only,airbnb
+338645b9-67cc-4b43-8f00-8eaf4d9bc5a6,2025-04-02,Renovation,Materials,Yossi,,Yossi,company,80.00,0.00,property_expense,renovation
+cd564637-a003-4bb8-b75a-ca59da0cb0bf,2025-04-02,Renovation,Materials,Yossi,,Yossi,company,238.00,0.00,property_expense,renovation
+00cebfff-c390-477a-bd64-ef0f90d48a87,2025-04-03,Renovation,Contractors,Yossi,,Yossi,company,1000.00,0.00,property_expense,renovation
+f2efeff9-288d-4b4e-ae76-b85e06199ee9,2025-04-03,Renovation,Materials,JJ_BOX,JJ,JJ,company,500.00,0.00,property_expense,renovation
+28576baa-1aff-45d0-8c50-4e1f646d76df,2025-04-04,Renovation,Workers,Yossi,,Yossi,company,675.50,0.00,property_expense,renovation
+82c7bd94-0a1b-4fd1-83ae-a41d425f0bb4,2025-04-04,Renovation,Materials,Yossi,,Yossi,company,680.00,0.00,property_expense,renovation
+064ed5e4-7a06-44f7-8a73-9db5f8aa89ba,2025-04-05,Renovation,Materials,JJ_BOX,JJ,JJ,company,720.00,0.00,property_expense,renovation
+3a79f5b3-2efd-4d02-a77e-75f3c4d8ab74,2025-04-07,Renovation,Materials,Yossi,,Yossi,company,311.00,0.00,property_expense,renovation
+3d0b950d-40f6-428d-8cca-2f9391d87596,2025-04-07,Renovation,Materials,Yossi,,Yossi,company,275.00,0.00,property_expense,renovation
+4b09de9a-919d-4c57-b90c-97dec0fd40e9,2025-04-07,Renovation,Materials,Yossi,,Yossi,company,23.30,0.00,property_expense,renovation
+edf82cad-9c27-40a2-99cb-46ee315a3708,2025-04-07,Renovation,Materials,Yossi,,Yossi,company,60.00,0.00,property_expense,renovation
+2bd55c9e-7b4b-4820-96dd-490631b62d21,2025-04-09,Renovation,Materials,Yossi,,Yossi,company,9.91,0.00,property_expense,renovation
+4b4f6903-2fee-4acd-8e2e-0e99e8e7a213,2025-04-09,Renovation,Materials,Yossi,,Yossi,company,12.51,0.00,property_expense,renovation
+4dac9af2-2575-43d0-a2d9-a13aebfbecce,2025-04-09,Renovation,Workers,Yossi,,Yossi,company,723.40,0.00,property_expense,renovation
+5a5b8915-d442-42bd-a2d9-5e718b956b69,2025-04-09,Renovation,Contractors,Yossi,,Yossi,company,1000.00,0.00,property_expense,renovation
+8615db87-e8e8-45cd-8f5c-74c0056067fa,2025-04-09,Renovation,Materials,Yossi,,Yossi,company,80.54,0.00,property_expense,renovation
+a9f7cf41-931e-401c-b218-b2f0e3c49d2c,2025-04-09,Renovation,Materials,Yossi,,Yossi,company,150.00,0.00,property_expense,renovation
+bc57bab3-91d2-4363-b0f5-7c581df05056,2025-04-09,Renovation,Materials,Yossi,,Yossi,company,258.00,0.00,property_expense,renovation
+cc7be85b-c41d-4538-b9c7-783b87f85bfe,2025-04-09,Renovation,Materials,Yossi,,Yossi,company,2.60,0.00,property_expense,renovation
+f454e696-3866-45ce-b4f8-a315196fb696,2025-04-12,Airbnb,Electricity bill,CASHBOX,Anastasia,Anastasia,company,195.76,195.76,property_expense,airbnb
+3cad06da-e73f-44c0-a2f2-a72a1f53deef,2025-04-24,Renovation,Workers,Yossi,,Yossi,company,2500.00,0.00,property_expense,renovation
+8cf4f37e-d938-432c-a6b7-5a5f2a649272,2025-04-24,Renovation,Materials,Yossi,,Yossi,company,55.00,0.00,property_expense,renovation
+50e3bd6b-e239-4be0-9768-e8d309343ac5,2025-04-25,Renovation,Materials,Yossi,,Yossi,company,96.00,0.00,property_expense,renovation
+5a945cb4-4c78-42fb-80dd-1d029798f762,2025-04-28,Renovation,Materials,Yossi,,Yossi,company,600.00,0.00,property_expense,renovation
+5fe03868-6614-4be7-97ab-c1c11819f4da,2025-04-28,Renovation,Materials,Yossi,,Yossi,company,75.00,0.00,property_expense,renovation
+af2f9f87-614c-48c0-baa3-30841b632f84,2025-04-28,Airbnb,Water,CASHBOX,Anastasia,Anastasia,company,185.47,185.47,property_expense,airbnb
+fbf6ec94-84c4-4cd5-b0b7-83ebab07c65d,2025-04-28,Renovation,Materials,Yossi,,Yossi,company,76.00,0.00,property_expense,renovation
+a00c1ea1-2eed-42bb-ac8b-1576dc149d30,2025-04-29,Renovation,Materials,Yossi,,Yossi,company,2000.00,0.00,property_expense,renovation
+d87df94d-d589-4284-86b0-7bd1722494d7,2025-04-30,Renovation,Workers,CASHBOX,Anastasia,Anastasia,German,1000.00,0.00,property_expense,renovation
+bf9d27fe-3b2f-4af4-9f07-7edeec6ca51d,2025-05-01,Airbnb,Pool Service,,,Owner,JJ,0.00,120.00,billing_only,airbnb
+79d5bb30-0bf6-49e8-a390-73136d430e4b,2025-05-05,Renovation,Contractors,CASHBOX,Anastasia,Anastasia,company,900.00,0.00,property_expense,renovation
+990914e8-dfe3-43cb-896e-214ca4f1e79a,2025-05-07,Renovation,Workers,Yossi,,Yossi,company,530.00,0.00,property_expense,renovation
+53716f66-30da-4e8a-b1a0-8589d177eac9,2025-05-09,Renovation,Materials,Yossi,,Yossi,company,1124.34,0.00,property_expense,renovation
+3304af36-f234-49d3-9587-93d8f876a624,2025-05-13,Renovation,Furniture,Yossi,,Yossi,company,1637.00,0.00,property_expense,renovation
+6d08dd89-ffc9-4f53-a97a-37e4aa9dd18c,2025-05-17,Renovation,Furniture,Yossi,,Yossi,company,175.90,0.00,property_expense,renovation
+11ebd9cd-26d0-415c-8dee-3895b0696728,2025-05-20,Renovation,Materials,Yossi,,Yossi,company,730.00,0.00,property_expense,renovation
+16c74114-5919-41cd-a335-67d2d6aa3bc9,2025-05-20,Renovation,Contractors,Yossi,,Yossi,company,2000.00,0.00,property_expense,renovation
+3658db43-7706-4957-9b54-28dad3686901,2025-05-20,Renovation,Materials,Yossi,,Yossi,company,930.00,0.00,property_expense,renovation
+528b4384-bab6-4cca-b845-6798d64b13ef,2025-05-20,Renovation,Furniture,Yossi,,Yossi,company,2250.00,0.00,property_expense,renovation
+95db9b61-e3cc-49f7-bbdb-6e9995802d7a,2025-05-20,Renovation,Contractors,Yossi,,Yossi,company,1100.00,0.00,property_expense,renovation
+7ed818ec-fee3-42c2-8162-9a0495b41382,2025-05-21,Renovation,Workers,Yossi,,Yossi,company,230.00,0.00,property_expense,renovation
+8b44cb46-a47f-4d77-a4ab-22e2ce951505,2025-05-21,Renovation,Electrical Appliances,Yossi,,Yossi,company,2800.00,0.00,property_expense,renovation
+a5d984c1-5075-42f9-90e0-ce67a73f215f,2025-05-23,Renovation,Materials,CASHBOX,Anastasia,Anastasia,company,240.00,0.00,property_expense,renovation
+e67e67de-84ee-41f8-b559-7b65cfc6c7ef,2025-05-24,Renovation,Materials,Yossi,,Yossi,company,210.00,0.00,property_expense,renovation
+5eb818d6-6541-4680-b35f-5dc9ad2593d7,2025-05-26,Airbnb,Plumber,CASHBOX,Anastasia,Anastasia,company,37.77,0.00,property_expense,airbnb
+135332ce-ec60-4f4e-9685-01aa1cff0e19,2025-05-28,Renovation,Contractors,Yossi,,Yossi,company,2000.00,0.00,property_expense,renovation
+39f33acb-a51b-45f4-a572-adf95b0d057c,2025-05-28,Renovation,Materials,Yossi,,Yossi,company,121.53,0.00,property_expense,renovation
+c017b9d9-ee8f-4e9a-bb84-d600b370516d,2025-05-28,Renovation,Contractors,CASHBOX,Anastasia,Anastasia,company,1500.00,0.00,property_expense,renovation
+db3ede80-b52d-47ac-bcd8-4b974c18a7f7,2025-05-28,Renovation,Materials,Yossi,,Yossi,company,219.74,0.00,property_expense,renovation
+ed4f00ab-9c28-4009-8fb8-f4e87c941c3f,2025-05-28,Renovation,Materials,Yossi,,Yossi,company,85.00,0.00,property_expense,renovation
+33e5e4ce-7e54-4aa8-8bc0-8fcec00eb7c5,2025-05-30,Airbnb,Internet,CASHBOX,Anastasia,Anastasia,company,325.00,325.00,property_expense,airbnb
+4f0b60f8-9221-4e44-aec2-62235b6f41cc,2025-05-30,Renovation,Materials,Yossi,,Yossi,company,1059.00,0.00,property_expense,renovation
+c023cb47-6074-4923-850c-5b06eecd7754,2025-05-30,Airbnb,Bedding/Pillows/Blankets,Yossi,,Yossi,company,600.00,0.00,property_expense,airbnb
+e7b1d7d3-e7ee-4dd1-b1df-7df834604cc5,2025-05-30,Renovation,Materials,Yossi,,Yossi,company,4500.00,0.00,property_expense,renovation
+3222e6f7-119f-4c0d-8443-93bdc8c57e19,2025-06-01,Renovation,Contractors,Yossi,,Yossi,company,1500.00,0.00,property_expense,renovation
+6da1ffbc-97cf-4338-b4d9-e4978853329a,2025-06-01,Airbnb,Pool Service,,,Owner,JJ,0.00,120.00,billing_only,airbnb
+a7d9da22-00ae-4c64-af9c-656a88687217,2025-06-03,Renovation,Workers,Yossi,,Yossi,company,1688.00,0.00,property_expense,renovation
+444cfb77-726b-4d24-bb3d-f9ca4bdd175e,2025-06-05,Renovation,Materials,Yossi,,Yossi,company,108.00,0.00,property_expense,renovation
+10df65a0-5c16-416d-8723-5de327eebc85,2025-06-06,Airbnb,Airbnb Equipment,CASHBOX,Anastasia,Anastasia,company,7.99,0.00,property_expense,airbnb
+38b2a2a7-7d63-407c-8f19-4050b5364ffe,2025-06-06,Renovation,Materials,Yossi,,Yossi,company,616.47,0.00,property_expense,renovation
+81945e70-e467-4413-9aca-f4a536eb93be,2025-06-06,Airbnb,Electricity bill,CASHBOX,Anastasia,Anastasia,company,127.15,127.15,property_expense,airbnb
+1841a63b-db0d-46ee-8a2c-39e7c86533b5,2025-06-10,Airbnb,Electrical Appliances,CASHBOX,Anastasia,Anastasia,company,45.00,0.00,property_expense,airbnb
+30d4dfa9-946f-49c1-8473-87d5ff28336b,2025-06-10,Airbnb,Other,CASHBOX,Anastasia,Anastasia,company,16.33,0.00,property_expense,airbnb
+842d543d-e37c-41a8-9abd-7c36924be240,2025-06-10,Airbnb,Repairs,CASHBOX,Anastasia,Anastasia,company,11.63,0.00,property_expense,airbnb
+0f08661c-901a-41db-b1cd-a84f3a519997,2025-06-13,Renovation,Workers,Yossi,,Yossi,company,1520.00,0.00,property_expense,renovation
+5143b65e-5383-4e32-8c79-89c0f383464e,2025-06-13,Renovation,Workers,CASHBOX,Anastasia,Anastasia,German,1000.00,0.00,property_expense,renovation
+bdb1b4dd-2d3f-4c69-be3c-0821fa17f508,2025-06-17,Airbnb,Consumable Supplies,CASHBOX,Anastasia,Anastasia,company,75.54,0.00,property_expense,airbnb
+38c22719-d408-4f53-b268-37893de6342e,2025-06-30,Renovation,Contractors,Yossi,,Yossi,company,180.00,0.00,property_expense,renovation
+87b38c21-f298-4773-943b-2d93ea3a4da7,2025-07-01,Airbnb,Pool Service,,,Owner,JJ,0.00,120.00,billing_only,airbnb
+c62d5bd4-683a-4ba0-b54f-295d3a57c7d7,2025-07-03,Airbnb,Bedding/Pillows/Blankets,Yossi,,Yossi,company,1200.00,0.00,property_expense,airbnb
+db988f44-9916-4e9a-985a-3f56869a6709,2025-07-03,Airbnb,Design,CASHBOX,Anastasia,Anastasia,decoration,65.57,0.00,property_expense,airbnb
+1319108b-6221-4a7b-81c1-d730ddacb638,2025-07-04,Airbnb,Design,Yossi,,Yossi,company,350.00,0.00,property_expense,airbnb
+a07ff699-1f77-4f5c-b6c9-640a1393b9e2,2025-07-04,Renovation,Materials,Yossi,,Yossi,company,170.00,0.00,property_expense,renovation
+c5641f71-bbe2-4097-9fa6-b0a0926a692c,2025-07-04,Renovation,Furniture,Yossi,,Yossi,company,585.00,0.00,property_expense,renovation
+98b20c2f-8d62-487c-83c5-950ea0906405,2025-07-07,Renovation,Materials,Yossi,,Yossi,company,26.71,0.00,property_expense,renovation
+ced59872-31c8-4a97-9144-84994aed8e09,2025-07-07,Renovation,Materials,Yossi,,Yossi,company,68.00,0.00,property_expense,renovation
+c77133ef-ec77-4035-b0ae-140972af3ba2,2025-07-08,Renovation,Alouminiom,Yossi,,Yossi,company,550.00,0.00,property_expense,renovation
+dd7ca049-30fd-4080-8217-32791d791c9b,2025-07-08,Renovation,Materials,Yossi,,Yossi,company,114.69,0.00,property_expense,renovation
+26a87cae-6cbe-4e34-bf8d-bf6ae5552677,2025-07-09,Airbnb,Furniture,Jacob,,Jacob,company,249.00,0.00,property_expense,airbnb
+2ebdf593-8682-48c9-8435-39f7aed74a06,2025-07-09,Airbnb,Design,Yossi,,Yossi,company,240.50,0.00,property_expense,airbnb
+3afd3b3f-b6de-4e6e-8476-2b07bbd09ea7,2025-07-10,Renovation,Client Payment,Avi,JJ,Client,JJ,20000.00,0.00,partner_funding,renovation
+6d15feec-4e6f-4b35-ba74-2c1133d46581,2025-07-10,Renovation,Materials,Yossi,,Yossi,company,53.00,0.00,property_expense,renovation
+75afe223-2b27-4138-9aeb-87478e35d8c0,2025-07-10,Renovation,Contractors,Yossi,,Yossi,company,200.00,0.00,property_expense,renovation
+afab1162-d075-4d11-af1e-fe4325afc621,2025-07-10,Renovation,Materials,Yossi,,Yossi,company,36.00,0.00,property_expense,renovation
+e8c4e00a-44d0-4d2b-bfe0-591432f080c8,2025-07-10,Renovation,Contractors,Yossi,,Yossi,company,1200.00,0.00,property_expense,renovation
+745d40b3-bb5b-4235-9d0d-2f18d7dcca9e,2025-07-15,Airbnb,Bedding/Pillows/Blankets,CASHBOX,Anastasia,Anastasia,company,102.25,0.00,property_expense,airbnb
+38e47532-dfd6-430b-88d0-47821b7323c9,2025-07-16,Renovation,Workers,Yossi,,Yossi,company,480.00,0.00,property_expense,renovation
+7e69c0ee-f9bb-46dd-a782-d4c4272dcecc,2025-07-17,Airbnb,Airbnb Equipment,Yossi,,Yossi,company,110.00,0.00,property_expense,airbnb
+c2512c53-8795-47c5-884c-deaa8e498467,2025-07-17,Airbnb,Airbnb Equipment,Yossi,,Yossi,company,240.00,0.00,property_expense,airbnb
+34eb9ed4-52b2-405e-9de5-33917b4a2eaf,2025-07-18,Airbnb,Consumable Supplies,CASHBOX,Anastasia,Anastasia,company,15.95,0.00,property_expense,airbnb
+da964398-8a9c-4573-8b54-109d197c47ae,2025-07-18,Airbnb,Design,CASHBOX,Anastasia,Anastasia,jumbo,46.36,0.00,property_expense,airbnb
+05dd8da5-a198-4db0-8e7e-741f98c66cd3,2025-07-21,Airbnb,Guest Supplies,CASHBOX,Anastasia,Anastasia,company,23.50,0.00,property_expense,airbnb
+5e68d2f7-8238-4733-b0cc-ba5092897a07,2025-07-21,Airbnb,Photography,Yossi,,Yossi,company,335.00,0.00,property_expense,airbnb
+cacb61e8-e920-4089-a490-ef5cc119d28d,2025-07-23,Airbnb,Internet,CASHBOX,Anastasia,Anastasia,company,30.00,0.00,property_expense,airbnb
+4207b529-ad0b-4e66-b127-f3e88a0642a0,2025-07-25,Airbnb,Photography,CASHBOX,Anastasia,Anastasia,company,150.00,0.00,property_expense,airbnb
+7d72020a-9ca6-44fa-a5d5-43aecd19a63b,2025-07-25,Airbnb,Wine,CASHBOX,Anastasia,Anastasia,company,15.08,0.00,property_expense,airbnb
+c105f90f-b70e-48e8-ad9c-a1c8ebadd00e,2025-07-26,Airbnb,Airbnb Equipment,Yossi,,Yossi,company,11.27,0.00,property_expense,airbnb
+1ada75d9-26fb-41d0-bf05-ed12f94c4937,2025-07-30,Airbnb,Airbnb Equipment,Yossi,,Yossi,company,110.55,0.00,property_expense,airbnb
+e74f0b9a-f4f2-428e-89e8-7221ccdeac80,2025-07-30,Renovation,Materials,Yossi,,Yossi,company,218.70,0.00,property_expense,renovation
+088cf490-c8f8-4d2c-9155-30fc029e26c8,2025-08-01,Airbnb,Pool Service,,,Owner,JJ,0.00,120.00,billing_only,airbnb
+02183eec-0936-4043-9f07-1264013ae855,2025-08-02,Airbnb,Pool Service,CASHBOX,Anastasia,Anastasia,company,476.00,0.00,property_expense,airbnb
+d63ace74-9a6b-4c8d-a976-43e4e4c39ca4,2025-08-02,Airbnb,Electrical Appliances,CASHBOX,Anastasia,Anastasia,company,60.00,0.00,property_expense,airbnb
+0aa8e8a8-25dd-44a7-b01c-f7aac0889ca3,2025-08-04,Airbnb,Consumable Supplies,CASHBOX,Anastasia,Anastasia,company,12.84,0.00,property_expense,airbnb
+b8e8f744-c6d3-41a2-8251-5909d7f83fc3,2025-08-04,Airbnb,Photography,CASHBOX,Anastasia,Anastasia,Photographer,545.00,0.00,property_expense,airbnb
+339508af-efd7-40d9-81f8-9759012126cc,2025-08-05,Airbnb,Consumable Supplies,CASHBOX,Anastasia,Anastasia,company,109.58,0.00,property_expense,airbnb
+65418030-9d5e-4134-a9d1-365c3bf3be67,2025-08-09,Airbnb,Consumable Supplies,CASHBOX,Anastasia,Anastasia,company,82.91,0.00,property_expense,airbnb
+82ecb167-cdf1-417e-b30d-9c54c6654e74,2025-08-09,Airbnb,Internet,CASHBOX,Anastasia,Anastasia,company,30.00,30.00,property_expense,airbnb
+cc0ab3a1-33c2-41d3-8e12-82c3e5cdb7e2,2025-08-14,Airbnb,Platform Income,Guest,,Client,Yossi,960.00,0.00,platform_income,airbnb
+beb035f9-e001-45db-92e6-dc0cea644662,2025-08-17,Airbnb,Consumable Supplies,CASHBOX,Anastasia,Anastasia,company,71.62,0.00,property_expense,airbnb
+87c5b23a-9d17-4692-a9de-5902100e37bf,2025-08-22,Airbnb,Consumable Supplies,CASHBOX,Anastasia,Anastasia,company,237.57,0.00,property_expense,airbnb
+fa3eb0c4-3fb1-4e84-a277-c6ec104adb43,2025-08-22,Renovation,Furniture,Yossi,,Yossi,company,187.50,0.00,property_expense,renovation
+2d7b3265-d331-4bc4-861d-7b2a36cd3d1b,2025-08-23,Airbnb,Airbnb Equipment,CASHBOX,Anastasia,Anastasia,Photographer,85.50,0.00,property_expense,airbnb
+71f5f770-caeb-46ab-9d4a-e4be14e4e943,2025-08-23,Airbnb,Photography,CASHBOX,Anastasia,Anastasia,Photographer,350.00,0.00,property_expense,airbnb
+0dbc5745-5310-497e-a25d-d4ea7cdca42c,2025-08-25,Renovation,Materials,Yossi,,Yossi,company,255.00,0.00,property_expense,renovation
+4beb9bbf-ec3d-4b55-b8b0-3d3e9730931f,2025-08-27,Airbnb,Electricity bill,CASHBOX,Anastasia,Anastasia,company,243.09,243.09,property_expense,airbnb
+31cb9e7a-5309-41f0-965a-192799a0cefd,2025-09-01,Airbnb,Pool Service,,,Owner,JJ,0.00,120.00,billing_only,airbnb
+de6fbff2-106a-4e1a-8cb3-508cea007574,2025-09-04,Airbnb,Internet,CASHBOX,Anastasia,Anastasia,company,30.00,0.00,property_expense,airbnb
+1d731cb7-0f90-4ca4-a4e2-a32cdd6cd1b5,2025-09-18,Renovation,Electrical Appliances,Yossi,,Yossi,company,842.80,0.00,property_expense,renovation
+842f23b8-b2bb-4141-aded-295266dbb9c4,2025-09-18,Airbnb,Electricity bill,CASHBOX,Anastasia,Anastasia,company,700.86,700.86,property_expense,airbnb
+736e607f-6051-4928-989e-26f9ad3e86bf,2025-09-26,Airbnb,Pool Service,CASHBOX,Anastasia,Anastasia,company,160.00,0.00,property_expense,airbnb
+3951ffea-d686-4f72-9e35-47a3df7e6382,2025-10-01,Airbnb,Pool Service,,,Owner,JJ,0.00,120.00,billing_only,airbnb
+2ad6a785-df25-43b0-afca-e4a5d469aabc,2025-10-02,Renovation,Materials,Yossi,,Yossi,company,160.00,0.00,property_expense,renovation
+53a8e895-1d82-4aab-bdff-f40d638f0da9,2025-10-03,Airbnb,Internet,CASHBOX,Anastasia,Anastasia,company,30.00,30.00,property_expense,airbnb
+89a9319c-0528-4ef2-ad16-41a062f053ca,2025-10-05,Airbnb,Repairs,CASHBOX,Anastasia,Anastasia,company,21.50,0.00,property_expense,airbnb
+17da22ef-bd16-4ece-b355-d7818e52ca48,2025-10-08,Airbnb,Bedding/Pillows/Blankets,CASHBOX,Anastasia,Anastasia,company,34.46,0.00,property_expense,airbnb
+232c2da7-5d5f-467d-917f-41bd95603af5,2025-10-15,Renovation,Materials,Yossi,,Yossi,company,55.00,0.00,property_expense,renovation
+2d2a8825-2361-4757-a9b3-c298904f8183,2025-10-21,Airbnb,Guest Supplies,CASHBOX,Anastasia,Anastasia,company,85.08,0.00,property_expense,airbnb
+d3d72c3b-7cd6-4859-b278-bab7ad310fa3,2025-10-22,Airbnb,Airbnb Equipment,Yossi,,Yossi,company,122.00,0.00,property_expense,airbnb
+67c130ea-1256-42e3-a497-dcd3372f23c9,2025-11-01,Airbnb,Pool Service,,,Owner,JJ,0.00,120.00,billing_only,airbnb
+11b6f121-acd9-4ee6-a8d4-789f80cb69e0,2025-11-10,Airbnb,Internet,CASHBOX,Anastasia,Anastasia,company,30.00,30.00,property_expense,airbnb
+2d23c083-971a-4427-9f2e-81f28aa0c55c,2025-11-10,Renovation,Workers,Yossi,,Yossi,company,500.00,0.00,property_expense,renovation
+8257e2f4-88f0-45aa-be63-4512680e29ad,2025-11-12,Renovation,Renovation Contract,,,,,72199.14,0.00,charge_basis,self_artifact
+9affe145-9917-487e-84cc-495a62746e13,2025-11-21,Airbnb,Electricity bill,CASHBOX,Anastasia,Anastasia,company,1005.04,1005.04,property_expense,airbnb
+01a920d1-016d-4e3d-b6c0-b0be13fb5105,2025-11-22,Airbnb,Platform Income,Tenant,Anastasia,Tenant,Anastasia,400.00,0.00,platform_income,airbnb
+9b649f29-adc6-4725-b55d-d7c4ad7067b2,2025-12-01,Airbnb,Pool Service,,,Owner,JJ,0.00,120.00,billing_only,airbnb
+98ce79c4-cb44-4dc0-a807-32010d529ac1,2025-12-05,Airbnb,Pool Service,CASHBOX,Anastasia,Anastasia,company,280.00,0.00,property_expense,airbnb
+ce3f395f-952a-4753-b9a9-f16215840365,2025-12-11,Airbnb,Internet,CASHBOX,Anastasia,Anastasia,company,30.00,30.00,property_expense,airbnb
+1634c43c-dd38-464d-a68d-7692a44a638b,2025-12-18,Airbnb,Electricity bill,CASHBOX,Anastasia,Anastasia,company,393.54,393.54,property_expense,airbnb
+5e346dc3-dd6a-4c93-9f1e-339b4fd5ee85,2026-01-02,Airbnb,Internet,CASHBOX,Anastasia,Anastasia,company,30.00,0.00,property_expense,airbnb
+676ac2e9-eb54-4fca-99d1-964f3445d138,2026-01-20,Airbnb,Key Duplication,CASHBOX,Anastasia,Anastasia,company,10.50,0.00,property_expense,airbnb
+860eb0ef-7721-43a5-8041-573c83102839,2026-01-22,Airbnb,Electricity bill,CASHBOX,Anastasia,Anastasia,company,165.40,0.00,property_expense,airbnb
+9bb870c9-a320-4b30-a11b-87ce13b0290f,2026-01-27,Airbnb,Airbnb Equipment,Jacob,,Jacob,company,11.08,0.00,property_expense,airbnb
+b664e749-7768-46ad-ae41-a66aefd3d2b8,2026-01-27,Airbnb,Airbnb Equipment,CASHBOX,Anastasia,Anastasia,company,53.99,0.00,property_expense,airbnb
+ae90ee87-af07-4ed2-b187-11176424abd1,2026-02-10,Airbnb,Internet,CASHBOX,Anastasia,Anastasia,company,30.00,0.00,property_expense,airbnb
+70ae288d-26e8-4ffc-9764-593cde057d0c,2026-03-03,Airbnb,Airbnb Equipment,CASHBOX,Anastasia,Anastasia,company,48.55,0.00,property_expense,airbnb
+ab45d874-cee2-40ce-ba9f-c317a2e8114f,2026-03-05,Airbnb,Internet,CASHBOX,Anastasia,Anastasia,company,30.00,0.00,property_expense,airbnb
+00e84a59-7972-428b-bc54-7b3407c16754,2026-03-14,Management,Pool Service,CASHBOX,Anastasia,Anastasia,company,480.00,0.00,property_expense,management
+747aa644-d8f8-44ee-b79c-8f4cc925207b,2026-04-14,Airbnb,Internet,CASHBOX,Anastasia,Anastasia,company,30.00,0.00,property_expense,airbnb
+ade3b388-7c35-45e1-96fa-fdfad368e2e8,2026-04-16,Airbnb,Electricity bill,CASHBOX,Anastasia,Anastasia,company,199.87,0.00,property_expense,airbnb
+4c40f610-c173-4027-b513-cffe12fcd288,2026-04-20,Airbnb,Pool Service,Yossi,,Yossi,company,250.00,450.00,property_expense,airbnb
+4fe32069-97fc-48e9-a8c8-2dae300991cb,2026-04-22,Airbnb,Consumable Supplies,Yossi,,Yossi,company,86.00,0.00,property_expense,airbnb
+617ebfde-64d5-48d6-9dc5-3d86502cab50,2026-04-27,Airbnb,Design,CASHBOX,Anastasia,Anastasia,company,60.54,0.00,property_expense,airbnb
+7ecc7b57-1d2d-4718-bc03-dd2fa3296eee,2026-05-05,Airbnb,Internet,CASHBOX,Anastasia,Anastasia,company,30.00,0.00,property_expense,airbnb
+bb7f44e1-7249-458d-8325-f863f8953193,2026-05-07,Airbnb,Consumable Supplies,Yossi,,Yossi,company,49.30,0.00,property_expense,airbnb
+26ec3563-cd7b-470f-aae6-e2f1544e268c,2026-05-09,Airbnb,Water,JJ_BOX,JJ,JJ,company,316.15,0.00,property_expense,airbnb
+eb6b2423-1689-4a22-8696-42933999682c,2026-05-09,Airbnb,Other,Yossi,,Yossi,company,250.00,320.00,property_expense,airbnb
+b9239808-c0fc-4342-a489-3d5c10ecb3db,2026-05-26,Airbnb,Pool Service,CASHBOX,Anastasia,Anastasia,company,160.00,0.00,property_expense,airbnb
+13e2aba9-da9d-4bb7-bd5d-ff8f902fb582,2026-06-04,Airbnb,Property insurance,JJ_BOX,JJ,JJ,company,497.00,0.00,property_expense,airbnb
+792b0bfb-7341-4929-96ca-052a00036d53,2026-06-10,Airbnb,Internet,CASHBOX,Anastasia,Anastasia,company,30.00,0.00,property_expense,airbnb
+049dc8af-ea5a-4a0a-9e40-f85693866f85,2026-08-10,Management,Internet,JJ_BOX,JJ,JJ,JJ,30.00,0.00,property_expense,management
+71d5f307-af4e-4194-83b3-7e9413dd4028,2026-08-11,Management,Electricity,Yossi,,Yossi,JJ,181.79,0.00,property_expense,management

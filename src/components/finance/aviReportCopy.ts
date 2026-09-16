@@ -1,0 +1,314 @@
+/**
+ * Avi partner-report copy. Local to this screen — do not import
+ * `@/lib/report/languageResolution` or any RC3 language helper.
+ */
+import {
+  formatHebrewFullDateText,
+  formatHebrewMonthYearText,
+} from '@/components/finance/HebrewDate'
+
+export type AviReportLang = 'en' | 'he'
+
+export const AVI_REPORT_COPY = {
+  en: {
+    toggleEn: 'English',
+    toggleHe: 'עברית',
+    summary: 'Summary',
+    ownership: 'Ownership',
+    acquisition: 'Acquisition',
+    acquisitionSubtitle: '50% partnership interest at the agreed Villa Mazotos transaction value',
+    agreedValue: 'Agreed transaction value',
+    aviObligation: 'Avi obligation (50%)',
+    remaining: 'Remaining',
+    purchaseExpenses: 'Purchase expenses',
+    purchaseSubtitle: 'Purchase-side costs. The purchase tax is shown once.',
+    renovation: 'Renovation',
+    renovationSubtitle: 'Work performed. The contract value is the agreed price, not a separate purchase.',
+    airbnbIncome: 'Short-term rental income',
+    airbnbIncomeSubtitle:
+      'One income category: Hostaway Net Owner Payout stays plus private booking income. Avi credit is 50%.',
+    privateIncome: 'Private booking income',
+    privateIncomeHelp: 'Already-net private stays on the JJ ledger. Avi credit is 50% of the certified total.',
+    hostawayIncome: 'Hostaway stays (Net Owner Payout)',
+    hostawayIncomeHelp: '50% of Net Owner Payout for completed, paid stays.',
+    printedNto: 'Net Owner Payout',
+    incomeSource: 'Source',
+    completedHostawayStays: 'Completed Hostaway stays',
+    airbnbCreditsTotal: 'Short-term rental income credits total',
+    aviShareCredit: 'Avi credit (50%)',
+    postAcquisitionLayers: 'Balances after acquisition',
+    postAcquisitionSubtitle:
+      'Certified Avi balances. Acquisition is covered by certified paid and is not added again.',
+    postAcquisitionTotal: 'Total after acquisition',
+    layer: 'Category',
+    certifiedCharge: 'Certified charge',
+    result: 'Result',
+    expenseReconciliation: 'Certified expenses after his share purchase',
+    expenseReconciliationNote:
+      'Avi share of post-acquisition expenses only. Purchase of Avi’s 50% interest (€250,000) is shown separately and is not included here.',
+    certifiedExpenseRows: 'Certified expense rows',
+    totalCharges: 'Total charges',
+    aviExpenseShare: 'Avi share of expenses',
+    setup: 'Airbnb setup',
+    operations: 'Airbnb operations',
+    monthly: 'Short-term rental income month by month',
+    monthlySubtitle:
+      'Income by guest check-in month. Avi’s 50% is half of income. Setup and operations appear only under expenses.',
+    payments: 'Avi payments',
+    paymentsSubtitle: 'Payments verified from Avi’s funding',
+    finalSettlement: 'Final settlement',
+    settlementItem: 'Item',
+    settlementKicker: 'Settlement summary',
+    paid: 'Paid',
+    credits: 'Credits',
+    incomeCredit: 'Income credit',
+    obligation: 'Obligation',
+    finalResult: 'Final result',
+    finalNet: 'Final net',
+    monthlyGrandTotal: 'Grand total',
+    roundingAdjustment: 'Rounding adjustment',
+    notesControls: 'Notes and controls',
+    certified: 'Certified',
+    provisional: 'Provisional',
+    stay: 'stay',
+    stays: 'stays',
+    night: 'night',
+    nights: 'nights',
+    staysColumn: 'Stays',
+    bookings: 'Nights',
+    expand: 'Show stays',
+    collapse: 'Hide stays',
+    month: 'Month',
+    income: 'Income',
+    property: 'Property',
+    propertyTotal: 'Property total',
+    aviShare: 'Avi share (50%)',
+    aviIncomeShare: 'Avi income share (50%)',
+    aviPaid: 'Avi paid',
+    aviRemaining: 'Avi remaining',
+    rows: 'Rows',
+    date: 'Date',
+    label: 'Purpose',
+    payer: 'Payer',
+    amount: 'Amount',
+    appendixTitle: 'Certified expense appendix',
+    appendixSubtitle: 'Full partner-visible certified expense lines. Month and year only.',
+    appendixButton: 'Download certified expense appendix',
+    backToReport: 'Back to main report',
+    printButton: 'Print / Save PDF',
+    downloadSendablePdf: 'Download sendable A4 PDF',
+    downloadSendablePdfHint:
+      'Partner-sendable file: JJ page numbers, no Chrome date/URL/localhost chrome. Prefer this for sending to Avi.',
+    printHint: 'In the print dialog choose Save as PDF, paper A4, and uncheck Headers and footers.',
+    brand: 'JJ PROPERTY 10',
+    reportTitle: 'External Partner Report — Avi',
+    propertyName: 'Villa Mazotos',
+    confidentiality: 'Confidential — for Avi and JJ principals only',
+    footerConfidential: 'Confidential',
+    footerPartnerReport: 'Avi partner report',
+    operationsContinued: 'Airbnb operations — continued',
+    pageLabel: 'Page',
+    pageOf: 'of',
+    generatedOn: 'Generated on',
+    generatedLabel: 'Generated',
+    transactionsThrough: 'Ledger transactions through',
+    hostawayIncomeThrough: 'Hostaway income through',
+    approvedChargesNote:
+      'Ledger snapshot is 29 August 2026. Hostaway income includes completed stays through 29 August 2026. Setup and operations appear only under expenses.',
+    formula: 'Paid + Credits − Obligation = Final result',
+    internetSplitNote:
+      'Internet €325.00 is presented once as €295.00 one-time installation in Setup plus €30.00 June 2025 internet in Operations (June 2025–August 2026, 15 months). No duplicate charge.',
+    closingNarrative:
+      'Avi is owed €594.25 because amounts already paid and credited (€280,600.00 + €19,495.25) exceed his certified obligation (€299,501.00) by that difference.',
+    layerAcquisition: 'Acquisition',
+    layerDeal: 'Purchase / deal expenses',
+    layerRenovation: 'Renovation',
+    layerAirbnb: 'Airbnb',
+    layerManagement: 'Management',
+  },
+  he: {
+    toggleEn: 'English',
+    toggleHe: 'עברית',
+    summary: 'סיכום',
+    ownership: 'בעלות',
+    acquisition: 'רכישה',
+    acquisitionSubtitle: '50% שותפות לפי שווי העסקה המוסכם של וילה מזוטוס',
+    agreedValue: 'שווי עסקה מוסכם',
+    aviObligation: 'התחייבות אבי (50%)',
+    remaining: 'יתרה',
+    purchaseExpenses: 'הוצאות רכישה',
+    purchaseSubtitle: 'עלויות רכישה. מס הרכישה מוצג פעם אחת.',
+    renovation: 'שיפוץ',
+    renovationSubtitle: 'העבודה שבוצעה. ערך החוזה הוא המחיר המוסכם, לא רכישה נפרדת.',
+    airbnbIncome: 'הכנסה משכירות קצרה',
+    airbnbIncomeSubtitle:
+      'קטגוריית הכנסה אחת: שהיות Hostaway לפי תשלום נטו לבעלים, בתוספת הכנסה מהזמנה פרטית. זיכוי אבי 50%.',
+    privateIncome: 'הכנסות מהזמנה פרטית',
+    privateIncomeHelp: 'שהיות פרטיות נטו בספר JJ. זיכוי אבי הוא 50% מהסכום המאושר.',
+    hostawayIncome: 'שהיות Hostaway (תשלום נטו לבעלים)',
+    hostawayIncomeHelp: '50% מתשלום נטו לבעלים (Net Owner Payout) עבור שהיות שהושלמו ושולמו.',
+    printedNto: 'תשלום נטו לבעלים (Net Owner Payout)',
+    incomeSource: 'מקור',
+    completedHostawayStays: 'שהיות Hostaway שהושלמו',
+    airbnbCreditsTotal: 'סה״כ זיכויי הכנסה משכירות קצרה',
+    aviShareCredit: 'זיכוי אבי (50%)',
+    postAcquisitionLayers: 'יתרות לאחר הרכישה',
+    postAcquisitionSubtitle:
+      'יתרות מאושרות של אבי. הרכישה מכוסה בתשלום המאושר ואינה מתווספת שוב.',
+    postAcquisitionTotal: 'סה״כ לאחר רכישה',
+    layer: 'סעיף',
+    certifiedCharge: 'חיוב מאושר',
+    result: 'תוצאה',
+    expenseReconciliation: 'הוצאות מאושרות לאחר רכישת חלקו',
+    expenseReconciliationNote:
+      'חלק אבי בהוצאות לאחר רכישת חלקו בלבד. רכישת 50% (€250,000) מוצגת בנפרד ואינה כלולה כאן.',
+    certifiedExpenseRows: 'שורות הוצאה מאושרות',
+    totalCharges: 'סה״כ חיובים',
+    aviExpenseShare: 'חלק אבי בהוצאות',
+    setup: 'הקמת Airbnb',
+    operations: 'תפעול Airbnb',
+    monthly: 'הכנסה משכירות קצרה חודש בחודשו',
+    monthlySubtitle:
+      'הכנסה לפי חודש כניסה לנכס. חלק אבי בהכנסה (50%) הוא מחצית ההכנסה. הקמה ותפעול מוצגים רק בסעיפי ההוצאות.',
+    payments: 'תשלומי אבי',
+    paymentsSubtitle: 'תשלומים שאומתו ממימון אבי',
+    finalSettlement: 'התחשבנות סופית',
+    settlementItem: 'סעיף',
+    settlementKicker: 'סיכום התחשבנות',
+    paid: 'שולם',
+    credits: 'זיכויים',
+    incomeCredit: 'זיכוי הכנסה',
+    obligation: 'התחייבות',
+    finalResult: 'תוצאה סופית',
+    finalNet: 'יתרה סופית',
+    monthlyGrandTotal: 'סה״כ',
+    roundingAdjustment: 'התאמת עיגול',
+    notesControls: 'הערות ובקרות',
+    certified: 'מאושר',
+    provisional: 'לא מאושר בדוח זה',
+    stay: 'שהייה',
+    stays: 'שהיות',
+    night: 'לילה',
+    nights: 'לילות',
+    staysColumn: 'שהיות',
+    bookings: 'הזמנות',
+    expand: 'הצג שהיות',
+    collapse: 'הסתר שהיות',
+    month: 'חודש',
+    income: 'הכנסה',
+    property: 'נכס',
+    propertyTotal: 'עלות לנכס',
+    aviShare: 'חלק אבי (50%)',
+    aviIncomeShare: 'חלק אבי בהכנסה (50%)',
+    aviPaid: 'אבי שילם',
+    aviRemaining: 'יתרת אבי',
+    rows: 'שורות',
+    date: 'תאריך',
+    label: 'ייעוד',
+    payer: 'משלם',
+    amount: 'סכום',
+    appendixTitle: 'נספח הוצאות מאושרות',
+    appendixSubtitle: 'פירוט מלא של שורות הוצאה מאושרות הנראות לשותף. חודש ושנה בלבד.',
+    appendixButton: 'הורדת נספח הוצאות מאושרות',
+    backToReport: 'חזרה לדוח הראשי',
+    printButton: 'הדפסה / שמירה כ־PDF',
+    downloadSendablePdf: 'הורדת PDF לשליחה (A4)',
+    downloadSendablePdfHint:
+      'קובץ לשליחה לשותף: מספור JJ, בלי תאריך/כתובת/localhost של Chrome. זה הנתיב המומלץ לשליחה לאבי.',
+    printHint: 'בחלון ההדפסה בחרו שמירה כ־PDF, נייר A4, ובטלו Headers and footers.',
+    brand: 'JJ PROPERTY 10',
+    reportTitle: 'דוח שותף חיצוני — אבי',
+    propertyName: 'וילה מזוטוס',
+    confidentiality: 'סודי — לאבי ולבעלי JJ בלבד',
+    footerConfidential: 'סודי',
+    footerPartnerReport: 'דוח שותף אבי',
+    operationsContinued: 'תפעול Airbnb — המשך',
+    pageLabel: 'עמוד',
+    pageOf: 'מתוך',
+    generatedOn: 'הופק ב־',
+    generatedLabel: 'תאריך הפקה',
+    transactionsThrough: 'עסקאות בספר עד',
+    hostawayIncomeThrough: 'הכנסות Hostaway עד',
+    approvedChargesNote:
+      'ספר העסקאות עד 29 באוגוסט 2026. הכנסות Hostaway כוללות שהיות שהושלמו עד 29 באוגוסט 2026. הקמה ותפעול מוצגים רק בסעיפי ההוצאות.',
+    formula: 'שולם + זיכויים − התחייבות = תוצאה סופית',
+    internetSplitNote:
+      'אינטרנט €325.00 מוצג פעם אחת כ־€295.00 התקנה חד־פעמית בהקמה ועוד €30.00 אינטרנט ליוני 2025 בתפעול (יוני 2025–אוגוסט 2026, 15 חודשים). ללא חיוב כפול.',
+    closingNarrative:
+      'מגיע לאבי €594.25 כי הסכומים שכבר שולמו וזוכו (€280,600.00 + €19,495.25) עולים על ההתחייבות המאושרת שלו (€299,501.00) בהפרש זה.',
+    layerAcquisition: 'רכישה',
+    layerDeal: 'הוצאות רכישה / עסקה',
+    layerRenovation: 'שיפוץ',
+    layerAirbnb: 'Airbnb',
+    layerManagement: 'ניהול',
+  },
+} as const
+
+export function aviReportDir(lang: AviReportLang): 'ltr' | 'rtl' {
+  return lang === 'he' ? 'rtl' : 'ltr'
+}
+
+export function formatAviMonth(month: string, lang: AviReportLang): string {
+  if (lang === 'he') return formatHebrewMonthYearText(month)
+  const [y, m] = month.split('-').map(Number)
+  if (!y || !m) return month
+  return new Intl.DateTimeFormat('en-GB', {
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(y, m - 1, 1))
+}
+
+export function formatAviFullDate(iso: string, lang: AviReportLang): string {
+  if (lang === 'he') return formatHebrewFullDateText(iso)
+  const parts = iso.split('-')
+  if (parts.length !== 3) return iso
+  const year = Number(parts[0])
+  const month = Number(parts[1])
+  const day = Number(parts[2])
+  if (!year || !month || !day) return iso
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(year, month - 1, day))
+}
+
+export function formatAviStayNightLabel(
+  lang: AviReportLang,
+  stayCount: number,
+  nights: number,
+): string {
+  if (lang === 'he') {
+    const stayPart =
+      stayCount === 1 ? 'שהייה אחת' : stayCount === 2 ? 'שתי שהיות' : `${stayCount} שהיות`
+    const nightPart =
+      nights === 1 ? 'לילה אחד' : nights === 2 ? 'שני לילות' : `${nights} לילות`
+    return `${stayPart} · ${nightPart}`
+  }
+  const stayPart = `${stayCount} ${stayCount === 1 ? 'stay' : 'stays'}`
+  const nightPart = `${nights} ${nights === 1 ? 'night' : 'nights'}`
+  return `${stayPart} · ${nightPart}`
+}
+
+export function formatAviOwedCopy(
+  lang: AviReportLang,
+  semanticNet: string | null,
+  direction: 'to_refund' | 'to_pay' | 'settled' | null,
+): string | null {
+  if (lang !== 'he' || !semanticNet) return semanticNet
+  const inferred =
+    direction ??
+    (semanticNet.includes('Avi is owed')
+      ? 'to_refund'
+      : semanticNet.includes('Avi owes')
+        ? 'to_pay'
+        : semanticNet === 'Settled' || semanticNet === 'settled'
+          ? 'settled'
+          : null)
+  if (inferred === 'to_refund') return semanticNet.replaceAll('Avi is owed', 'מגיע לאבי')
+  if (inferred === 'to_pay') return semanticNet.replaceAll('Avi owes', 'אבי חייב')
+  if (inferred === 'settled') return 'סגור'
+  return semanticNet
+    .replaceAll('Avi is owed', 'מגיע לאבי')
+    .replaceAll('Avi owes', 'אבי חייב')
+}

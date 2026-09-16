@@ -142,7 +142,7 @@ export function Sidebar({ workspaces, activeWorkspaceId, user }: SidebarProps) {
       <button
         type="button"
         onClick={() => setMobileMenu(true)}
-        className="fixed top-4 left-4 z-40 rounded-lg bg-white p-2 shadow-md md:hidden"
+        className="fixed top-4 left-4 z-40 rounded-lg bg-white p-2 shadow-md md:hidden print:hidden"
         aria-label="Open navigation menu"
       >
         <Menu className="h-5 w-5 text-gray-700" />
@@ -150,19 +150,19 @@ export function Sidebar({ workspaces, activeWorkspaceId, user }: SidebarProps) {
 
       {/* ── Desktop sidebar (fixed) ──────────────────────────────────── */}
       <div
-        className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:w-60"
+        className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:w-60 print:hidden"
         style={{ backgroundColor: '#0f172a' }}
       >
         {navContent}
       </div>
 
       {/* ── Desktop spacer (pushes main content right) ───────────────── */}
-      <div className="hidden md:block md:w-60 md:flex-shrink-0" aria-hidden="true" />
+      <div className="hidden md:block md:w-60 md:flex-shrink-0 print:hidden" aria-hidden="true" />
 
       {/* ── Mobile overlay backdrop ──────────────────────────────────── */}
       {mobileMenuOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          className="fixed inset-0 z-40 bg-black/50 md:hidden print:hidden"
           onClick={() => setMobileMenu(false)}
           aria-hidden="true"
         />
@@ -171,7 +171,7 @@ export function Sidebar({ workspaces, activeWorkspaceId, user }: SidebarProps) {
       {/* ── Mobile drawer ────────────────────────────────────────────── */}
       <div
         className={`
-          fixed inset-y-0 left-0 z-50 w-60 flex flex-col md:hidden
+          fixed inset-y-0 left-0 z-50 w-60 flex flex-col md:hidden print:hidden
           transform transition-transform duration-200 ease-in-out
           ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
         `}

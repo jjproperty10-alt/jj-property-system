@@ -1,8 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  outputFileTracingIncludes: {
-    '/owners/[slug]/report/pdf': ['./public/fonts/**'],
+  experimental: {
+    outputFileTracingIncludes: {
+      '/owners/[slug]/report/pdf': ['./public/fonts/**'],
+      '/finance/external-partner/avi/pdf': ['./public/fonts/**'],
+      '/preview/avi-certified-compose/pdf': ['./public/fonts/**'],
+    },
   },
 }
 

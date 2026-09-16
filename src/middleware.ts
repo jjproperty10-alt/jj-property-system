@@ -1,8 +1,23 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { isSupabaseConfigured } from '@/lib/supabaseConfig'
 
 export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  // Hard-block Avi compose fixture in Production even if Supabase keys are missing.
+  if (
+    process.env.NODE_ENV === 'production' &&
+    pathname.startsWith('/preview/avi-certified-compose')
+  ) {
+    return new NextResponse('Not Found', { status: 404 })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
+
+  if (!isSupabaseConfigured()) {
+    return supabaseResponse
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,11 +38,18 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  const { pathname } = request.nextUrl
-
   // LOCAL DEV ONLY: /client-report bypasses auth for RC1 visual parity testing.
   // restore_auth.bat removes this line before production deploy.
-  const publicPaths = ['/login', '/auth/callback', '/auth/reset', '/_next', '/favicon']
+  const publicPaths = [
+    '/login',
+    '/auth/callback',
+    '/auth/reset',
+    '/_next',
+    '/favicon',
+    '/share/avi-external-partner',
+    // Unconfigured Preview only — page itself 404s when Supabase keys are present.
+    '/preview/avi-certified-compose',
+  ]
   if (publicPaths.some(p => pathname.startsWith(p))) return supabaseResponse
 
   if (!user) {
