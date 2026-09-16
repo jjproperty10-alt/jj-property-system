@@ -16,7 +16,7 @@ import {
   rtlRowDirection,
   rtlTextStyle,
 } from '@/lib/pdf/rtlHelpers'
-import { fmt } from '@/lib/pdf/formatters'
+import { fmt, fmtSigned } from '@/lib/pdf/formatters'
 
 export const AVI_PDF_GENERATED_ISO = '2026-09-15'
 
@@ -107,6 +107,16 @@ export const shared = StyleSheet.create({
 export function money(n: number | null | undefined): string {
   if (n == null || Number.isNaN(n)) return '—'
   return fmt(n)
+}
+
+/**
+ * For values whose direction is part of the meaning (adjustments, deltas).
+ * `money` drops the sign, so a −€0.03 adjustment would otherwise read as a
+ * credit and contradict the total it reconciles to.
+ */
+export function moneySigned(n: number | null | undefined): string {
+  if (n == null || Number.isNaN(n)) return '—'
+  return fmtSigned(n)
 }
 
 export function LtrText({

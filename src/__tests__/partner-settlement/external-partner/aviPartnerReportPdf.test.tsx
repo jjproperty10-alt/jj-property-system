@@ -12,6 +12,7 @@ import {
   AVI_CERTIFIED_OBLIGATION_EUR,
 } from '@/lib/partner-settlement/external-partner/aviCertifiedIdentity'
 import { AVI_REPORT_COPY } from '@/components/finance/aviReportCopy'
+import { money, moneySigned } from '@/lib/pdf/aviPdfShared'
 import { roundEur } from '@/lib/partner-settlement/external-partner/roundEur'
 
 describe('AviPartnerReportPdf certified fixture contract', () => {
@@ -188,5 +189,26 @@ describe('AviPartnerReportPdf certified fixture contract', () => {
     expect(AVI_REPORT_COPY.he.closingNarrative).toContain('€594.25')
     expect(AVI_REPORT_COPY.en.formula).toContain('Paid')
     expect(AVI_REPORT_COPY.he.formula).toContain('שולם')
+  })
+
+  it('V — rounding adjustment keeps its sign so it reconciles to the total', () => {
+    expect(report.status).toBe('certified')
+    if (report.status !== 'certified') return
+
+    const adjustment = report.monthly.incomeShareRoundingAdjustmentEur
+    const rowsSum = report.monthly.rows.reduce((s, r) => s + r.aviIncomeShareEur, 0)
+    expect(roundEur(rowsSum + adjustment)).toBe(report.monthly.totals.aviIncomeShareEur)
+    expect(adjustment).toBeLessThan(0)
+
+    // `money` drops the sign by design; a signed value must not use it.
+    expect(money(adjustment)).toBe('€0.03')
+    expect(moneySigned(adjustment)).toBe('-€0.03')
+
+    const src = fs.readFileSync(
+      path.join(process.cwd(), 'src/lib/pdf/AviPartnerReportPdf.tsx'),
+      'utf8',
+    )
+    expect(src).toContain('moneySigned(report.monthly.incomeShareRoundingAdjustmentEur)')
+    expect(src).not.toContain('money(report.monthly.incomeShareRoundingAdjustmentEur)')
   })
 })

@@ -31,6 +31,7 @@ import {
   MixedRtlPhrase,
   PdfAviDate,
   money,
+  moneySigned,
   shared,
 } from '@/lib/pdf/aviPdfShared'
 import { AVI_HOSTAWAY_LAST_CHECKOUT_DATE } from '@/lib/partner-settlement/external-partner/aviHostawayStays'
@@ -908,7 +909,7 @@ export function AviPartnerReportPdf({
                 {copy.roundingAdjustment}
               </HeText>
               <LtrText style={[shared.td, { width: 80 }, rtlColumnOrder(lang)]}>
-                {money(report.monthly.incomeShareRoundingAdjustmentEur)}
+                {moneySigned(report.monthly.incomeShareRoundingAdjustmentEur)}
               </LtrText>
             </View>
           ) : null}
