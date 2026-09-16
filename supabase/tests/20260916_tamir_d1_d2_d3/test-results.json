@@ -29,7 +29,7 @@
       "id": "T4",
       "name": "authenticated CEO accepted + receipt correct",
       "passed": true,
-      "detail": "{\"applied_at\":\"2026-09-16T14:56:04.882827+00:00\",\"d1_link_id\":\"dde7bea7-f2a3-4ef5-86f8-dec874951922\",\"executed_by\":\"277f81e0-3b89-41ed-a099-22585959b77a\",\"closing_after\":2548.75,\"executed_role\":\"authenticated\",\"function_name\":\"finance.apply_tamir_d1_d2_d3_20260916\",\"closing_before\":3248.75,\"economic_delta\":-700,\"receipt_version\":1,\"kiti1_rent_after\":9610,\"d1_transaction_id\":\"e7204266-1e0d-4e41-bd18-c64e09432382\",\"d2_transaction_id\":\"fcd33403-663b-4ec0-9b16-f1f2edb2769d\",\"d3_transaction_id\":\"1a063699-7fab-4f5c-8205-4d049d2f9087\",\"expected_audit_rows\":3,\"rental_month_status\":\"UNKNOWN - pending kiti_rent_consolidated_review\",\"inserted_owner_links\":1,\"inserted_transactions\":3,\"payments_to_owner_after\":21725}"
+      "detail": "{\"applied_at\":\"2026-09-16T15:29:51.927143+00:00\",\"d1_link_id\":\"2b781a3f-6072-4cf9-9768-fd7d96af4690\",\"executed_by\":\"277f81e0-3b89-41ed-a099-22585959b77a\",\"closing_after\":2548.75,\"executed_role\":\"authenticated\",\"function_name\":\"finance.apply_tamir_d1_d2_d3_20260916\",\"closing_before\":3248.75,\"economic_delta\":-700,\"receipt_version\":1,\"kiti1_rent_after\":9610,\"d1_transaction_id\":\"2aa0d0c6-4ee6-45af-b177-45f7da0c2c15\",\"d2_transaction_id\":\"02fbadad-17c8-4f43-aa8c-453e1e8d1e10\",\"d3_transaction_id\":\"67ade87f-a6ad-421c-b6db-62a373d4bece\",\"transactions_after\":2273,\"expected_audit_rows\":3,\"rental_month_status\":\"UNKNOWN - pending kiti_rent_consolidated_review\",\"transactions_before\":2270,\"inserted_owner_links\":1,\"inserted_transactions\":3,\"payments_to_owner_after\":21725}"
     },
     {
       "id": "T5",
@@ -89,13 +89,13 @@
       "id": "T8",
       "name": "replay rejected",
       "passed": true,
-      "detail": "rejected: ALREADY_APPLIED_OR_PREIMAGE_CHANGED: transactions total = 2273 (expected 2270)"
+      "detail": "rejected: ALREADY_APPLIED_OR_PREIMAGE_CHANGED: Tamir Kiti 1 rows = 21 (expected 19)"
     },
     {
       "id": "T9",
       "name": "duplicate pre-image rejected",
       "passed": true,
-      "detail": "rejected: ALREADY_APPLIED_OR_PREIMAGE_CHANGED: transactions total = 2271 (expected 2270)"
+      "detail": "rejected: ALREADY_APPLIED_OR_PREIMAGE_CHANGED: owner-level payment rows = 2 (expected 1)"
     },
     {
       "id": "T10",
@@ -134,6 +134,18 @@
       "detail": "links=1, rent back to 7685, soft-deleted=3, rows retained=2273, delete blocked=true, amount update blocked=true"
     },
     {
+      "id": "T22",
+      "name": "unrelated rows on other properties do not block the Apply (delta anchor)",
+      "passed": true,
+      "detail": "total 2310 -> 2313, closing 2548.75"
+    },
+    {
+      "id": "T23",
+      "name": "new Tamir Kiti 1 row still blocks the Apply",
+      "passed": true,
+      "detail": "rejected: ALREADY_APPLIED_OR_PREIMAGE_CHANGED: Tamir Kiti 1 rows = 20 (expected 19)"
+    },
+    {
       "id": "W1",
       "name": "wrapper: anon rejected",
       "passed": true,
@@ -167,19 +179,19 @@
       "id": "W6",
       "name": "wrapper: replay rejected",
       "passed": true,
-      "detail": "rejected: ALREADY_APPLIED_OR_PREIMAGE_CHANGED: transactions total = 2273 (expected 2270)"
+      "detail": "rejected: ALREADY_APPLIED_OR_PREIMAGE_CHANGED: Tamir Kiti 1 rows = 21 (expected 19)"
     },
     {
       "id": "T19",
       "name": "cleanup migration refuses to drop before the Apply exists",
-      "passed": true,
-      "detail": "CLEANUP_BLOCKED: expected the Apply to be complete before dropping the function (D1 rows = 0, D1 links = 0; expected 1 / 1)."
+      "skipped": true,
+      "detail": "cleanup migration not in this worktree"
     },
     {
       "id": "T20",
       "name": "cleanup drops both functions; rows, link and audit remain",
-      "passed": true,
-      "detail": "fn=0, tx=2273, links=2, audit=3"
+      "skipped": true,
+      "detail": "cleanup migration not in this worktree"
     },
     {
       "id": "T21",

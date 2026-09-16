@@ -9,10 +9,14 @@ const os = require('os');
 const M = require('embedded-postgres');
 const EmbeddedPostgres = M.default || M;
 
-const REPO = 'C:\\Users\\yossi\\jj-owner-level-wt';
-const MIGRATION = path.join(REPO, 'supabase', 'migrations', '20260916_001_tamir_d1_d2_d3_apply_fn.sql');
-const CLEANUP = path.join(REPO, 'supabase', 'proposed', '20260916_002_drop_tamir_d1_d2_d3_apply_fn.PENDING.sql');
 const HERE = __dirname;
+// supabase/tests/<suite> -> repo root
+const REPO = process.env.JJ_REPO_ROOT || path.resolve(HERE, '..', '..', '..');
+const MIGRATION = path.join(REPO, 'supabase', 'migrations', '20260916_001_tamir_d1_d2_d3_apply_fn.sql');
+// The cleanup migration is intentionally not part of the migration PR; when it is absent
+// the two cleanup checks are reported as skipped rather than silently passing.
+const CLEANUP = path.join(REPO, 'supabase', 'proposed', '20260916_002_drop_tamir_d1_d2_d3_apply_fn.PENDING.sql');
+const HAS_CLEANUP = fs.existsSync(CLEANUP);
 
 const YOSSI = '277f81e0-3b89-41ed-a099-22585959b77a';
 const NONSTAFF = '11111111-2222-3333-4444-555555555555';
@@ -23,6 +27,10 @@ function record(id, name, passed, detail) {
   results.push({ id, name, passed, detail });
   const tag = passed ? 'PASS' : 'FAIL';
   console.log(`[${tag}] ${id} ${name}${detail ? ' :: ' + detail : ''}`);
+}
+function skip(id, name, detail) {
+  results.push({ id, name, skipped: true, detail });
+  console.log(`[SKIP] ${id} ${name}${detail ? ' :: ' + detail : ''}`);
 }
 
 async function main() {
@@ -240,7 +248,9 @@ async function main() {
       const d3 = rows.find((r) => r.id === receipt.d3_transaction_id);
       const t6 =
         rows.length === 3 &&
-        Number(after.tx) === 2273 &&
+        Number(after.tx) === Number(before.tx) + 3 &&
+        Number(receipt.transactions_before) === Number(before.tx) &&
+        Number(receipt.transactions_after) === Number(before.tx) + 3 &&
         d1.property_id === null &&
         d1.property_name === null &&
         Number(d1.amount_eur) === 2625 &&
@@ -491,6 +501,48 @@ async function main() {
       );
     });
 
+    // ---------------- T22 unrelated activity on other properties must NOT block the Apply
+    // Regression for 2026-09-16: 40 Oren Kitty / Sharon Kiti rows landed in one batch during
+    // the migration PR and broke a fixed table-wide row-count anchor.
+    await tx(async () => {
+      await client.query(`
+        INSERT INTO public.transactions (date, property_id, property_name, category, subcategory, payer, payee, amount_eur)
+        SELECT DATE '2026-03-01' + (g % 30),
+               NULL,
+               CASE WHEN g % 2 = 0 THEN 'Oren Kitty' ELSE 'Sharon Kiti' END,
+               'Airbnb', 'Design', 'JJ', 'company', 0
+        FROM generate_series(1, 40) g`);
+      const before = (await client.query('SELECT count(*) n FROM public.transactions')).rows[0];
+      await asIdentity('service_role', { role: 'service_role' });
+      const receipt = (await callApply()).rows[0].receipt;
+      await client.query('RESET ROLE');
+      const after = (
+        await client.query(`SELECT (SELECT count(*) FROM public.transactions) tx,
+                                   (SELECT coalesce(sum(amount_eur),0) FROM public.transactions
+                                      WHERE property_name='Tamir Kiti 1' AND subcategory='Tenant Payment'
+                                        AND date<=DATE '2026-08-31' AND NOT coalesce(is_deleted,false)) rent`)
+      ).rows[0];
+      record(
+        'T22',
+        'unrelated rows on other properties do not block the Apply (delta anchor)',
+        Number(before.n) === 2310 &&
+          Number(after.tx) === 2313 &&
+          Number(receipt.transactions_before) === 2310 &&
+          Number(receipt.kiti1_rent_after) === 9610 &&
+          Number(receipt.closing_after) === 2548.75 &&
+          Number(after.rent) === 9610,
+        `total ${before.n} -> ${after.tx}, closing ${receipt.closing_after}`,
+      );
+    });
+
+    // ---------------- T23 a new row inside the Tamir scope must still block the Apply
+    await tx(async () => {
+      await client.query(`INSERT INTO public.transactions (date, property_id, property_name, category, subcategory, payer, payee, amount_eur)
+                          VALUES ('2026-04-01', NULL, 'Tamir Kiti 1', 'Management', 'Tenant Payment', 'Tenant', 'Yossi', 640)`);
+      await asIdentity('service_role', { role: 'service_role' });
+      await expectFail(callApply, 'ALREADY_APPLIED_OR_PREIMAGE_CHANGED', 'T23', 'new Tamir Kiti 1 row still blocks the Apply');
+    });
+
     // ---------------- W1..W5 the API-reachable public wrapper
     await tx(async () => {
       await asIdentity('anon', { role: 'anon' });
@@ -542,7 +594,11 @@ async function main() {
     });
 
     // ---------------- cleanup migration behaviour (prepared, not applied to Production)
-    await tx(async () => {
+    if (!HAS_CLEANUP) {
+      skip('T19', 'cleanup migration refuses to drop before the Apply exists', 'cleanup migration not in this worktree');
+      skip('T20', 'cleanup drops both functions; rows, link and audit remain', 'cleanup migration not in this worktree');
+    }
+    if (HAS_CLEANUP) await tx(async () => {
       await client.query('SAVEPOINT sp_clean');
       let blocked = null;
       try {
@@ -595,13 +651,15 @@ async function main() {
       `tx=${post.tx}, links=${post.links}, audit=${post.audit}`,
     );
 
-    const passed = results.filter((r) => r.passed).length;
-    console.log(`\nSUMMARY: ${passed}/${results.length} checks passed`);
+    const executed = results.filter((r) => !r.skipped);
+    const passed = executed.filter((r) => r.passed).length;
+    const skipped = results.length - executed.length;
+    console.log(`\nSUMMARY: ${passed}/${executed.length} checks passed${skipped ? `, ${skipped} skipped` : ''}`);
     fs.writeFileSync(
       path.join(HERE, 'test-results.json'),
       JSON.stringify({ server: version.split(',')[0], results, accessMatrix, objects: objs }, null, 2),
     );
-    if (passed !== results.length) process.exitCode = 1;
+    if (passed !== executed.length) process.exitCode = 1;
   } finally {
     await client.end().catch(() => {});
     await pg.stop().catch(() => {});

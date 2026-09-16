@@ -64,6 +64,7 @@ DECLARE
   v_d3_id uuid;
   v_link_id uuid;
 
+  v_tx_before bigint;
   v_tx_total bigint;
   v_kiti1_rows bigint;
   v_rent_sum numeric;
@@ -96,10 +97,12 @@ BEGIN
   -- ==========================================================================
   -- 1. PRECONDITIONS — any mismatch aborts before the first INSERT
   -- ==========================================================================
-  SELECT count(*) INTO v_tx_total FROM public.transactions;
-  IF v_tx_total <> 2270 THEN
-    RAISE EXCEPTION 'ALREADY_APPLIED_OR_PREIMAGE_CHANGED: transactions total = % (expected 2270)', v_tx_total;
-  END IF;
+  -- The table-wide row count is NOT asserted against a fixed number: unrelated batches
+  -- (other properties, other owners) legitimately change it between preparation and Apply.
+  -- It is captured here and asserted as a delta of exactly +3 after the writes. Every anchor
+  -- that protects the Tamir economics stays absolute, so a stray row inside the Tamir scope
+  -- still aborts the Apply.
+  SELECT count(*) INTO v_tx_before FROM public.transactions;
 
   SELECT count(*) INTO v_kiti1_rows FROM public.transactions WHERE property_name = c_kiti1_name;
   IF v_kiti1_rows <> 19 THEN
@@ -300,8 +303,11 @@ BEGIN
   -- 4. POSTCONDITIONS — any failure raises and rolls back all four rows
   -- ==========================================================================
   SELECT count(*) INTO v_tx_total FROM public.transactions;
-  IF v_tx_total <> 2273 THEN
-    RAISE EXCEPTION 'POSTCONDITION_FAILED: transactions total = % (expected 2273)', v_tx_total;
+  IF v_tx_total <> v_tx_before + 3 THEN
+    RAISE EXCEPTION
+      'POSTCONDITION_FAILED: transactions total moved from % to % (expected % = +3). '
+      'If another batch committed during this call, nothing was written - re-run.',
+      v_tx_before, v_tx_total, v_tx_before + 3;
   END IF;
 
   SELECT count(*) INTO v_kiti1_rows FROM public.transactions WHERE property_name = c_kiti1_name;
@@ -460,6 +466,8 @@ BEGIN
     'inserted_transactions', 3,
     'inserted_owner_links', 1,
     'expected_audit_rows', 3,
+    'transactions_before', v_tx_before,
+    'transactions_after', v_tx_before + 3,
     'closing_before', c_closing_before,
     'economic_delta', -700.00,
     'closing_after', c_closing_after,
