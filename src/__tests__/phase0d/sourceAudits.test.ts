@@ -23,8 +23,9 @@ describe('Phase 0D source audits', () => {
   it('draft action never inserts into public.transactions and has no post function', () => {
     const src = read('src/lib/transactions/agentDraftActions.ts')
     expect(src).not.toMatch(/from\(\s*['"]transactions['"]\s*\)/)
-    expect(src).not.toMatch(/posted_transaction_id:\s*['"]/)
-    expect(src).toContain("schema('finance')")
+    expect(src).not.toMatch(/posted_transaction_id/)
+    expect(src).not.toContain("schema('finance')")
+    expect(src).toContain("rpc('create_agent_transaction_draft'")
     expect(src).toContain('authenticateStatementUser')
     expect(src).toContain('createSupabaseServerClient')
     expect(src).not.toContain('createServiceClient')

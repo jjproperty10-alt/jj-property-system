@@ -2,6 +2,7 @@
 
 /**
  * Phase 0D Draft-only capture. Session JWT + jj_staff_config.
+ * Writes via public.create_agent_transaction_draft (finance schema stays hidden).
  * Never inserts into public.transactions. Never uses service-role to write drafts.
  * Browser-supplied roles are ignored. Exact Yossi/Anastasia UUID mapping is BLOCKED.
  */
@@ -36,10 +37,15 @@ export type CreateAgentDraftResult =
   | { readonly ok: true; readonly draftId: string; readonly status: string; readonly message: string; readonly reusedExisting: boolean }
   | { readonly ok: false; readonly error: string }
 
-function isUniqueViolation(err: { code?: string; message?: string } | null): boolean {
-  if (!err) return false
-  if (err.code === '23505') return true
-  return /duplicate key|unique constraint/i.test(err.message ?? '')
+interface CreateDraftRpcRow {
+  readonly id: string
+  readonly status: string
+  readonly reused_existing: boolean
+}
+
+function firstRpcRow(data: CreateDraftRpcRow | CreateDraftRpcRow[] | null): CreateDraftRpcRow | null {
+  if (data == null) return null
+  return Array.isArray(data) ? (data[0] ?? null) : data
 }
 
 export async function createAgentTransactionDraft(
@@ -73,63 +79,34 @@ export async function createAgentTransactionDraft(
   const amountEur = parseOptionalEur(input.amount_eur)
   const clientCharge = parseOptionalEur(input.client_charge)
 
-  const row = {
-    created_by: auth.userId,
-    status,
-    date: input.date,
-    property_id: propertyId,
-    property_name_input: propertyNameInput,
-    category: input.category,
-    subcategory: input.subcategory,
-    payer_input: input.payer?.trim() ? input.payer.trim() : null,
-    payee_input: input.payee?.trim() ? input.payee.trim() : null,
-    amount_eur: amountEur,
-    client_charge: clientCharge,
-    description: input.description?.trim() ? input.description.trim() : null,
-    notes: input.notes?.trim() ? input.notes.trim() : null,
-    source_type: 'manual_form',
-    schema_version: 1,
-    idempotency_key: idempotencyKey,
-    posted_transaction_id: null,
-    approved_by: null,
-    approved_at: null,
-  }
+  const { data, error } = await session.rpc('create_agent_transaction_draft', {
+    p_date: input.date,
+    p_property_id: propertyId,
+    p_property_name_input: propertyNameInput,
+    p_category: input.category,
+    p_subcategory: input.subcategory,
+    p_payer_input: input.payer?.trim() ? input.payer.trim() : null,
+    p_payee_input: input.payee?.trim() ? input.payee.trim() : null,
+    p_amount_eur: amountEur,
+    p_client_charge: clientCharge,
+    p_description: input.description?.trim() ? input.description.trim() : null,
+    p_notes: input.notes?.trim() ? input.notes.trim() : null,
+    p_status: status,
+    p_idempotency_key: idempotencyKey,
+    p_source_type: 'manual_form',
+    p_schema_version: 1,
+  })
 
-  const { data: inserted, error: insertError } = await session
-    .schema('finance')
-    .from('agent_transaction_drafts')
-    .insert([row])
-    .select('id, status')
-    .maybeSingle()
-
-  if (insertError && isUniqueViolation(insertError)) {
-    const { data: existing, error: existingError } = await session
-      .schema('finance')
-      .from('agent_transaction_drafts')
-      .select('id, status')
-      .eq('idempotency_key', idempotencyKey)
-      .maybeSingle()
-    if (existingError || !existing) {
-      return { ok: false, error: 'Draft already exists for this key.' }
-    }
-    return {
-      ok: true,
-      draftId: String((existing as { id: string }).id),
-      status: String((existing as { status: string }).status),
-      message: DRAFT_NOT_POSTED_MESSAGE,
-      reusedExisting: true,
-    }
-  }
-
-  if (insertError || !inserted) {
-    return { ok: false, error: insertError?.message ?? 'Draft was not saved.' }
+  const row = firstRpcRow(data as CreateDraftRpcRow | CreateDraftRpcRow[] | null)
+  if (error || !row) {
+    return { ok: false, error: error?.message ?? 'Draft was not saved.' }
   }
 
   return {
     ok: true,
-    draftId: String((inserted as { id: string }).id),
-    status: String((inserted as { status: string }).status),
+    draftId: String(row.id),
+    status: String(row.status),
     message: DRAFT_NOT_POSTED_MESSAGE,
-    reusedExisting: false,
+    reusedExisting: Boolean(row.reused_existing),
   }
 }
