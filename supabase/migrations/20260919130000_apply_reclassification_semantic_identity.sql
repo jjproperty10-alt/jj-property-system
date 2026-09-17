@@ -12,7 +12,9 @@
 -- No unique index: Production already has two applied C4 cases that
 -- canonicalize equal. Advisory lock serializes concurrent first-applies.
 --
--- Filename order: after 20260918100000_public_apply_reclassification_correction.sql
+-- Filename order: after 20260919120000_ops_agent_core.sql (Production head).
+-- Replaces the unapplied 20260918110000 filename so this CREATE OR REPLACE
+-- lands after the already-applied ops_agent_core version.
 -- Does not create public.apply_correction_case. No money UPDATE/DELETE.
 --
 -- Rollback:

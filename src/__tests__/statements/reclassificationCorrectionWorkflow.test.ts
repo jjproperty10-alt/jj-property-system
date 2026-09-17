@@ -25,7 +25,7 @@ import {
 } from '@/lib/statements/publicApplyCorrectionCase'
 
 const M_WORKFLOW = '20260918100000_public_apply_reclassification_correction.sql'
-const M_IDENTITY = '20260918110000_apply_reclassification_semantic_identity.sql'
+const M_IDENTITY = '20260919130000_apply_reclassification_semantic_identity.sql'
 const SQL = readFileSync(join(process.cwd(), 'supabase', 'migrations', M_WORKFLOW), 'utf8')
 const ddl = SQL.split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')
 const SQL_ID = readFileSync(join(process.cwd(), 'supabase', 'migrations', M_IDENTITY), 'utf8')
@@ -120,9 +120,10 @@ describe('20260918100000 atomic reclassification RPC SQL', () => {
   })
 })
 
-describe('20260918110000 semantic identity SQL', () => {
-  test('filename follows 20260918100000 and keeps the public RPC contract', () => {
+describe('20260919130000 semantic identity SQL', () => {
+  test('filename follows 20260919120000 and keeps the public RPC contract', () => {
     expect(M_IDENTITY > M_WORKFLOW).toBe(true)
+    expect(M_IDENTITY > '20260919120000_ops_agent_core.sql').toBe(true)
     expect(ddlId).toMatch(/public\.reclass_canonical_text/)
     expect(ddlId).toMatch(/public\.reclass_semantic_identity/)
     expect(ddlId).toMatch(/pg_advisory_xact_lock/)
