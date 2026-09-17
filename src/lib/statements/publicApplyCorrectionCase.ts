@@ -199,6 +199,45 @@ export function originalUnchanged<T extends object>(before: T, after: T): boolea
   return JSON.stringify(before) === JSON.stringify(after)
 }
 
+/**
+ * Server-side reclass identity: NFKC, strip separators (punct/dashes/euro),
+ * collapse whitespace, lower. Mirrors public.reclass_canonical_text.
+ */
+export function reclassCanonicalText(value: string | null | undefined): string {
+  if (value == null) return ''
+  const nfkc = value.normalize('NFKC')
+  const stripped = nfkc.replace(
+    /[\u0001-\u002F\u003A-\u0040\u005B-\u0060\u007B-\u00BF\u2010-\u2015\u20AC\u2212]+/g,
+    ' ',
+  )
+  return stripped.trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+export function reclassSemanticIdentity(input: {
+  readonly sourceId: string
+  readonly correctionType: string
+  readonly correctedFields: {
+    readonly property_id?: string | null
+    readonly subcategory?: string | null
+    readonly description?: string | null
+  } | null
+}): string {
+  const source = assertUuid(input.sourceId, 'source id')
+  const type = assertNonEmpty(input.correctionType, 'correction_type')
+  const fields = input.correctedFields ?? {}
+  let propertyId = ''
+  if (fields.property_id != null && String(fields.property_id).trim() !== '') {
+    propertyId = assertUuid(String(fields.property_id).trim(), 'property_id')
+  }
+  return [
+    source,
+    type,
+    propertyId,
+    reclassCanonicalText(fields.subcategory ?? ''),
+    reclassCanonicalText(fields.description ?? ''),
+  ].join('|')
+}
+
 export function isReplayMatch(
   rows: readonly CorrectionRowPayload[],
   lineage: readonly LineageRow[],

@@ -20,11 +20,16 @@ import {
   jjPnlSignedDelta,
   netCorrectingAmount,
   originalUnchanged,
+  reclassCanonicalText,
+  reclassSemanticIdentity,
 } from '@/lib/statements/publicApplyCorrectionCase'
 
 const M_WORKFLOW = '20260918100000_public_apply_reclassification_correction.sql'
+const M_IDENTITY = '20260918110000_apply_reclassification_semantic_identity.sql'
 const SQL = readFileSync(join(process.cwd(), 'supabase', 'migrations', M_WORKFLOW), 'utf8')
 const ddl = SQL.split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')
+const SQL_ID = readFileSync(join(process.cwd(), 'supabase', 'migrations', M_IDENTITY), 'utf8')
+const ddlId = SQL_ID.split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')
 
 const C3: SourceTransaction = {
   id: 'e02e5c3c-7a87-5ba1-9de1-bbb001aad8dc',
@@ -112,6 +117,19 @@ describe('20260918100000 atomic reclassification RPC SQL', () => {
     expect(ddl).toMatch(/REVOKE ALL ON FUNCTION public\.apply_reclassification_correction\([^)]+\) FROM service_role/)
     expect(ddl).toMatch(/GRANT EXECUTE ON FUNCTION public\.apply_reclassification_correction\([^)]+\) TO authenticated/)
     expect(ddl).not.toMatch(/GRANT EXECUTE ON FUNCTION public\.apply_reclassification_correction\([^)]+\) TO anon/)
+  })
+})
+
+describe('20260918110000 semantic identity SQL', () => {
+  test('filename follows 20260918100000 and keeps the public RPC contract', () => {
+    expect(M_IDENTITY > M_WORKFLOW).toBe(true)
+    expect(ddlId).toMatch(/public\.reclass_canonical_text/)
+    expect(ddlId).toMatch(/public\.reclass_semantic_identity/)
+    expect(ddlId).toMatch(/pg_advisory_xact_lock/)
+    expect(ddlId).toMatch(/SECURITY DEFINER/)
+    expect(ddlId).toMatch(/SET search_path TO ''/)
+    expect(ddlId).not.toMatch(/CREATE OR REPLACE FUNCTION public\.apply_correction_case/)
+    expect(ddlId).not.toMatch(/GRANT .*statements\./i)
   })
 })
 
@@ -228,5 +246,139 @@ describe('workflow behaviour', () => {
       request: { ...request, naturalKey: 'tampered' },
       store: emptyWorkflowStore(),
     })).toThrow(/natural key mismatch/)
+  })
+
+  test('canonical text treats em dash, question mark, whitespace and euro as the same identity', () => {
+    const dash = 'Jumbo — apartment equipment/setup'
+    const q = 'Jumbo ? apartment equipment/setup'
+    const spaces = '  Jumbo   —   apartment equipment/setup  '
+    expect(reclassCanonicalText(dash)).toBe(reclassCanonicalText(q))
+    expect(reclassCanonicalText(dash)).toBe(reclassCanonicalText(spaces))
+    expect(reclassCanonicalText('€51.85')).toBe(reclassCanonicalText('?51.85'))
+    expect(reclassSemanticIdentity({
+      sourceId: C4.id,
+      correctionType: 'reclassification',
+      correctedFields: { subcategory: 'Airbnb Equipment', description: dash },
+    })).toBe(reclassSemanticIdentity({
+      sourceId: C4.id,
+      correctionType: 'reclassification',
+      correctedFields: { subcategory: 'Airbnb Equipment', description: q },
+    }))
+  })
+
+  test('em-dash to ? replay returns original lineage and inserts nothing', () => {
+    const { request } = buildWorkflowRequest(C4, {
+      subcategory: 'Airbnb Equipment',
+      description: 'Jumbo — apartment equipment/setup',
+    }, 'C4 €51.85')
+    const first = evaluateReclassificationWorkflow({
+      caller: CEO, actorId: ACTOR, original: C4, request, store: emptyWorkflowStore(),
+    })
+    const mutated = buildWorkflowRequest(C4, {
+      subcategory: 'Airbnb Equipment',
+      description: 'Jumbo ? apartment equipment/setup',
+    }, 'C4 ?51.85')
+    const second = evaluateReclassificationWorkflow({
+      caller: CEO,
+      actorId: ACTOR,
+      original: C4,
+      request: mutated.request,
+      store: first.store,
+      existingLineage: [
+        {
+          sequence_no: 1, entry_role: 'reversal',
+          applied_transaction_id: first.reversal_id!,
+          amount_eur: -51.85, payer: 'Anastasia', payee: 'company', date: '2025-07-23',
+        },
+        {
+          sequence_no: 2, entry_role: 'rebook',
+          applied_transaction_id: first.rebook_id!,
+          amount_eur: 51.85, payer: 'Anastasia', payee: 'company', date: '2025-07-23',
+        },
+      ],
+    })
+    expect(second.replay).toBe(true)
+    expect(second.inserted_count).toBe(0)
+    expect(second.correction_case_id).toBe(first.correction_case_id)
+    expect(second.reversal_id).toBe(first.reversal_id)
+    expect(second.rebook_id).toBe(first.rebook_id)
+    expect(second.store.transactions).toHaveLength(2)
+  })
+
+  test('changed p_natural_key with identical fields replays; different class stays separate', () => {
+    const { request } = buildWorkflowRequest(C4, {
+      subcategory: 'Airbnb Equipment',
+      description: 'Jumbo — apartment equipment/setup',
+    }, 'C4')
+    const first = evaluateReclassificationWorkflow({
+      caller: CEO, actorId: ACTOR, original: C4, request, store: emptyWorkflowStore(),
+    })
+    const replay = evaluateReclassificationWorkflow({
+      caller: CEO,
+      actorId: ACTOR,
+      original: C4,
+      request: { ...request, naturalKey: 'tampered-key' },
+      store: first.store,
+      existingLineage: [
+        {
+          sequence_no: 1, entry_role: 'reversal',
+          applied_transaction_id: first.reversal_id!,
+          amount_eur: -51.85, payer: 'Anastasia', payee: 'company', date: '2025-07-23',
+        },
+        {
+          sequence_no: 2, entry_role: 'rebook',
+          applied_transaction_id: first.rebook_id!,
+          amount_eur: 51.85, payer: 'Anastasia', payee: 'company', date: '2025-07-23',
+        },
+      ],
+    })
+    expect(replay.replay).toBe(true)
+    expect(replay.inserted_count).toBe(0)
+    expect(replay.correction_case_id).toBe(first.correction_case_id)
+
+    const other = buildWorkflowRequest(C4, { subcategory: 'Lock Replacement' }, 'different')
+    const second = evaluateReclassificationWorkflow({
+      caller: CEO, actorId: ACTOR, original: C4, request: other.request, store: first.store,
+    })
+    expect(second.replay).toBe(false)
+    expect(second.inserted_count).toBe(2)
+    expect(second.correction_case_id).not.toBe(first.correction_case_id)
+    expect(second.store.cases).toHaveLength(2)
+  })
+
+  test('JSON key order and whitespace do not create a second case', () => {
+    const { request } = buildWorkflowRequest(C4, {
+      description: 'Jumbo — apartment equipment/setup',
+      subcategory: 'Airbnb Equipment',
+    }, 'C4')
+    const first = evaluateReclassificationWorkflow({
+      caller: CEO, actorId: ACTOR, original: C4, request, store: emptyWorkflowStore(),
+    })
+    const spaced = buildWorkflowRequest(C4, {
+      subcategory: 'Airbnb  Equipment',
+      description: 'Jumbo —  apartment equipment/setup',
+    }, 'C4')
+    const second = evaluateReclassificationWorkflow({
+      caller: CEO,
+      actorId: ACTOR,
+      original: C4,
+      request: spaced.request,
+      store: first.store,
+      existingLineage: [
+        {
+          sequence_no: 1, entry_role: 'reversal',
+          applied_transaction_id: first.reversal_id!,
+          amount_eur: -51.85, payer: 'Anastasia', payee: 'company', date: '2025-07-23',
+        },
+        {
+          sequence_no: 2, entry_role: 'rebook',
+          applied_transaction_id: first.rebook_id!,
+          amount_eur: 51.85, payer: 'Anastasia', payee: 'company', date: '2025-07-23',
+        },
+      ],
+    })
+    expect(second.replay).toBe(true)
+    expect(second.inserted_count).toBe(0)
+    expect(second.store.transactions).toHaveLength(2)
   })
 })

@@ -16,6 +16,7 @@ const M3 = '20260820_003_transactions_financial_truth_protection.sql'
 const M4 = '20260820_004_transition_correction_case_no_applied.sql'
 const M5 = '20260820_005_fix_open_correction_case_guard.sql'
 const M6 = '20260918100000_public_apply_reclassification_correction.sql'
+const M7 = '20260918110000_apply_reclassification_semantic_identity.sql'
 
 describe('001 baseline is verification-only (not a mutating "no-op")', () => {
   const sql = read(M1)
@@ -151,6 +152,45 @@ describe('006 atomic public reclassification workflow (only public RPC)', () => 
     expect(ddl).toMatch(/REVOKE ALL ON FUNCTION public\.apply_reclassification_correction\([^)]+\) FROM anon/)
     expect(ddl).toMatch(/REVOKE ALL ON FUNCTION public\.apply_reclassification_correction\([^)]+\) FROM PUBLIC/)
     expect(ddl).toMatch(/REVOKE ALL ON FUNCTION public\.apply_reclassification_correction\([^)]+\) FROM service_role/)
+  })
+})
+
+describe('007 semantic identity for public reclassification RPC', () => {
+  const sql = read(M7)
+  const ddl = sql.split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')
+  test('filename order follows 20260918100000', () => {
+    expect(M7 > M6).toBe(true)
+  })
+  test('adds canonical helpers and replaces the public RPC only', () => {
+    expect(ddl).toMatch(/CREATE OR REPLACE FUNCTION public\.reclass_canonical_text/)
+    expect(ddl).toMatch(/CREATE OR REPLACE FUNCTION public\.reclass_semantic_identity/)
+    expect(ddl).toMatch(/CREATE OR REPLACE FUNCTION public\.apply_reclassification_correction/)
+    expect(ddl).not.toMatch(/CREATE OR REPLACE FUNCTION public\.apply_correction_case/)
+    expect(ddl).not.toMatch(/CREATE OR REPLACE FUNCTION statements\./)
+    expect(ddl).not.toMatch(/CREATE UNIQUE INDEX/)
+  })
+  test('lookup is server identity, not caller natural key', () => {
+    expect(ddl).toMatch(/pg_advisory_xact_lock/)
+    expect(ddl).toMatch(/public\.reclass_semantic_identity/)
+    expect(ddl).toMatch(/ORDER BY c2\.opened_at/)
+    expect(ddl).toMatch(/\[input\] natural key mismatch/)
+  })
+  test('does not grant statements, helpers stay non-executable for clients, no COMMIT', () => {
+    expect(ddl).not.toMatch(/GRANT .*statements\./i)
+    expect(ddl).not.toMatch(/GRANT EXECUTE ON FUNCTION statements\./)
+    expect(ddl).toMatch(/REVOKE ALL ON FUNCTION public\.reclass_canonical_text\(text\) FROM authenticated/)
+    expect(ddl).toMatch(/REVOKE ALL ON FUNCTION public\.reclass_semantic_identity\(uuid, text, jsonb\) FROM authenticated/)
+    expect(ddl).not.toMatch(/\bCOMMIT\b/)
+  })
+  test('authenticated-only EXECUTE on the RPC; no money UPDATE/DELETE', () => {
+    expect(ddl).toMatch(/GRANT EXECUTE ON FUNCTION public\.apply_reclassification_correction\([^)]+\) TO authenticated/)
+    expect(ddl).toMatch(/REVOKE ALL ON FUNCTION public\.apply_reclassification_correction\([^)]+\) FROM anon/)
+    expect(ddl).toMatch(/REVOKE ALL ON FUNCTION public\.apply_reclassification_correction\([^)]+\) FROM PUBLIC/)
+    expect(ddl).toMatch(/REVOKE ALL ON FUNCTION public\.apply_reclassification_correction\([^)]+\) FROM service_role/)
+    expect(ddl).toMatch(/SECURITY DEFINER/)
+    expect(ddl).toMatch(/SET search_path TO ''/)
+    expect(ddl).not.toMatch(/DELETE\s+FROM\s+public\.transactions/i)
+    expect(ddl).not.toMatch(/UPDATE\s+public\.transactions/i)
   })
 })
 
