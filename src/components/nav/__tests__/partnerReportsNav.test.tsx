@@ -140,6 +140,7 @@ describe('Partner Reports sidebar item', () => {
     const hrefs = firstMainNavHrefs(renderFrame('/home'))
     expect(hrefs).toEqual([
       '/home',
+      '/assistant',
       '/ceo',
       '/owners',
       '/client-report-rc3',
