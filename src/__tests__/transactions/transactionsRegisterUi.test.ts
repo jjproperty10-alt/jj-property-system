@@ -80,8 +80,11 @@ describe('Transactions register UI — drafts discoverability and money columns'
     expect(draftsPage).toContain('listAgentTransactionDrafts')
     expect(draftsPage).toContain('data-testid="col-created-header"')
     expect(draftsPage).toContain('stamp(row.created_at)')
+    expect(draftsPage).toContain('DraftInboxActions')
     expect(draftsPage).not.toContain('postDraft')
     expect(draftsPage).not.toContain('approveDraft')
+    expect(actions).toContain("rpc('approve_and_post_agent_transaction_draft'")
+    expect(actions).not.toMatch(/from\(\s*['"]transactions['"]\s*\)/)
   })
 
   it('keeps Drafts nested under Transactions and off partner surfaces', () => {

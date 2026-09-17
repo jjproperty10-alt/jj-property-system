@@ -1,5 +1,8 @@
 import {
+  AGENT_DRAFT_STATUSES,
   DRAFT_NOT_POSTED_MESSAGE,
+  DRAFT_POSTED_MESSAGE,
+  DRAFT_REJECTED_MESSAGE,
   parseOptionalEur,
   resolveDraftStatus,
   resolveExactPropertyId,
@@ -56,5 +59,11 @@ describe('resolveDraftStatus', () => {
 describe('success copy', () => {
   it('says the draft is not posted', () => {
     expect(DRAFT_NOT_POSTED_MESSAGE).toBe('Draft saved — not posted to accounts.')
+  })
+
+  it('includes posted as a later staff-approval status', () => {
+    expect(AGENT_DRAFT_STATUSES).toContain('posted')
+    expect(DRAFT_POSTED_MESSAGE).toBe('Draft posted to accounts.')
+    expect(DRAFT_REJECTED_MESSAGE).toBe('Draft rejected — not posted to accounts.')
   })
 })

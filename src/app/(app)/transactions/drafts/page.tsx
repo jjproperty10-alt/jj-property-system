@@ -1,9 +1,7 @@
 /**
  * @page /transactions/drafts
- * @description Staff-only read-only draft inbox.
- *
- * Loads via public.list_agent_transaction_drafts on the session JWT.
- * Never writes public.transactions. No approve / post / delete.
+ * @description Staff-only draft inbox with explicit edit / reject / approve-and-post.
+ * Posting is never automatic. Drafts are never physically deleted.
  */
 
 import 'server-only'
@@ -12,6 +10,7 @@ import Link from 'next/link'
 import { redirect, notFound } from 'next/navigation'
 import { authenticateStatementUser } from '@/lib/statements/statementAuthService'
 import { listAgentTransactionDrafts } from '@/lib/transactions/agentDraftActions'
+import { DraftInboxActions } from '@/components/transactions/DraftInboxActions'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,7 +54,7 @@ export default async function TransactionDraftsPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Transaction Drafts</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Read-only inbox. Drafts are not posted to accounts.</p>
+          <p className="text-sm text-gray-500 mt-0.5">Staff review inbox. Posting requires explicit confirmation.</p>
         </div>
         <Link href="/transactions/new" className="btn-primary text-sm">
           New draft
@@ -92,6 +91,7 @@ export default async function TransactionDraftsPage() {
               <col className="w-[6rem]" />
               <col className="w-[4.25rem]" />
               <col className="w-[9.5rem]" />
+              <col className="w-[8.5rem]" />
             </colgroup>
             <thead className="bg-gray-50 text-left text-gray-500">
               <tr>
@@ -106,11 +106,12 @@ export default async function TransactionDraftsPage() {
                 <th className="px-2 py-2 font-medium text-right overflow-hidden text-ellipsis whitespace-nowrap" title="Client charge">Client charge</th>
                 <th className="px-2 py-2 font-medium overflow-hidden text-ellipsis whitespace-nowrap" title="Status">Status</th>
                 <th className="px-2 py-2 font-medium overflow-hidden text-ellipsis whitespace-nowrap" title="Created" data-testid="col-created-header">Created</th>
+                <th className="px-2 py-2 font-medium overflow-hidden text-ellipsis whitespace-nowrap" title="Actions">Actions / פעולות</th>
               </tr>
             </thead>
             <tbody>
-              {drafts.map((row, index) => (
-                <tr key={`${row.created_at}-${row.date}-${index}`} className="border-t border-gray-100">
+              {drafts.map((row) => (
+                <tr key={row.id || `${row.created_at}-${row.date}`} className="border-t border-gray-100">
                   <td className="px-2 py-2 whitespace-nowrap overflow-hidden text-ellipsis" title={row.date || undefined}>{row.date || '—'}</td>
                   <td className="px-2 py-2 overflow-hidden">
                     <span className="block truncate" title={row.property || undefined}>{row.property || '—'}</span>
@@ -135,6 +136,9 @@ export default async function TransactionDraftsPage() {
                   <td className="px-2 py-2 whitespace-nowrap overflow-hidden text-ellipsis" title={row.status || undefined}>{row.status || '—'}</td>
                   <td className="px-2 py-2 whitespace-nowrap text-gray-500 tabular-nums" title={stamp(row.created_at)}>
                     {stamp(row.created_at)}
+                  </td>
+                  <td className="px-2 py-2 align-top">
+                    <DraftInboxActions draft={row} />
                   </td>
                 </tr>
               ))}

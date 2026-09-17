@@ -10,6 +10,9 @@ function read(rel: string): string {
 const DRAFT_FILES = [
   'src/app/(app)/transactions/new/page.tsx',
   'src/app/(app)/transactions/drafts/page.tsx',
+  'src/app/(app)/transactions/drafts/[id]/edit/page.tsx',
+  'src/components/transactions/DraftEditForm.tsx',
+  'src/components/transactions/DraftInboxActions.tsx',
   'src/lib/transactions/agentDraftActions.ts',
   'src/lib/ledger/agentDraft.ts',
   'supabase/migrations/20260917090100_agent_transaction_drafts.sql',
@@ -27,23 +30,24 @@ const LEDGER_FILES = [
 ]
 
 describe('Phase 0D static security', () => {
-  it('no draft path inserts into public.transactions', () => {
+  it('no draft path inserts into public.transactions from app files or historical 0D SQL', () => {
     for (const f of DRAFT_FILES) {
       const src = read(f)
-      expect(src).not.toMatch(/INSERT INTO public\.transactions/i)
+      expect(src).not.toMatch(/\bINSERT INTO public\.transactions\s*\(/i)
       expect(src).not.toMatch(/from\(\s*['"]transactions['"]\s*\)\s*\.insert/)
     }
   })
 
-  it('no draft approval/post function exists', () => {
+  it('historical 0D migrations still forbid posting; app posts only via public approve RPC', () => {
     const action = read('src/lib/transactions/agentDraftActions.ts')
     const sql = read('supabase/migrations/20260917090100_agent_transaction_drafts.sql')
     const rpcs = read('supabase/migrations/20260917120000_agent_transaction_draft_public_rpcs.sql')
-    expect(action).not.toMatch(/postDraft|approveAndPost/)
-    expect(action).not.toMatch(/posted_transaction_id/)
+    expect(action).toContain("rpc('approve_and_post_agent_transaction_draft'")
+    expect(action).not.toMatch(/postDraft|approveDraft/)
     expect(action).not.toContain("schema('finance')")
     expect(action).toContain("rpc('create_agent_transaction_draft'")
     expect(action).toContain("rpc('list_agent_transaction_drafts'")
+    expect(action).not.toContain('createServiceClient')
     expect(sql).toMatch(/agent_drafts_posted_forbidden/)
     expect(sql).toMatch(/Phase 0D forbids posting drafts/)
     expect(sql).not.toMatch(/INSERT INTO public\.transactions/i)
