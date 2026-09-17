@@ -21,7 +21,7 @@
  * @see NAV-1_PHASE2_NAVIGATION_CONTRACT.md — Contract B, Contract E, Appendix
  */
 
-import { Home, Users, BarChart3, Building2, FileText, Handshake, ListOrdered, ShieldCheck } from 'lucide-react'
+import { Home, Sparkles, Users, BarChart3, Building2, FileText, Handshake, ListOrdered, ShieldCheck } from 'lucide-react'
 import type {
   WorkspaceRegistration,
   WorkspaceNavItem,
@@ -59,6 +59,15 @@ const WORKSPACES: readonly WorkspaceRegistration[] = [
     landingRoute: '/home',
     routePrefix: '/home',
     attentionProvider: async () => null, // v1: Home attention not yet wired
+  },
+  {
+    id: 'assistant',
+    label: 'JJ Assistant',
+    labelHe: 'העוזר שלי',
+    icon: Sparkles,
+    landingRoute: '/assistant',
+    routePrefix: '/assistant',
+    attentionProvider: async () => null,
   },
   {
     id: 'ceo',
@@ -133,6 +142,7 @@ const WORKSPACES: readonly WorkspaceRegistration[] = [
  */
 const WORKSPACE_ICON_IDS: Record<RegisteredWorkspaceId, WorkspaceIconId> = {
   home: 'home',
+  assistant: 'assistant',
   ceo: 'ceo',
   owners: 'owners',
   clientReports: 'clientReports',
@@ -154,6 +164,12 @@ const WORKSPACE_ICON_IDS: Record<RegisteredWorkspaceId, WorkspaceIconId> = {
  */
 const ROLE_VISIBILITY: Record<string, Record<FrameUser['role'], 'visible' | 'readonly' | 'hidden'>> = {
   home: {
+    ceo: 'visible',
+    finance: 'visible',
+    operations: 'visible',
+    staff: 'visible',
+  },
+  assistant: {
     ceo: 'visible',
     finance: 'visible',
     operations: 'visible',

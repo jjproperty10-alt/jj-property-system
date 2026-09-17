@@ -1,0 +1,415 @@
+'use client'
+
+import { useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
+import { Mic, MicOff, Send, Sparkles, Square, Trash2 } from 'lucide-react'
+import {
+  ASSISTANT_CAPABILITY_LABEL,
+  applyUserText,
+  cancelCollector,
+  createCollectorState,
+  markDraftCreated,
+  numberedDirectChoices,
+  replayUtterances,
+  resetForChangeDetails,
+  type AssistantPrompt,
+  type CollectorContext,
+  type CollectorState,
+  type PropertyCatalogEntry,
+} from '@/lib/ops/assistant/transactionDraftCollector'
+import { MIC_PRIVACY_LABEL } from '@/lib/ops/assistant/speechTranscript'
+import {
+  createAssistantTransactionDraft,
+  listOpsConversation,
+  submitAssistantInbound,
+} from '@/lib/ops/assistant/opsConversationActions'
+import { useSpeechToText } from './useSpeechToText'
+
+interface ChatItem {
+  readonly id: string
+  readonly role: 'user' | 'assistant'
+  readonly text: string
+  readonly prompt?: AssistantPrompt
+}
+
+function Ltr({ children }: { children: React.ReactNode }) {
+  return (
+    <span dir="ltr" className="inline-block tabular-nums">
+      {children}
+    </span>
+  )
+}
+
+export function AssistantChat(props: {
+  readonly staffPayerName: string
+  readonly catalog: readonly PropertyCatalogEntry[]
+  readonly initialConversationId: string | null
+}) {
+  const ctx: CollectorContext = useMemo(
+    () => ({ catalog: props.catalog, staffPayerName: props.staffPayerName || null }),
+    [props.catalog, props.staffPayerName],
+  )
+  const convKeyRef = useRef(crypto.randomUUID())
+  const draftKeyRef = useRef(crypto.randomUUID())
+  const creatingRef = useRef(false)
+  const [conversationId, setConversationId] = useState<string | null>(props.initialConversationId)
+  const [draft, setDraft] = useState<CollectorState>(() => createCollectorState(draftKeyRef.current))
+  const [items, setItems] = useState<ChatItem[]>(() => [{
+    id: 'intro',
+    role: 'assistant',
+    text: 'אפשר להתחיל. לדוגמה: שילמתי 120 אירו חשמל בדירה של תמיר',
+    prompt: createCollectorState(draftKeyRef.current).lastPrompt,
+  }])
+  const [text, setText] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [propertyQuery, setPropertyQuery] = useState('')
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const speech = useSpeechToText({ value: text, onChange: setText, enabled: !loading })
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: 'end' })
+  }, [items, draft.lastPrompt, loading])
+
+  useEffect(() => {
+    if (!props.initialConversationId) return
+    let cancelled = false
+    void listOpsConversation(props.initialConversationId).then((listed) => {
+      if (cancelled || !listed.ok) return
+      const bodies = listed.messages.filter((m) => m.direction === 'inbound').map((m) => m.body)
+      const replayed = replayUtterances(bodies, ctx, draftKeyRef.current)
+      const history: ChatItem[] = []
+      bodies.forEach((body, i) => {
+        history.push({ id: `u-${i}`, role: 'user', text: body })
+      })
+      history.push({
+        id: 'assistant-replay',
+        role: 'assistant',
+        text: promptText(replayed.lastPrompt),
+        prompt: replayed.lastPrompt,
+      })
+      setConversationId(listed.conversationId)
+      setDraft(replayed)
+      setItems(history)
+    })
+    return () => { cancelled = true }
+  }, [ctx, props.initialConversationId])
+
+  async function sendBody(body: string) {
+    const trimmed = body.trim()
+    if (!trimmed || loading || draft.createdDraftId) return
+    setError('')
+    setLoading(true)
+    const messageKey = crypto.randomUUID()
+    const persisted = await submitAssistantInbound({
+      conversationId,
+      conversationIdempotencyKey: convKeyRef.current,
+      body: trimmed,
+      messageIdempotencyKey: messageKey,
+    })
+    if (!persisted.ok) {
+      setLoading(false)
+      setError(persisted.error)
+      return
+    }
+    if (persisted.conversationId !== conversationId) {
+      setConversationId(persisted.conversationId)
+      const url = new URL(window.location.href)
+      url.searchParams.set('c', persisted.conversationId)
+      window.history.replaceState(null, '', `${url.pathname}?${url.searchParams.toString()}`)
+    }
+    const next = applyUserText(draft, trimmed, ctx)
+    setDraft(next)
+    setItems((prev) => [
+      ...prev,
+      { id: messageKey, role: 'user', text: trimmed },
+      { id: `${messageKey}-a`, role: 'assistant', text: promptText(next.lastPrompt), prompt: next.lastPrompt },
+    ])
+    setText('')
+    setPropertyQuery('')
+    setLoading(false)
+  }
+
+  async function onCreateDraft() {
+    if (draft.lastPrompt.kind !== 'ready' || draft.createdDraftId || creatingRef.current) return
+    creatingRef.current = true
+    setLoading(true)
+    setError('')
+    const slots = draft.slots
+    const result = await createAssistantTransactionDraft({
+      date: slots.date.value ?? '',
+      property_name: slots.propertyName.value ?? '',
+      category: slots.category.value ?? '',
+      subcategory: slots.subcategory.value ?? '',
+      description: slots.description.value ?? '',
+      notes: slots.notes.value ?? '',
+      payer: slots.payer.value ?? '',
+      payee: slots.payee.value ?? '',
+      amount_eur: slots.amountEur.value ?? '',
+      client_charge: slots.clientCharge.value ?? '',
+      idempotency_key: draft.draftIdempotencyKey,
+    })
+    setLoading(false)
+    if (!result.ok) {
+      creatingRef.current = false
+      setError(result.error)
+      return
+    }
+    const next = markDraftCreated(draft, result.draftId)
+    setDraft(next)
+    setItems((prev) => [
+      ...prev,
+      {
+        id: `draft-${result.draftId}`,
+        role: 'assistant',
+        text: `נוצרה טיוטה ${result.draftId} במצב ${result.status}. לא בוצע אישור או רישום לחשבונות.`,
+      },
+    ])
+  }
+
+  const prompt = draft.lastPrompt
+  const numbered = prompt.kind === 'question' ? numberedDirectChoices(prompt) : []
+  const filteredProps = prompt.kind === 'question' && prompt.searchProperties
+    ? props.catalog.filter((p) => p.name.toLowerCase().includes(propertyQuery.trim().toLowerCase()))
+    : []
+
+  return (
+    <div className="flex h-screen min-h-0 flex-col overflow-hidden">
+      <header className="flex-shrink-0 border-b border-gray-200 bg-white px-4 pb-3 pt-16 md:px-6 md:pt-3">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-brand-500" aria-hidden />
+          <h1 className="text-lg font-semibold text-gray-900">JJ Assistant / העוזר שלי</h1>
+        </div>
+        <p className="mt-1 text-sm text-gray-600" dir="rtl">
+          העוזר מכין טיוטות בלבד. שום פעולה כספית אינה מתבצעת בלי אישור.
+        </p>
+        <p className="mt-1 text-xs font-medium text-brand-700" dir="rtl">
+          יכולת נתמכת: {ASSISTANT_CAPABILITY_LABEL}
+        </p>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50 px-3 py-4 md:px-6" data-testid="assistant-thread">
+        <ol className="mx-auto flex max-w-3xl flex-col gap-3">
+          {items.map((item) => (
+            <li key={item.id} className={item.role === 'user' ? 'self-end max-w-[85%]' : 'self-start max-w-[92%]'}>
+              <div
+                dir="auto"
+                className={
+                  item.role === 'user'
+                    ? 'rounded-2xl bg-slate-800 px-4 py-2 text-sm text-white'
+                    : 'rounded-2xl bg-white px-4 py-3 text-sm text-gray-900 shadow-sm ring-1 ring-gray-200'
+                }
+              >
+                {item.text}
+              </div>
+            </li>
+          ))}
+        </ol>
+
+        {prompt.kind === 'question' && (
+          <div className="mx-auto mt-4 max-w-3xl space-y-2" data-testid="assistant-choices">
+            {numbered.map((choice, i) => (
+              <button
+                key={choice.id}
+                type="button"
+                className="block w-full rounded-xl border border-gray-200 bg-white px-4 py-2 text-right text-sm hover:bg-gray-50"
+                onClick={() => void sendBody(choice.label)}
+                disabled={loading}
+              >
+                <span className="font-semibold"><Ltr>{i + 1}.</Ltr></span> {choice.label}
+              </button>
+            ))}
+            {prompt.allowOther && (
+              <button type="button" className="text-sm text-gray-600 underline" disabled={loading} onClick={() => void sendBody('משהו אחר')}>
+                משהו אחר
+              </button>
+            )}
+            {prompt.allowUnknown && (
+              <button type="button" className="mr-3 text-sm text-gray-600 underline" disabled={loading} onClick={() => void sendBody('אני לא יודע')}>
+                אני לא יודע
+              </button>
+            )}
+            {prompt.searchProperties && (
+              <div className="rounded-xl border border-gray-200 bg-white p-3">
+                <label className="mb-1 block text-xs text-gray-500" htmlFor="assistant-property-search">חיפוש נכס</label>
+                <input
+                  id="assistant-property-search"
+                  className="input w-full"
+                  value={propertyQuery}
+                  onChange={(e) => setPropertyQuery(e.target.value)}
+                  placeholder="הקלד שם נכס"
+                  autoComplete="off"
+                />
+                <ul className="mt-2 max-h-48 overflow-y-auto">
+                  {filteredProps.map((p) => (
+                    <li key={p.id}>
+                      <button
+                        type="button"
+                        className="w-full rounded px-2 py-1.5 text-right text-sm hover:bg-gray-50"
+                        onClick={() => void sendBody(p.name)}
+                      >
+                        {p.name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
+        {prompt.kind === 'ready' && (
+          <div className="mx-auto mt-4 max-w-3xl rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-200" data-testid="assistant-review" dir="rtl">
+            <h2 className="mb-3 text-sm font-semibold">סיכום לאישור — טיוטה בלבד</h2>
+            <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+              <ReviewRow label="Date" value={prompt.summary.date} />
+              <ReviewRow label="Property" value={prompt.summary.property} />
+              <ReviewRow label="Category" value={prompt.summary.category} />
+              <ReviewRow label="Subcategory" value={prompt.summary.subcategory} />
+              <ReviewRow label="Description" value={prompt.summary.description} />
+              <ReviewRow label="Payer" value={prompt.summary.payer} />
+              <ReviewRow label="Payee" value={prompt.summary.payee} />
+              <ReviewRow label="Amount" value={prompt.summary.amount} ltr />
+              <ReviewRow label="Client Charge" value={prompt.summary.clientCharge} ltr />
+              <ReviewRow label="Notes" value={prompt.summary.notes} />
+            </dl>
+            <div className="mt-4 flex flex-wrap gap-2" dir="ltr">
+              <button
+                type="button"
+                data-testid="assistant-create-draft"
+                className="btn-primary"
+                disabled={loading || Boolean(draft.createdDraftId)}
+                onClick={() => void onCreateDraft()}
+              >
+                1. Create draft
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={loading || Boolean(draft.createdDraftId)}
+                onClick={() => {
+                  const next = resetForChangeDetails(draft, ctx)
+                  setDraft(next)
+                  setItems((prev) => [...prev, { id: `change-${Date.now()}`, role: 'assistant', text: promptText(next.lastPrompt), prompt: next.lastPrompt }])
+                }}
+              >
+                2. Change details
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={loading || Boolean(draft.createdDraftId)}
+                onClick={() => {
+                  draftKeyRef.current = crypto.randomUUID()
+                  const next = cancelCollector(draftKeyRef.current)
+                  setDraft(next)
+                  setItems((prev) => [...prev, { id: `cancel-${Date.now()}`, role: 'assistant', text: 'בוטל. לא נוצרה טיוטה.', prompt: next.lastPrompt }])
+                }}
+              >
+                3. Cancel
+              </button>
+            </div>
+            {draft.createdDraftId && (
+              <p className="mt-3 text-sm text-green-700">
+                טיוטה <Ltr>{draft.createdDraftId}</Ltr>
+                {' '}
+                <Link href="/transactions/drafts" className="underline">מעבר לטיוטות</Link>
+              </p>
+            )}
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      <footer className="flex-shrink-0 border-t border-gray-200 bg-white px-3 py-3 md:px-6">
+        <p className="mb-2 text-xs text-gray-500" dir="rtl">{MIC_PRIVACY_LABEL}</p>
+        {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
+        {speech.error && <p className="mb-2 text-sm text-red-600">{speech.error}</p>}
+        {!speech.supported && (
+          <p className="mb-2 text-xs text-gray-500">{speech.unsupportedMessage}</p>
+        )}
+        <div className="mx-auto flex max-w-3xl items-end gap-2">
+          <label htmlFor="assistant-input" className="sr-only">הודעה</label>
+          <textarea
+            id="assistant-input"
+            data-testid="assistant-input"
+            className="input min-h-[48px] flex-1 resize-none"
+            rows={2}
+            dir="auto"
+            value={text}
+            disabled={loading}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                void sendBody(text)
+              }
+            }}
+            placeholder="כתבו או דיברו בעברית…"
+          />
+          <div className="flex flex-col gap-1">
+            <label htmlFor="assistant-lang" className="sr-only">שפת הכתבה</label>
+            <select
+              id="assistant-lang"
+              className="input py-1 text-xs"
+              value={speech.lang}
+              onChange={(e) => speech.setLang(e.target.value as typeof speech.lang)}
+              disabled={speech.listening}
+            >
+              {speech.langs.map((l) => (
+                <option key={l.id} value={l.id}>{l.label}</option>
+              ))}
+            </select>
+            {speech.listening ? (
+              <button type="button" className="btn-secondary" aria-label="Stop listening" onClick={speech.stop}>
+                <Square className="mx-auto h-4 w-4" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn-secondary"
+                aria-label="Start microphone"
+                onClick={speech.start}
+                disabled={!speech.supported || loading}
+              >
+                {speech.supported ? <Mic className="mx-auto h-4 w-4" /> : <MicOff className="mx-auto h-4 w-4" />}
+              </button>
+            )}
+          </div>
+          <button type="button" className="btn-secondary" aria-label="Clear typed text" onClick={() => setText('')} disabled={!text}>
+            <Trash2 className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            data-testid="assistant-send"
+            className="btn-primary"
+            aria-label="Send"
+            disabled={loading || !text.trim()}
+            onClick={() => void sendBody(text)}
+          >
+            <Send className="h-4 w-4" />
+          </button>
+        </div>
+        {speech.listening && (
+          <p className="mt-2 text-center text-xs font-medium text-red-600" data-testid="assistant-listening">מאזין…</p>
+        )}
+        {loading && <p className="mt-2 text-center text-xs text-gray-500">שולח…</p>}
+      </footer>
+    </div>
+  )
+}
+
+function promptText(prompt: AssistantPrompt): string {
+  if (prompt.kind === 'unsupported') return prompt.message
+  if (prompt.kind === 'ready') return 'זה הסיכום. טיוטה תיווצר רק אחרי לחיצה על Create draft.'
+  return prompt.prompt
+}
+
+function ReviewRow({ label, value, ltr }: { label: string; value: string; ltr?: boolean }) {
+  return (
+    <div>
+      <dt className="text-xs text-gray-500">{label}</dt>
+      <dd className="font-medium" dir={ltr ? 'ltr' : 'auto'}>{value}</dd>
+    </div>
+  )
+}

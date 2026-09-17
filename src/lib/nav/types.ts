@@ -68,6 +68,7 @@ export interface WorkspaceRegistration {
  */
 export type RegisteredWorkspaceId =
   | 'home'
+  | 'assistant'
   | 'ceo'
   | 'owners'
   | 'clientReports'
@@ -83,6 +84,7 @@ export type RegisteredWorkspaceId =
  */
 export type WorkspaceIconId =
   | 'home'
+  | 'assistant'
   | 'ceo'
   | 'owners'
   | 'clientReports'

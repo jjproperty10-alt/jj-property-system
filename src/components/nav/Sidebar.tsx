@@ -33,7 +33,7 @@ import Link from 'next/link'
 import { useEffect, useRef } from 'react'
 import { usePathname } from 'next/navigation'
 import type { ComponentType } from 'react'
-import { Menu, X, LogOut, Home, Users, BarChart3, Building2, FileText, Handshake, Settings2, ListOrdered, ShieldCheck } from 'lucide-react'
+import { Menu, X, LogOut, Home, Users, BarChart3, Building2, FileText, Handshake, Settings2, ListOrdered, ShieldCheck, Sparkles } from 'lucide-react'
 import type { FrameUser, WorkspaceNavItem, WorkspaceIconId, WorkspaceAttention } from '@/lib/nav/types'
 import { useGlobalContext, useSetMobileMenu } from './GlobalContextProvider'
 
@@ -49,6 +49,7 @@ import { useGlobalContext, useSetMobileMenu } from './GlobalContextProvider'
  */
 const WORKSPACE_ICONS: Record<WorkspaceIconId, ComponentType<{ className?: string }>> = {
   home: Home,
+  assistant: Sparkles,
   ceo: Building2,
   owners: Users,
   clientReports: FileText,
@@ -244,6 +245,7 @@ function NavItem({ workspace, isActive, attention }: NavItemProps) {
   return (
     <Link
       href={workspace.landingRoute}
+      data-testid={`nav-${workspace.id}`}
       className={`
         flex items-center gap-3 rounded-lg px-3 py-2.5
         text-sm font-medium transition-colors
