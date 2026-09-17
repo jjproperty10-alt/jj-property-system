@@ -1,5 +1,5 @@
 /* Isolated real-Postgres proof for semantic reclass identity.
- * Applies 20260918100000 then 20260918110000. No Production, no Uriel rows.
+ * Applies 20260918100000 then 20260919130000. No Production, no Uriel rows.
  */
 const fs = require('fs')
 const path = require('path')
@@ -13,7 +13,7 @@ const REPO = process.env.JJ_REPO_ROOT || path.resolve(HERE, '..', '..', '..')
 const HARNESS = path.join(REPO, 'supabase', 'tests', '20260917223000_tamir_kiti_cutoff', 'harness.sql')
 const STATEMENTS = path.join(REPO, 'supabase', 'tests', '20260917224500_tamir_kiti_september', 'harness-statements.sql')
 const MIGRATION = path.join(REPO, 'supabase', 'migrations', '20260918100000_public_apply_reclassification_correction.sql')
-const IDENTITY = path.join(REPO, 'supabase', 'migrations', '20260918110000_apply_reclassification_semantic_identity.sql')
+const IDENTITY = path.join(REPO, 'supabase', 'migrations', '20260919130000_apply_reclassification_semantic_identity.sql')
 
 const CEO = '277f81e0-3b89-41ed-a099-22585959b77a'
 const OPS = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'

@@ -16,7 +16,7 @@ const M3 = '20260820_003_transactions_financial_truth_protection.sql'
 const M4 = '20260820_004_transition_correction_case_no_applied.sql'
 const M5 = '20260820_005_fix_open_correction_case_guard.sql'
 const M6 = '20260918100000_public_apply_reclassification_correction.sql'
-const M7 = '20260918110000_apply_reclassification_semantic_identity.sql'
+const M7 = '20260919130000_apply_reclassification_semantic_identity.sql'
 
 describe('001 baseline is verification-only (not a mutating "no-op")', () => {
   const sql = read(M1)
@@ -158,8 +158,9 @@ describe('006 atomic public reclassification workflow (only public RPC)', () => 
 describe('007 semantic identity for public reclassification RPC', () => {
   const sql = read(M7)
   const ddl = sql.split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')
-  test('filename order follows 20260918100000', () => {
+  test('filename order follows Production head 20260919120000', () => {
     expect(M7 > M6).toBe(true)
+    expect(M7 > '20260919120000_ops_agent_core.sql').toBe(true)
   })
   test('adds canonical helpers and replaces the public RPC only', () => {
     expect(ddl).toMatch(/CREATE OR REPLACE FUNCTION public\.reclass_canonical_text/)
