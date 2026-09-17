@@ -8,6 +8,9 @@ import {
   numberedDirectChoices,
   cancelCollector,
   resetForChangeDetails,
+  resetForNewProposal,
+  INTENT_PROMPT,
+  NEW_TRANSACTION_NOTICE,
   UNSUPPORTED_CAPABILITY_MESSAGE,
   type CollectorContext,
   type PropertyCatalogEntry,
@@ -18,6 +21,8 @@ const CATALOG: PropertyCatalogEntry[] = [
   { id: '2', name: 'Tamir Kiti' },
   { id: '3', name: 'Tamir Radisson' },
   { id: '4', name: 'Villa Mazotos' },
+  { id: '5', name: 'Liron and Alon' },
+  { id: '6', name: 'Roni' },
 ]
 
 const CTX: CollectorContext = {
@@ -115,14 +120,14 @@ describe('transaction draft collector', () => {
     expect(state.createdDraftId).toBeNull()
     expect(state.lastPrompt.kind).toBe('ready')
     if (state.lastPrompt.kind !== 'ready') return
-    expect(state.lastPrompt.summary.date).toBe('2026-09-17')
+    expect(state.lastPrompt.summary.date).toBe('17/09/2026')
     expect(state.lastPrompt.summary.property).toBe('Tamir Kiti')
     expect(state.lastPrompt.summary.amount).toContain('120')
     expect(state.lastPrompt.summary.category.length).toBeGreaterThan(0)
     expect(state.lastPrompt.summary.subcategory.length).toBeGreaterThan(0)
     expect(state.lastPrompt.summary.payer).toBe('Yossi')
     expect(state.lastPrompt.summary.payee.length).toBeGreaterThan(0)
-    expect(state.lastPrompt.summary.clientCharge).toMatch(/אין חיוב|NULL|none/i)
+    expect(state.lastPrompt.summary.clientCharge).toMatch(/אין חיוב|NULL|none|ללא/i)
   })
 
   it('change and cancel do not create a draft', () => {
@@ -144,3 +149,138 @@ describe('transaction draft collector', () => {
     expect(next.createdDraftId).toBeNull()
   })
 })
+
+describe('natural Hebrew intake and new-intent reset', () => {
+  const ctx: CollectorContext = { ...CTX, freshIdempotencyKey: 'draft-key-2' }
+
+  function awaitingDateAfterNoProperty() {
+    let state = applyUserText(start(), 'שילמתי 10 אירו', CTX)
+    expect(state.lastPrompt.kind).toBe('question')
+    state = applyUserText(state, 'בלי נכס', CTX)
+    expect(state.slots.propertyName.value).toBeNull()
+    expect(state.slots.amountEur.value).toBe('10')
+    if (state.lastPrompt.kind === 'question') {
+      expect(state.lastPrompt.field).toBe('date')
+    }
+    return state
+  }
+
+  it('does not leak a previous empty-property proposal into a new rent receipt', () => {
+    const previous = awaitingDateAfterNoProperty()
+    const next = applyUserText(previous, 'שולם שכירות לירון אלון 700 בתאריך 31.8.26', ctx)
+    expect(next.preface).toContain(NEW_TRANSACTION_NOTICE)
+    expect(next.preface).toContain('העסקה הקודמת לא נשמרה')
+    expect(next.draftIdempotencyKey).not.toBe(previous.draftIdempotencyKey)
+    expect(next.slots.amountEur.value).toBe('700')
+    expect(next.slots.date.value).toBe('2026-08-31')
+    expect(next.slots.propertyName.value).toBe('Liron and Alon')
+    expect(next.slots.category.value).toBe('Management')
+    expect(next.slots.subcategory.value).toBe('Tenant Payment')
+    expect(next.slots.payer.value).toBe('Tenant')
+    expect(next.slots.payee.value).toBeUndefined()
+    expect(next.slots.clientCharge.value).toBeNull()
+    expect(next.lastPrompt.kind).toBe('question')
+    if (next.lastPrompt.kind === 'question') {
+      expect(next.lastPrompt.field).toBe('payee')
+      expect(next.lastPrompt.prompt).toContain('מי קיבל את הכסף')
+      expect(next.lastPrompt.field).not.toBe('date')
+    }
+    expect(next.createdDraftId).toBeNull()
+  })
+
+  it('parses natural Hebrew receipts and expenses', () => {
+    const rent = applyUserText(start(), 'קיבלתי 700 שכירות לירון אלון בתאריך 31.8.26', CTX)
+    expect(rent.slots.date.value).toBe('2026-08-31')
+    expect(rent.slots.amountEur.value).toBe('700')
+    expect(rent.slots.propertyName.value).toBe('Liron and Alon')
+    expect(rent.slots.category.value).toBe('Management')
+    expect(rent.slots.subcategory.value).toBe('Tenant Payment')
+
+    const roni = applyUserText(start(), 'קיבלנו 900 שכירות של רוני היום', CTX)
+    expect(roni.slots.amountEur.value).toBe('900')
+    expect(roni.slots.date.value).toBe('2026-09-17')
+    expect(roni.slots.propertyName.value).toBe('Roni')
+    expect(roni.slots.subcategory.value).toBe('Tenant Payment')
+
+    const tenant = applyUserText(start(), 'הדייר שילם לי 850', CTX)
+    expect(tenant.slots.amountEur.value).toBe('850')
+    expect(tenant.slots.payer.value).toBe('Tenant')
+
+    const electric = applyUserText(start(), 'שילמתי 120 אירו חשמל בדירה של תמיר', CTX)
+    expect(electric.slots.amountEur.value).toBe('120')
+    expect(electric.slots.category.value).toBe('Management')
+    expect(electric.slots.subcategory.value).toBe('Electricity')
+    expect(electric.slots.payer.value).toBe('Yossi')
+    expect(electric.slots.propertyName.status).toBe('unknown')
+    expect(numberedDirectChoices(electric.lastPrompt).map((c) => c.label)).toEqual([
+      'Tamir Dekelia', 'Tamir Kiti', 'Tamir Radisson',
+    ])
+
+    const cleaning = applyUserText(start(), 'העברתי 60 לפאבי על ניקיון', CTX)
+    expect(cleaning.slots.amountEur.value).toBe('60')
+    expect(cleaning.slots.subcategory.value).toBe('Cleaning')
+    expect(cleaning.slots.payee.value).toBe('Fabi')
+    expect(cleaning.slots.propertyName.status).toBe('unknown')
+
+    const split = applyUserText(start(), 'עלה 120 וללקוח 150', CTX)
+    expect(split.slots.amountEur.value).toBe('120')
+    expect(split.slots.clientCharge.value).toBe('150')
+  })
+
+  it('normalizes spelling variants without rewriting the stored utterance', () => {
+    const next = applyUserText(start(), 'שולם שכר דירה לירון ואלון 700 יורו בתאריך 31/08/2026', CTX)
+    expect(next.slots.propertyName.value).toBe('Liron and Alon')
+    expect(next.slots.amountEur.value).toBe('700')
+    expect(next.slots.date.value).toBe('2026-08-31')
+    expect(next.slots.notes.value).toContain('לירון ואלון')
+    expect(next.hintText).toContain('שכר דירה')
+  })
+
+  it('asks new vs correction when a payment verb is ambiguous', () => {
+    const previous = awaitingDateAfterNoProperty()
+    const next = applyUserText(previous, 'קיבלתי משהו מהדייר', ctx)
+    expect(next.lastPrompt.kind).toBe('question')
+    if (next.lastPrompt.kind === 'question') {
+      expect(next.lastPrompt.field).toBe('intent')
+      expect(next.lastPrompt.prompt).toBe(INTENT_PROMPT)
+      expect(numberedDirectChoices(next.lastPrompt).map((c) => c.label)).toEqual([
+        'עסקה חדשה', 'תיקון הקודמת', 'ביטול',
+      ])
+    }
+    expect(next.slots.amountEur.value).toBe('10')
+  })
+
+  it('applies a correction only to the stated field', () => {
+    const rent = applyUserText(start(), 'קיבלתי 700 שכירות לירון אלון בתאריך 31.8.26', CTX)
+    const corrected = applyUserText(rent, 'הסכום 750 ולא 700', { ...CTX, freshIdempotencyKey: 'corr-2' })
+    expect(corrected.slots.amountEur.value).toBe('750')
+    expect(corrected.slots.date.value).toBe('2026-08-31')
+    expect(corrected.slots.propertyName.value).toBe('Liron and Alon')
+    expect(corrected.draftIdempotencyKey).not.toBe(rent.draftIdempotencyKey)
+    expect(corrected.createdDraftId).toBeNull()
+  })
+
+  it('cancel and repeat send never create a draft', () => {
+    const rent = applyUserText(start(), 'קיבלתי 700 שכירות לירון אלון בתאריך 31.8.26', CTX)
+    const cancelled = applyUserText(rent, 'תבטל', { ...CTX, freshIdempotencyKey: 'cancel-2' })
+    expect(cancelled.createdDraftId).toBeNull()
+    expect(cancelled.slots.amountEur.status).toBe('unknown')
+    const again = applyUserText(rent, 'קיבלתי 700 שכירות לירון אלון בתאריך 31.8.26', ctx)
+    expect(again.createdDraftId).toBeNull()
+    const reset = resetForNewProposal(rent, 'new-ui-key')
+    expect(reset.createdDraftId).toBeNull()
+    expect(reset.slots.amountEur.status).toBe('unknown')
+    expect(reset.preface).toContain(NEW_TRANSACTION_NOTICE)
+  })
+
+  it('never guesses client_charge from amount_eur and never silently picks Tamir', () => {
+    const next = applyUserText(start(), 'שילמתי 120 אירו חשמל בדירה של תמיר', CTX)
+    expect(next.slots.clientCharge.value).toBeUndefined()
+    expect(next.slots.propertyName.value).toBeUndefined()
+    expect(next.lastPrompt.kind).toBe('question')
+    if (next.lastPrompt.kind === 'question') {
+      expect(next.lastPrompt.field).toBe('propertyName')
+    }
+  })
+})
+
