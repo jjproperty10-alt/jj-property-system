@@ -119,7 +119,8 @@ export function naturalKey(input: {
 }
 
 export function assertNoDelete(rows: readonly CorrectionRowPayload[]): void {
-  for (const [i, row] of rows.entries()) {
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i]
     if (row.delete !== undefined || row.op === 'delete' || row.op === 'update') {
       throw new PublicApplyCorrectionError(`row ${i + 1}: DELETE/UPDATE is not permitted`)
     }
@@ -131,7 +132,8 @@ export function assertNoFrozenMoneyMutation(
   rows: readonly CorrectionRowPayload[],
   correctionType: string,
 ): void {
-  for (const [i, row] of rows.entries()) {
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i]
     if (row.id === original.id) {
       throw new PublicApplyCorrectionError(`row ${i + 1}: must not target the original transaction id`)
     }
