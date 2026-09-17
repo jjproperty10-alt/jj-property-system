@@ -25,6 +25,7 @@ import {
   VM1_LEGACY_LEDGER_PROPERTY_ID,
 } from '@/lib/partnership-workspace/vm1Identity'
 import type { Vm1ReservationRow } from '@/lib/partnership-workspace/vm1IdentityAdapter'
+import { forecastVm1Reservations } from '@/lib/partnership-workspace/vm1ForecastCalculator'
 import { VM1_UNKNOWN_EVIDENCE_LABEL } from '@/lib/partnership-workspace/vm1OperationsPresentation'
 
 const IDENTITY = {
@@ -142,6 +143,7 @@ function renderVerified(): string {
       to="2026-09-17"
       identity={IDENTITY}
       reservations={ROWS}
+      forecastLines={forecastVm1Reservations(ROWS, { asOfIso: '2026-09-17' })}
     />,
   )
 }
@@ -185,17 +187,26 @@ describe('Vm1OperationsView', () => {
     expect(html.toLowerCase()).not.toContain('mobile')
   })
 
-  it('does not render totals or partner-share labels', () => {
+  it('does not render settlement totals or partner-share labels', () => {
     const html = renderVerified()
     expect(html).not.toContain('Net Owner Payout')
-    expect(html).not.toContain('management fee')
-    expect(html).not.toContain('Management Fee')
     expect(html).not.toContain('Avi share')
     expect(html).not.toContain('Yossi share')
     expect(html).not.toContain('Yaakov')
     expect(html).not.toContain('partner share')
     expect(html).not.toContain('Grand total')
     expect(html).not.toContain('594.25')
+  })
+
+  it('renders the internal forecast section with the staff-only disclaimer', () => {
+    const html = renderVerified()
+    expect(html).toContain('Financial Forecast / תחזית כספית')
+    expect(html).toContain('Internal forecast only — not received cash, not settlement, not Certified.')
+    expect(html).toContain('data-testid="vm1-forecast-section"')
+    expect(html).toContain('data-testid="vm1-forecast-state-65733679"')
+    expect(html).toContain('Completed — pending reconciliation')
+    expect(html).toContain('Blocked — unknown payout')
+    expect(html).toContain('Needs Review')
   })
 
   it('shows a blocked identity without reservation rows', () => {
@@ -212,5 +223,6 @@ describe('Vm1OperationsView', () => {
     expect(html).toContain('data-testid="vm1-operations-blocked"')
     expect(html).not.toContain('65733679')
     expect(html).not.toContain('data-testid="vm1-operations-table-wrap"')
+    expect(html).not.toContain('data-testid="vm1-forecast-section"')
   })
 })

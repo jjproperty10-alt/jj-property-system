@@ -161,5 +161,58 @@ describe('loadVm1OperationsView', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.reservations[0].disposition).toBe('already_certified')
+    expect(result.forecastLines[0].recognitionState).toBe('excluded')
+    expect(result.forecastLines[0].calculable).toBe(false)
+    expect(result.forecastLines[0].propertyNet).toBeNull()
+  })
+
+  it('forecasts Airbnb 65733679 and blocks Booking without payout', async () => {
+    const { client } = mockClient({
+      reservations: [
+        {
+          external_id: '65733679',
+          external_property_id: VM1_HOSTAWAY_LISTING_ID,
+          channel: 'airbnb',
+          status: 'confirmed',
+          check_in: '2026-09-03',
+          check_out: '2026-09-06',
+          nights: 3,
+          total_price: 1005.9,
+          cleaning_fee: 150,
+          raw: {
+            airbnbExpectedPayoutAmount: 849.99,
+            airbnbListingHostFee: 155.91,
+            taxAmount: 0,
+          },
+        },
+        {
+          external_id: '53082517',
+          external_property_id: VM1_HOSTAWAY_LISTING_ID,
+          channel: 'booking',
+          status: 'confirmed',
+          check_in: '2026-09-11',
+          check_out: '2026-09-13',
+          nights: 2,
+          total_price: 1218.2,
+          cleaning_fee: 120,
+          raw: {
+            channelCommissionAmount: 182.73,
+            airbnbExpectedPayoutAmount: null,
+            taxAmount: null,
+          },
+        },
+      ],
+    })
+    const result = await loadVm1OperationsView({ client, now: NOW })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const airbnb = result.forecastLines.find((l) => l.externalId === '65733679')
+    const booking = result.forecastLines.find((l) => l.externalId === '53082517')
+    expect(airbnb?.calculable).toBe(true)
+    expect(airbnb?.propertyNet).toBe(498.37)
+    expect(airbnb?.recognitionState).toBe('completed_pending_reconciliation')
+    expect(booking?.calculable).toBe(false)
+    expect(booking?.recognitionState).toBe('blocked')
+    expect(booking?.propertyNet).toBeNull()
   })
 })

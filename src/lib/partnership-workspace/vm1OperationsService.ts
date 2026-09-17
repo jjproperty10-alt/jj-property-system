@@ -10,8 +10,9 @@
 import 'server-only'
 
 import { aviCertifiedReservationIdSet } from './aviCertifiedReservationIds'
+import { forecastVm1Reservations, type Vm1ForecastLine } from './vm1ForecastCalculator'
 import { loadVm1Identity, type Vm1IdentityResult, type Vm1RpcClient } from './vm1IdentityAdapter'
-import { parseVm1OperationsRange } from './vm1OperationsPresentation'
+import { parseVm1OperationsRange, utcTodayIso } from './vm1OperationsPresentation'
 
 export type Vm1OperationsLoadResult =
   | {
@@ -20,6 +21,7 @@ export type Vm1OperationsLoadResult =
       readonly to: string
       readonly identity: Extract<Vm1IdentityResult, { ok: true }>['identity']
       readonly reservations: Extract<Vm1IdentityResult, { ok: true }>['reservations']
+      readonly forecastLines: readonly Vm1ForecastLine[]
     }
   | {
       readonly ok: false
@@ -73,5 +75,8 @@ export async function loadVm1OperationsView(
     to: range.to,
     identity: loaded.identity,
     reservations: loaded.reservations,
+    forecastLines: forecastVm1Reservations(loaded.reservations, {
+      asOfIso: utcTodayIso(input.now),
+    }),
   }
 }

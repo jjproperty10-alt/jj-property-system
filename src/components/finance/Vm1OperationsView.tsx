@@ -5,6 +5,7 @@
 
 import { AttentionBanner, DataTable, PageShell, StatusBadge, WorkspaceHeader } from '@/components/ds'
 import type { Vm1ReservationRow, VerifiedVm1Identity } from '@/lib/partnership-workspace/vm1IdentityAdapter'
+import type { Vm1ForecastLine } from '@/lib/partnership-workspace/vm1ForecastCalculator'
 import { VM1_HOSTAWAY_LISTING_ID } from '@/lib/partnership-workspace/vm1Identity'
 import {
   formatVm1EvidenceAmount,
@@ -16,6 +17,11 @@ import {
   vm1DispositionLabel,
   vm1EvidenceStateLabel,
 } from '@/lib/partnership-workspace/vm1OperationsPresentation'
+import {
+  VM1_FORECAST_SECTION_TITLE,
+  VM1_FORECAST_STAFF_NOTE,
+  vm1ForecastRecognitionLabel,
+} from '@/lib/partnership-workspace/vm1ForecastPresentation'
 import { VM1_OPERATIONS_BACK_ROUTE } from '@/lib/partnership-workspace/vm1OperationsRoutes'
 
 export interface Vm1OperationsViewProps {
@@ -24,6 +30,7 @@ export interface Vm1OperationsViewProps {
   readonly to: string | null
   readonly identity?: VerifiedVm1Identity
   readonly reservations?: readonly Vm1ReservationRow[]
+  readonly forecastLines?: readonly Vm1ForecastLine[]
   readonly errorTitle?: string
   readonly errorDescription?: string
 }
@@ -44,6 +51,21 @@ const TABLE_COLUMNS = [
   { key: 'tax', label: 'Tax', align: 'right' as const, dir: 'ltr' as const },
 ]
 
+const FORECAST_COLUMNS = [
+  { key: 'reservationId', label: 'Reservation ID', dir: 'ltr' as const },
+  { key: 'channel', label: 'Channel' },
+  { key: 'status', label: 'Status' },
+  { key: 'checkIn', label: 'Check-in', dir: 'ltr' as const },
+  { key: 'recognition', label: 'Forecast state' },
+  { key: 'gross', label: 'Gross (forecast)', align: 'right' as const, dir: 'ltr' as const },
+  { key: 'platform', label: 'Platform (forecast)', align: 'right' as const, dir: 'ltr' as const },
+  { key: 'cleaning', label: 'Cleaning (forecast)', align: 'right' as const, dir: 'ltr' as const },
+  { key: 'tax', label: 'Tax (forecast)', align: 'right' as const, dir: 'ltr' as const },
+  { key: 'jjCharge', label: 'JJ 20% charge (forecast)', align: 'right' as const, dir: 'ltr' as const },
+  { key: 'propertyNet', label: 'Property net (forecast)', align: 'right' as const, dir: 'ltr' as const },
+  { key: 'note', label: 'Note' },
+]
+
 function EvidenceAmount({ value }: { value: number | null }) {
   return (
     <span data-evidence-amount={value == null ? 'unknown' : 'present'} dir="ltr">
@@ -58,6 +80,7 @@ export function Vm1OperationsView({
   to,
   identity,
   reservations = [],
+  forecastLines = [],
   errorTitle,
   errorDescription,
 }: Vm1OperationsViewProps) {
@@ -194,6 +217,53 @@ export function Vm1OperationsView({
             />
           </div>
         )}
+
+        {identityVerified ? (
+          <section className="mt-10" data-testid="vm1-forecast-section">
+            <h2
+              className="mb-3 text-lg font-semibold text-gray-900"
+              data-testid="vm1-forecast-title"
+            >
+              {VM1_FORECAST_SECTION_TITLE}
+            </h2>
+            <p
+              className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950"
+              data-testid="vm1-forecast-staff-note"
+            >
+              {VM1_FORECAST_STAFF_NOTE}
+            </p>
+            <DataTable
+              caption="VM1 internal financial forecast"
+              columns={FORECAST_COLUMNS}
+              rows={forecastLines.map((line) => ({
+                reservationId: (
+                  <span data-testid={`vm1-forecast-row-${line.externalId}`} dir="ltr">
+                    {line.externalId}
+                  </span>
+                ),
+                channel: formatVm1OptionalText(line.channel),
+                status: line.status,
+                checkIn: formatVm1OptionalText(line.checkIn),
+                recognition: (
+                  <span data-testid={`vm1-forecast-state-${line.externalId}`}>
+                    {vm1ForecastRecognitionLabel(line)}
+                  </span>
+                ),
+                gross: <EvidenceAmount value={line.grossRentalRevenue} />,
+                platform: <EvidenceAmount value={line.platformFees} />,
+                cleaning: <EvidenceAmount value={line.guestCleaning} />,
+                tax: <EvidenceAmount value={line.totalTaxes} />,
+                jjCharge: <EvidenceAmount value={line.jjManagementCharge} />,
+                propertyNet: (
+                  <span data-testid={`vm1-forecast-net-${line.externalId}`}>
+                    <EvidenceAmount value={line.propertyNet} />
+                  </span>
+                ),
+                note: line.blockedReason ?? '',
+              }))}
+            />
+          </section>
+        ) : null}
       </PageShell>
     </div>
   )
