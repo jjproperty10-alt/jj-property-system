@@ -12,6 +12,7 @@ import {
   numberedDirectChoices,
   replayUtterances,
   resetForChangeDetails,
+  resetForNewProposal,
   type AssistantPrompt,
   type CollectorContext,
   type CollectorState,
@@ -85,7 +86,7 @@ export function AssistantChat(props: {
       history.push({
         id: 'assistant-replay',
         role: 'assistant',
-        text: promptText(replayed.lastPrompt),
+        text: promptText(replayed.lastPrompt, replayed.preface),
         prompt: replayed.lastPrompt,
       })
       setConversationId(listed.conversationId)
@@ -118,12 +119,18 @@ export function AssistantChat(props: {
       url.searchParams.set('c', persisted.conversationId)
       window.history.replaceState(null, '', `${url.pathname}?${url.searchParams.toString()}`)
     }
-    const next = applyUserText(draft, trimmed, ctx)
+    const next = applyUserText(draft, trimmed, {
+      ...ctx,
+      freshIdempotencyKey: crypto.randomUUID(),
+    })
+    if (next.draftIdempotencyKey !== draft.draftIdempotencyKey) {
+      draftKeyRef.current = next.draftIdempotencyKey
+    }
     setDraft(next)
     setItems((prev) => [
       ...prev,
       { id: messageKey, role: 'user', text: trimmed },
-      { id: `${messageKey}-a`, role: 'assistant', text: promptText(next.lastPrompt), prompt: next.lastPrompt },
+      { id: `${messageKey}-a`, role: 'assistant', text: promptText(next.lastPrompt, next.preface), prompt: next.lastPrompt },
     ])
     setText('')
     setPropertyQuery('')
@@ -262,18 +269,18 @@ export function AssistantChat(props: {
           <div className="mx-auto mt-4 max-w-3xl rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-200" data-testid="assistant-review" dir="rtl">
             <h2 className="mb-3 text-sm font-semibold">סיכום לאישור — טיוטה בלבד</h2>
             <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-              <ReviewRow label="Date" value={prompt.summary.date} />
-              <ReviewRow label="Property" value={prompt.summary.property} />
-              <ReviewRow label="Category" value={prompt.summary.category} />
-              <ReviewRow label="Subcategory" value={prompt.summary.subcategory} />
-              <ReviewRow label="Description" value={prompt.summary.description} />
-              <ReviewRow label="Payer" value={prompt.summary.payer} />
-              <ReviewRow label="Payee" value={prompt.summary.payee} />
-              <ReviewRow label="Amount" value={prompt.summary.amount} ltr />
-              <ReviewRow label="Client Charge" value={prompt.summary.clientCharge} ltr />
-              <ReviewRow label="Notes" value={prompt.summary.notes} />
+              <ReviewRow label="תאריך" value={prompt.summary.date} />
+              <ReviewRow label="נכס" value={prompt.summary.property} />
+              <ReviewRow label="קטגוריה" value={prompt.summary.category} />
+              <ReviewRow label="תת־קטגוריה" value={prompt.summary.subcategory} />
+              <ReviewRow label="תיאור" value={prompt.summary.description} />
+              <ReviewRow label="משלם" value={prompt.summary.payer} />
+              <ReviewRow label="מקבל" value={prompt.summary.payee} />
+              <ReviewRow label="סכום" value={prompt.summary.amount} ltr />
+              <ReviewRow label="חיוב לקוח" value={prompt.summary.clientCharge} ltr />
+              <ReviewRow label="הערות" value={prompt.summary.notes} />
             </dl>
-            <div className="mt-4 flex flex-wrap gap-2" dir="ltr">
+            <div className="mt-4 flex flex-wrap gap-2" dir="rtl">
               <button
                 type="button"
                 data-testid="assistant-create-draft"
@@ -281,7 +288,7 @@ export function AssistantChat(props: {
                 disabled={loading || Boolean(draft.createdDraftId)}
                 onClick={() => void onCreateDraft()}
               >
-                1. Create draft
+                1. צור טיוטה
               </button>
               <button
                 type="button"
@@ -290,10 +297,10 @@ export function AssistantChat(props: {
                 onClick={() => {
                   const next = resetForChangeDetails(draft, ctx)
                   setDraft(next)
-                  setItems((prev) => [...prev, { id: `change-${Date.now()}`, role: 'assistant', text: promptText(next.lastPrompt), prompt: next.lastPrompt }])
+                  setItems((prev) => [...prev, { id: `change-${Date.now()}`, role: 'assistant', text: promptText(next.lastPrompt, next.preface), prompt: next.lastPrompt }])
                 }}
               >
-                2. Change details
+                2. שנה פרטים
               </button>
               <button
                 type="button"
@@ -306,7 +313,7 @@ export function AssistantChat(props: {
                   setItems((prev) => [...prev, { id: `cancel-${Date.now()}`, role: 'assistant', text: 'בוטל. לא נוצרה טיוטה.', prompt: next.lastPrompt }])
                 }}
               >
-                3. Cancel
+                3. בטל
               </button>
             </div>
             {draft.createdDraftId && (
@@ -376,6 +383,26 @@ export function AssistantChat(props: {
               </button>
             )}
           </div>
+          <button
+            type="button"
+            className="btn-secondary whitespace-nowrap px-2 text-xs"
+            aria-label="עסקה חדשה"
+            data-testid="assistant-new-transaction"
+            disabled={loading || Boolean(draft.createdDraftId)}
+            onClick={() => {
+              draftKeyRef.current = crypto.randomUUID()
+              const next = resetForNewProposal(draft, draftKeyRef.current)
+              setDraft(next)
+              setItems((prev) => [...prev, {
+                id: `new-${Date.now()}`,
+                role: 'assistant',
+                text: promptText(next.lastPrompt, next.preface),
+                prompt: next.lastPrompt,
+              }])
+            }}
+          >
+            עסקה חדשה
+          </button>
           <button type="button" className="btn-secondary" aria-label="Clear typed text" onClick={() => setText('')} disabled={!text}>
             <Trash2 className="h-4 w-4" />
           </button>
@@ -399,10 +426,13 @@ export function AssistantChat(props: {
   )
 }
 
-function promptText(prompt: AssistantPrompt): string {
-  if (prompt.kind === 'unsupported') return prompt.message
-  if (prompt.kind === 'ready') return 'זה הסיכום. טיוטה תיווצר רק אחרי לחיצה על Create draft.'
-  return prompt.prompt
+function promptText(prompt: AssistantPrompt, preface?: string): string {
+  let body = ''
+  if (prompt.kind === 'unsupported') body = prompt.message
+  else if (prompt.kind === 'ready') body = 'זה הסיכום. טיוטה תיווצר רק אחרי לחיצה על צור טיוטה.'
+  else body = prompt.prompt
+  if (preface && preface.trim()) return `${preface}\n${body}`
+  return body
 }
 
 function ReviewRow({ label, value, ltr }: { label: string; value: string; ltr?: boolean }) {

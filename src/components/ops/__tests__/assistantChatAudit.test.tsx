@@ -40,9 +40,11 @@ describe('assistant source audit and confirmation UI', () => {
     expect(blob).not.toMatch(/googleapis|nodemailer/)
     expect(blob).not.toMatch(/schema\('finance'\)/)
     expect(chat).toContain('MIC_PRIVACY_LABEL')
-    expect(chat).toContain('Create draft')
-    expect(chat).toContain('Change details')
-    expect(chat).toContain('Cancel')
+    expect(chat).toContain('צור טיוטה')
+    expect(chat).toContain('שנה פרטים')
+    expect(chat).toContain('בטל')
+    expect(chat).toContain('עסקה חדשה')
+    expect(chat).toContain('resetForNewProposal')
   })
 
   it('renders review labels in markup', () => {
@@ -53,5 +55,23 @@ describe('assistant source audit and confirmation UI', () => {
     expect(html).toContain('הכנת טיוטת עסקה')
     expect(html).toContain('assistant-input')
     expect(html).toContain('Start microphone')
+    expect(html).toContain('עסקה חדשה')
+  })
+
+  it('keeps createAgentTransactionDraft as the only draft path', () => {
+    const collector = read('src/lib/ops/assistant/transactionDraftCollector.ts')
+    const dates = read('src/lib/ops/assistant/cyprusDate.ts')
+    const turn = read('src/lib/ops/assistant/transactionTurn.ts')
+    const blob = chat + actions + page + collector + dates + turn
+    expect(blob).not.toMatch(/from\(\s*['"]transactions['"]\s*\)/)
+    expect(blob).not.toContain('createServiceClient')
+    expect(blob).not.toContain('approveAndPostAgentTransactionDraft')
+    expect(blob).not.toMatch(/openai|anthropic|@ai-sdk/)
+    expect(blob).not.toMatch(/MediaRecorder|getUserMedia/)
+    expect(collector).not.toMatch(/\bfetch\s*\(/)
+    expect(dates).not.toMatch(/\bfetch\s*\(/)
+    expect(turn).not.toMatch(/\bfetch\s*\(/)
+    expect(actions).toContain('createAgentTransactionDraft')
+    expect(collector).toContain('extractClientCharge')
   })
 })
