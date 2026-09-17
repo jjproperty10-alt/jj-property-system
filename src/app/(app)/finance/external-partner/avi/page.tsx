@@ -18,6 +18,7 @@
 
 import 'server-only'
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import { redirect, notFound } from 'next/navigation'
 import { authenticateStatementUser } from '@/lib/statements/statementAuthService'
 import { buildAviExternalPartnerReport } from '@/lib/partner-settlement/external-partner/buildAviExternalPartnerReport'
@@ -26,6 +27,7 @@ import { AviReportPrintButton } from '@/components/finance/AviReportPrintButton'
 import { AviShareLinkButton } from '@/components/finance/AviShareLinkButton'
 import { PageShell, WorkspaceHeader } from '@/components/ds'
 import { sanitizeAviReportClientPayload } from '@/components/finance/aviReportPresentation'
+import { VM1_OPERATIONS_ROUTE } from '@/lib/partnership-workspace/vm1OperationsRoutes'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,12 +57,21 @@ export default async function ExternalPartnerAviPage() {
             subtitle="Avi — Villa Mazotos"
             backRoute="/finance/external-partner"
             actions={
-              report.status === 'certified' ? (
-                <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-start">
-                  <AviShareLinkButton />
-                  <AviReportPrintButton />
-                </div>
-              ) : null
+              <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-start">
+                <Link
+                  href={VM1_OPERATIONS_ROUTE}
+                  className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 no-underline transition-colors hover:bg-gray-50"
+                  data-testid="avi-staff-property-operations-link"
+                >
+                  Property Operations / פעילות הנכס
+                </Link>
+                {report.status === 'certified' ? (
+                  <>
+                    <AviShareLinkButton />
+                    <AviReportPrintButton />
+                  </>
+                ) : null}
+              </div>
             }
           />
         </div>
