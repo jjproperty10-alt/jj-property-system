@@ -103,6 +103,7 @@ describe('workspaceRegistry', () => {
       const ids = getAllWorkspaces().map((ws) => ws.id)
       expect(ids).toEqual([
         'home',
+        'assistant',
         'ceo',
         'owners',
         'clientReports',
