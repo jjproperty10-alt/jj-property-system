@@ -12,9 +12,10 @@ describe('draft inbox source audit', () => {
   const createPage = read('src/app/(app)/transactions/new/page.tsx')
   const action = read('src/lib/transactions/agentDraftActions.ts')
 
-  it('is staff-gated, session RPC list only, and read-only', () => {
+  it('is staff-gated, session RPC list only, and never writes transactions from the page', () => {
     expect(page).toContain("authenticateStatementUser")
     expect(page).toContain('listAgentTransactionDrafts')
+    expect(page).toContain('DraftInboxActions')
     expect(page).toContain('/transactions/new')
     expect(page).toContain('New draft')
     expect(page).not.toContain('createServiceClient')

@@ -4,10 +4,18 @@
  * No fuzzy ILIKE matching.
  */
 
-export const AGENT_DRAFT_STATUSES = ['draft', 'needs_review', 'ready_for_approval', 'rejected'] as const
+export const AGENT_DRAFT_STATUSES = [
+  'draft',
+  'needs_review',
+  'ready_for_approval',
+  'rejected',
+  'posted',
+] as const
 export type AgentDraftStatus = (typeof AGENT_DRAFT_STATUSES)[number]
 
 export const DRAFT_NOT_POSTED_MESSAGE = 'Draft saved — not posted to accounts.'
+export const DRAFT_POSTED_MESSAGE = 'Draft posted to accounts.'
+export const DRAFT_REJECTED_MESSAGE = 'Draft rejected — not posted to accounts.'
 
 export function parseOptionalEur(raw: string | null | undefined): number | null {
   const text = (raw ?? '').trim()

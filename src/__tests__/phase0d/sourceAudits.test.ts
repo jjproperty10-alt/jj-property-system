@@ -21,17 +21,16 @@ describe('Phase 0D source audits', () => {
     expect(src).not.toContain('createServiceClient')
   })
 
-  it('draft action never inserts into public.transactions and has no post function', () => {
+  it('draft action never inserts into public.transactions from the app write path', () => {
     const src = read('src/lib/transactions/agentDraftActions.ts')
     expect(src).not.toMatch(/from\(\s*['"]transactions['"]\s*\)/)
-    expect(src).not.toMatch(/posted_transaction_id/)
     expect(src).not.toContain("schema('finance')")
     expect(src).toContain("rpc('create_agent_transaction_draft'")
     expect(src).toContain("rpc('list_agent_transaction_drafts'")
+    expect(src).toContain("rpc('approve_and_post_agent_transaction_draft'")
     expect(src).toContain('authenticateStatementUser')
     expect(src).toContain('createSupabaseServerClient')
     expect(src).not.toContain('createServiceClient')
-    expect(src).not.toMatch(/function post/i)
     expect(src).not.toMatch(/approveDraft|postDraft|postToTransactions/)
   })
 

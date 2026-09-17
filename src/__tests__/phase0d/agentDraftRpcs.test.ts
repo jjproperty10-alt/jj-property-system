@@ -69,7 +69,7 @@ describe('public agent draft RPCs', () => {
     expect(action).not.toContain("schema('finance')")
     expect(action).not.toContain('createServiceClient')
     expect(action).not.toMatch(/from\(\s*['"]transactions['"]\s*\)/)
-    expect(action).not.toMatch(/posted_transaction_id/)
     expect(action).not.toMatch(/p_created_by/)
+    expect(action).not.toMatch(/p_posted_transaction_id/)
   })
 })
