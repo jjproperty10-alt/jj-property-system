@@ -15,6 +15,7 @@ const M2 = '20260820_002_apply_correction_case_insert_only.sql'
 const M3 = '20260820_003_transactions_financial_truth_protection.sql'
 const M4 = '20260820_004_transition_correction_case_no_applied.sql'
 const M5 = '20260820_005_fix_open_correction_case_guard.sql'
+const M6 = '20260918100000_public_apply_reclassification_correction.sql'
 
 describe('001 baseline is verification-only (not a mutating "no-op")', () => {
   const sql = read(M1)
@@ -125,6 +126,31 @@ describe('005 fixes the dangling guard on open_correction_case', () => {
   test('preserves the case-insert + opened-event behaviour', () => {
     expect(sql).toMatch(/INSERT INTO statements\.correction_cases/)
     expect(sql).toMatch(/'opened'/)
+  })
+})
+
+describe('006 atomic public reclassification workflow (only public RPC)', () => {
+  const sql = read(M6)
+  const ddl = sql.split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')
+  test('filename order follows YYYYMMDDHHMMSS after origin/main head', () => {
+    expect(M6 > '20260918090000_agent_draft_approval_rpcs.sql').toBe(true)
+  })
+  test('creates only public.apply_reclassification_correction and not the generic wrapper', () => {
+    expect(ddl.match(/CREATE OR REPLACE FUNCTION/gi)).toHaveLength(1)
+    expect(ddl).toMatch(/public\.apply_reclassification_correction/)
+    expect(ddl).not.toMatch(/CREATE OR REPLACE FUNCTION public\.apply_correction_case/)
+    expect(ddl).not.toMatch(/CREATE OR REPLACE FUNCTION statements\./)
+  })
+  test('does not grant statements and has no COMMIT', () => {
+    expect(ddl).not.toMatch(/GRANT .*statements\./i)
+    expect(ddl).not.toMatch(/GRANT EXECUTE ON FUNCTION statements\./)
+    expect(ddl).not.toMatch(/\bCOMMIT\b/)
+  })
+  test('authenticated only', () => {
+    expect(ddl).toMatch(/GRANT EXECUTE ON FUNCTION public\.apply_reclassification_correction\([^)]+\) TO authenticated/)
+    expect(ddl).toMatch(/REVOKE ALL ON FUNCTION public\.apply_reclassification_correction\([^)]+\) FROM anon/)
+    expect(ddl).toMatch(/REVOKE ALL ON FUNCTION public\.apply_reclassification_correction\([^)]+\) FROM PUBLIC/)
+    expect(ddl).toMatch(/REVOKE ALL ON FUNCTION public\.apply_reclassification_correction\([^)]+\) FROM service_role/)
   })
 })
 

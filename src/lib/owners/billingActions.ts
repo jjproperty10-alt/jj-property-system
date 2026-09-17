@@ -611,3 +611,73 @@ export async function setReportPreferencesAction(
     return { ok: false, error: 'Unexpected error' }
   }
 }
+
+export interface ApplyReclassificationCorrectionInput {
+  sourceId: string
+  correctedFields: { property_id?: string; subcategory?: string; description?: string }
+  reason: string
+  naturalKey: string
+}
+
+/**
+ * Atomic C3/C4/C6 path: public.apply_reclassification_correction
+ * (open if needed → approve → apply). Session JWT supplies auth.uid().
+ */
+export async function applyReclassificationCorrectionAction(
+  input: ApplyReclassificationCorrectionInput,
+): Promise<
+  | {
+      ok: true
+      correctionCaseId: string
+      reversalId: string | null
+      rebookId: string | null
+      replay: boolean
+      insertedCount: number
+    }
+  | { ok: false; error: string }
+> {
+  const gate = requireCorrectionMutator(await authenticateStatementUser())
+  if (!gate.ok) return { ok: false, error: gate.error }
+  if (!input?.sourceId || !isValidUUID(input.sourceId)) {
+    return { ok: false, error: 'Invalid source ID' }
+  }
+  if (!input.reason?.trim() || !input.naturalKey?.trim()) {
+    return { ok: false, error: 'reason and natural key are required' }
+  }
+  const db = correctionSessionDb()
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (db as any).rpc('apply_reclassification_correction', {
+      p_source_id: input.sourceId,
+      p_correction_type: 'reclassification',
+      p_corrected_fields: input.correctedFields,
+      p_reason: input.reason.trim(),
+      p_natural_key: input.naturalKey.trim(),
+    })
+    if (error) {
+      console.error('[billingActions] applyReclassificationCorrection RPC error:', error)
+      return { ok: false, error: error.message ?? 'Database error' }
+    }
+    const result = (data ?? {}) as {
+      correction_case_id?: string
+      reversal_id?: string | null
+      rebook_id?: string | null
+      replay?: boolean
+      inserted_count?: number
+    }
+    if (!result.correction_case_id) {
+      return { ok: false, error: 'apply_reclassification_correction returned no case id' }
+    }
+    return {
+      ok: true,
+      correctionCaseId: String(result.correction_case_id),
+      reversalId: result.reversal_id ? String(result.reversal_id) : null,
+      rebookId: result.rebook_id ? String(result.rebook_id) : null,
+      replay: result.replay === true,
+      insertedCount: typeof result.inserted_count === 'number' ? result.inserted_count : 0,
+    }
+  } catch (err) {
+    console.error('[billingActions] applyReclassificationCorrection unexpected error:', err)
+    return { ok: false, error: 'Unexpected error' }
+  }
+}
