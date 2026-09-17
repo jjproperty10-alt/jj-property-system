@@ -1,6 +1,7 @@
 /**
  * Atomic public reclassification workflow (C3/C4/C6).
  * Pure simulation + payload builder. The SQL RPC is the apply-time authority.
+ * Identity is server-derived (source + type + canonical fields), not p_natural_key.
  */
 import {
   PublicApplyCorrectionError,
@@ -14,6 +15,7 @@ import {
   cashboxSignedDelta,
   jjPnlSignedDelta,
   originalUnchanged,
+  reclassSemanticIdentity,
   replayResult,
   type CorrectionRowPayload,
   type LineageRow,
@@ -141,16 +143,22 @@ export function evaluateReclassificationWorkflow(input: {
     throw new PublicApplyCorrectionError('correction_type must be reclassification')
   }
   const built = buildWorkflowRequest(input.original, input.request.correctedFields, input.request.reason)
-  if (input.request.naturalKey !== built.request.naturalKey) {
-    throw new PublicApplyCorrectionError('natural key mismatch')
-  }
   if (input.request.sourceId !== input.original.id) {
     throw new PublicApplyCorrectionError('source transaction does not exist')
   }
 
+  const identity = reclassSemanticIdentity({
+    sourceId: input.original.id,
+    correctionType: 'reclassification',
+    correctedFields: built.request.correctedFields,
+  })
   const match = store.cases.find(c =>
     c.sourceId === input.original.id
-    && JSON.stringify(c.correctedFields) === JSON.stringify(built.request.correctedFields)
+    && reclassSemanticIdentity({
+      sourceId: c.sourceId,
+      correctionType: 'reclassification',
+      correctedFields: c.correctedFields,
+    }) === identity
     && c.status !== 'rejected'
     && c.status !== 'void',
   )
@@ -160,11 +168,15 @@ export function evaluateReclassificationWorkflow(input: {
     return { ...replayResult(match.id, lineage), store, created_case: false, actor }
   }
 
+  if (input.request.naturalKey !== built.request.naturalKey) {
+    throw new PublicApplyCorrectionError('natural key mismatch')
+  }
+
   let caseId = match?.id
   let created = false
   fail('create')
   if (!match) {
-    caseId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+    caseId = `cccccccc-cccc-4ccc-8ccc-${(store.cases.length + 1).toString(16).padStart(12, '0')}`
     store.cases.push({
       id: caseId,
       sourceId: input.original.id,
