@@ -70,6 +70,7 @@ export default async function Vm1PropertyOperationsPage({ searchParams }: Props)
       to={loaded.to}
       identity={loaded.identity}
       reservations={loaded.reservations}
+      forecastLines={loaded.forecastLines}
     />
   )
 }

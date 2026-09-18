@@ -29,6 +29,8 @@ const OPERATIONS_FILES = [
   'src/components/finance/Vm1OperationsView.tsx',
   'src/lib/partnership-workspace/vm1OperationsService.ts',
   'src/lib/partnership-workspace/vm1OperationsPresentation.ts',
+  'src/lib/partnership-workspace/vm1ForecastCalculator.ts',
+  'src/lib/partnership-workspace/vm1ForecastPresentation.ts',
   'src/lib/partnership-workspace/aviCertifiedReservationIds.ts',
   'src/lib/partnership-workspace/vm1OperationsRoutes.ts',
 ]
@@ -77,6 +79,9 @@ describe('VM1 operations leak guards', () => {
     expect(joined).not.toContain('Net Owner Payout')
     expect(joined).not.toContain('594.25')
     expect(joined).not.toContain('Internet')
+    expect(joined).not.toContain('strStatementLine')
+    expect(joined).not.toContain('applyAirbnbCyprusVat')
+    expect(joined).not.toContain('buildOwnerStrStatement')
   })
 
   it('staff Avi report page links to operations inside the print-hidden chrome', () => {
@@ -99,7 +104,9 @@ describe('VM1 operations leak guards', () => {
       expect(text).not.toContain('/avi/operations')
       expect(text).not.toContain('Property Operations')
       expect(text).not.toContain('פעילות הנכס')
-      expect(text).not.toContain('avi-staff-property-operations-link')
+      expect(text).not.toContain('Financial Forecast')
+      expect(text).not.toContain('תחזית כספית')
+      expect(text).not.toContain('vm1Forecast')
     }
   })
 
