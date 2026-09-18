@@ -206,6 +206,18 @@ const L = {
   expensesAirbnb:       { en: 'Property Expenses',               he: 'הוצאות נכס'           },
   bpoLabel:             { en: 'Payments Sent to You',            he: 'תשלומים שהועברו אליך'  },
 
+  /* ── Certified client settlement overlay ─────────────────────────────────── */
+  certSectionTitle:     { en: 'Certified settlement',                      he: 'התחשבנות מאושרת' },
+  certOpeningBalance:   { en: 'Certified opening obligation balance',      he: 'יתרת התחייבויות פתיחה מאושרת' },
+  certNoncashCredit:    { en: 'Noncash settlement credit',                 he: 'זיכוי יישוב ללא מזומן' },
+  certIncludedCash:     { en: 'Cash payment included in settlement',       he: 'תשלום מזומן שנכלל ביישוב' },
+  certExclusionDoubleCount: { en: 'Excluded from settlement – double representation', he: 'הוצא מההתחשבנות – ייצוג כפול' },
+  certClosingDueToJj:   { en: 'Final balance due to JJ',                   he: 'יתרה סופית לתשלום ל-JJ' },
+  certClosingDueToClient: { en: 'Final balance due to client',             he: 'יתרה סופית לתשלום ללקוח' },
+  certNoncash:          { en: 'Noncash',                                   he: 'לא מזומן' },
+  certExclusionNote:    { en: 'Shown for explanation only. Arithmetic effect €0.', he: 'מוצג להסבר בלבד. השפעה חשבונאית €0.' },
+  certSupportingLedger: { en: 'Supporting ledger detail',                  he: 'פירוט ספר תומך' },
+
   /* ── Final Summary ───────────────────────────────────────────────────────── */
   finalTitle:           { en: 'Settlement Summary',              he: 'סיכום התחשבנות'          },
   finalTotalIncome:     { en: 'Total Income Received',           he: 'סך הכנסות שהתקבלו'       },

@@ -28,6 +28,8 @@
 import { validateAuthorizedReportScope, type ReportScope } from '@/lib/auth/reportAuthorization'
 import { fetchRC3Report } from '@/lib/report/fetchReport'
 import { toClientReport, type ClientReport } from '@/lib/report/clientReportDto'
+import { loadCertifiedSettlementForProperty } from '@/lib/finance/certifiedClientSettlementAdapter'
+import { isCertifiedAvailable } from '@/lib/finance/certifiedClientSettlementPresentation'
 import type { ReportType } from '@/lib/report/reportTypes'
 import type { Lang } from '@/lib/report/labels'
 
@@ -119,7 +121,16 @@ export async function generateClientReport(rawInput: unknown): Promise<GenerateC
         fromDate: input.fromDate,
         toDate: input.toDate,
       })
-      reports.push(toClientReport(raw))
+      const report = toClientReport(raw)
+      try {
+        const certified = await loadCertifiedSettlementForProperty(name, input.toDate)
+        if (isCertifiedAvailable(certified)) {
+          report.certifiedSettlement = certified
+        }
+      } catch {
+        // Certified overlay is optional. Reader/identity failure must not replace RC3 output.
+      }
+      reports.push(report)
     }
 
     if (reports.length === 0) return { ok: false, error: 'not_found' }

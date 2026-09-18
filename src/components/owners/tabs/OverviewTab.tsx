@@ -12,6 +12,7 @@
 
 import { KpiCard, MoneyValue, AttentionBanner, EmptyState, UnknownValue } from '@/components/ds'
 import type { OwnerOverviewDTO } from '@/lib/owners/ownerWorkspaceTypes'
+import { CertifiedSettlementSection } from '@/components/report/CertifiedSettlementSection'
 
 export interface OverviewTabProps {
   dto: OwnerOverviewDTO
@@ -42,7 +43,7 @@ const ACTIVITY_ICONS: Record<string, string> = {
 }
 
 export function OverviewTab({ dto, ownerName }: OverviewTabProps) {
-  const { financial, openItems, nextAction, upcomingPreview, contractRenewalAlert, recentActivity } = dto
+  const { financial, openItems, nextAction, upcomingPreview, contractRenewalAlert, recentActivity, certifiedSettlement } = dto
 
   return (
     <div className="space-y-6">
@@ -65,6 +66,9 @@ export function OverviewTab({ dto, ownerName }: OverviewTabProps) {
         <h2 id="overview-financial-heading" className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
           Financial Position
         </h2>
+        {certifiedSettlement && (
+          <CertifiedSettlementSection dto={certifiedSettlement} lang="en" />
+        )}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <KpiCard
             label="Balance"

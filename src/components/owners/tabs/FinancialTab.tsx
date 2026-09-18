@@ -23,6 +23,7 @@ import type {
 import { DateRangePicker } from '@/components/owners/DateRangePicker'
 import { BillingToggleButton } from '@/components/owners/BillingToggleButton'
 import { ReportActionsBar } from '@/components/owners/ReportActionsBar'
+import { CertifiedSettlementSection } from '@/components/report/CertifiedSettlementSection'
 
 export interface FinancialTabProps {
   dto: OwnerFinancialDTO
@@ -34,7 +35,7 @@ export interface FinancialTabProps {
 
 export function FinancialTab({ dto, periodLabel, ownerSlug, fromDate, toDate }: FinancialTabProps) {
   const { position, overallNet, sections, propertyGroups, timeline, occupancyPosition, historicalSummary,
-    alerts, reportConfig, paymentSummary, openCorrectionCases } = dto
+    alerts, reportConfig, paymentSummary, openCorrectionCases, certifiedSettlement } = dto
 
   // Three-state financial display:
   // A. No Data — overallNet null, no sections, no occupancy → Empty State only
@@ -46,10 +47,13 @@ export function FinancialTab({ dto, periodLabel, ownerSlug, fromDate, toDate }: 
   const summaryUnderReview = overallNet?.reviewStatus === 'needs_review'
   const hasHistoricalOnly = noFinancialData && historicalSummary != null
 
-  // Derive the authoritative closing balance from Overall Net (must reconcile)
-  const closingBalanceFromNet = overallNet && overallNet.reviewStatus !== 'needs_review'
-    ? overallNet.displayAmountEur
-    : null
+  // Derive the authoritative closing balance from certified overlay when present,
+  // otherwise from Overall Net (must reconcile). Never use a fake €0.
+  const closingBalanceFromNet = certifiedSettlement
+    ? String(certifiedSettlement.closingDueToJj)
+    : overallNet && overallNet.reviewStatus !== 'needs_review'
+      ? overallNet.displayAmountEur
+      : null
 
   return (
     <div className="space-y-6">
@@ -91,6 +95,14 @@ export function FinancialTab({ dto, periodLabel, ownerSlug, fromDate, toDate }: 
         </div>
       )}
 
+      {/* Certified settlement is the closing hero when available. RC3 KPIs stay supporting. */}
+      {certifiedSettlement && (
+        <CertifiedSettlementSection
+          dto={certifiedSettlement}
+          lang={reportConfig?.language === 'he' ? 'he' : 'en'}
+        />
+      )}
+
       {/* Current financial position — only when overallNet provides computed values */}
       {overallNet != null && (
         <section aria-labelledby="fin-position-heading">
@@ -110,10 +122,10 @@ export function FinancialTab({ dto, periodLabel, ownerSlug, fromDate, toDate }: 
               <MoneyKpi label="Paid to Owner" value={position.paidToOwnerEur} />
               <MoneyKpi label="Net" value={position.netEur} />
               <KpiCard
-                label="Closing Balance"
+                label={certifiedSettlement ? 'Certified closing' : 'Closing Balance'}
                 value={
                   closingBalanceFromNet != null
-                    ? <MoneyValue amount={parseFloat(closingBalanceFromNet)} size="lg" />
+                    ? <MoneyValue amount={Math.abs(parseFloat(closingBalanceFromNet))} size="lg" />
                     : <UnknownValue reason="Settlement Engine (RC2) — not yet computed" />
                 }
               />
