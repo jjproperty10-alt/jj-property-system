@@ -16,6 +16,8 @@ jest.mock('next/link', () => {
   }
 })
 
+import * as fs from 'fs'
+import * as path from 'path'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Vm1OperationsView } from '@/components/finance/Vm1OperationsView'
@@ -119,6 +121,29 @@ const ROWS: readonly Vm1ReservationRow[] = [
     reason: 'Status is modified.',
   }),
   row({
+    externalId: '64232458',
+    disposition: 'operational_candidate',
+    status: 'confirmed',
+    checkIn: '2026-09-18',
+    checkOut: '2026-09-22',
+    nights: 4,
+    totalPrice: 2346,
+    cleaningFee: 150,
+    hostServiceFee: 363.63,
+    expectedPayout: 1982.37,
+    taxAmount: 0,
+    reason: 'Confirmed stay with check-in on or after the new-period start.',
+  }),
+  row({
+    externalId: '64011111',
+    disposition: 'operational_candidate',
+    status: 'confirmed',
+    checkIn: '2026-08-20',
+    checkOut: '2026-08-24',
+    nights: 4,
+    reason: 'Confirmed stay with check-in on or after the new-period start.',
+  }),
+  row({
     externalId: '53082517',
     channel: 'booking',
     status: 'confirmed',
@@ -181,7 +206,8 @@ describe('Vm1OperationsView', () => {
 
   it('does not render guest or contact fields', () => {
     const html = renderVerified()
-    expect(html.toLowerCase()).not.toContain('guest')
+    expect(html.toLowerCase()).not.toContain('guest name')
+    expect(html.toLowerCase()).not.toContain('guestname')
     expect(html.toLowerCase()).not.toContain('email')
     expect(html.toLowerCase()).not.toContain('phone')
     expect(html.toLowerCase()).not.toContain('mobile')
@@ -195,7 +221,11 @@ describe('Vm1OperationsView', () => {
     expect(html).not.toContain('Yaakov')
     expect(html).not.toContain('partner share')
     expect(html).not.toContain('Grand total')
+    expect(html).not.toContain('subtotal')
     expect(html).not.toContain('594.25')
+    expect(html).not.toContain('50%')
+    expect(html).not.toContain('25%')
+    expect(html).not.toContain('Internet')
   })
 
   it('renders the internal forecast section with the staff-only disclaimer', () => {
@@ -205,8 +235,106 @@ describe('Vm1OperationsView', () => {
     expect(html).toContain('data-testid="vm1-forecast-section"')
     expect(html).toContain('data-testid="vm1-forecast-state-65733679"')
     expect(html).toContain('Completed — pending reconciliation')
-    expect(html).toContain('Blocked — unknown payout')
+    expect(html).toContain('הושלם — ממתין להתאמה')
+    expect(html).toContain('Blocked')
+    expect(html).toContain('חסום')
     expect(html).toContain('Needs Review')
+    expect(html).toContain('נדרשת בדיקה')
+  })
+
+  it('orders financial review cards and keeps excluded lines out of that list', () => {
+    const html = renderVerified()
+    const reviewStart = html.indexOf('data-testid="vm1-forecast-financial-review"')
+    const excludedStart = html.indexOf('data-testid="vm1-forecast-excluded"')
+    const review = html.slice(reviewStart, excludedStart)
+    expect(review.indexOf('65733679')).toBeGreaterThan(-1)
+    expect(review.indexOf('65733679')).toBeLessThan(review.indexOf('64232458'))
+    expect(review.indexOf('64232458')).toBeLessThan(review.indexOf('53082517'))
+    expect(review.indexOf('53082517')).toBeLessThan(review.indexOf('54972355'))
+    expect(review).not.toContain('53139113')
+    expect(review).not.toContain('54720071')
+    expect(review).not.toContain('65343332')
+    expect(review).not.toContain('64011111')
+  })
+
+  it('renders excluded evidence as a closed details list without amount grids', () => {
+    const html = renderVerified()
+    expect(html).toContain('data-testid="vm1-forecast-excluded"')
+    expect(html).toContain('Excluded evidence / ראיות מוחרגות (4)')
+    expect(html).not.toMatch(/data-testid="vm1-forecast-excluded"[^>]*\sopen/)
+    expect(html).toContain('data-testid="vm1-forecast-excluded-53139113"')
+    expect(html).toContain('data-testid="vm1-forecast-excluded-54720071"')
+    expect(html).toContain('data-testid="vm1-forecast-excluded-65343332"')
+    expect(html).toContain('data-testid="vm1-forecast-excluded-64011111"')
+    expect(html).toContain('Already certified; never included in the new-period forecast.')
+    expect(html).toContain('Cancelled reservations are not revenue.')
+    expect(html).toContain('Inquiry reservations are not revenue.')
+    expect(html).toContain('Check-in is before new-period start 2026-08-30.')
+    expect(html).not.toContain('data-testid="vm1-forecast-amounts-53139113"')
+    expect(html).not.toContain('data-testid="vm1-forecast-card-53139113"')
+  })
+
+  it('keeps approved forecast amounts and unknown Booking/modified values', () => {
+    const html = renderVerified()
+    const completed = html.slice(
+      html.indexOf('data-testid="vm1-forecast-card-65733679"'),
+      html.indexOf('data-testid="vm1-forecast-card-64232458"'),
+    )
+    expect(completed).toContain('Completed — pending reconciliation')
+    expect(completed).toContain('€932.93')
+    expect(completed).toContain('€82.94')
+    expect(completed).toContain('€150.00')
+    expect(completed).toContain('€77.03')
+    expect(completed).toContain('€124.59')
+    expect(completed).toContain('€498.37')
+    expect(completed.toLowerCase()).not.toContain('paid')
+    expect(completed.toLowerCase()).not.toContain('settled')
+
+    const future = html.slice(
+      html.indexOf('data-testid="vm1-forecast-card-64232458"'),
+      html.indexOf('data-testid="vm1-forecast-card-53082517"'),
+    )
+    expect(future).toContain('Forecast')
+    expect(future).toContain('תחזית')
+    expect(future).toContain('€2,393.64')
+    expect(future).toContain('€411.27')
+    expect(future).toContain('€197.64')
+    expect(future).toContain('€326.95')
+    expect(future).toContain('€1,307.78')
+
+    const booking = html.slice(
+      html.indexOf('data-testid="vm1-forecast-card-53082517"'),
+      html.indexOf('data-testid="vm1-forecast-card-54972355"'),
+    )
+    expect(booking).toContain(VM1_UNKNOWN_EVIDENCE_LABEL)
+    expect(booking).toContain('UNKNOWN')
+    expect(booking).not.toContain('€0.00')
+    expect(booking).not.toContain('€498.37')
+
+    const modified = html.slice(html.indexOf('data-testid="vm1-forecast-card-54972355"'))
+    expect(modified).toContain('Needs Review')
+    expect(modified).toContain('modified')
+    expect(modified).toContain(VM1_UNKNOWN_EVIDENCE_LABEL)
+    expect(modified).not.toContain('€0.00')
+  })
+
+  it('uses responsive forecast cards instead of a wide scrolling table', () => {
+    const html = renderVerified()
+    const sectionStart = html.indexOf('data-testid="vm1-forecast-section"')
+    const section = html.slice(sectionStart)
+    expect(section).not.toContain('<table')
+    expect(section).not.toContain('overflow-x-auto')
+    expect(section).toContain('grid-cols-1')
+    expect(section).toContain('sm:grid-cols-2')
+    expect(section).toContain('lg:grid-cols-3')
+    expect(section).toContain('data-testid="vm1-forecast-card-65733679"')
+  })
+
+  it('does not import the forecast calculator into the view module', () => {
+    const src = fs.readFileSync(path.join(process.cwd(), 'src/components/finance/Vm1OperationsView.tsx'), 'utf8')
+    expect(src).not.toContain('forecastVm1Reservation')
+    expect(src).not.toContain('forecastAirbnbOwnerStatementAmounts')
+    expect(src).not.toContain('vm1ForecastCalculator')
   })
 
   it('shows a blocked identity without reservation rows', () => {

@@ -5,7 +5,6 @@
 
 import { AttentionBanner, DataTable, PageShell, StatusBadge, WorkspaceHeader } from '@/components/ds'
 import type { Vm1ReservationRow, VerifiedVm1Identity } from '@/lib/partnership-workspace/vm1IdentityAdapter'
-import type { Vm1ForecastLine } from '@/lib/partnership-workspace/vm1ForecastCalculator'
 import { VM1_HOSTAWAY_LISTING_ID } from '@/lib/partnership-workspace/vm1Identity'
 import {
   formatVm1EvidenceAmount,
@@ -18,9 +17,16 @@ import {
   vm1EvidenceStateLabel,
 } from '@/lib/partnership-workspace/vm1OperationsPresentation'
 import {
+  partitionVm1ForecastLines,
+  VM1_FORECAST_AMOUNT_FIELDS,
+  VM1_FORECAST_EXCLUDED_HEADING,
+  VM1_FORECAST_FINANCIAL_REVIEW_HEADING,
   VM1_FORECAST_SECTION_TITLE,
   VM1_FORECAST_STAFF_NOTE,
   vm1ForecastRecognitionLabel,
+  vm1ForecastRecognitionLabelHe,
+  type Vm1ForecastLine,
+  type Vm1ForecastRecognitionState,
 } from '@/lib/partnership-workspace/vm1ForecastPresentation'
 import { VM1_OPERATIONS_BACK_ROUTE } from '@/lib/partnership-workspace/vm1OperationsRoutes'
 
@@ -51,20 +57,13 @@ const TABLE_COLUMNS = [
   { key: 'tax', label: 'Tax', align: 'right' as const, dir: 'ltr' as const },
 ]
 
-const FORECAST_COLUMNS = [
-  { key: 'reservationId', label: 'Reservation ID', dir: 'ltr' as const },
-  { key: 'channel', label: 'Channel' },
-  { key: 'status', label: 'Status' },
-  { key: 'checkIn', label: 'Check-in', dir: 'ltr' as const },
-  { key: 'recognition', label: 'Forecast state' },
-  { key: 'gross', label: 'Gross (forecast)', align: 'right' as const, dir: 'ltr' as const },
-  { key: 'platform', label: 'Platform (forecast)', align: 'right' as const, dir: 'ltr' as const },
-  { key: 'cleaning', label: 'Cleaning (forecast)', align: 'right' as const, dir: 'ltr' as const },
-  { key: 'tax', label: 'Tax (forecast)', align: 'right' as const, dir: 'ltr' as const },
-  { key: 'jjCharge', label: 'JJ 20% charge (forecast)', align: 'right' as const, dir: 'ltr' as const },
-  { key: 'propertyNet', label: 'Property net (forecast)', align: 'right' as const, dir: 'ltr' as const },
-  { key: 'note', label: 'Note' },
-]
+const FORECAST_BADGE_STATUS: Record<Vm1ForecastRecognitionState, 'pending' | 'confirmed' | 'critical' | 'attention' | 'unknown'> = {
+  completed_pending_reconciliation: 'pending',
+  forecast: 'confirmed',
+  blocked: 'critical',
+  needs_review: 'attention',
+  excluded: 'unknown',
+}
 
 function EvidenceAmount({ value }: { value: number | null }) {
   return (
@@ -218,53 +217,122 @@ export function Vm1OperationsView({
           </div>
         )}
 
-        {identityVerified ? (
-          <section className="mt-10" data-testid="vm1-forecast-section">
-            <h2
-              className="mb-3 text-lg font-semibold text-gray-900"
-              data-testid="vm1-forecast-title"
-            >
-              {VM1_FORECAST_SECTION_TITLE}
-            </h2>
-            <p
-              className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950"
-              data-testid="vm1-forecast-staff-note"
-            >
-              {VM1_FORECAST_STAFF_NOTE}
-            </p>
-            <DataTable
-              caption="VM1 internal financial forecast"
-              columns={FORECAST_COLUMNS}
-              rows={forecastLines.map((line) => ({
-                reservationId: (
-                  <span data-testid={`vm1-forecast-row-${line.externalId}`} dir="ltr">
-                    {line.externalId}
-                  </span>
-                ),
-                channel: formatVm1OptionalText(line.channel),
-                status: line.status,
-                checkIn: formatVm1OptionalText(line.checkIn),
-                recognition: (
-                  <span data-testid={`vm1-forecast-state-${line.externalId}`}>
-                    {vm1ForecastRecognitionLabel(line)}
-                  </span>
-                ),
-                gross: <EvidenceAmount value={line.grossRentalRevenue} />,
-                platform: <EvidenceAmount value={line.platformFees} />,
-                cleaning: <EvidenceAmount value={line.guestCleaning} />,
-                tax: <EvidenceAmount value={line.totalTaxes} />,
-                jjCharge: <EvidenceAmount value={line.jjManagementCharge} />,
-                propertyNet: (
-                  <span data-testid={`vm1-forecast-net-${line.externalId}`}>
-                    <EvidenceAmount value={line.propertyNet} />
-                  </span>
-                ),
-                note: line.blockedReason ?? '',
-              }))}
-            />
-          </section>
-        ) : null}
+        {identityVerified ? <ForecastSection lines={forecastLines} /> : null}
       </PageShell>
     </div>
+  )
+}
+
+function ForecastSection({ lines }: { lines: readonly Vm1ForecastLine[] }) {
+  const { financialReview, excludedEvidence } = partitionVm1ForecastLines(lines)
+
+  return (
+    <section className="mt-10 min-w-0" data-testid="vm1-forecast-section">
+      <h2 className="mb-3 text-lg font-semibold text-gray-900" data-testid="vm1-forecast-title">
+        {VM1_FORECAST_SECTION_TITLE}
+      </h2>
+      <p
+        className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950"
+        data-testid="vm1-forecast-staff-note"
+      >
+        {VM1_FORECAST_STAFF_NOTE}
+      </p>
+
+      <h3 className="mb-3 text-sm font-semibold text-gray-800" data-testid="vm1-forecast-financial-heading">
+        {VM1_FORECAST_FINANCIAL_REVIEW_HEADING}
+      </h3>
+      <div className="space-y-4" data-testid="vm1-forecast-financial-review">
+        {financialReview.map((line) => (
+          <ForecastReviewCard key={line.externalId} line={line} />
+        ))}
+      </div>
+
+      {excludedEvidence.length > 0 ? (
+        <details className="mt-6 rounded-xl border border-gray-200 bg-white p-4" data-testid="vm1-forecast-excluded">
+          <summary className="cursor-pointer text-sm font-medium text-gray-800" data-testid="vm1-forecast-excluded-summary">
+            {VM1_FORECAST_EXCLUDED_HEADING} ({excludedEvidence.length})
+          </summary>
+          <ul className="mt-3 divide-y divide-gray-100">
+            {excludedEvidence.map((line) => (
+              <li
+                key={line.externalId}
+                className="grid grid-cols-1 gap-1 py-3 text-sm text-gray-700 sm:grid-cols-2 lg:grid-cols-5"
+                data-testid={`vm1-forecast-excluded-${line.externalId}`}
+              >
+                <span dir="ltr">{line.externalId}</span>
+                <span>{formatVm1OptionalText(line.channel)}</span>
+                <span>{line.status}</span>
+                <span dir="ltr">{formatVm1OptionalText(line.checkIn)}</span>
+                <span>{line.blockedReason ?? vm1ForecastRecognitionLabel(line)}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </section>
+  )
+}
+
+function ForecastReviewCard({ line }: { line: Vm1ForecastLine }) {
+  return (
+    <article
+      className="min-w-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+      data-testid={`vm1-forecast-card-${line.externalId}`}
+    >
+      <header className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+        <dl className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Reservation ID</dt>
+            <dd className="mt-1 text-sm font-medium text-gray-900" dir="ltr" data-testid={`vm1-forecast-row-${line.externalId}`}>
+              {line.externalId}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Channel</dt>
+            <dd className="mt-1 text-sm text-gray-900">{formatVm1OptionalText(line.channel)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Reservation status</dt>
+            <dd className="mt-1 text-sm text-gray-900">{line.status}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Check-in</dt>
+            <dd className="mt-1 text-sm text-gray-900" dir="ltr">
+              {formatVm1OptionalText(line.checkIn)}
+            </dd>
+          </div>
+        </dl>
+        <div className="shrink-0" data-testid={`vm1-forecast-state-${line.externalId}`}>
+          <StatusBadge
+            status={FORECAST_BADGE_STATUS[line.recognitionState]}
+            label={vm1ForecastRecognitionLabel(line)}
+          />
+          <span className="mt-1 block text-xs text-gray-600">{vm1ForecastRecognitionLabelHe(line)}</span>
+        </div>
+      </header>
+
+      <dl
+        className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        data-testid={`vm1-forecast-amounts-${line.externalId}`}
+      >
+        {VM1_FORECAST_AMOUNT_FIELDS.map((field) => (
+          <div key={field.key} className="min-w-0 rounded-lg bg-gray-50 px-3 py-2">
+            <dt className="text-xs text-gray-500">{field.label}</dt>
+            <dd
+              className="mt-1 text-sm font-medium text-gray-900"
+              data-testid={field.key === 'propertyNet' ? `vm1-forecast-net-${line.externalId}` : undefined}
+            >
+              <EvidenceAmount value={line[field.key]} />
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      {line.blockedReason ? (
+        <p className="mt-3 text-sm text-gray-600" data-testid={`vm1-forecast-reason-${line.externalId}`}>
+          {line.blockedReason}
+        </p>
+      ) : null}
+    </article>
   )
 }
