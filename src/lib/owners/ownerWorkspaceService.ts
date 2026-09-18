@@ -62,6 +62,11 @@ import { selectStrProperties } from './selectStrProperties'
 import { getPortfolio } from './ownerPortfolioAdapter'
 import { fetchAllSettlements, fetchSettlementByName } from './ownerSettlementAdapter'
 import { fetchOwnerLevelPaymentsForEntity } from '@/lib/finance/ownerLevelPaymentAdapter'
+import { loadCertifiedSettlementForEntity } from '@/lib/finance/certifiedClientSettlementAdapter'
+import {
+  certifiedToOwnerBalanceDirection,
+  isCertifiedAvailable,
+} from '@/lib/finance/certifiedClientSettlementPresentation'
 import {
   applyOwnerLevelToPosition,
   composeOwnerLevelSettlement,
@@ -104,7 +109,7 @@ import type {
  * Falls back gracefully when statements schema is empty.
  * If lifecycle schema is unavailable, returns empty list (fail-closed).
  */
-export async function getOwnersRoom(): Promise<OwnersRoomDTO> {
+export async function getOwnersRoom(asOf?: string): Promise<OwnersRoomDTO> {
   // G1B: Identity resolution from lifecycle schema (canonical source).
   // Only verified relationships appear in the Owner Room.
   // Pending relationships are available separately but not listed as owners.
@@ -129,6 +134,9 @@ export async function getOwnersRoom(): Promise<OwnersRoomDTO> {
   // Build room items from resolved identities (verified + draft)
   const items: OwnerRoomItemDTO[] = buildRoomItemsFromIdentities(owners, seriesData ?? [], settlementMap)
 
+  // Optional report as-of: certified overlay is the closing hero when available.
+  // Without as-of, room stays on contact settlement (no silent date pick).
+
   // PR #4: Add draft owners from jj_relationships — separate semantics, isDraft=true
   for (const draft of (draftOwners ?? [])) {
     const identity = buildOwnerIdentity(
@@ -152,6 +160,16 @@ export async function getOwnersRoom(): Promise<OwnersRoomDTO> {
       associatedPropertyCount: 0,
       isDraft: true,
     })
+  }
+
+  if (asOf) {
+    await Promise.all(items.map(async (item) => {
+      if (item.isDraft) return
+      const certified = await loadCertifiedSettlementForEntity(item.identity.id, asOf)
+      if (!isCertifiedAvailable(certified)) return
+      item.balanceDirection = certifiedToOwnerBalanceDirection(certified.closingDueToJj)
+      item.balanceEur = String(Math.abs(certified.closingDueToJj))
+    }))
   }
 
   return {
@@ -309,18 +327,50 @@ export async function getOwnerWorkspace(slug: string): Promise<OwnerWorkspaceDTO
 // Tab 1 — Overview
 // ─────────────────────────────────────────────────────────────
 
-export async function getOwnerOverview(slug: string): Promise<OwnerOverviewDTO> {
+export async function getOwnerOverview(
+  slug: string,
+  asOf?: string,
+): Promise<OwnerOverviewDTO> {
   // Resolve identity to get canonical_name for settlement lookup
   const result = await resolveBySlug(slug)
   const canonicalName = result.status === 'resolved'
     ? result.data.identity.displayName
     : null
+  const entityId = result.status === 'resolved'
+    ? result.data.identity.entityId
+    : result.status === 'relationship_missing'
+      ? result.entityId
+      : null
 
-  // Parallel: settlement + upcoming events
-  const [settlement, upcoming] = await Promise.all([
+  // Parallel: certified overlay + contact settlement (supporting) + upcoming events
+  const [certified, settlement, upcoming] = await Promise.all([
+    loadCertifiedSettlementForEntity(entityId, asOf).catch(() => ({
+      unavailable: true as const,
+      reason: 'reader_failed' as const,
+      entityId: entityId,
+      asOf: asOf ?? null,
+    })),
     canonicalName ? fetchSettlementByName(canonicalName) : Promise.resolve(null),
     getUpcomingEvents(slug),
   ])
+
+  if (isCertifiedAvailable(certified)) {
+    return {
+      financial: {
+        balanceDirection: certifiedToOwnerBalanceDirection(certified.closingDueToJj),
+        balanceEur: String(Math.abs(certified.closingDueToJj)),
+        pendingEur: null,
+        lastPaymentAt: null,
+        nextPaymentAt: null,
+      },
+      certifiedSettlement: certified,
+      openItems: [],
+      nextAction: null,
+      upcomingPreview: upcoming.slice(0, 3),
+      contractRenewalAlert: null,
+      recentActivity: [],
+    }
+  }
 
   return {
     financial: {
@@ -421,10 +471,25 @@ export async function getOwnerFinancial(
       seriesId,
     })
 
-    // Settlement V1.2: override closing balance with engine-computed value
     const canonicalName = workspace.identity.name
-    const settlement = await fetchSettlementByName(canonicalName)
-    if (settlement) {
+    const [certified, settlement] = await Promise.all([
+      loadCertifiedSettlementForEntity(workspace.identity.id, endDate).catch(() => ({
+        unavailable: true as const,
+        reason: 'reader_failed' as const,
+        entityId: workspace.identity.id,
+        asOf: endDate ?? null,
+      })),
+      fetchSettlementByName(canonicalName),
+    ])
+
+    if (isCertifiedAvailable(certified)) {
+      financial.certifiedSettlement = certified
+      financial.position = {
+        ...financial.position,
+        closingBalanceEur: String(certified.closingDueToJj),
+      }
+    } else if (settlement) {
+      // Settlement V1.2: override closing with contact summary only when certified is unavailable
       financial.position = {
         ...financial.position,
         closingBalanceEur: settlement.netJjSettlement,
@@ -434,6 +499,7 @@ export async function getOwnerFinancial(
     // Owner-level unallocated payments (finance.owner_transaction_links).
     // not_deployed → skip overlay (deployment compatibility).
     // blocked → NEEDS REVIEW, do not silently keep a possibly wrong closing.
+    // When certified overlay is present, never add owner-level or contact amounts into closing.
     const overlay = await fetchOwnerLevelPaymentsForEntity(workspace.identity.id)
     if (overlay.status === 'not_deployed') {
       financial.ownerLevelPayments = {
@@ -469,10 +535,12 @@ export async function getOwnerFinancial(
         periodStart: startDate ?? null,
         periodEnd: endDate ?? null,
       })
-      const convention = settlement ? 'settlement' : 'rc3'
-      financial.position = {
-        ...financial.position,
-        ...applyOwnerLevelToPosition(financial.position, composed, convention),
+      if (!isCertifiedAvailable(certified)) {
+        const convention = settlement ? 'settlement' : 'rc3'
+        financial.position = {
+          ...financial.position,
+          ...applyOwnerLevelToPosition(financial.position, composed, convention),
+        }
       }
       financial.ownerLevelPayments = {
         totalEur: String(composed.countableTotalEur),

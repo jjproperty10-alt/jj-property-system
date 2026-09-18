@@ -40,6 +40,8 @@ import { groupExpenses } from '@/lib/report/expenseGroups'
 import { computeOperationalKPIs, computeNetOwnerBalance, filterOwnerFacingSections } from '@/lib/report/executiveSummary'
 import { partitionReportAccounts } from '@/lib/report/reportAccountPartition'
 import { splitOperatingIncome, splitOperatingIncomeTotals, computeStatementComponents } from '@/lib/report/statementPresentation'
+import { CertifiedSettlementSection } from '@/components/report/CertifiedSettlementSection'
+import { certifiedHeroLabelKey } from '@/lib/finance/certifiedClientSettlementPresentation'
 import { ReportScopeSelector } from '@/components/report/ReportScopeSelector'
 import type { ReportScope } from '@/lib/report/reportScope'
 import { isScopeValid, defaultScope } from '@/lib/report/reportScope'
@@ -501,6 +503,7 @@ function PremiumSummary({ report, lang }: { report: ClientReport; lang: Lang }) 
   // Purchase stays VISIBLE in the account list / drill-down but is EXCLUDED from the settlement net
   // via filterOwnerFacingSections (JJ-internal acquisition — Global Owner/Client Perspective Rule).
   const netOwnerBalance = computeNetOwnerBalance(filterOwnerFacingSections(report.accounts))
+  const certified = report.certifiedSettlement
   const { income: opIncomeRaw, expenses: opExpenses, transfers: opTransfers, hasOperational } =
     computeOperationalKPIs(report.accounts)
   // #1 — a rental/airbnb "Client Payment" is a cross-property settlement, not
@@ -511,14 +514,26 @@ function PremiumSummary({ report, lang }: { report: ClientReport; lang: Lang }) 
     .filter(a => a.account_type === 'rental' || a.account_type === 'airbnb')
     .reduce((sum, a) => sum + splitOperatingIncomeTotals(a).crossPropertySettlements, 0)
   const opIncome = opIncomeRaw - opSettlements
-  const absNet = Math.abs(netOwnerBalance)
-  let heroLabel: string, heroBg: string, heroAmountClass: string
-  if (absNet < 0.005) {
-    heroLabel = t('balSettled', lang); heroBg = 'bg-slate-600'; heroAmountClass = 'text-white'
-  } else if (netOwnerBalance > 0) {
-    heroLabel = t('balPayableToYou', lang); heroBg = 'bg-green-800'; heroAmountClass = 'text-green-300'
+  let heroLabel: string, heroBg: string, heroAmountClass: string, heroAbs: number
+  if (certified) {
+    heroAbs = Math.abs(certified.closingDueToJj)
+    heroLabel = t(certifiedHeroLabelKey(certified.closingDirection), lang)
+    if (certified.closingDirection === 'settled') {
+      heroBg = 'bg-slate-600'; heroAmountClass = 'text-white'
+    } else if (certified.closingDirection === 'jj_owes_client') {
+      heroBg = 'bg-green-800'; heroAmountClass = 'text-green-300'
+    } else {
+      heroBg = 'bg-red-900'; heroAmountClass = 'text-red-300'
+    }
   } else {
-    heroLabel = t('balPayableByYou', lang); heroBg = 'bg-red-900'; heroAmountClass = 'text-red-300'
+    heroAbs = Math.abs(netOwnerBalance)
+    if (heroAbs < 0.005) {
+      heroLabel = t('balSettled', lang); heroBg = 'bg-slate-600'; heroAmountClass = 'text-white'
+    } else if (netOwnerBalance > 0) {
+      heroLabel = t('balPayableToYou', lang); heroBg = 'bg-green-800'; heroAmountClass = 'text-green-300'
+    } else {
+      heroLabel = t('balPayableByYou', lang); heroBg = 'bg-red-900'; heroAmountClass = 'text-red-300'
+    }
   }
   const period = report.from_date || report.to_date
     ? `${report.from_date ? fmtDate(report.from_date) : '—'} – ${report.to_date ? fmtDate(report.to_date) : '—'}`
@@ -536,7 +551,7 @@ function PremiumSummary({ report, lang }: { report: ClientReport; lang: Lang }) 
       <div className={`${heroBg} rounded-xl px-6 py-5 mb-6 flex items-center justify-between`}>
         <div className="text-[10px] font-bold text-white/50 uppercase tracking-widest">{t('dashBalance', lang)}</div>
         <div className="text-right">
-          <div className={`text-4xl font-bold font-mono ${heroAmountClass}`}>{eur(absNet)}</div>
+          <div className={`text-4xl font-bold font-mono ${heroAmountClass}`}>{eur(heroAbs)}</div>
           <div className={`text-xs font-semibold mt-1 ${heroAmountClass}`}>{heroLabel}</div>
         </div>
       </div>
@@ -1302,6 +1317,10 @@ function ClientReportRC3Content() {
               ))
             )}
 
+            {filteredReport!.certifiedSettlement && (
+              <CertifiedSettlementSection dto={filteredReport!.certifiedSettlement} lang={lang} />
+            )}
+
             {/* Final Summary — accounting summary + disclaimer */}
             <FinalSummary report={filteredReport!} lang={lang} />
           </>
@@ -1325,6 +1344,9 @@ function ClientReportRC3Content() {
                     mrDisplay.map(acc => (
                       <AccountCard key={acc.account_type} section={acc} lang={lang} />
                     ))
+                  )}
+                  {mr.certifiedSettlement && (
+                    <CertifiedSettlementSection dto={mr.certifiedSettlement} lang={lang} />
                   )}
                   <FinalSummary report={mrFiltered} lang={lang} />
 

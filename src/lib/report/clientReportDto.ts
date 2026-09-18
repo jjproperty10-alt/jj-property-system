@@ -93,6 +93,11 @@ export interface ClientReport {
   has_renovation: boolean
   has_rental:     boolean
   has_airbnb:     boolean
+  /**
+   * Certified settlement overlay. Omitted when unavailable so uncertified
+   * clients serialize bitwise-equivalently to the legacy DTO.
+   */
+  certifiedSettlement?: import('../finance/certifiedClientSettlementTypes').CertifiedClientSettlementAvailable
 }
 
 /** Client-facing wording for Sale / Third-Party Payment (P3b). DB/server unchanged. */
