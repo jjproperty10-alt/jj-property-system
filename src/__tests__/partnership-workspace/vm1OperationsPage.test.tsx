@@ -99,6 +99,17 @@ describe('VM1 operations route — staff authorization (fail closed)', () => {
       reservations: [],
       forecastLines: [],
       draftAdmissionLines: [],
+      expenseAdmission: {
+        transactionId: null,
+        date: null,
+        category: null,
+        subcategory: null,
+        admissionState: 'blocked',
+        partnershipChargeEur: null,
+        jjActualCostEur: null,
+        jjOperatingProfitEur: null,
+        reason: 'Approved expense row was not returned as exactly one Production transaction.',
+      },
     })
     const html = renderToStaticMarkup(await Page({ searchParams: { from: '2026-08-25', to: '2026-09-17' } }))
     expect(loadMock).toHaveBeenCalledTimes(1)
@@ -107,6 +118,8 @@ describe('VM1 operations route — staff authorization (fail closed)', () => {
     expect(html).toContain('data-testid="vm1-operations-root"')
     expect(html).toContain('Financial Forecast / תחזית כספית')
     expect(html).toContain('Draft admission review / בדיקת קבלה לטיוטה')
+    expect(html).toContain('Approved future-Draft expenses / הוצאות מאושרות לטיוטה עתידית')
+    expect(html).toContain('Expense admission blocked')
   })
 
   it('invalid range after auth shows a blocked staff error, not reservation rows', async () => {
@@ -124,5 +137,10 @@ describe('VM1 operations route — staff authorization (fail closed)', () => {
     expect(html).toContain('Blocked')
     expect(html).toContain('Operational date range is invalid')
     expect(html).not.toContain('65733679')
+    expect(html).not.toContain('€30.00')
+    expect(html).not.toContain('Partnership charge')
+    expect(html).not.toContain('JJ actual cost')
+    expect(html).not.toContain('JJ operating profit')
+    expect(html).not.toContain('data-testid="vm1-expense-admission-approved"')
   })
 })

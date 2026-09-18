@@ -1,6 +1,10 @@
 import { VM1_CANONICAL_PROPERTY_ID, VM1_HOSTAWAY_LISTING_ID, VM1_LEGACY_LEDGER_PROPERTY_ID } from '../vm1Identity'
 import { VM1_FORBIDDEN_MAPPING_RPC, type Vm1RpcClient } from '../vm1IdentityAdapter'
-import { loadVm1OperationsView } from '../vm1OperationsService'
+import { loadVm1OperationsView, type Vm1OperationsClient } from '../vm1OperationsService'
+import {
+  VM1_APPROVED_FUTURE_DRAFT_EXPENSE_TRANSACTION_ID,
+} from '../vm1ExpenseAdmission'
+import { VM1_EXPENSE_LEDGER_SELECT } from '../vm1ExpenseAdmissionService'
 
 const NEER_CANONICAL_ID = 'b587f463-279d-4376-bb14-38789f34cbba'
 const NEER_LISTING_ID = '426237'
@@ -21,12 +25,15 @@ function resolvedVm1() {
 function mockClient(handlers: {
   resolve?: unknown
   reservations?: unknown
+  expenseRows?: unknown
 }): {
-  client: Vm1RpcClient
+  client: Vm1OperationsClient
   rpcCalls: Array<{ name: string; args: Record<string, unknown> | undefined }>
+  expenseSelects: Array<{ relation: string; columns: string; filters: Array<[string, string]> }>
 } {
   const rpcCalls: Array<{ name: string; args: Record<string, unknown> | undefined }> = []
-  const client: Vm1RpcClient = {
+  const expenseSelects: Array<{ relation: string; columns: string; filters: Array<[string, string]> }> = []
+  const rpcClient: Vm1RpcClient = {
     rpc: (name, args) => {
       rpcCalls.push({ name, args })
       if (name === 'resolve_property_canonical') {
@@ -44,7 +51,36 @@ function mockClient(handlers: {
       return Promise.resolve({ data: null, error: { message: `unexpected rpc ${name}` } })
     },
   }
-  return { client, rpcCalls }
+  const client = {
+    ...rpcClient,
+    from(relation: string) {
+      return {
+        select(columns: string) {
+          return {
+            eq(column: string, value: string) {
+              return {
+                eq(column2: string, value2: string) {
+                  expenseSelects.push({
+                    relation,
+                    columns,
+                    filters: [
+                      [column, value],
+                      [column2, value2],
+                    ],
+                  })
+                  return Promise.resolve({
+                    data: handlers.expenseRows !== undefined ? handlers.expenseRows : [],
+                    error: null,
+                  })
+                },
+              }
+            },
+          }
+        },
+      }
+    },
+  }
+  return { client, rpcCalls, expenseSelects }
 }
 
 describe('loadVm1OperationsView', () => {
@@ -68,7 +104,7 @@ describe('loadVm1OperationsView', () => {
   })
 
   it('does not call Hostaway when the date range is invalid', async () => {
-    const { client, rpcCalls } = mockClient({})
+    const { client, rpcCalls, expenseSelects } = mockClient({})
     const result = await loadVm1OperationsView({
       client,
       fromParam: '2026-09-30',
@@ -79,10 +115,12 @@ describe('loadVm1OperationsView', () => {
     if (result.ok) return
     expect(result.kind).toBe('invalid_range')
     expect(rpcCalls).toEqual([])
+    expect(expenseSelects).toEqual([])
+    expect(result).not.toHaveProperty('expenseAdmission')
   })
 
   it('fails closed on Neer canonical identity', async () => {
-    const { client, rpcCalls } = mockClient({
+    const { client, rpcCalls, expenseSelects } = mockClient({
       resolve: [
         {
           status: 'resolved',
@@ -97,10 +135,11 @@ describe('loadVm1OperationsView', () => {
     if (result.ok) return
     expect(result.kind).toBe('identity_blocked')
     expect(rpcCalls.map((c) => c.name)).not.toContain('pms_reservations_for_property')
+    expect(expenseSelects).toEqual([])
   })
 
   it('fails closed if a reservation is on the Neer listing', async () => {
-    const { client } = mockClient({
+    const { client, expenseSelects } = mockClient({
       reservations: [
         {
           external_id: '65733679',
@@ -121,10 +160,11 @@ describe('loadVm1OperationsView', () => {
     if (result.ok) return
     expect(result.kind).toBe('identity_blocked')
     expect(result.reason).toContain('412148')
+    expect(expenseSelects).toEqual([])
   })
 
   it('fails closed on VM2 canonical identity', async () => {
-    const { client } = mockClient({
+    const { client, expenseSelects } = mockClient({
       resolve: [
         {
           status: 'resolved',
@@ -138,6 +178,8 @@ describe('loadVm1OperationsView', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.kind).toBe('identity_blocked')
+    expect(expenseSelects).toEqual([])
+    expect(result).not.toHaveProperty('expenseAdmission')
   })
 
   it('labels 53139113 already certified from the frozen Avi stay collection', async () => {
@@ -230,5 +272,140 @@ describe('loadVm1OperationsView', () => {
     expect(bookingAdmission?.admittedCandidate).toBe(false)
     expect(result.draftAdmissionLines.every((l) => l.admittedCandidate === false)).toBe(true)
     expect(JSON.stringify(result.draftAdmissionLines)).not.toContain('594.25')
+  })
+
+  it('loads the approved expense independently of zero revenue admission', async () => {
+    const { client, expenseSelects } = mockClient({
+      expenseRows: [
+        {
+          id: VM1_APPROVED_FUTURE_DRAFT_EXPENSE_TRANSACTION_ID,
+          date: '2026-09-06',
+          property_id: VM1_LEGACY_LEDGER_PROPERTY_ID,
+          category: 'Airbnb',
+          subcategory: 'Internet',
+          amount_eur: 30,
+          client_charge: null,
+          review_status: 'active',
+          is_deleted: false,
+        },
+      ],
+      reservations: [
+        {
+          external_id: '65733679',
+          external_property_id: VM1_HOSTAWAY_LISTING_ID,
+          channel: 'airbnb',
+          status: 'confirmed',
+          check_in: '2026-09-03',
+          check_out: '2026-09-06',
+          nights: 3,
+          total_price: 1005.9,
+          cleaning_fee: 150,
+          raw: {
+            airbnbExpectedPayoutAmount: 849.99,
+            airbnbListingHostFee: 155.91,
+            taxAmount: 0,
+          },
+        },
+      ],
+    })
+    const result = await loadVm1OperationsView({ client, now: NOW })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.expenseAdmission.admissionState).toBe('approved_future_draft_expense')
+    expect(result.expenseAdmission.partnershipChargeEur).toBe(30)
+    expect(result.expenseAdmission.jjActualCostEur).toBe(30)
+    expect(result.expenseAdmission.jjOperatingProfitEur).toBe(0)
+    expect(result.draftAdmissionLines.every((l) => l.admittedCandidate === false)).toBe(true)
+    expect(result.draftAdmissionLines[0].admissionState).toBe('completed_pending_authoritative_evidence')
+    expect(expenseSelects).toEqual([
+      {
+        relation: 'transactions',
+        columns: VM1_EXPENSE_LEDGER_SELECT,
+        filters: [
+          ['id', VM1_APPROVED_FUTURE_DRAFT_EXPENSE_TRANSACTION_ID],
+          ['property_id', VM1_LEGACY_LEDGER_PROPERTY_ID],
+        ],
+      },
+    ])
+  })
+
+  it('keeps reservations visible when verified identity meets a missing expense row', async () => {
+    const { client, expenseSelects } = mockClient({
+      expenseRows: [],
+      reservations: [
+        {
+          external_id: '65733679',
+          external_property_id: VM1_HOSTAWAY_LISTING_ID,
+          channel: 'airbnb',
+          status: 'confirmed',
+          check_in: '2026-09-03',
+          check_out: '2026-09-06',
+          nights: 3,
+          total_price: 1005.9,
+          cleaning_fee: 150,
+          raw: {
+            airbnbExpectedPayoutAmount: 849.99,
+            airbnbListingHostFee: 155.91,
+            taxAmount: 0,
+          },
+        },
+      ],
+    })
+    const result = await loadVm1OperationsView({ client, now: NOW })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.expenseAdmission.admissionState).toBe('blocked')
+    expect(result.expenseAdmission.partnershipChargeEur).toBeNull()
+    expect(result.expenseAdmission.jjActualCostEur).toBeNull()
+    expect(result.expenseAdmission.jjOperatingProfitEur).toBeNull()
+    expect(result.reservations[0].externalId).toBe('65733679')
+    expect(result.identity.hostawayListingId).toBe('412148')
+    expect(result.draftAdmissionLines.every((l) => l.admittedCandidate === false)).toBe(true)
+    expect(expenseSelects).toHaveLength(1)
+    expect(VM1_EXPENSE_LEDGER_SELECT).not.toContain('payer')
+  })
+
+  it('does not SELECT expense when the identity resolver returns no rows', async () => {
+    const { client, expenseSelects } = mockClient({ resolve: [] })
+    const result = await loadVm1OperationsView({ client, now: NOW })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.kind).toBe('identity_blocked')
+    expect(expenseSelects).toEqual([])
+    expect(result).not.toHaveProperty('expenseAdmission')
+  })
+
+  it('does not SELECT expense on canonical mismatch', async () => {
+    const { client, expenseSelects } = mockClient({
+      resolve: [
+        {
+          status: 'resolved',
+          canonical_property_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+          canonical_name: 'Other property',
+          candidates: null,
+        },
+      ],
+    })
+    const result = await loadVm1OperationsView({ client, now: NOW })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.kind).toBe('identity_blocked')
+    expect(result.reason.toLowerCase()).toContain('canonical')
+    expect(expenseSelects).toEqual([])
+  })
+
+  it('loads identity before the expense SELECT', () => {
+    const src = require('fs').readFileSync(
+      require('path').join(process.cwd(), 'src/lib/partnership-workspace/vm1OperationsService.ts'),
+      'utf8',
+    )
+    const identityCall = src.indexOf('const loaded = await loadVm1Identity')
+    const expenseCall = src.indexOf('await loadVm1ApprovedFutureDraftExpense({')
+    const identityFail = src.indexOf('if (!loaded.ok)')
+    expect(identityCall).toBeGreaterThan(-1)
+    expect(expenseCall).toBeGreaterThan(identityCall)
+    expect(identityFail).toBeGreaterThan(identityCall)
+    expect(identityFail).toBeLessThan(expenseCall)
+    expect(src).toContain('verifiedIdentity: loaded.identity')
   })
 })
