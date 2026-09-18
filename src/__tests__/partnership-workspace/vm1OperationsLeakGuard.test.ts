@@ -31,6 +31,8 @@ const OPERATIONS_FILES = [
   'src/lib/partnership-workspace/vm1OperationsPresentation.ts',
   'src/lib/partnership-workspace/vm1ForecastCalculator.ts',
   'src/lib/partnership-workspace/vm1ForecastPresentation.ts',
+  'src/lib/partnership-workspace/vm1PeriodContract.ts',
+  'src/lib/partnership-workspace/vm1DraftAdmission.ts',
   'src/lib/partnership-workspace/aviCertifiedReservationIds.ts',
   'src/lib/partnership-workspace/vm1OperationsRoutes.ts',
 ]
@@ -79,6 +81,8 @@ describe('VM1 operations leak guards', () => {
     expect(joined).not.toContain('Net Owner Payout')
     expect(joined).not.toContain('594.25')
     expect(joined).not.toContain('Internet')
+    expect(joined).not.toContain('efe4e1f5')
+    expect(joined).not.toContain('APPROVED_PROPERTY_EXPENSE_FOR_FUTURE_DRAFT')
     expect(joined).not.toContain('strStatementLine')
     expect(joined).not.toContain('applyAirbnbCyprusVat')
     expect(joined).not.toContain('buildOwnerStrStatement')
@@ -107,6 +111,12 @@ describe('VM1 operations leak guards', () => {
       expect(text).not.toContain('Financial Forecast')
       expect(text).not.toContain('תחזית כספית')
       expect(text).not.toContain('vm1Forecast')
+      expect(text).not.toContain('Draft admission')
+      expect(text).not.toContain('vm1DraftAdmission')
+      expect(text).not.toContain('vm1PeriodContract')
+      expect(text).not.toContain('Initial partnership period')
+      expect(text).not.toContain('authoritativeEvidenceByReservationId')
+      expect(text).not.toContain('duplicate authoritative statement source')
     }
   })
 
@@ -116,6 +126,8 @@ describe('VM1 operations leak guards', () => {
       expect(text).not.toContain('vm1Operations')
       expect(text).not.toContain('Property Operations')
       expect(text).not.toContain('loadVm1Identity')
+      expect(text).not.toContain('vm1DraftAdmission')
+      expect(text).not.toContain('Draft admission')
     }
   })
 
@@ -159,7 +171,8 @@ describe('VM1 operations leak guards', () => {
     const adapter = read('src/lib/partnership-workspace/vm1IdentityAdapter.ts')
     expect(ids).toContain('export function aviCertifiedReservationIdSet(): ReadonlySet<string>')
     expect(ids).toContain('new Set(AVI_HOSTAWAY_STAYS.map((stay) => stay.reservationId))')
-    expect(service).toContain('certifiedReservationIds: aviCertifiedReservationIdSet()')
+    expect(service).toContain('aviCertifiedReservationIdSet()')
+    expect(service).toContain('certifiedReservationIds')
     expect(service).not.toContain('AVI_HOSTAWAY_STAYS')
     expect(adapter).not.toContain('from \'@/lib/partner-settlement/external-partner/aviHostawayStays\'')
     expect(adapter).not.toContain('AVI_HOSTAWAY_STAYS.map')

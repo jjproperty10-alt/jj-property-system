@@ -4,8 +4,18 @@
  */
 
 import { AttentionBanner, DataTable, PageShell, StatusBadge, WorkspaceHeader } from '@/components/ds'
+import type { Vm1DraftAdmissionLine } from '@/lib/partnership-workspace/vm1DraftAdmission'
 import type { Vm1ReservationRow, VerifiedVm1Identity } from '@/lib/partnership-workspace/vm1IdentityAdapter'
 import { VM1_HOSTAWAY_LISTING_ID } from '@/lib/partnership-workspace/vm1Identity'
+import {
+  VM1_DRAFT_ADMISSION_SECTION_TITLE,
+  VM1_DRAFT_ADMISSION_STAFF_NOTE,
+  VM1_DRAFT_ADMISSION_STATE_LABEL,
+  VM1_HOSTAWAY_INVENTORY_EVIDENCE_NOTE,
+  VM1_INITIAL_PERIOD_FROM,
+  VM1_INITIAL_PERIOD_NAME,
+  VM1_INITIAL_PERIOD_TO,
+} from '@/lib/partnership-workspace/vm1PeriodContract'
 import {
   formatVm1EvidenceAmount,
   formatVm1OptionalText,
@@ -37,6 +47,7 @@ export interface Vm1OperationsViewProps {
   readonly identity?: VerifiedVm1Identity
   readonly reservations?: readonly Vm1ReservationRow[]
   readonly forecastLines?: readonly Vm1ForecastLine[]
+  readonly draftAdmissionLines?: readonly Vm1DraftAdmissionLine[]
   readonly errorTitle?: string
   readonly errorDescription?: string
 }
@@ -80,6 +91,7 @@ export function Vm1OperationsView({
   identity,
   reservations = [],
   forecastLines = [],
+  draftAdmissionLines = [],
   errorTitle,
   errorDescription,
 }: Vm1OperationsViewProps) {
@@ -218,6 +230,7 @@ export function Vm1OperationsView({
         )}
 
         {identityVerified ? <ForecastSection lines={forecastLines} /> : null}
+        {identityVerified ? <DraftAdmissionSection lines={draftAdmissionLines} /> : null}
       </PageShell>
     </div>
   )
@@ -334,5 +347,58 @@ function ForecastReviewCard({ line }: { line: Vm1ForecastLine }) {
         </p>
       ) : null}
     </article>
+  )
+}
+
+const ADMISSION_BADGE_STATUS: Record<
+  Vm1DraftAdmissionLine['admissionState'],
+  'pending' | 'confirmed' | 'critical' | 'attention' | 'unknown'
+> = {
+  admitted: 'pending',
+  blocked: 'critical',
+  completed_pending_authoritative_evidence: 'critical',
+  forecast: 'confirmed',
+  excluded: 'unknown',
+  needs_review: 'attention',
+}
+
+function DraftAdmissionSection({ lines }: { lines: readonly Vm1DraftAdmissionLine[] }) {
+  return (
+    <section className="mt-10 min-w-0" data-testid="vm1-draft-admission-section">
+      <h2 className="mb-3 text-lg font-semibold text-gray-900" data-testid="vm1-draft-admission-title">
+        {VM1_DRAFT_ADMISSION_SECTION_TITLE}
+      </h2>
+      <p
+        className="mb-2 rounded-lg border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-950"
+        data-testid="vm1-draft-admission-staff-note"
+      >
+        {VM1_DRAFT_ADMISSION_STAFF_NOTE}
+      </p>
+      <p className="mb-4 text-xs text-gray-500" data-testid="vm1-draft-admission-period">
+        {VM1_INITIAL_PERIOD_NAME}: {VM1_INITIAL_PERIOD_FROM} → {VM1_INITIAL_PERIOD_TO} (check-in inclusive).{' '}
+        {VM1_HOSTAWAY_INVENTORY_EVIDENCE_NOTE}
+      </p>
+      <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white" data-testid="vm1-draft-admission-list">
+        {lines.map((line) => (
+          <li
+            key={line.externalId}
+            className="grid grid-cols-1 gap-2 p-4 text-sm text-gray-800 sm:grid-cols-2 lg:grid-cols-4"
+            data-testid={`vm1-draft-admission-${line.externalId}`}
+          >
+            <span dir="ltr" data-testid={`vm1-draft-admission-id-${line.externalId}`}>
+              {line.externalId}
+            </span>
+            <span dir="ltr">{line.checkIn ?? '—'}</span>
+            <span data-testid={`vm1-draft-admission-state-${line.externalId}`}>
+              <StatusBadge
+                status={ADMISSION_BADGE_STATUS[line.admissionState]}
+                label={VM1_DRAFT_ADMISSION_STATE_LABEL[line.admissionState]}
+              />
+            </span>
+            <span data-testid={`vm1-draft-admission-reason-${line.externalId}`}>{line.reason}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }

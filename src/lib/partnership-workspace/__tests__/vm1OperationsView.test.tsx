@@ -28,6 +28,7 @@ import {
 } from '@/lib/partnership-workspace/vm1Identity'
 import type { Vm1ReservationRow } from '@/lib/partnership-workspace/vm1IdentityAdapter'
 import { forecastVm1Reservations } from '@/lib/partnership-workspace/vm1ForecastCalculator'
+import { admitVm1DraftReservations } from '@/lib/partnership-workspace/vm1DraftAdmission'
 import { VM1_UNKNOWN_EVIDENCE_LABEL } from '@/lib/partnership-workspace/vm1OperationsPresentation'
 
 const IDENTITY = {
@@ -161,6 +162,13 @@ const ROWS: readonly Vm1ReservationRow[] = [
 ]
 
 function renderVerified(): string {
+  const admission = admitVm1DraftReservations(ROWS, {
+    asOfIso: '2026-09-17',
+    certifiedReservationIds: new Set(['53139113']),
+  })
+  if (!admission.ok) {
+    throw new Error(admission.reason)
+  }
   return renderToStaticMarkup(
     <Vm1OperationsView
       identityStatus="verified"
@@ -169,6 +177,7 @@ function renderVerified(): string {
       identity={IDENTITY}
       reservations={ROWS}
       forecastLines={forecastVm1Reservations(ROWS, { asOfIso: '2026-09-17' })}
+      draftAdmissionLines={admission.lines}
     />,
   )
 }
@@ -321,13 +330,39 @@ describe('Vm1OperationsView', () => {
   it('uses responsive forecast cards instead of a wide scrolling table', () => {
     const html = renderVerified()
     const sectionStart = html.indexOf('data-testid="vm1-forecast-section"')
-    const section = html.slice(sectionStart)
+    const section = html.slice(sectionStart, html.indexOf('data-testid="vm1-draft-admission-section"'))
     expect(section).not.toContain('<table')
     expect(section).not.toContain('overflow-x-auto')
     expect(section).toContain('grid-cols-1')
     expect(section).toContain('sm:grid-cols-2')
     expect(section).toContain('lg:grid-cols-3')
     expect(section).toContain('data-testid="vm1-forecast-card-65733679"')
+  })
+
+  it('renders Draft admission review without totals or partner split', () => {
+    const html = renderVerified()
+    expect(html).toContain('Draft admission review / בדיקת קבלה לטיוטה')
+    expect(html).toContain('Admission gates only — not a saved Draft, not settlement, not Certified, and no partner split.')
+    expect(html).toContain('Initial partnership period')
+    expect(html).toContain('Hostaway inventory is evidence at the time of the RPC read')
+    expect(html).toContain('data-testid="vm1-draft-admission-state-65733679"')
+    expect(html).toContain('Blocked — authoritative statement evidence required')
+    expect(html).toContain('חסום — נדרשת ראיית דוח בעלים')
+    expect(html).toContain('authoritative owner-statement payout evidence is not linked')
+    expect(html).toContain('data-testid="vm1-draft-admission-state-53139113"')
+    expect(html).toContain('data-testid="vm1-draft-admission-state-64232458"')
+    expect(html).toContain('Forecast — not admitted')
+    expect(html).toContain('data-testid="vm1-draft-admission-state-53082517"')
+    const admission = html.slice(html.indexOf('data-testid="vm1-draft-admission-section"'))
+    expect(admission).not.toContain('Admitted candidate')
+    expect(admission).not.toContain('sourceId')
+    expect(admission).not.toContain('os-')
+    expect(admission).not.toContain('Grand total')
+    expect(admission).not.toContain('Avi share')
+    expect(admission).not.toContain('50%')
+    expect(admission).not.toContain('25%')
+    expect(admission).not.toContain('594.25')
+    expect(admission).not.toContain('subtotal')
   })
 
   it('does not import the forecast calculator into the view module', () => {
@@ -352,5 +387,6 @@ describe('Vm1OperationsView', () => {
     expect(html).not.toContain('65733679')
     expect(html).not.toContain('data-testid="vm1-operations-table-wrap"')
     expect(html).not.toContain('data-testid="vm1-forecast-section"')
+    expect(html).not.toContain('data-testid="vm1-draft-admission-section"')
   })
 })

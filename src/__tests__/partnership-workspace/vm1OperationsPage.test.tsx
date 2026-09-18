@@ -98,6 +98,7 @@ describe('VM1 operations route — staff authorization (fail closed)', () => {
       },
       reservations: [],
       forecastLines: [],
+      draftAdmissionLines: [],
     })
     const html = renderToStaticMarkup(await Page({ searchParams: { from: '2026-08-25', to: '2026-09-17' } }))
     expect(loadMock).toHaveBeenCalledTimes(1)
@@ -105,6 +106,7 @@ describe('VM1 operations route — staff authorization (fail closed)', () => {
     expect(html).toContain('412148')
     expect(html).toContain('data-testid="vm1-operations-root"')
     expect(html).toContain('Financial Forecast / תחזית כספית')
+    expect(html).toContain('Draft admission review / בדיקת קבלה לטיוטה')
   })
 
   it('invalid range after auth shows a blocked staff error, not reservation rows', async () => {
