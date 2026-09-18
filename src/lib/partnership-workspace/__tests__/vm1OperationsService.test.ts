@@ -164,6 +164,8 @@ describe('loadVm1OperationsView', () => {
     expect(result.forecastLines[0].recognitionState).toBe('excluded')
     expect(result.forecastLines[0].calculable).toBe(false)
     expect(result.forecastLines[0].propertyNet).toBeNull()
+    expect(result.draftAdmissionLines[0].admissionState).toBe('excluded')
+    expect(result.draftAdmissionLines[0].admittedCandidate).toBe(false)
   })
 
   it('forecasts Airbnb 65733679 and blocks Booking without payout', async () => {
@@ -214,5 +216,19 @@ describe('loadVm1OperationsView', () => {
     expect(booking?.calculable).toBe(false)
     expect(booking?.recognitionState).toBe('blocked')
     expect(booking?.propertyNet).toBeNull()
+    expect(result.reservations.find((r) => r.externalId === '65733679')?.disposition).toBe(
+      'operational_candidate',
+    )
+    const airbnbAdmission = result.draftAdmissionLines.find((l) => l.externalId === '65733679')
+    const bookingAdmission = result.draftAdmissionLines.find((l) => l.externalId === '53082517')
+    expect(airbnbAdmission?.admissionState).toBe('completed_pending_authoritative_evidence')
+    expect(airbnbAdmission?.admittedCandidate).toBe(false)
+    expect(airbnbAdmission?.periodMember).toBe(true)
+    expect(airbnbAdmission?.checkoutCompleted).toBe(true)
+    expect(airbnbAdmission?.operationalEvidencePresent).toBe(true)
+    expect(bookingAdmission?.admissionState).toBe('blocked')
+    expect(bookingAdmission?.admittedCandidate).toBe(false)
+    expect(result.draftAdmissionLines.every((l) => l.admittedCandidate === false)).toBe(true)
+    expect(JSON.stringify(result.draftAdmissionLines)).not.toContain('594.25')
   })
 })

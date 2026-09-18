@@ -10,6 +10,7 @@
 import 'server-only'
 
 import { aviCertifiedReservationIdSet } from './aviCertifiedReservationIds'
+import { admitVm1DraftReservations, type Vm1DraftAdmissionLine } from './vm1DraftAdmission'
 import { forecastVm1Reservations, type Vm1ForecastLine } from './vm1ForecastCalculator'
 import { loadVm1Identity, type Vm1IdentityResult, type Vm1RpcClient } from './vm1IdentityAdapter'
 import { parseVm1OperationsRange, utcTodayIso } from './vm1OperationsPresentation'
@@ -22,6 +23,7 @@ export type Vm1OperationsLoadResult =
       readonly identity: Extract<Vm1IdentityResult, { ok: true }>['identity']
       readonly reservations: Extract<Vm1IdentityResult, { ok: true }>['reservations']
       readonly forecastLines: readonly Vm1ForecastLine[]
+      readonly draftAdmissionLines: readonly Vm1DraftAdmissionLine[]
     }
   | {
       readonly ok: false
@@ -52,9 +54,10 @@ export async function loadVm1OperationsView(
     }
   }
 
+  const certifiedReservationIds = aviCertifiedReservationIdSet()
   const loaded = await loadVm1Identity({
     client: input.client,
-    certifiedReservationIds: aviCertifiedReservationIdSet(),
+    certifiedReservationIds,
     reservationFrom: range.from,
     reservationTo: range.to,
   })
@@ -69,6 +72,23 @@ export async function loadVm1OperationsView(
     }
   }
 
+  const asOfIso = utcTodayIso(input.now)
+  // Raw Hostaway reservation payout is operational evidence only.
+  // This slice does not attach hostaway_owner_statement provenance, so no row is Draft-admitted.
+  const admission = admitVm1DraftReservations(loaded.reservations, {
+    asOfIso,
+    certifiedReservationIds,
+  })
+  if (!admission.ok) {
+    return {
+      ok: false,
+      kind: 'identity_blocked',
+      reason: admission.reason,
+      from: range.from,
+      to: range.to,
+    }
+  }
+
   return {
     ok: true,
     from: range.from,
@@ -76,7 +96,8 @@ export async function loadVm1OperationsView(
     identity: loaded.identity,
     reservations: loaded.reservations,
     forecastLines: forecastVm1Reservations(loaded.reservations, {
-      asOfIso: utcTodayIso(input.now),
+      asOfIso,
     }),
+    draftAdmissionLines: admission.lines,
   }
 }
