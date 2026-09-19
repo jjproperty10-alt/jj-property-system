@@ -31,6 +31,9 @@ import { renderToBuffer, Font } from '@react-pdf/renderer'
 import { validateAuthorizedReportScope } from '@/lib/auth/reportAuthorization'
 import { fetchRC3Report } from '@/lib/report/fetchReport'
 import { OwnerSettlementPdfV3 } from '@/lib/pdf/OwnerSettlementPdfV3'
+import { loadCertifiedSettlementForProperty } from '@/lib/finance/certifiedClientSettlementAdapter'
+import { isCertifiedAvailable } from '@/lib/finance/certifiedClientSettlementPresentation'
+import type { CertifiedClientSettlementAvailable } from '@/lib/finance/certifiedClientSettlementTypes'
 import type { Lang } from '@/lib/report/labels'
 import type { ReportType } from '@/lib/report/reportTypes'
 
@@ -81,7 +84,19 @@ export async function GET(req: Request): Promise<Response> {
     registerPdfFonts()
 
     const raw = await fetchRC3Report({ reportingName: property, fromDate: fromRaw, toDate: toRaw })
-    const element = React.createElement(OwnerSettlementPdfV3, { report: raw, lang, reportType: type })
+    let certifiedSettlement: CertifiedClientSettlementAvailable | undefined
+    try {
+      const certified = await loadCertifiedSettlementForProperty(property, toRaw)
+      if (isCertifiedAvailable(certified)) certifiedSettlement = certified
+    } catch {
+      certifiedSettlement = undefined
+    }
+    const element = React.createElement(OwnerSettlementPdfV3, {
+      report: raw,
+      lang,
+      reportType: type,
+      certifiedSettlement,
+    })
     // renderToBuffer expects a react-pdf DocumentElement; OwnerSettlementPdfV3
     // renders one at runtime (same cast as the existing owner PDF route).
     const buffer = await renderToBuffer(element as Parameters<typeof renderToBuffer>[0])

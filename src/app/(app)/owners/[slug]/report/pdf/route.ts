@@ -29,6 +29,9 @@ import { getOwnerWorkspace } from '@/lib/owners/ownerWorkspaceService'
 import { fetchRC3Report } from '@/lib/report/fetchReport'
 import { createServiceClient } from '@/lib/supabase'
 import { OwnerSettlementPdfV3, OwnerPortfolioPdf } from '@/lib/pdf/OwnerSettlementPdfV3'
+import { loadCertifiedSettlementForEntity } from '@/lib/finance/certifiedClientSettlementAdapter'
+import { isCertifiedAvailable } from '@/lib/finance/certifiedClientSettlementPresentation'
+import type { CertifiedClientSettlementAvailable } from '@/lib/finance/certifiedClientSettlementTypes'
 import type { Lang } from '@/lib/report/labels'
 import type { ReportType } from '@/lib/report/reportTypes'
 import type { RC3PropertyReport, RC3AccountSection } from '@/lib/report/types'
@@ -284,10 +287,18 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
   //     multiple properties → Full Owner Report (Owner Summary + per-property).
   registerPdfFonts()
 
+  let certifiedSettlement: CertifiedClientSettlementAvailable | undefined
+  try {
+    const certified = await loadCertifiedSettlementForEntity(workspace.identity.id, toDate)
+    if (isCertifiedAvailable(certified)) certifiedSettlement = certified
+  } catch {
+    certifiedSettlement = undefined
+  }
+
   const element = (
     finalReports.length === 1
-      ? React.createElement(OwnerSettlementPdfV3, { report: finalReports[0], lang, reportType })
-      : React.createElement(OwnerPortfolioPdf, { reports: finalReports, lang, reportType })
+      ? React.createElement(OwnerSettlementPdfV3, { report: finalReports[0], lang, reportType, certifiedSettlement })
+      : React.createElement(OwnerPortfolioPdf, { reports: finalReports, lang, reportType, certifiedSettlement })
   ) as unknown as React.ReactElement
 
   const buffer = await renderToBuffer(element as any)

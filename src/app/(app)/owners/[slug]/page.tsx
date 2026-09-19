@@ -202,7 +202,7 @@ export default async function OwnerWorkspacePage({
   // Fetch tab data — parallel where possible
   const [overview, financial, reservations, documents, maintenance, relationship, audit, services, entityProperties] =
     await Promise.all([
-      getOwnerOverview(slug),
+      getOwnerOverview(slug, financialToDate),
       isAllHistory
         ? getOwnerFinancial(slug)
         : getOwnerFinancial(slug, financialFromDate, financialToDate),

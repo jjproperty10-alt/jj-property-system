@@ -382,6 +382,11 @@ export interface OwnerOverviewDTO {
     /** Next expected payment date */
     nextPaymentAt: ISODate | null
   }
+  /**
+   * Certified settlement overlay when an applied certification exists for the report as-of.
+   * Present only when available. Contact settlement remains supporting detail.
+   */
+  certifiedSettlement?: import('../finance/certifiedClientSettlementTypes').CertifiedClientSettlementAvailable
   /** Open items requiring JJ action */
   openItems: OwnerOpenItemDTO[]
   /** Next recommended action */
@@ -465,6 +470,11 @@ export interface OwnerFinancialDTO {
   paymentSummary?: PaymentAllocationSummaryDTO | null
   /** Open correction cases requiring attention */
   openCorrectionCases?: readonly FinancialCorrectionCaseDTO[]
+  /**
+   * Certified settlement overlay. When present, this is the authoritative closing hero.
+   * RC3 sections and contact settlement remain supporting detail and are never added in.
+   */
+  certifiedSettlement?: import('../finance/certifiedClientSettlementTypes').CertifiedClientSettlementAvailable
   /**
    * Owner-level (unallocated) payments — not assigned to a property.
    * Counted once in owner settlement; excluded from property P&L / STR / LTR.
