@@ -1,7 +1,8 @@
 /**
- * Server-only adapter for finance.read_certified_client_settlement.
+ * Server-only adapter for public.read_certified_client_settlement.
  * Service-role path only. Never imported by Client Components.
  * Fail-closed: missing/ambiguous identity or reader failure → unavailable, never a fake €0.
+ * Does not read finance tables or call a finance-schema RPC.
  */
 
 import 'server-only'
@@ -295,12 +296,10 @@ export async function readCertifiedClientSettlement(
   try {
     const sb = createServiceClient()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (sb as any)
-      .schema('finance')
-      .rpc(CLIENT_SETTLEMENT_CERTIFICATION_RPC.read, {
-        p_entity_id: entityId,
-        p_as_of: day,
-      })
+    const { data, error } = await (sb as any).rpc(CLIENT_SETTLEMENT_CERTIFICATION_RPC.read, {
+      p_entity_id: entityId,
+      p_as_of: day,
+    })
     if (error) {
       console.error(
         '[certifiedClientSettlementAdapter] reader failed:',
