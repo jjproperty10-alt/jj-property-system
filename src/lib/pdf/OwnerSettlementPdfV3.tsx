@@ -457,7 +457,14 @@ function getBalColor(section: RC3AccountSection): string {
   else return b > 0 ? C.red : C.green
 }
 
-function fmtDate(iso: string): string {
+function fmtDateDot(iso: string): string {
+  const [y, m, d] = iso.slice(0, 10).split('-')
+  if (!y || !m || !d) return iso
+  return `${d}.${m}.${y}`
+}
+
+function fmtDate(iso: string, lang: Lang = 'en'): string {
+  if (lang === 'he') return fmtDateDot(iso)
   try {
     return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', {
       day: '2-digit', month: 'short', year: 'numeric',
@@ -467,12 +474,24 @@ function fmtDate(iso: string): string {
 
 function fmtPeriod(report: RC3PropertyReport, lang: Lang): string {
   if (!report.from_date && !report.to_date) return t('execAllDates', lang)
-  if (!report.from_date) return `${t('certPeriodUpTo', lang)} ${fmtDate(report.to_date!)}`
-  if (!report.to_date) return `${t('certPeriodFrom', lang)} ${fmtDate(report.from_date)}`
-  return `${fmtDate(report.from_date)} – ${fmtDate(report.to_date)}`
+  if (!report.from_date) return `${t('certPeriodUpTo', lang)} ${fmtDate(report.to_date!, lang)}`
+  if (!report.to_date) return `${t('certPeriodFrom', lang)} ${fmtDate(report.from_date, lang)}`
+  return `${fmtDate(report.from_date, lang)} – ${fmtDate(report.to_date, lang)}`
 }
 
-function fmtGenerated(iso: string): string {
+function fmtGenerated(iso: string, lang: Lang = 'en'): string {
+  if (lang === 'he') {
+    try {
+      const d = new Date(iso)
+      if (Number.isNaN(d.getTime())) return iso
+      const dd = String(d.getDate()).padStart(2, '0')
+      const mm = String(d.getMonth() + 1).padStart(2, '0')
+      const yyyy = String(d.getFullYear())
+      const hh = String(d.getHours()).padStart(2, '0')
+      const mi = String(d.getMinutes()).padStart(2, '0')
+      return `${dd}.${mm}.${yyyy} ${hh}:${mi}`
+    } catch { return iso }
+  }
   try {
     return new Date(iso).toLocaleDateString('en-GB', {
       day: '2-digit', month: 'short', year: 'numeric',
@@ -515,7 +534,7 @@ function DocHeader({ report, lang, reportTypeLabel }: { report: RC3PropertyRepor
         <Text style={[s.reportSubTitle, rtlTextStyle(lang)]}>{report.reporting_name}</Text>
       </View>
       <View style={[s.headerRight, rtlAlignEnd(lang)]}>
-        <Text style={[s.headerDate, rtlTextStyle(lang)]}>{fmtGenerated(report.generated_at)}</Text>
+        <Text style={[s.headerDate, rtlTextStyle(lang)]}>{fmtGenerated(report.generated_at, lang)}</Text>
         <Text style={[s.headerLabel, rtlTextStyle(lang)]}>{t('confidential', lang)}</Text>
       </View>
     </View>
@@ -535,7 +554,7 @@ function MetaBlock({ report, lang }: { report: RC3PropertyReport; lang: Lang }) 
       </View>
       <View style={[s.metaRow, rtlRowDirection(lang)]}>
         <Text style={[s.metaLabel, rtlTextStyle(lang)]}>{t('metaGenerated', lang)}</Text>
-        <Text style={[s.metaValue, rtlTextStyle(lang)]}>{fmtGenerated(report.generated_at)}</Text>
+        <Text style={[s.metaValue, rtlTextStyle(lang)]}>{fmtGenerated(report.generated_at, lang)}</Text>
       </View>
     </View>
   )
@@ -588,7 +607,7 @@ function PremiumSummaryPdf({
   const heroColor = absNet < 0.005 ? '#ffffff' : net > 0 ? '#86efac' : '#fca5a5'
   const heroLabel = absNet < 0.005 ? t('balSettled', lang) : net > 0 ? t('balPayableToYou', lang) : t('balPayableByYou', lang)
   const period = report.from_date || report.to_date
-    ? `${report.from_date ? fmtDate(report.from_date) : '—'} – ${report.to_date ? fmtDate(report.to_date) : '—'}`
+    ? `${report.from_date ? fmtDate(report.from_date, lang) : '—'} – ${report.to_date ? fmtDate(report.to_date, lang) : '—'}`
     : t('execAllDates', lang)
   const accLabelKeys: Record<string, LabelKey> = {
     purchase: 'accountPurchase', sale: 'accountSale', renovation: 'accountRenovation', rental: 'accountRental', airbnb: 'accountAirbnb',
@@ -818,7 +837,7 @@ function TxGroupTable({
             style={[s.tableRow, i % 2 === 1 ? s.tableRowAlt : {}, rtlRowDirection(lang)]}
             wrap={false}
           >
-            <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date)}</Text>
+            <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date, lang)}</Text>
             <View style={s.cDesc}>
               <Text style={[s.td, rtlTextStyle(lang)]}>{desc}</Text>
             </View>
@@ -851,7 +870,7 @@ function RefSection({ rows, lang }: { rows: ClientDisplayRow[]; lang: Lang }) {
         const desc = buildRowLabel(row, lang)
         return (
           <View key={row.id} style={[s.refRow, rtlRowDirection(lang)]} wrap={false}>
-            <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date)}</Text>
+            <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date, lang)}</Text>
             <View style={s.cDesc}>
               <Text style={[s.tdInfo, rtlTextStyle(lang)]}>{desc}</Text>
             </View>
@@ -887,7 +906,7 @@ function GroupedExpensesPdf({
           </View>
           {groupRows.map((row, i) => (
             <View key={row.id} style={[s.tableRow, i % 2 === 1 ? s.tableRowAlt : {}, { paddingLeft: isRTL(lang) ? 6 : 18, paddingRight: isRTL(lang) ? 18 : 6 }, rtlRowDirection(lang)]} wrap={false}>
-              <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date)}</Text>
+              <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date, lang)}</Text>
               <View style={s.cDesc}><Text style={[s.tdMuted, rtlTextStyle(lang)]}>{buildRowLabel(row, lang)}</Text></View>
               <Text style={[s.cAmt, s.tdMuted, rtlColumnOrder(lang)]}>{fmt(row.client_amount)}</Text>
             </View>
@@ -1027,13 +1046,7 @@ function FinalSummaryPdf({ report, lang, supportingLedger = false }: { report: R
     balLabel = t('balPayableByYou', lang); balColor = '#fca5a5'
   }
 
-  const genDate = (() => {
-    try {
-      return new Date(report.generated_at).toLocaleDateString('en-GB', {
-        day: '2-digit', month: 'short', year: 'numeric',
-      })
-    } catch { return '' }
-  })()
+  const genDate = fmtGenerated(report.generated_at, lang)
 
   const showSubmeterNote = shouldShowElectricitySubmeterNote(report)
   const comp = computeStatementComponents(clientAccounts)
@@ -1096,13 +1109,13 @@ function FinalSummaryPdf({ report, lang, supportingLedger = false }: { report: R
 function DocFooter({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
   const period = fmtPeriod(report, lang)
   return (
-    <View style={[s.footer, rtlRowDirection(lang)]} fixed>
-      <Text style={[s.footerText, rtlTextStyle(lang)]}>
-        JJ Property 10 · {report.reporting_name} · {period} · {t('confidential', lang)} · {t('footerVersion', lang)}
+    <View style={s.footer} fixed>
+      <Text style={s.footerText}>
+        JJ Property 10 · {report.reporting_name} · {period} · {t('confidential', lang)}
       </Text>
       <Text
         style={s.footerText}
-        render={({ pageNumber, totalPages }) => `${t('pageLabel', lang)} ${pageNumber} / ${totalPages}`}
+        render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`}
       />
     </View>
   )
