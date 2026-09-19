@@ -21,6 +21,9 @@ const catalogMock = jest.fn()
 jest.mock('@/lib/ops/assistant/opsConversationActions', () => ({
   listAssistantProperties: () => catalogMock(),
 }))
+jest.mock('@/lib/ops/assistant/clientCashSettlementActions', () => ({
+  listClientSettlementEntities: async () => ({ ok: true, entities: [] }),
+}))
 
 jest.mock('@/components/ops/AssistantChat', () => ({
   AssistantChat: () => null,

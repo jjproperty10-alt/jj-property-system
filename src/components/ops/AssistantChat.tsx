@@ -25,6 +25,54 @@ import {
   submitAssistantInbound,
 } from '@/lib/ops/assistant/opsConversationActions'
 import { useSpeechToText } from './useSpeechToText'
+import { extractDate } from '@/lib/ops/assistant/cyprusDate'
+import {
+  CASH_SUMMARY_TITLE,
+  matchEntitiesByCanonicalName,
+  parseClientCashSettlementUtterance,
+  type CashSettlementDirection,
+  type EntityChoice,
+} from '@/lib/ops/assistant/clientCashSettlementIntent'
+import {
+  executeClientCashSettlement,
+  previewClientCashSettlement,
+} from '@/lib/ops/assistant/clientCashSettlementActions'
+
+function formatCashSuccess(input: {
+  readonly transactionId: string
+  readonly entityName: string
+  readonly direction: string
+  readonly amount: number
+  readonly effectiveDate: string
+  readonly balanceBefore: string
+  readonly previewAfter: string
+  readonly allocations: readonly unknown[]
+  readonly reportUpdated: boolean
+  readonly remainingR: string | null
+  readonly remainingS: string | null
+}): string {
+  const fifo = input.allocations
+    .map((row, i) => {
+      const alloc = row as Record<string, unknown>
+      return `${i + 1}. ${String(alloc.property_id ?? '')} · ${String(alloc.amount_applied ?? '')} · נותר ${String(alloc.remaining_after ?? '')}`
+    })
+    .join('\n')
+  const reportLine = input.reportUpdated
+    ? `יתרת הדוח אחרי הרישום: R=${input.remainingR} · S=${input.remainingS}`
+    : 'יתרת הדוח לא אומתה מקריאת ה-reader; לא מוצג שהדוח עודכן.'
+  return [
+    'התשלום נרשם.',
+    `מזהה עסקה: ${input.transactionId}`,
+    `לקוח: ${input.entityName}`,
+    `כיוון: ${input.direction}`,
+    `סכום/תאריך: ${input.amount} / ${input.effectiveDate}`,
+    `יתרה לפני: ${input.balanceBefore}`,
+    `יתרה אחרי (FIFO): ${input.previewAfter}`,
+    fifo ? `הקצאות FIFO:\n${fifo}` : 'הקצאות FIFO: אין',
+    reportLine,
+    'מסך לקוחות: /owners',
+  ].join('\n')
+}
 
 interface ChatItem {
   readonly id: string
@@ -44,6 +92,7 @@ function Ltr({ children }: { children: React.ReactNode }) {
 export function AssistantChat(props: {
   readonly staffPayerName: string
   readonly catalog: readonly PropertyCatalogEntry[]
+  readonly entities?: readonly EntityChoice[]
   readonly initialConversationId: string | null
 }) {
   const ctx: CollectorContext = useMemo(
@@ -53,6 +102,27 @@ export function AssistantChat(props: {
   const convKeyRef = useRef(crypto.randomUUID())
   const draftKeyRef = useRef(crypto.randomUUID())
   const creatingRef = useRef(false)
+  const cashKeyRef = useRef(crypto.randomUUID())
+  const recordingCashRef = useRef(false)
+  const [cashCard, setCashCard] = useState<{
+    readonly entityId: string
+    readonly entityName: string
+    readonly direction: 'JJ_TO_CLIENT' | 'CLIENT_TO_JJ'
+    readonly amount: number
+    readonly effectiveDate: string
+    readonly preview: Record<string, unknown>
+  } | null>(null)
+  const [cashPostedId, setCashPostedId] = useState<string | null>(null)
+  const [pendingCash, setPendingCash] = useState<{
+    readonly direction: CashSettlementDirection
+    readonly amount: number
+    readonly entity: EntityChoice
+  } | null>(null)
+  const [pendingName, setPendingName] = useState<{
+    readonly direction: CashSettlementDirection
+    readonly amount: number
+    readonly needsDate: boolean
+  } | null>(null)
   const [conversationId, setConversationId] = useState<string | null>(props.initialConversationId)
   const [draft, setDraft] = useState<CollectorState>(() => createCollectorState(draftKeyRef.current))
   const [items, setItems] = useState<ChatItem[]>(() => [{
@@ -119,6 +189,152 @@ export function AssistantChat(props: {
       url.searchParams.set('c', persisted.conversationId)
       window.history.replaceState(null, '', `${url.pathname}?${url.searchParams.toString()}`)
     }
+    const finishCash = async (
+      entity: EntityChoice,
+      direction: CashSettlementDirection,
+      amount: number,
+      effectiveDate: string,
+    ) => {
+      const previewed = await previewClientCashSettlement({
+        entityId: entity.id,
+        direction,
+        amount,
+        effectiveDate,
+      })
+      if (!previewed.ok) {
+        setLoading(false)
+        setError(previewed.error)
+        return
+      }
+      setPendingCash(null)
+      setCashCard({
+        entityId: entity.id,
+        entityName: entity.canonicalName,
+        direction,
+        amount,
+        effectiveDate,
+        preview: previewed.preview,
+      })
+      setItems((prev) => [
+        ...prev,
+        { id: messageKey, role: 'user', text: trimmed },
+        { id: `${messageKey}-a`, role: 'assistant', text: CASH_SUMMARY_TITLE },
+      ])
+      setText('')
+      setLoading(false)
+    }
+
+    if (pendingCash) {
+      const dateIso = extractDate(trimmed)
+      if (!dateIso) {
+        setItems((prev) => [
+          ...prev,
+          { id: messageKey, role: 'user', text: trimmed },
+          { id: `${messageKey}-a`, role: 'assistant', text: 'מה התאריך? התשלום עדיין לא נרשם.' },
+        ])
+        setText('')
+        setLoading(false)
+        return
+      }
+      await finishCash(pendingCash.entity, pendingCash.direction, pendingCash.amount, dateIso)
+      return
+    }
+
+    if (pendingName) {
+      const matches = matchEntitiesByCanonicalName(trimmed, props.entities ?? [])
+      if (matches.length === 0) {
+        setItems((prev) => [
+          ...prev,
+          { id: messageKey, role: 'user', text: trimmed },
+          { id: `${messageKey}-a`, role: 'assistant', text: 'לא מצאתי לקוח ב-lifecycle.entity_identity. לא ניחשתי.' },
+        ])
+        setText('')
+        setLoading(false)
+        return
+      }
+      if (matches.length > 1) {
+        setItems((prev) => [
+          ...prev,
+          { id: messageKey, role: 'user', text: trimmed },
+          {
+            id: `${messageKey}-a`,
+            role: 'assistant',
+            text: 'יש כמה לקוחות תואמים. בחרו אחד, בלי ניחוש:\n' + matches.map((m, i) => `${i + 1}. ${m.canonicalName}`).join('\n'),
+          },
+        ])
+        setText('')
+        setLoading(false)
+        return
+      }
+      setPendingName(null)
+      if (pendingName.needsDate) {
+        setPendingCash({ entity: matches[0], direction: pendingName.direction, amount: pendingName.amount })
+        setItems((prev) => [
+          ...prev,
+          { id: messageKey, role: 'user', text: trimmed },
+          { id: `${messageKey}-a`, role: 'assistant', text: `לקוח: ${matches[0].canonicalName}. מה התאריך? התשלום עדיין לא נרשם.` },
+        ])
+        setText('')
+        setLoading(false)
+        return
+      }
+      const dateIso = extractDate(trimmed)
+      if (!dateIso) {
+        setPendingCash({ entity: matches[0], direction: pendingName.direction, amount: pendingName.amount })
+        setItems((prev) => [
+          ...prev,
+          { id: messageKey, role: 'user', text: trimmed },
+          { id: `${messageKey}-a`, role: 'assistant', text: `לקוח: ${matches[0].canonicalName}. מה התאריך? התשלום עדיין לא נרשם.` },
+        ])
+        setText('')
+        setLoading(false)
+        return
+      }
+      await finishCash(matches[0], pendingName.direction, pendingName.amount, dateIso)
+      return
+    }
+
+    const parsed = parseClientCashSettlementUtterance(trimmed)
+    if (parsed && parsed.amount && parsed.nameQuery) {
+      const matches = matchEntitiesByCanonicalName(parsed.nameQuery, props.entities ?? [])
+      let assistantText = ''
+      if (matches.length === 0) {
+        assistantText = 'לא מצאתי לקוח ב-lifecycle.entity_identity. לא ניחשתי.'
+      } else if (matches.length > 1) {
+        setPendingName({ direction: parsed.direction, amount: parsed.amount, needsDate: parsed.needsDate })
+        assistantText = 'יש כמה לקוחות תואמים. בחרו אחד, בלי ניחוש:\n' + matches.map((m, i) => `${i + 1}. ${m.canonicalName}`).join('\n')
+      } else if (parsed.needsDate) {
+        setPendingCash({ entity: matches[0], direction: parsed.direction, amount: parsed.amount })
+        assistantText = `לקוח: ${matches[0].canonicalName}. מה התאריך? התשלום עדיין לא נרשם.`
+      } else {
+        const dateIso = extractDate(trimmed)
+        if (!dateIso) {
+          setPendingCash({ entity: matches[0], direction: parsed.direction, amount: parsed.amount })
+          assistantText = `לקוח: ${matches[0].canonicalName}. מה התאריך? התשלום עדיין לא נרשם.`
+        } else {
+          await finishCash(matches[0], parsed.direction, parsed.amount, dateIso)
+          return
+        }
+      }
+      setItems((prev) => [
+        ...prev,
+        { id: messageKey, role: 'user', text: trimmed },
+        { id: `${messageKey}-a`, role: 'assistant', text: assistantText },
+      ])
+      setText('')
+      setLoading(false)
+      return
+    }
+    if (cashCard) {
+      setItems((prev) => [
+        ...prev,
+        { id: messageKey, role: 'user', text: trimmed },
+        { id: `${messageKey}-a`, role: 'assistant', text: 'התשלום עדיין לא נרשם. בחרו רשום תשלום, שנה פרטים, או בטל.' },
+      ])
+      setText('')
+      setLoading(false)
+      return
+    }
     const next = applyUserText(draft, trimmed, {
       ...ctx,
       freshIdempotencyKey: crypto.randomUUID(),
@@ -170,6 +386,60 @@ export function AssistantChat(props: {
         id: `draft-${result.draftId}`,
         role: 'assistant',
         text: `נוצרה טיוטה ${result.draftId} במצב ${result.status}. לא בוצע אישור או רישום לחשבונות.`,
+      },
+    ])
+  }
+
+  async function onRecordCash() {
+    if (!cashCard || cashPostedId || recordingCashRef.current) return
+    if (cashCard.preview.ok === false) return
+    recordingCashRef.current = true
+    setLoading(true)
+    setError('')
+    const result = await executeClientCashSettlement({
+      entityId: cashCard.entityId,
+      direction: cashCard.direction,
+      amount: cashCard.amount,
+      effectiveDate: cashCard.effectiveDate,
+      previewHash: String(cashCard.preview.preview_hash ?? ''),
+      canonicalSnapshot: (cashCard.preview.canonical_snapshot as Record<string, unknown>) ?? {},
+      idempotencyKey: cashKeyRef.current,
+    })
+    setLoading(false)
+    if (!result.ok) {
+      recordingCashRef.current = false
+      setError(result.error)
+      return
+    }
+    setCashPostedId(result.transactionId)
+    const remainingR =
+      result.reportUpdated && result.reader
+        ? String(result.reader.remaining_r ?? '')
+        : null
+    const remainingS =
+      result.reportUpdated && result.reader
+        ? String(result.reader.remaining_s ?? '')
+        : null
+    setItems((prev) => [
+      ...prev,
+      {
+        id: `cash-${result.transactionId}`,
+        role: 'assistant',
+        text: formatCashSuccess({
+          transactionId: result.transactionId,
+          entityName: cashCard.entityName,
+          direction: cashCard.direction,
+          amount: cashCard.amount,
+          effectiveDate: cashCard.effectiveDate,
+          balanceBefore: String(cashCard.preview.balance_before_R ?? ''),
+          previewAfter: String(cashCard.preview.balance_after_R ?? ''),
+          allocations: Array.isArray(cashCard.preview.allocations)
+            ? cashCard.preview.allocations
+            : [],
+          reportUpdated: result.reportUpdated,
+          remainingR,
+          remainingS,
+        }),
       },
     ])
   }
@@ -321,6 +591,76 @@ export function AssistantChat(props: {
                 טיוטה <Ltr>{draft.createdDraftId}</Ltr>
                 {' '}
                 <Link href="/transactions/drafts" className="underline">מעבר לטיוטות</Link>
+              </p>
+            )}
+          </div>
+        )}
+
+        {cashCard && (
+          <div className="mx-auto mt-4 max-w-3xl rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-200" data-testid="assistant-cash-review" dir="rtl">
+            <h2 className="mb-3 text-sm font-semibold">{CASH_SUMMARY_TITLE}</h2>
+            <p className="text-sm">{cashCard.entityName} · {cashCard.direction} · {cashCard.amount} · {cashCard.effectiveDate}</p>
+            <p className="mt-2 text-xs text-gray-600">
+              R לפני: {String(cashCard.preview.balance_before_R ?? '')} · R אחרי: {String(cashCard.preview.balance_after_R ?? '')}
+            </p>
+            {cashCard.preview.blocked_code != null && (
+              <p className="mt-2 text-sm text-red-700">חסום: {String(cashCard.preview.blocked_code)}</p>
+            )}
+            <ul className="mt-3 space-y-1 text-sm">
+              {(Array.isArray(cashCard.preview.allocations) ? cashCard.preview.allocations : []).map((row, i) => {
+                const alloc = row as Record<string, unknown>
+                return (
+                  <li key={`${String(alloc.property_id ?? i)}-${i}`}>
+                    נכס <Ltr>{String(alloc.property_id ?? '')}</Ltr>
+                    {' · '}
+                    {String(alloc.amount_applied ?? '')}
+                    {' · נותר '}
+                    {String(alloc.remaining_after ?? '')}
+                  </li>
+                )
+              })}
+            </ul>
+            <div className="mt-4 flex flex-wrap gap-2" dir="rtl">
+              <button
+                type="button"
+                data-testid="assistant-record-cash"
+                className="btn-primary"
+                disabled={loading || Boolean(cashPostedId) || cashCard.preview.ok === false}
+                onClick={() => void onRecordCash()}
+              >
+                1. רשום תשלום
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={loading || Boolean(cashPostedId)}
+                onClick={() => {
+                  setCashCard(null)
+                  setPendingCash(null)
+                  setPendingName(null)
+                  cashKeyRef.current = crypto.randomUUID()
+                }}
+              >
+                2. שנה פרטים
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={loading || Boolean(cashPostedId)}
+                onClick={() => {
+                  setCashCard(null)
+                  setPendingCash(null)
+                  setPendingName(null)
+                  cashKeyRef.current = crypto.randomUUID()
+                }}
+              >
+                3. בטל
+              </button>
+            </div>
+            {cashPostedId && (
+              <p className="mt-3 text-sm text-green-700">
+                התשלום נרשם.{' '}
+                <Link href="/owners" className="underline">מעבר למסך הלקוחות</Link>
               </p>
             )}
           </div>

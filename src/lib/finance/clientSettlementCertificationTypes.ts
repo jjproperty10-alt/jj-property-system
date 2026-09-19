@@ -58,4 +58,5 @@ export const CLIENT_SETTLEMENT_CERTIFICATION_RPC = {
   apply: 'apply_client_settlement_opening_certification',
   void: 'void_client_settlement_opening_certification',
   read: 'read_certified_client_settlement',
+  staffRead: 'read_client_settlement_balance',
 } as const

@@ -1,7 +1,8 @@
 /**
- * Certified client settlement DTO — overlay only.
+ * Certified client settlement DTO — overlay + cash allocation remaining.
  * Source of truth: finance.read_certified_client_settlement(entity_id, as_of).
  * Sign: + closingDueToJj = client owes JJ; − = JJ owes client; 0 = settled.
+ * remainingR = −closingDueToJj (R > 0 JJ owes client). remainingS = −remainingR.
  * No production client IDs or certified amounts live here.
  */
 
@@ -50,16 +51,56 @@ export interface CertifiedExclusionLine {
   readonly arithmeticEffect: 0
 }
 
+export interface CertifiedObligationSlice {
+  readonly certificationLineId: string
+  readonly lineOrder: number
+  readonly propertyKey: string
+  readonly propertyName: string
+  readonly propertyId: string | null
+  readonly bindingStatus: 'bound' | 'unbound'
+  readonly originalSignedAmount: number
+  readonly allocatedSignedAmount: number
+  readonly remainingSignedAmount: number
+}
+
+export interface CertifiedUnboundLine {
+  readonly certificationLineId: string
+  readonly propertyKey: string
+  readonly lineOrder: number
+  readonly originalSignedAmount: number
+  readonly remainingSignedAmount: number
+  readonly blockedCode: 'unbound_certification_line'
+}
+
+export interface CertifiedCashExecutionRef {
+  readonly executionId: string
+  readonly transactionId: string
+  readonly direction: 'JJ_TO_CLIENT' | 'CLIENT_TO_JJ'
+  readonly amount: number
+  readonly effectiveDate: string
+  readonly reversalOf: string | null
+}
+
 export interface CertifiedClientSettlementAvailable {
   readonly unavailable: false
   readonly certificationId: string
   readonly entityId: string
   readonly asOf: string
+  readonly certificationAsOf: string
   readonly openingDueToJj: number
   readonly propertyLines: readonly CertifiedPropertyObligationLine[]
   readonly fifoCredits: readonly CertifiedFifoCreditLine[]
   readonly exclusions: readonly CertifiedExclusionLine[]
   readonly fifoCreditsTotal: number
+  /** Overlay-only closing = opening − FIFO credits. Does not include cash allocations. */
+  readonly overlayClosingDueToJj: number
+  readonly cashAllocationSignedTotal: number
+  readonly remainingR: number
+  readonly remainingS: number
+  readonly obligationSlices: readonly CertifiedObligationSlice[]
+  readonly unboundLines: readonly CertifiedUnboundLine[]
+  readonly cashExecutions: readonly CertifiedCashExecutionRef[]
+  /** Displayed remaining due_to_jj = overlay closing − cash allocation signed total. */
   readonly closingDueToJj: number
   readonly closingDirection: CertifiedClosingDirection
 }

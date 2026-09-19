@@ -78,6 +78,62 @@ describe('parseCertifiedReaderPayload', () => {
     if (!dto.unavailable) return
     expect(dto.reason).toBe('malformed_payload')
   })
+
+  test('JJ_TO_CLIENT remaining is R=+1740 after P=3260 without double-counting cash', () => {
+    const raw = readerPayloadFromDto(URIEL_SHAPED_CERTIFIED)
+    raw.certified_opening_due_to_jj = -5000
+    raw.fifo_credits = []
+    raw.fifo_credits_total = 0
+    raw.certified_closing_due_to_jj = -5000
+    raw.cash_allocation_signed_total = -3260
+    raw.certified_remaining_due_to_jj = -1740
+    raw.remaining_r = 1740
+    raw.remaining_s = -1740
+    raw.as_of = AS_OF
+    raw.certification_as_of = AS_OF
+    const dto = parseCertifiedReaderPayload(raw, ENTITY, AS_OF)
+    expect(dto.unavailable).toBe(false)
+    if (dto.unavailable) return
+    expect(dto.remainingR).toBe(1740)
+    expect(dto.remainingS).toBe(-1740)
+    expect(dto.closingDueToJj).toBe(-1740)
+    expect(dto.overlayClosingDueToJj).toBe(-5000)
+    expect(dto.closingDueToJj).not.toBe(-5000 - 3260 - 3260)
+  })
+
+  test('CLIENT_TO_JJ remaining is R=-1740 after P=3260', () => {
+    const raw = readerPayloadFromDto(URIEL_SHAPED_CERTIFIED)
+    raw.certified_opening_due_to_jj = 5000
+    raw.fifo_credits = []
+    raw.fifo_credits_total = 0
+    raw.certified_closing_due_to_jj = 5000
+    raw.cash_allocation_signed_total = 3260
+    raw.certified_remaining_due_to_jj = 1740
+    raw.remaining_r = -1740
+    raw.remaining_s = 1740
+    raw.as_of = AS_OF
+    raw.certification_as_of = AS_OF
+    const dto = parseCertifiedReaderPayload(raw, ENTITY, AS_OF)
+    expect(dto.unavailable).toBe(false)
+    if (dto.unavailable) return
+    expect(dto.remainingR).toBe(-1740)
+    expect(dto.remainingS).toBe(1740)
+    expect(dto.closingDueToJj).toBe(1740)
+  })
+
+  test('double-counted remaining is fail-closed', () => {
+    const raw = readerPayloadFromDto(URIEL_SHAPED_CERTIFIED)
+    raw.certified_opening_due_to_jj = -5000
+    raw.fifo_credits = []
+    raw.fifo_credits_total = 0
+    raw.certified_closing_due_to_jj = -5000
+    raw.cash_allocation_signed_total = -3260
+    raw.certified_remaining_due_to_jj = -1520
+    raw.remaining_r = 1520
+    raw.remaining_s = -1520
+    const dto = parseCertifiedReaderPayload(raw, ENTITY, AS_OF)
+    expect(dto.unavailable).toBe(true)
+  })
 })
 
 describe('readCertifiedClientSettlement adapter', () => {

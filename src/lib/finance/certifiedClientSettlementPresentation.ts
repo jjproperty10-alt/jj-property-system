@@ -42,6 +42,17 @@ export function composeCertifiedClosingDueToJj(
   return roundCertifiedEur(openingDueToJj - fifoCreditsTotal)
 }
 
+/**
+ * Remaining due_to_jj = overlay closing − sum(allocation.signed_amount).
+ * Signed allocations already encode direction. Do not also subtract cash amount_eur.
+ */
+export function composeCertifiedRemainingDueToJj(
+  overlayClosingDueToJj: number,
+  cashAllocationSignedTotal: number,
+): number {
+  return roundCertifiedEur(overlayClosingDueToJj - cashAllocationSignedTotal)
+}
+
 export function isCertifiedAvailable(
   dto: CertifiedClientSettlementDto | null | undefined,
 ): dto is CertifiedClientSettlementAvailable {

@@ -10,6 +10,12 @@ jest.mock('@/lib/ops/assistant/opsConversationActions', () => ({
   createAssistantTransactionDraft: jest.fn(),
   listOpsConversation: jest.fn(),
 }))
+jest.mock('@/lib/ops/assistant/clientCashSettlementActions', () => ({
+  previewClientCashSettlement: jest.fn(),
+  executeClientCashSettlement: jest.fn(),
+  listClientSettlementEntities: jest.fn(),
+  readClientSettlementBalance: jest.fn(),
+}))
 
 const ROOT = path.join(__dirname, '..', '..', '..', '..')
 
@@ -56,6 +62,25 @@ describe('assistant source audit and confirmation UI', () => {
     expect(html).toContain('assistant-input')
     expect(html).toContain('Start microphone')
     expect(html).toContain('עסקה חדשה')
+  })
+
+  it('records cash only from the confirmation button, never from Send', () => {
+    expect(chat).toContain('executeClientCashSettlement')
+    expect(chat).toContain('data-testid="assistant-record-cash"')
+    expect(chat).toContain('רשום תשלום')
+    expect(chat).toContain('CASH_SUMMARY_TITLE')
+    expect(chat).not.toMatch(/sendBody\([\s\S]{0,400}executeClientCashSettlement/)
+    expect(chat).not.toMatch(/useEffect\([\s\S]{0,200}onRecordCash/)
+    const cashActions = read('src/lib/ops/assistant/clientCashSettlementActions.ts')
+    expect(cashActions).not.toMatch(/from\(\s*['"]transactions['"]\s*\)/)
+    expect(cashActions).not.toContain('createServiceClient')
+    expect(cashActions).not.toMatch(/service_role/)
+    expect(cashActions).toContain('preview_client_cash_settlement')
+    expect(cashActions).toContain('execute_client_cash_settlement')
+    expect(cashActions).toContain('read_client_settlement_balance')
+    expect(chat).toContain('התשלום נרשם')
+    expect(chat).toContain('/owners')
+    expect(chat).toContain('יתרת הדוח לא אומתה')
   })
 
   it('keeps createAgentTransactionDraft as the only draft path', () => {

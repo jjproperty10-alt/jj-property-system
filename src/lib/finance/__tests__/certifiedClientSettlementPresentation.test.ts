@@ -5,6 +5,7 @@ import {
   certifiedToOwnerBalanceDirection,
   closingDirectionFromDueToJj,
   composeCertifiedClosingDueToJj,
+  composeCertifiedRemainingDueToJj,
   fifoCreditDisplayAmount,
   fifoCreditLabelKey,
   isCertifiedAvailable,
@@ -72,6 +73,12 @@ describe('certified FIFO / exclusion arithmetic', () => {
     expect(composed).toBe(50677.42)
     expect(composed).toBe(URIEL_SHAPED_CERTIFIED.closingDueToJj)
     expect(composed).not.toBe(50677.42 - 13900)
+  })
+
+  test('cash allocation remaining uses signed total once, not cash amount_eur twice', () => {
+    expect(composeCertifiedRemainingDueToJj(-5000, -3260)).toBe(-1740)
+    expect(composeCertifiedRemainingDueToJj(5000, 3260)).toBe(1740)
+    expect(composeCertifiedRemainingDueToJj(-5000, -3260)).not.toBe(-5000 - 3260 - 3260)
   })
 
   test('contact settlement and RC3 net are not added to certified closing', () => {
