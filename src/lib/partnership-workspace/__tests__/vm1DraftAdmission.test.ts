@@ -10,6 +10,15 @@ import {
   type Vm1AuthoritativeOwnerStatementEvidence,
   type Vm1DraftAdmissionContext,
 } from '../vm1DraftAdmission'
+import {
+  adaptVm1OwnerStatementEvidence,
+  ownerStatementInventoryFromReservations,
+} from '../vm1OwnerStatementEvidence'
+import {
+  TM20_OS_TEST_DOCUMENT,
+  TM20_OS_TEST_DOCUMENT_HASH,
+  TM20_OS_TEST_IDENTITY,
+} from './vm1OwnerStatementEvidence.fixture'
 
 const CERTIFIED = new Set<string>(['53139113'])
 const AS_OF = '2026-09-17'
@@ -535,6 +544,104 @@ describe('vm1DraftAdmission', () => {
     expect(lines.find((l) => l.externalId === '65343332')?.admissionState).toBe('excluded')
   })
 
+  it('admits Booking 53082517 from verified Owner Statement without RPC expectedPayout', () => {
+    const booking = admit(
+      row({
+        externalId: '53082517',
+        channel: 'booking',
+        checkIn: '2026-09-11',
+        checkOut: '2026-09-13',
+        cleaningFee: 120,
+        expectedPayout: null,
+        taxAmount: null,
+        hostServiceFee: null,
+        totalPrice: 1218.2,
+      }),
+      {
+        asOfIso: '2026-09-19',
+        authoritativeEvidenceByReservationId: new Map([
+          [
+            '53082517',
+            osEvidence({
+              sourceId: TM20_OS_TEST_DOCUMENT_HASH,
+              documentHash: TM20_OS_TEST_DOCUMENT_HASH,
+              reservationId: '53082517',
+              payoutEur: 716.78,
+              cleaningEur: 120,
+            }),
+          ],
+        ]),
+      },
+    )
+    expect(booking.admissionState).toBe('admitted')
+    expect(booking.admittedCandidate).toBe(true)
+    expect(booking.authoritativeEvidenceLinked).toBe(true)
+    expect(booking.operationalEvidencePresent).toBe(false)
+  })
+
+  it('keeps 64232458 as forecast when checkout is after as-of 2026-09-19 even with OS evidence', () => {
+    const future = admit(
+      row({
+        externalId: '64232458',
+        checkIn: '2026-09-18',
+        checkOut: '2026-09-22',
+        totalPrice: 2346,
+        expectedPayout: 1982.37,
+      }),
+      {
+        asOfIso: '2026-09-19',
+        authoritativeEvidenceByReservationId: new Map([
+          [
+            '64232458',
+            osEvidence({
+              sourceId: TM20_OS_TEST_DOCUMENT_HASH,
+              documentHash: TM20_OS_TEST_DOCUMENT_HASH,
+              reservationId: '64232458',
+              payoutEur: 1307.78,
+            }),
+          ],
+        ]),
+      },
+    )
+    expect(future.admissionState).toBe('forecast')
+    expect(future.admittedCandidate).toBe(false)
+    expect(future.authoritativeEvidenceLinked).toBe(true)
+    expect(future.reason).toBe(VM1_DRAFT_ADMISSION_REASON.futureCheckout)
+  })
+
+  it('keeps 54972355 needs_review while status is modified even with OS evidence', () => {
+    const modified = admit(
+      row({
+        externalId: '54972355',
+        channel: 'booking',
+        status: 'modified',
+        checkIn: '2026-09-22',
+        checkOut: '2026-09-26',
+        disposition: 'needs_review',
+        expectedPayout: null,
+        reason: 'Status is modified.',
+      }),
+      {
+        asOfIso: '2026-09-19',
+        authoritativeEvidenceByReservationId: new Map([
+          [
+            '54972355',
+            osEvidence({
+              sourceId: TM20_OS_TEST_DOCUMENT_HASH,
+              documentHash: TM20_OS_TEST_DOCUMENT_HASH,
+              reservationId: '54972355',
+              payoutEur: 1458.26,
+            }),
+          ],
+        ]),
+      },
+    )
+    expect(modified.admissionState).toBe('needs_review')
+    expect(modified.admittedCandidate).toBe(false)
+    expect(modified.authoritativeEvidenceLinked).toBe(true)
+    expect(modified.reason).toBe(VM1_DRAFT_ADMISSION_REASON.modified)
+  })
+
   it('admits a unique verified sourceId on one reservation', () => {
     const lines = admitBatch([row({ externalId: '65733679' })], {
       authoritativeEvidenceByReservationId: new Map([['65733679', osEvidence({ sourceId: 'os-unique-1' })]]),
@@ -544,30 +651,51 @@ describe('vm1DraftAdmission', () => {
     expect(lines[0].admittedCandidate).toBe(true)
   })
 
-  it('blocks every reservation that shares the same verified sourceId', () => {
-    const shared = osEvidence({ sourceId: 'os-shared' })
+  it('allows the same verified documentHash on distinct reservation ids', () => {
+    const sharedHash = TM20_OS_TEST_DOCUMENT_HASH
     const lines = admitBatch(
       [
         row({ externalId: '65733679', checkIn: '2026-09-03', checkOut: '2026-09-06' }),
         row({
-          externalId: '64232458',
-          checkIn: '2026-09-03',
-          checkOut: '2026-09-06',
-          totalPrice: 2346,
-          expectedPayout: 1982.37,
+          externalId: '53082517',
+          channel: 'booking',
+          checkIn: '2026-09-11',
+          checkOut: '2026-09-13',
+          cleaningFee: 120,
+          expectedPayout: null,
+          taxAmount: null,
+          hostServiceFee: null,
         }),
       ],
       {
         authoritativeEvidenceByReservationId: new Map([
-          ['65733679', shared],
-          ['64232458', shared],
+          [
+            '65733679',
+            osEvidence({
+              sourceId: sharedHash,
+              documentHash: sharedHash,
+              reservationId: '65733679',
+              payoutEur: 498.37,
+            }),
+          ],
+          [
+            '53082517',
+            osEvidence({
+              sourceId: sharedHash,
+              documentHash: sharedHash,
+              reservationId: '53082517',
+              payoutEur: 716.78,
+              cleaningEur: 120,
+            }),
+          ],
         ]),
       },
     )
-    expect(lines).toHaveLength(2)
-    expect(lines.every((l) => l.admissionState === 'blocked')).toBe(true)
-    expect(lines.every((l) => l.admittedCandidate === false)).toBe(true)
-    expect(lines.every((l) => l.reason === VM1_DRAFT_ADMISSION_REASON.duplicateStatementSource)).toBe(true)
+    expect(lines.filter((l) => l.admittedCandidate)).toHaveLength(2)
+    expect(lines.find((l) => l.externalId === '65733679')?.admissionState).toBe('admitted')
+    expect(lines.find((l) => l.externalId === '53082517')?.admissionState).toBe('admitted')
+    expect(lines.find((l) => l.externalId === '65733679')?.authoritativeEvidenceLinked).toBe(true)
+    expect(lines.find((l) => l.externalId === '53082517')?.authoritativeEvidenceLinked).toBe(true)
   })
 
   it('admits two reservations with distinct verified sourceIds', () => {
@@ -613,5 +741,70 @@ describe('vm1DraftAdmission', () => {
     expect(lines).toHaveLength(1)
     expect(lines[0].admittedCandidate).toBe(true)
     expect(lines.some((l) => l.externalId === 'missing-id')).toBe(false)
+  })
+
+  it('with injected Owner Statement fixture at 2026-09-19 admits completed stays only', () => {
+    const inventoryRows = [
+      row({ externalId: '65733679', checkIn: '2026-09-03', checkOut: '2026-09-06' }),
+      row({
+        externalId: '53082517',
+        channel: 'booking',
+        checkIn: '2026-09-11',
+        checkOut: '2026-09-13',
+        cleaningFee: 120,
+        expectedPayout: null,
+        taxAmount: null,
+        hostServiceFee: null,
+        totalPrice: 1218.2,
+      }),
+      row({
+        externalId: '64232458',
+        checkIn: '2026-09-18',
+        checkOut: '2026-09-22',
+        totalPrice: 2346,
+        expectedPayout: 1982.37,
+      }),
+      row({
+        externalId: '54972355',
+        channel: 'booking',
+        status: 'modified',
+        checkIn: '2026-09-22',
+        checkOut: '2026-09-26',
+        disposition: 'needs_review',
+        expectedPayout: null,
+        reason: 'Status is modified.',
+      }),
+      row({
+        externalId: '53139113',
+        checkIn: '2026-08-15',
+        checkOut: '2026-08-29',
+        disposition: 'already_certified',
+        reason: 'Already included in the frozen certified Avi stay set; never include again.',
+      }),
+    ]
+    const os = adaptVm1OwnerStatementEvidence({
+      identity: TM20_OS_TEST_IDENTITY,
+      document: TM20_OS_TEST_DOCUMENT,
+      inventory: ownerStatementInventoryFromReservations(inventoryRows),
+    })
+    expect(os.ok).toBe(true)
+    if (!os.ok) throw new Error(os.reason)
+    const lines = admitBatch(inventoryRows, {
+      asOfIso: '2026-09-19',
+      authoritativeEvidenceByReservationId: os.evidenceByReservationId,
+    })
+    expect(lines.find((l) => l.externalId === '65733679')?.admissionState).toBe('admitted')
+    expect(lines.find((l) => l.externalId === '65733679')?.admittedCandidate).toBe(true)
+    expect(lines.find((l) => l.externalId === '53082517')?.admissionState).toBe('admitted')
+    expect(lines.find((l) => l.externalId === '53082517')?.admittedCandidate).toBe(true)
+    expect(lines.find((l) => l.externalId === '64232458')?.admissionState).toBe('forecast')
+    expect(lines.find((l) => l.externalId === '64232458')?.admittedCandidate).toBe(false)
+    expect(lines.find((l) => l.externalId === '54972355')?.admissionState).toBe('needs_review')
+    expect(lines.find((l) => l.externalId === '53139113')?.admissionState).toBe('excluded')
+    expect(lines.filter((l) => l.admittedCandidate)).toHaveLength(2)
+    expect(lines.find((l) => l.externalId === '65733679')?.reason).toContain(
+      'Raw expectedPayout is not admission authority',
+    )
+    expect(lines.find((l) => l.externalId === '53082517')?.reason).toContain('hostaway_owner_statement')
   })
 })

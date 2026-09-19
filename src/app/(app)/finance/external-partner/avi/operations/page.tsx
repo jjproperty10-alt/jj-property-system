@@ -72,6 +72,13 @@ export default async function Vm1PropertyOperationsPage({ searchParams }: Props)
       reservations={loaded.reservations}
       forecastLines={loaded.forecastLines}
       draftAdmissionLines={loaded.draftAdmissionLines}
+      ownerStatementLines={loaded.ownerStatementLines ?? []}
+      ownerStatementEvidenceOk={loaded.ownerStatementEvidence?.ok}
+      ownerStatementEvidenceReason={
+        loaded.ownerStatementEvidence != null && !loaded.ownerStatementEvidence.ok
+          ? loaded.ownerStatementEvidence.reason
+          : null
+      }
       expenseAdmission={loaded.expenseAdmission}
     />
   )

@@ -29,6 +29,15 @@ import {
 import type { Vm1ReservationRow } from '@/lib/partnership-workspace/vm1IdentityAdapter'
 import { forecastVm1Reservations } from '@/lib/partnership-workspace/vm1ForecastCalculator'
 import { admitVm1DraftReservations } from '@/lib/partnership-workspace/vm1DraftAdmission'
+import {
+  adaptVm1OwnerStatementEvidence,
+  ownerStatementInventoryFromReservations,
+} from '@/lib/partnership-workspace/vm1OwnerStatementEvidence'
+import {
+  TM20_OS_TEST_DOCUMENT,
+  TM20_OS_TEST_DOCUMENT_HASH,
+  TM20_OS_TEST_IDENTITY,
+} from '@/lib/partnership-workspace/__tests__/vm1OwnerStatementEvidence.fixture'
 import { admitVm1ApprovedFutureDraftExpense } from '@/lib/partnership-workspace/vm1ExpenseAdmission'
 import { VM1_UNKNOWN_EVIDENCE_LABEL } from '@/lib/partnership-workspace/vm1OperationsPresentation'
 
@@ -371,20 +380,72 @@ describe('Vm1OperationsView', () => {
     expect(html).toContain('Blocked — authoritative statement evidence required')
     expect(html).toContain('חסום — נדרשת ראיית דוח בעלים')
     expect(html).toContain('authoritative owner-statement payout evidence is not linked')
+    expect(html).toContain('Owner Statement evidence not stored')
+    expect(html).toContain('Canonical stored Hostaway Owner Statement evidence is not attached')
     expect(html).toContain('data-testid="vm1-draft-admission-state-53139113"')
     expect(html).toContain('data-testid="vm1-draft-admission-state-64232458"')
     expect(html).toContain('Forecast — not admitted')
     expect(html).toContain('data-testid="vm1-draft-admission-state-53082517"')
     const admission = html.slice(html.indexOf('data-testid="vm1-draft-admission-section"'))
-    expect(admission).not.toContain('Admitted candidate')
+    expect(admission).not.toContain('Draft candidate')
+    expect(admission).not.toContain('Evidence source verified')
     expect(admission).not.toContain('sourceId')
-    expect(admission).not.toContain('os-')
+    expect(admission).not.toContain('os-65733679')
+    expect(admission).not.toContain(TM20_OS_TEST_DOCUMENT_HASH)
+    expect(admission).not.toContain('data-testid="vm1-os-nto-65733679"')
     expect(admission).not.toContain('Grand total')
     expect(admission).not.toContain('Avi share')
     expect(admission).not.toContain('50%')
     expect(admission).not.toContain('25%')
     expect(admission).not.toContain('594.25')
     expect(admission).not.toContain('subtotal')
+  })
+
+  it('shows staff-only Evidence source verified and Draft candidate from injected test Owner Statement lines', () => {
+    const os = adaptVm1OwnerStatementEvidence({
+      identity: TM20_OS_TEST_IDENTITY,
+      document: TM20_OS_TEST_DOCUMENT,
+      inventory: ownerStatementInventoryFromReservations(ROWS),
+    })
+    expect(os.ok).toBe(true)
+    if (!os.ok) throw new Error(os.reason)
+    const admission = admitVm1DraftReservations(ROWS, {
+      asOfIso: '2026-09-19',
+      certifiedReservationIds: new Set(['53139113']),
+      authoritativeEvidenceByReservationId: os.evidenceByReservationId,
+    })
+    if (!admission.ok) throw new Error(admission.reason)
+    const html = renderToStaticMarkup(
+      <Vm1OperationsView
+        identityStatus="verified"
+        from="2026-08-25"
+        to="2026-09-19"
+        identity={IDENTITY}
+        reservations={ROWS}
+        forecastLines={forecastVm1Reservations(ROWS, { asOfIso: '2026-09-19' })}
+        draftAdmissionLines={admission.lines}
+        ownerStatementLines={os.lines}
+        ownerStatementEvidenceOk
+        expenseAdmission={approvedExpense()}
+      />,
+    )
+    expect(html).toContain('Evidence source verified')
+    expect(html).not.toContain(TM20_OS_TEST_DOCUMENT_HASH)
+    expect(html).toContain('Draft candidate')
+    expect(html).toContain('data-testid="vm1-os-nto-65733679"')
+    expect(html).toContain('€498.37')
+    expect(html).toContain('€716.78')
+    expect(html).toContain('data-testid="vm1-os-nto-53082517"')
+    expect(html).toContain('Needs Review')
+    expect(html).toContain('Forecast — not admitted')
+    expect(html).not.toContain('guestName')
+    expect(html).not.toContain('guest_name')
+    expect(html).not.toContain('50%')
+    expect(html).not.toContain('25%')
+    expect(html).not.toContain('594.25')
+    expect(html).not.toContain('Owner Statement evidence not stored')
+    const admissionHtml = html.slice(html.indexOf('data-testid="vm1-draft-admission-section"'))
+    expect(admissionHtml).not.toContain('€849.99')
   })
 
   it('renders the approved future-Draft expense without partner split or transaction UUID', () => {
