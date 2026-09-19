@@ -23,7 +23,7 @@ import {
   View,
   StyleSheet,
 } from '@react-pdf/renderer'
-import { fmt, fmtSigned } from './formatters'
+import { fmt } from './formatters'
 import { isRTL, rtlRowDirection, rtlTextStyle, rtlColumnOrder, rtlAlignEnd } from './rtlHelpers'
 import { filterSectionsByReportType, type ReportType } from '../report/reportTypes'
 import type { RC3PropertyReport, RC3AccountSection } from '../report/types'
@@ -39,11 +39,7 @@ import { shouldShowElectricitySubmeterNote } from '../report/electricitySubmeter
 import { getOwnerClientReport, getPortfolioOwnerNet } from '../report/ownerClientReport'
 import { renovationGroupHeaders, splitOperatingIncome, splitOperatingIncomeTotals, computeStatementComponents } from '../report/statementPresentation'
 import type { CertifiedClientSettlementAvailable } from '../finance/certifiedClientSettlementTypes'
-import {
-  certifiedHeroLabelKey,
-  fifoCreditDisplayAmount,
-  fifoCreditLabelKey,
-} from '../finance/certifiedClientSettlementPresentation'
+import { CertifiedCoverPage, CertifiedSupportingBanner } from './CertifiedSettlementPdf'
 
 /* ─── Palette ───────────────────────────────────────────────────────────────── */
 
@@ -441,7 +437,8 @@ const s = StyleSheet.create({
 
 /* ─── Balance helpers ───────────────────────────────────────────────────────── */
 
-function getBalLabel(section: RC3AccountSection, lang: Lang): string {
+function getBalLabel(section: RC3AccountSection, lang: Lang, supportingLedger = false): string {
+  if (supportingLedger) return t('certSupportingNet', lang)
   const b = section.closing_balance
   const conv = section.balance_convention
   if (Math.abs(b) < 0.005) return t('balSettled', lang)
@@ -470,8 +467,8 @@ function fmtDate(iso: string): string {
 
 function fmtPeriod(report: RC3PropertyReport, lang: Lang): string {
   if (!report.from_date && !report.to_date) return t('execAllDates', lang)
-  if (!report.from_date) return `Up to ${fmtDate(report.to_date!)}`
-  if (!report.to_date) return `From ${fmtDate(report.from_date)}`
+  if (!report.from_date) return `${t('certPeriodUpTo', lang)} ${fmtDate(report.to_date!)}`
+  if (!report.to_date) return `${t('certPeriodFrom', lang)} ${fmtDate(report.from_date)}`
   return `${fmtDate(report.from_date)} – ${fmtDate(report.to_date)}`
 }
 
@@ -482,6 +479,29 @@ function fmtGenerated(iso: string): string {
       hour: '2-digit', minute: '2-digit',
     })
   } catch { return iso }
+}
+
+function summarizeOperatingIncomeByMonth(rows: ClientDisplayRow[], lang: Lang): ClientDisplayRow[] {
+  const totals = new Map<string, { amount: number; sample: ClientDisplayRow }>()
+  for (const row of rows) {
+    const month = (row.date || '').slice(0, 7) || 'unknown'
+    const prev = totals.get(month)
+    if (!prev) totals.set(month, { amount: row.client_amount, sample: row })
+    else prev.amount += row.client_amount
+  }
+  return Array.from(totals.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, value]) => {
+      const stamp = month.length === 7 ? `${month.slice(5, 7)}.${month.slice(0, 4)}` : month
+      return {
+        ...value.sample,
+        id: `month:${value.sample.account_type}:${month}`,
+        date: month.length === 7 ? `${month}-01` : value.sample.date,
+        client_amount: value.amount,
+        display_label: `${t('certMonthActivity', lang)} ${stamp}`,
+        subcategory: null,
+      }
+    })
 }
 
 /* ─── Sub-components ────────────────────────────────────────────────────────── */
@@ -547,43 +567,26 @@ const M2_PDF_COLORS: Record<string, string> = {
 function PremiumSummaryPdf({
   report,
   lang,
-  certifiedSettlement,
+  supportingLedger = false,
 }: {
   report: RC3PropertyReport
   lang: Lang
-  certifiedSettlement?: CertifiedClientSettlementAvailable
+  supportingLedger?: boolean
 }) {
-  // G6: hero net comes from the canonical owner/client composition contract
-  // (Purchase-filtered), so PDF net reconciles exactly with the Owner Workspace
-  // Property/Overall Net. Do NOT recompute over raw report.accounts here.
-  // When a certified overlay is available it is the closing hero; RC3 net stays
-  // in FinalSummary as supporting ledger detail.
+  // G6: uncertified hero net comes from the canonical owner/client composition.
+  // When certified settlement is the owner-level hero, this block is supporting
+  // activity only — never a second final payable amount.
   const net = getOwnerClientReport(report).overallNet
-  const certified = certifiedSettlement
   const { income: opIncomeRaw, expenses: opExpenses, transfers: opTransfers, hasOperational } =
     computeOperationalKPIs(report.accounts)
-  // #1 — a rental/airbnb "Client Payment" is a cross-property settlement, not operating
-  // income. Separate it here (presentation only) so the Operational Income KPI shows
-  // genuine income and settlements get their own KPI. Balance is unchanged.
   const opSettlements = report.accounts
     .filter(a => a.account_type === 'rental' || a.account_type === 'airbnb')
     .reduce((sum, a) => sum + splitOperatingIncomeTotals(a).crossPropertySettlements, 0)
   const opIncome = opIncomeRaw - opSettlements
-  const heroNet = certified ? certified.closingDueToJj : net
-  const absNet = Math.abs(heroNet)
-  const heroBg = absNet < 0.005
-    ? '#334155'
-    : certified
-      ? (certified.closingDirection === 'jj_owes_client' ? '#14532d' : '#7f1d1d')
-      : net > 0 ? '#14532d' : '#7f1d1d'
-  const heroColor = absNet < 0.005
-    ? '#ffffff'
-    : certified
-      ? (certified.closingDirection === 'jj_owes_client' ? '#86efac' : '#fca5a5')
-      : net > 0 ? '#86efac' : '#fca5a5'
-  const heroLabel = certified
-    ? t(certifiedHeroLabelKey(certified.closingDirection), lang)
-    : absNet < 0.005 ? t('balSettled', lang) : net > 0 ? t('balPayableToYou', lang) : t('balPayableByYou', lang)
+  const absNet = Math.abs(net)
+  const heroBg = absNet < 0.005 ? '#334155' : net > 0 ? '#14532d' : '#7f1d1d'
+  const heroColor = absNet < 0.005 ? '#ffffff' : net > 0 ? '#86efac' : '#fca5a5'
+  const heroLabel = absNet < 0.005 ? t('balSettled', lang) : net > 0 ? t('balPayableToYou', lang) : t('balPayableByYou', lang)
   const period = report.from_date || report.to_date
     ? `${report.from_date ? fmtDate(report.from_date) : '—'} – ${report.to_date ? fmtDate(report.to_date) : '—'}`
     : t('execAllDates', lang)
@@ -601,7 +604,13 @@ function PremiumSummaryPdf({
         </View>
         <Text style={[{ fontSize: 7, color: '#60a5fa' }, rtlTextStyle(lang)]}>{t('confidential', lang).toUpperCase()}</Text>
       </View>
-      {/* Hero balance */}
+      {supportingLedger ? (
+        <View style={{ backgroundColor: '#422006', borderRadius: 6, padding: 10, marginBottom: 14 }} wrap={false}>
+          <Text style={[{ fontSize: 8, color: '#fde68a', fontWeight: 'bold' }, rtlTextStyle(lang)]}>
+            {t('certSupportingLedger', lang)}
+          </Text>
+        </View>
+      ) : (
       <View style={[{ backgroundColor: heroBg, borderRadius: 6, padding: 14, marginBottom: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, rtlRowDirection(lang)]}>
         <Text style={[{ fontSize: 7, color: 'rgba(255,255,255,0.5)' }, rtlTextStyle(lang)]}>{t('dashBalance', lang).toUpperCase()}</Text>
         <View style={[{ alignItems: 'flex-end' }, rtlAlignEnd(lang)]}>
@@ -609,6 +618,7 @@ function PremiumSummaryPdf({
           <Text style={[{ fontSize: 8, color: heroColor, marginTop: 2 }, rtlTextStyle(lang)]}>{heroLabel}</Text>
         </View>
       </View>
+      )}
       {/* Operational KPIs */}
       {hasOperational && (
         <View style={{ marginBottom: 14 }}>
@@ -633,7 +643,7 @@ function PremiumSummaryPdf({
       <View style={[{ flexDirection: 'row', flexWrap: 'wrap' }, rtlRowDirection(lang)]}>
         {filterOwnerFacingSections(report.accounts).map((acc, i) => {
           const accColor = M2_PDF_COLORS[acc.account_type] ?? '#334155'
-          const balLabel = getBalLabel(acc, lang)
+          const balLabel = getBalLabel(acc, lang, supportingLedger)
           const absBalance = Math.abs(acc.closing_balance)
           const lkKey = accLabelKeys[acc.account_type]
           const metrics: { label: string; value: number }[] = (() => {
@@ -697,7 +707,7 @@ function PremiumSummaryPdf({
   )
 }
 
-function ModuleMetrics({ section, lang }: { section: RC3AccountSection; lang: Lang }) {
+function ModuleMetrics({ section, lang, supportingLedger = false }: { section: RC3AccountSection; lang: Lang; supportingLedger?: boolean }) {
   type MetricItem = { label: string; value: number; highlight?: boolean }
   let metrics: MetricItem[]
 
@@ -757,13 +767,15 @@ function ModuleMetrics({ section, lang }: { section: RC3AccountSection; lang: La
         const isLast = i === metrics.length - 1
         return (
           <View key={i} style={isLast ? s.moduleMetricCellLast : s.moduleMetricCell}>
-            <Text style={[s.moduleMetricLabel, rtlTextStyle(lang)]}>{m.label}</Text>
+            <Text style={[s.moduleMetricLabel, rtlTextStyle(lang)]}>
+              {supportingLedger && m.highlight ? t('certSupportingNet', lang) : m.label}
+            </Text>
             <Text style={[s.moduleMetricValue, m.highlight ? { color: balColor } : {}]}>
               {fmt(m.value)}
             </Text>
             {m.highlight && (
               <Text style={[s.moduleMetricSub, { color: balColor }, rtlTextStyle(lang)]}>
-                {getBalLabel(section, lang)}
+                {getBalLabel(section, lang, supportingLedger)}
               </Text>
             )}
           </View>
@@ -891,10 +903,10 @@ function GroupedExpensesPdf({
   )
 }
 
-function AccountBlock({ section, lang }: { section: RC3AccountSection; lang: Lang }) {
+function AccountBlock({ section, lang, supportingLedger = false }: { section: RC3AccountSection; lang: Lang; supportingLedger?: boolean }) {
   const acColor = ACCOUNT_COLOURS[section.account_type] ?? C.navy
   const balColor = getBalColor(section)
-  const balText = getBalLabel(section, lang)
+  const balText = getBalLabel(section, lang, supportingLedger)
 
   const referenceRows = section.rows.filter(r => r.display_group === 'reference').map(toClientRow)
   const incomeRows = section.rows.filter(r => r.display_group === 'income').map(toClientRow)
@@ -928,8 +940,11 @@ function AccountBlock({ section, lang }: { section: RC3AccountSection; lang: Lan
   // Split it out under its own heading. Tenant Payments stay as rental income.
   // Balance effect is unchanged — this is presentation only.
   const isOperating = at === 'rental' || at === 'airbnb'
-  const { income: primaryIncomeRows, settlements: settlementRows } =
+  const { income: primaryIncomeRowsRaw, settlements: settlementRows } =
     isOperating ? splitOperatingIncome(incomeRows) : { income: incomeRows, settlements: [] as typeof incomeRows }
+  const primaryIncomeRows = supportingLedger && isOperating
+    ? summarizeOperatingIncomeByMonth(primaryIncomeRowsRaw, lang)
+    : primaryIncomeRowsRaw
 
   return (
     <View style={s.accountSection} break={false}>
@@ -954,7 +969,7 @@ function AccountBlock({ section, lang }: { section: RC3AccountSection; lang: Lan
         </View>
 
         {/* Per-module metrics strip */}
-        <ModuleMetrics section={section} lang={lang} />
+        <ModuleMetrics section={section} lang={lang} supportingLedger={supportingLedger} />
       </View>
 
       {/* Section A — Reference rows */}
@@ -995,7 +1010,7 @@ function AccountBlock({ section, lang }: { section: RC3AccountSection; lang: Lan
 }
 
 /** Final settlement summary + disclaimer (dark navy block at end of PDF) */
-function FinalSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: Lang }) {
+function FinalSummaryPdf({ report, lang, supportingLedger = false }: { report: RC3PropertyReport; lang: Lang; supportingLedger?: boolean }) {
   // P-UI-504d — the settlement summary must use ONLY owner-facing (client) accounts,
   // exactly like the hero net. Purchase (JJ-internal acquisition) is excluded via the
   // canonical filter so the bottom balance == the header net (same value + direction),
@@ -1020,9 +1035,6 @@ function FinalSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: La
     } catch { return '' }
   })()
 
-  // P-UI-504d — the Kiti electricity sub-meter note is gated by a VERIFIED property
-  // association (electricitySubmeterNote), NEVER by the property name or by "has an
-  // electricity line" (which false-positives on unrelated properties, e.g. Neer).
   const showSubmeterNote = shouldShowElectricitySubmeterNote(report)
   const comp = computeStatementComponents(clientAccounts)
   const componentLines: Array<{ label: string; value: number }> = [
@@ -1035,9 +1047,10 @@ function FinalSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: La
 
   return (
     <View style={s.finalSection}>
-      <Text style={[s.finalTitle, rtlTextStyle(lang)]}>{t('finalTitle', lang)}</Text>
+      <Text style={[s.finalTitle, rtlTextStyle(lang)]}>
+        {supportingLedger ? t('certSupportingLedger', lang) : t('finalTitle', lang)}
+      </Text>
 
-      {/* #3 — Explanatory components (separate lines; NOT a second balance engine) */}
       <Text style={[s.finalKpiLabel, rtlTextStyle(lang), { marginBottom: 6, opacity: 0.85 }]}>{t('sumComponentsTitle', lang)}</Text>
       <View style={{ marginBottom: 8 }}>
         {componentLines.map((l, i) => (
@@ -1047,9 +1060,11 @@ function FinalSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: La
           </View>
         ))}
       </View>
-      <Text style={[s.finalDiscText, rtlTextStyle(lang), { fontSize: 6, opacity: 0.7, marginBottom: 8 }]}>{t('sumFinalBalanceNote', lang)}</Text>
+      <Text style={[s.finalDiscText, rtlTextStyle(lang), { fontSize: 6, opacity: 0.7, marginBottom: 8 }]}>
+        {supportingLedger ? t('certSupportingLedger', lang) : t('sumFinalBalanceNote', lang)}
+      </Text>
 
-      {/* Net balance */}
+      {supportingLedger ? null : (
       <View style={[s.finalBalRow, rtlRowDirection(lang)]}>
         <Text style={[s.finalBalLabel, rtlTextStyle(lang)]}>{t('finalCurrentBalance', lang)}</Text>
         <View style={[{ alignItems: 'flex-end' }, rtlAlignEnd(lang)]}>
@@ -1059,6 +1074,7 @@ function FinalSummaryPdf({ report, lang }: { report: RC3PropertyReport; lang: La
           <Text style={[s.finalBalSub, { color: balColor }, rtlTextStyle(lang)]}>{balLabel}</Text>
         </View>
       </View>
+      )}
 
       {/* Disclaimer */}
       <View style={s.finalDiscBorder}>
@@ -1115,63 +1131,7 @@ export interface OwnerSettlementPdfV3Props {
   lang?: Lang
   reportType?: ReportType
   certifiedSettlement?: CertifiedClientSettlementAvailable
-}
-
-function CertifiedSettlementPdfBlock({
-  dto,
-  lang,
-}: {
-  dto: CertifiedClientSettlementAvailable
-  lang: Lang
-}) {
-  const closingKey = certifiedHeroLabelKey(dto.closingDirection)
-  return (
-    <View style={{ marginTop: 12, marginBottom: 14, borderWidth: 1, borderColor: C.grayBorder, padding: 10 }}>
-      <Text style={[{ fontSize: 8, fontWeight: 'bold', color: C.navy, marginBottom: 8 }, rtlTextStyle(lang)]}>
-        {t('certSectionTitle', lang)}
-      </Text>
-      <View style={[{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }, rtlRowDirection(lang)]}>
-        <Text style={[{ fontSize: 8 }, rtlTextStyle(lang)]}>{t('certOpeningBalance', lang)}</Text>
-        <Text style={{ fontSize: 8 }}>{fmt(dto.openingDueToJj)}</Text>
-      </View>
-      {dto.fifoCredits.map((credit) => (
-        <View
-          key={credit.eventId}
-          style={[{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 }, rtlRowDirection(lang)]}
-        >
-          <Text style={[{ fontSize: 8 }, rtlTextStyle(lang)]}>
-            {t(fifoCreditLabelKey(credit), lang)}
-            {!credit.cash ? ` · ${t('certNoncash', lang)}` : ''}
-          </Text>
-          <Text style={{ fontSize: 8 }}>{fmtSigned(fifoCreditDisplayAmount(credit))}</Text>
-        </View>
-      ))}
-      {dto.exclusions.map((exclusion) => (
-        <View key={exclusion.eventId} style={{ marginBottom: 3 }}>
-          <View style={[{ flexDirection: 'row', justifyContent: 'space-between' }, rtlRowDirection(lang)]}>
-            <Text style={[{ fontSize: 8, color: C.grayText }, rtlTextStyle(lang)]}>
-              {t('certExclusionDoubleCount', lang)}
-            </Text>
-            <Text style={{ fontSize: 8, color: C.grayText }}>{fmt(exclusion.settlementAmount)}</Text>
-          </View>
-          <Text style={[{ fontSize: 7, color: C.grayMid }, rtlTextStyle(lang)]}>{t('certExclusionNote', lang)}</Text>
-        </View>
-      ))}
-      <View
-        style={[{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          marginTop: 6,
-          paddingTop: 6,
-          borderTopWidth: 1,
-          borderTopColor: C.navy,
-        }, rtlRowDirection(lang)]}
-      >
-        <Text style={[{ fontSize: 9, fontWeight: 'bold' }, rtlTextStyle(lang)]}>{t(closingKey, lang)}</Text>
-        <Text style={{ fontSize: 9, fontWeight: 'bold' }}>{fmt(Math.abs(dto.closingDueToJj))}</Text>
-      </View>
-    </View>
-  )
+  ownerName?: string
 }
 
 /**
@@ -1183,32 +1143,25 @@ export function OwnerPropertyPage({
   report,
   lang,
   reportType = 'full',
-  certifiedSettlement,
+  supportingLedger = false,
 }: {
   report: RC3PropertyReport
   lang: Lang
   reportType?: ReportType
-  certifiedSettlement?: CertifiedClientSettlementAvailable
+  supportingLedger?: boolean
 }) {
   const filteredReport = { ...report, accounts: filterSectionsByReportType(report.accounts, reportType) }
-  // #6 — This is a single-property statement, not a consolidated owner report.
   const reportTypeLabel = t('docPropertyStatement', lang)
   return (
     <Page size="A4" style={s.page}>
       <DocHeader report={filteredReport} lang={lang} reportTypeLabel={reportTypeLabel} />
       <MetaBlock report={filteredReport} lang={lang} />
-
-      {/* M2: Premium Executive Summary */}
-      <PremiumSummaryPdf report={filteredReport} lang={lang} certifiedSettlement={certifiedSettlement} />
-
-      {/* One section per account — Purchase excluded (JJ internal, Global Owner/Client Perspective Rule) */}
+      {supportingLedger ? <CertifiedSupportingBanner lang={lang} /> : null}
+      <PremiumSummaryPdf report={filteredReport} lang={lang} supportingLedger={supportingLedger} />
       {filterOwnerFacingSections(filteredReport.accounts).map(acc => (
-        <AccountBlock key={acc.account_type} section={acc} lang={lang} />
+        <AccountBlock key={acc.account_type} section={acc} lang={lang} supportingLedger={supportingLedger} />
       ))}
-
-      {certifiedSettlement && <CertifiedSettlementPdfBlock dto={certifiedSettlement} lang={lang} />}
-
-      <FinalSummaryPdf report={filteredReport} lang={lang} />
+      <FinalSummaryPdf report={filteredReport} lang={lang} supportingLedger={supportingLedger} />
       <DocFooter report={filteredReport} lang={lang} />
     </Page>
   )
@@ -1219,18 +1172,23 @@ export function OwnerSettlementPdfV3({
   lang = 'en',
   reportType = 'full',
   certifiedSettlement,
+  ownerName,
 }: OwnerSettlementPdfV3Props) {
+  const supportingLedger = Boolean(certifiedSettlement)
   return (
     <Document
-      title={`JJ ${t('docPropertyStatement', lang)} — ${report.reporting_name}`}
+      title={`JJ ${t(supportingLedger ? 'certSectionTitle' : 'docPropertyStatement', lang)} — ${ownerName || report.reporting_name}`}
       author="JJ Property 10"
-      creator="JJ Property 10 Platform (RC3 V3)"
+      creator="JJ Property 10"
     >
+      {certifiedSettlement ? (
+        <CertifiedCoverPage dto={certifiedSettlement} lang={lang} ownerName={ownerName} />
+      ) : null}
       <OwnerPropertyPage
         report={report}
         lang={lang}
         reportType={reportType}
-        certifiedSettlement={certifiedSettlement}
+        supportingLedger={supportingLedger}
       />
     </Document>
   )
@@ -1248,15 +1206,14 @@ function ownerNetLabel(net: number, lang: Lang): string {
 /**
  * G1: Owner Summary page — each property's owner-facing net (Purchase excluded)
  * + the Overall Net. Uses the canonical G1/G6 composition; no accounting recompute.
+ * Not used when a certified settlement cover is the final hero.
  */
 export function OwnerSummaryPage({
   reports,
   lang,
-  certifiedSettlement,
 }: {
   reports: RC3PropertyReport[]
   lang: Lang
-  certifiedSettlement?: CertifiedClientSettlementAvailable
 }) {
   const views = reports.map(getOwnerClientReport)
   const overall = getPortfolioOwnerNet(reports)
@@ -1305,7 +1262,6 @@ export function OwnerSummaryPage({
           <Text style={{ fontSize: 12, fontWeight: 'bold' }}>{ownerNetLabel(overall, lang)} {fmt(Math.abs(overall))}</Text>
         </View>
       </View>
-      {certifiedSettlement && <CertifiedSettlementPdfBlock dto={certifiedSettlement} lang={lang} />}
     </Page>
   )
 }
@@ -1315,37 +1271,41 @@ export interface OwnerPortfolioPdfProps {
   lang?: Lang
   reportType?: ReportType
   certifiedSettlement?: CertifiedClientSettlementAvailable
+  ownerName?: string
 }
 
 /**
  * G1: Full Owner Report across one or many properties. Owner Summary page (when
- * >1 property) + one page per property (identical per-property content to the
- * single-property document). Purchase excluded everywhere; nets reconcile with
- * the Owner Workspace via the canonical composition.
+ * >1 property and uncertified) + one page per property. When certified, the
+ * cover is the only final settlement hero; RC3 pages are supporting activity.
  */
 export function OwnerPortfolioPdf({
   reports,
   lang = 'en',
   reportType = 'full',
   certifiedSettlement,
+  ownerName,
 }: OwnerPortfolioPdfProps) {
   const reportTypeLabel = reportType === 'periodic' ? t('reportTypePeriodic', lang) : t('reportTypeFull', lang)
+  const supportingLedger = Boolean(certifiedSettlement)
   return (
     <Document
-      title={`JJ ${reportTypeLabel} — Owner Portfolio`}
+      title={`JJ ${supportingLedger ? t('certSectionTitle', lang) : reportTypeLabel} — ${ownerName || 'Owner Portfolio'}`}
       author="JJ Property 10"
-      creator="JJ Property 10 Platform (RC3 V3)"
+      creator="JJ Property 10"
     >
-      {reports.length > 1 && (
-        <OwnerSummaryPage reports={reports} lang={lang} certifiedSettlement={certifiedSettlement} />
-      )}
+      {certifiedSettlement ? (
+        <CertifiedCoverPage dto={certifiedSettlement} lang={lang} ownerName={ownerName} />
+      ) : reports.length > 1 ? (
+        <OwnerSummaryPage reports={reports} lang={lang} />
+      ) : null}
       {reports.map(r => (
         <OwnerPropertyPage
           key={r.reporting_name}
           report={r}
           lang={lang}
           reportType={reportType}
-          certifiedSettlement={certifiedSettlement}
+          supportingLedger={supportingLedger}
         />
       ))}
     </Document>

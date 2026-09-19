@@ -5,6 +5,7 @@
 import React from 'react'
 import { OwnerPortfolioPdf, OwnerSettlementPdfV3 } from '@/lib/pdf/OwnerSettlementPdfV3'
 import type { RC3PropertyReport, RC3AccountSection, RC3AccountType, BalanceConvention } from '@/lib/report/types'
+import { URIEL_SHAPED_CERTIFIED } from '@/lib/finance/__fixtures__/certifiedClientSettlement'
 
 function section(t: RC3AccountType, bal: number, conv: BalanceConvention): RC3AccountSection {
   return { account_type: t, account_label: t, account_label_he: t, balance_convention: conv,
@@ -41,5 +42,19 @@ describe('G1 — Full Owner Report PDF composition', () => {
   test('Hebrew portfolio composes the same page count (RTL handled per-page)', () => {
     const doc: any = OwnerPortfolioPdf({ reports: [a, b], lang: 'he' })
     expect(React.Children.toArray(doc.props.children).length).toBe(3)
+  })
+
+  test('certified portfolio replaces the RC3 owner-summary with a cover page', () => {
+    const doc: any = OwnerPortfolioPdf({
+      reports: [a, b, c],
+      lang: 'he',
+      certifiedSettlement: URIEL_SHAPED_CERTIFIED,
+      ownerName: 'Uriel',
+    })
+    const pages = React.Children.toArray(doc.props.children) as any[]
+    expect(pages.length).toBe(4)
+    expect(pages[0].props.dto.closingDueToJj).toBe(50677.42)
+    expect(pages[0].props.ownerName).toBe('Uriel')
+    expect(pages.slice(1).every((p: any) => p.props.supportingLedger === true)).toBe(true)
   })
 })

@@ -297,8 +297,8 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
 
   const element = (
     finalReports.length === 1
-      ? React.createElement(OwnerSettlementPdfV3, { report: finalReports[0], lang, reportType, certifiedSettlement })
-      : React.createElement(OwnerPortfolioPdf, { reports: finalReports, lang, reportType, certifiedSettlement })
+      ? React.createElement(OwnerSettlementPdfV3, { report: finalReports[0], lang, reportType, certifiedSettlement, ownerName: workspace.identity.name })
+      : React.createElement(OwnerPortfolioPdf, { reports: finalReports, lang, reportType, certifiedSettlement, ownerName: workspace.identity.name })
   ) as unknown as React.ReactElement
 
   const buffer = await renderToBuffer(element as any)
