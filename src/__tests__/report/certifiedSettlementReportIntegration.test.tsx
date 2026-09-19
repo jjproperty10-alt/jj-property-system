@@ -92,7 +92,7 @@ describe('certified settlement consumers share DTO/sign rules', () => {
     expect(html).toContain('זיכוי יישוב ללא מזומן')
     expect(html).toContain('תשלום מזומן שנכלל ביישוב')
     expect(html).toContain('הוצא מההתחשבנות – ייצוג כפול')
-    expect(html).toContain('יתרה סופית לתשלום')
+    expect(html).toContain('יתרה סופית לתשלום ל-JJ')
     expect(html).toContain('לא מזומן')
   })
 
