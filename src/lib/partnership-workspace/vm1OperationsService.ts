@@ -4,6 +4,13 @@
  * Auth is enforced by the page. This module only reads through the Phase 1
  * identity adapter. No settlement, no ledger combination, no DB write.
  *
+ * Loading order:
+ *   1. parse range
+ *   2. loadVm1Identity
+ *   3. identity failure → blocked workspace, no expense SELECT
+ *   4. verified identity → expense SELECT
+ *   5. expense failure does not collapse reservations/forecast
+ *
  * server-only.
  */
 
@@ -11,9 +18,13 @@ import 'server-only'
 
 import { aviCertifiedReservationIdSet } from './aviCertifiedReservationIds'
 import { admitVm1DraftReservations, type Vm1DraftAdmissionLine } from './vm1DraftAdmission'
+import { loadVm1ApprovedFutureDraftExpense } from './vm1ExpenseAdmissionService'
+import type { Vm1ExpenseAdmissionLine } from './vm1ExpenseAdmission'
 import { forecastVm1Reservations, type Vm1ForecastLine } from './vm1ForecastCalculator'
 import { loadVm1Identity, type Vm1IdentityResult, type Vm1RpcClient } from './vm1IdentityAdapter'
 import { parseVm1OperationsRange, utcTodayIso } from './vm1OperationsPresentation'
+
+export type Vm1OperationsClient = Vm1RpcClient
 
 export type Vm1OperationsLoadResult =
   | {
@@ -24,6 +35,7 @@ export type Vm1OperationsLoadResult =
       readonly reservations: Extract<Vm1IdentityResult, { ok: true }>['reservations']
       readonly forecastLines: readonly Vm1ForecastLine[]
       readonly draftAdmissionLines: readonly Vm1DraftAdmissionLine[]
+      readonly expenseAdmission: Vm1ExpenseAdmissionLine
     }
   | {
       readonly ok: false
@@ -34,7 +46,7 @@ export type Vm1OperationsLoadResult =
     }
 
 export interface Vm1OperationsLoadInput {
-  readonly client: Vm1RpcClient
+  readonly client: Vm1OperationsClient
   readonly fromParam?: string | string[]
   readonly toParam?: string | string[]
   readonly now?: Date
@@ -89,6 +101,11 @@ export async function loadVm1OperationsView(
     }
   }
 
+  const expenseAdmission = await loadVm1ApprovedFutureDraftExpense({
+    client: input.client,
+    verifiedIdentity: loaded.identity,
+  })
+
   return {
     ok: true,
     from: range.from,
@@ -99,5 +116,6 @@ export async function loadVm1OperationsView(
       asOfIso,
     }),
     draftAdmissionLines: admission.lines,
+    expenseAdmission,
   }
 }

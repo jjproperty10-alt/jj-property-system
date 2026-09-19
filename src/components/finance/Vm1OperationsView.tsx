@@ -5,6 +5,13 @@
 
 import { AttentionBanner, DataTable, PageShell, StatusBadge, WorkspaceHeader } from '@/components/ds'
 import type { Vm1DraftAdmissionLine } from '@/lib/partnership-workspace/vm1DraftAdmission'
+import {
+  VM1_EXPENSE_ADMISSION_BLOCKED_TITLE,
+  VM1_EXPENSE_ADMISSION_SECTION_TITLE,
+  VM1_EXPENSE_ADMISSION_STAFF_NOTE,
+  VM1_EXPENSE_ADMISSION_STATE_LABEL,
+  type Vm1ExpenseAdmissionLine,
+} from '@/lib/partnership-workspace/vm1ExpenseAdmission'
 import type { Vm1ReservationRow, VerifiedVm1Identity } from '@/lib/partnership-workspace/vm1IdentityAdapter'
 import { VM1_HOSTAWAY_LISTING_ID } from '@/lib/partnership-workspace/vm1Identity'
 import {
@@ -48,6 +55,7 @@ export interface Vm1OperationsViewProps {
   readonly reservations?: readonly Vm1ReservationRow[]
   readonly forecastLines?: readonly Vm1ForecastLine[]
   readonly draftAdmissionLines?: readonly Vm1DraftAdmissionLine[]
+  readonly expenseAdmission?: Vm1ExpenseAdmissionLine
   readonly errorTitle?: string
   readonly errorDescription?: string
 }
@@ -92,6 +100,7 @@ export function Vm1OperationsView({
   reservations = [],
   forecastLines = [],
   draftAdmissionLines = [],
+  expenseAdmission,
   errorTitle,
   errorDescription,
 }: Vm1OperationsViewProps) {
@@ -231,6 +240,7 @@ export function Vm1OperationsView({
 
         {identityVerified ? <ForecastSection lines={forecastLines} /> : null}
         {identityVerified ? <DraftAdmissionSection lines={draftAdmissionLines} /> : null}
+        {identityVerified ? <ExpenseAdmissionSection line={expenseAdmission} /> : null}
       </PageShell>
     </div>
   )
@@ -399,6 +409,100 @@ function DraftAdmissionSection({ lines }: { lines: readonly Vm1DraftAdmissionLin
           </li>
         ))}
       </ul>
+    </section>
+  )
+}
+
+function ExpenseAdmissionSection({ line }: { line: Vm1ExpenseAdmissionLine | undefined }) {
+  if (line == null || line.admissionState === 'blocked') {
+    return (
+      <section className="mt-10 min-w-0" data-testid="vm1-expense-admission-section">
+        <h2 className="mb-3 text-lg font-semibold text-gray-900" data-testid="vm1-expense-admission-title">
+          {VM1_EXPENSE_ADMISSION_SECTION_TITLE}
+        </h2>
+        <p
+          className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+          data-testid="vm1-expense-admission-staff-note"
+        >
+          {VM1_EXPENSE_ADMISSION_STAFF_NOTE}
+        </p>
+        <div data-testid="vm1-expense-admission-blocked">
+          <AttentionBanner
+            type="error"
+            title={VM1_EXPENSE_ADMISSION_BLOCKED_TITLE}
+            description={line?.reason ?? 'Approved future-Draft expense could not be verified from Production.'}
+          />
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section className="mt-10 min-w-0" data-testid="vm1-expense-admission-section">
+      <h2 className="mb-3 text-lg font-semibold text-gray-900" data-testid="vm1-expense-admission-title">
+        {VM1_EXPENSE_ADMISSION_SECTION_TITLE}
+      </h2>
+      <p
+        className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+        data-testid="vm1-expense-admission-staff-note"
+      >
+        {VM1_EXPENSE_ADMISSION_STAFF_NOTE}
+      </p>
+      <article
+        className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+        data-testid="vm1-expense-admission-approved"
+      >
+        <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Date</dt>
+            <dd className="mt-1 text-sm text-gray-900" dir="ltr" data-testid="vm1-expense-admission-date">
+              {line.date}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Category</dt>
+            <dd className="mt-1 text-sm text-gray-900" data-testid="vm1-expense-admission-category">
+              {line.category}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Subcategory</dt>
+            <dd className="mt-1 text-sm text-gray-900" data-testid="vm1-expense-admission-subcategory">
+              {line.subcategory}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Partnership charge</dt>
+            <dd className="mt-1 text-sm font-medium text-gray-900" data-testid="vm1-expense-admission-charge">
+              <EvidenceAmount value={line.partnershipChargeEur} />
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">JJ actual cost</dt>
+            <dd className="mt-1 text-sm font-medium text-gray-900" data-testid="vm1-expense-admission-cost">
+              <EvidenceAmount value={line.jjActualCostEur} />
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">JJ operating profit</dt>
+            <dd className="mt-1 text-sm font-medium text-gray-900" data-testid="vm1-expense-admission-profit">
+              <EvidenceAmount value={line.jjOperatingProfitEur} />
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">State</dt>
+            <dd className="mt-1" data-testid="vm1-expense-admission-state">
+              <StatusBadge
+                status="pending"
+                label={VM1_EXPENSE_ADMISSION_STATE_LABEL[line.admissionState]}
+              />
+            </dd>
+          </div>
+        </dl>
+        <p className="mt-3 text-sm text-gray-600" data-testid="vm1-expense-admission-reason">
+          {line.reason}
+        </p>
+      </article>
     </section>
   )
 }

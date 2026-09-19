@@ -29,6 +29,7 @@ import {
 import type { Vm1ReservationRow } from '@/lib/partnership-workspace/vm1IdentityAdapter'
 import { forecastVm1Reservations } from '@/lib/partnership-workspace/vm1ForecastCalculator'
 import { admitVm1DraftReservations } from '@/lib/partnership-workspace/vm1DraftAdmission'
+import { admitVm1ApprovedFutureDraftExpense } from '@/lib/partnership-workspace/vm1ExpenseAdmission'
 import { VM1_UNKNOWN_EVIDENCE_LABEL } from '@/lib/partnership-workspace/vm1OperationsPresentation'
 
 const IDENTITY = {
@@ -161,6 +162,22 @@ const ROWS: readonly Vm1ReservationRow[] = [
   }),
 ]
 
+function approvedExpense() {
+  return admitVm1ApprovedFutureDraftExpense([
+    {
+      id: 'efe4e1f5-8524-5266-ab10-4eedaa5b3e76',
+      date: '2026-09-06',
+      property_id: VM1_LEGACY_LEDGER_PROPERTY_ID,
+      category: 'Airbnb',
+      subcategory: 'Internet',
+      amount_eur: 30,
+      client_charge: null,
+      review_status: 'active',
+      is_deleted: false,
+    },
+  ])
+}
+
 function renderVerified(): string {
   const admission = admitVm1DraftReservations(ROWS, {
     asOfIso: '2026-09-17',
@@ -178,6 +195,7 @@ function renderVerified(): string {
       reservations={ROWS}
       forecastLines={forecastVm1Reservations(ROWS, { asOfIso: '2026-09-17' })}
       draftAdmissionLines={admission.lines}
+      expenseAdmission={approvedExpense()}
     />,
   )
 }
@@ -234,7 +252,8 @@ describe('Vm1OperationsView', () => {
     expect(html).not.toContain('594.25')
     expect(html).not.toContain('50%')
     expect(html).not.toContain('25%')
-    expect(html).not.toContain('Internet')
+    const beforeExpense = html.slice(0, html.indexOf('data-testid="vm1-expense-admission-section"'))
+    expect(beforeExpense).not.toContain('Internet')
   })
 
   it('renders the internal forecast section with the staff-only disclaimer', () => {
@@ -320,7 +339,10 @@ describe('Vm1OperationsView', () => {
     expect(booking).not.toContain('€0.00')
     expect(booking).not.toContain('€498.37')
 
-    const modified = html.slice(html.indexOf('data-testid="vm1-forecast-card-54972355"'))
+    const modified = html.slice(
+      html.indexOf('data-testid="vm1-forecast-card-54972355"'),
+      html.indexOf('data-testid="vm1-draft-admission-section"'),
+    )
     expect(modified).toContain('Needs Review')
     expect(modified).toContain('modified')
     expect(modified).toContain(VM1_UNKNOWN_EVIDENCE_LABEL)
@@ -365,6 +387,70 @@ describe('Vm1OperationsView', () => {
     expect(admission).not.toContain('subtotal')
   })
 
+  it('renders the approved future-Draft expense without partner split or transaction UUID', () => {
+    const html = renderVerified()
+    expect(html).toContain('Approved future-Draft expenses / הוצאות מאושרות לטיוטה עתידית')
+    expect(html).toContain('Internal classification only — not posted, not allocated, not Settlement and not Certified.')
+    expect(html).toContain('data-testid="vm1-expense-admission-approved"')
+    expect(html).toContain('2026-09-06')
+    expect(html).toContain('Airbnb')
+    expect(html).toContain('Internet')
+    expect(html).toContain('€30.00')
+    expect(html).toContain('€0.00')
+    expect(html).toContain('Approved future-Draft expense')
+    expect(html).not.toContain('efe4e1f5')
+    expect(html).not.toContain('Avi €15')
+    expect(html).not.toContain('7.50')
+    expect(html).not.toContain('50%')
+    expect(html).not.toContain('25%')
+    expect(html).not.toContain('594.25')
+    const expense = html.slice(html.indexOf('data-testid="vm1-expense-admission-section"'))
+    expect(expense).not.toContain('Grand total')
+    expect(expense).not.toContain('subtotal')
+    expect(expense).not.toContain('payer')
+    expect(expense).not.toContain('payee')
+  })
+
+  it('shows Expense admission blocked without €0 amounts and without crashing revenue', () => {
+    const admission = admitVm1DraftReservations(ROWS, {
+      asOfIso: '2026-09-17',
+      certifiedReservationIds: new Set(['53139113']),
+    })
+    if (!admission.ok) throw new Error(admission.reason)
+    const html = renderToStaticMarkup(
+      <Vm1OperationsView
+        identityStatus="verified"
+        from="2026-08-25"
+        to="2026-09-17"
+        identity={IDENTITY}
+        reservations={ROWS}
+        forecastLines={forecastVm1Reservations(ROWS, { asOfIso: '2026-09-17' })}
+        draftAdmissionLines={admission.lines}
+        expenseAdmission={{
+          transactionId: null,
+          date: null,
+          category: null,
+          subcategory: null,
+          admissionState: 'blocked',
+          partnershipChargeEur: null,
+          jjActualCostEur: null,
+          jjOperatingProfitEur: null,
+          reason: 'Approved expense row was not returned as exactly one Production transaction.',
+        }}
+      />,
+    )
+    expect(html).toContain('Expense admission blocked')
+    expect(html).toContain('data-testid="vm1-expense-admission-blocked"')
+    expect(html).not.toContain('data-testid="vm1-expense-admission-approved"')
+    expect(html).not.toContain('data-testid="vm1-expense-admission-charge"')
+    expect(html).toContain('data-testid="vm1-forecast-section"')
+    expect(html).toContain('data-testid="vm1-draft-admission-section"')
+    expect(html).toContain('65733679')
+    const expense = html.slice(html.indexOf('data-testid="vm1-expense-admission-section"'))
+    expect(expense).not.toContain('€0.00')
+    expect(expense).not.toContain('€30.00')
+  })
+
   it('does not import the forecast calculator into the view module', () => {
     const src = fs.readFileSync(path.join(process.cwd(), 'src/components/finance/Vm1OperationsView.tsx'), 'utf8')
     expect(src).not.toContain('forecastVm1Reservation')
@@ -380,6 +466,7 @@ describe('Vm1OperationsView', () => {
         to="2026-09-17"
         errorTitle="VM1 identity verification failed"
         errorDescription="Operational reservation data is not shown."
+        expenseAdmission={approvedExpense()}
       />,
     )
     expect(html).toContain('Blocked')
@@ -388,5 +475,13 @@ describe('Vm1OperationsView', () => {
     expect(html).not.toContain('data-testid="vm1-operations-table-wrap"')
     expect(html).not.toContain('data-testid="vm1-forecast-section"')
     expect(html).not.toContain('data-testid="vm1-draft-admission-section"')
+    expect(html).not.toContain('data-testid="vm1-expense-admission-section"')
+    expect(html).not.toContain('data-testid="vm1-expense-admission-approved"')
+    expect(html).not.toContain('data-testid="vm1-expense-admission-charge"')
+    expect(html).not.toContain('€30.00')
+    expect(html).not.toContain('Partnership charge')
+    expect(html).not.toContain('JJ actual cost')
+    expect(html).not.toContain('JJ operating profit')
+    expect(html).not.toContain('efe4e1f5')
   })
 })

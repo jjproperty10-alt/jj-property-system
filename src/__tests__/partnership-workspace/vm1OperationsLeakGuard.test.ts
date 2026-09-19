@@ -33,6 +33,8 @@ const OPERATIONS_FILES = [
   'src/lib/partnership-workspace/vm1ForecastPresentation.ts',
   'src/lib/partnership-workspace/vm1PeriodContract.ts',
   'src/lib/partnership-workspace/vm1DraftAdmission.ts',
+  'src/lib/partnership-workspace/vm1ExpenseAdmission.ts',
+  'src/lib/partnership-workspace/vm1ExpenseAdmissionService.ts',
   'src/lib/partnership-workspace/aviCertifiedReservationIds.ts',
   'src/lib/partnership-workspace/vm1OperationsRoutes.ts',
 ]
@@ -80,12 +82,17 @@ describe('VM1 operations leak guards', () => {
     expect(joined).not.toContain('guestName')
     expect(joined).not.toContain('Net Owner Payout')
     expect(joined).not.toContain('594.25')
-    expect(joined).not.toContain('Internet')
-    expect(joined).not.toContain('efe4e1f5')
-    expect(joined).not.toContain('APPROVED_PROPERTY_EXPENSE_FOR_FUTURE_DRAFT')
     expect(joined).not.toContain('strStatementLine')
     expect(joined).not.toContain('applyAirbnbCyprusVat')
     expect(joined).not.toContain('buildOwnerStrStatement')
+    const view = read('src/components/finance/Vm1OperationsView.tsx')
+    expect(view).not.toContain('vm1ExpenseAdmissionService')
+    expect(view).not.toContain('loadVm1ApprovedFutureDraftExpense')
+    expect(view).not.toContain('efe4e1f5')
+    expect(read('src/lib/partnership-workspace/vm1ExpenseAdmissionService.ts')).toContain("import 'server-only'")
+    expect(read('src/lib/partnership-workspace/vm1ExpenseAdmissionService.ts')).toContain(
+      'id,date,property_id,category,subcategory,amount_eur,client_charge,review_status,is_deleted',
+    )
   })
 
   it('staff Avi report page links to operations inside the print-hidden chrome', () => {
@@ -117,6 +124,12 @@ describe('VM1 operations leak guards', () => {
       expect(text).not.toContain('Initial partnership period')
       expect(text).not.toContain('authoritativeEvidenceByReservationId')
       expect(text).not.toContain('duplicate authoritative statement source')
+      expect(text).not.toContain('vm1ExpenseAdmission')
+      expect(text).not.toContain('jjActualCostEur')
+      expect(text).not.toContain('jjOperatingProfitEur')
+      expect(text).not.toContain('approved_future_draft_expense')
+      expect(text).not.toContain('efe4e1f5')
+      expect(text).not.toContain('Approved future-Draft expenses')
     }
   })
 
@@ -161,6 +174,7 @@ describe('VM1 operations leak guards', () => {
       const text = fs.readFileSync(abs, 'utf8')
       expect(text).not.toContain('aviCertifiedReservationIds')
       expect(text).not.toContain('vm1OperationsService')
+      expect(text).not.toContain('vm1ExpenseAdmissionService')
       expect(text).not.toMatch(/from ['"]@\/lib\/partnership-workspace/)
     }
   })
