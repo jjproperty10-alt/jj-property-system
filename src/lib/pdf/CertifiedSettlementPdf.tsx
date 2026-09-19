@@ -233,7 +233,7 @@ export function CertifiedCoverPage({
           />
         ))}
         <MoneyRow lang={lang} label={t('certFifoCreditsTotal', lang)} amount={fmtSigned(-Math.abs(dto.fifoCreditsTotal))} />
-        <MoneyRow lang={lang} total label={t('certClosingDueToJj', lang)} amount={fmt(Math.abs(dto.closingDueToJj))} />
+        <MoneyRow lang={lang} total label={t('certClosingShort', lang)} amount={fmt(Math.abs(dto.closingDueToJj))} />
       </View>
 
       {dto.exclusions.map((exclusion, index) => (
