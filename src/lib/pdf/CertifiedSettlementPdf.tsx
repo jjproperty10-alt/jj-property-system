@@ -119,9 +119,9 @@ function DirectionLine({
   color?: string
 }) {
   return (
-    <View style={[{ flexDirection: 'row-reverse', flexWrap: 'wrap', justifyContent: 'flex-start', marginTop: 4 }]}>
+    <View style={[{ flexDirection: 'row-reverse', flexWrap: 'wrap', justifyContent: 'flex-start', marginTop: 4, alignItems: 'center' }]}>
       <Text style={[{ fontSize: 9, fontWeight: 'bold', color }, rtlTextStyle(lang)]}>{prefix}</Text>
-      <Text style={{ fontSize: 9, fontWeight: 'bold', color }}>JJ</Text>
+      <Text style={{ fontSize: 9, fontWeight: 'bold', color }}>{'\u00A0JJ\u00A0'}</Text>
       {suffix ? <Text style={[{ fontSize: 9, fontWeight: 'bold', color }, rtlTextStyle(lang)]}>{suffix}</Text> : null}
     </View>
   )
@@ -171,9 +171,9 @@ export function certifiedDirectionCopy(
     }
   }
   return {
-    heroPrefix: lang === 'he' ? 'לתשלום ל ' : 'Payable to ',
-    heroSuffix: lang === 'he' ? ` על ידי ${owner}` : ` by ${owner}`,
-    directionPrefix: lang === 'he' ? `${owner} חייב ל ` : `${owner} owes `,
+    heroPrefix: lang === 'he' ? 'לתשלום ל' : 'Payable to ',
+    heroSuffix: lang === 'he' ? `על ידי ${owner}` : `by ${owner}`,
+    directionPrefix: lang === 'he' ? `${owner} חייב ל` : `${owner} owes `,
     totalLabel: tFill('certPayableToJjByOwner', lang, { owner }),
   }
 }
@@ -209,8 +209,9 @@ export function CertifiedCoverPage({
           <Text style={[s.meta, { width: '55%' }, rtlTextStyle(lang)]}>{t('certCutoffLabel', lang)}</Text>
           <Text style={[s.meta, { width: '45%', textAlign: 'left' }]}>{cutoff}</Text>
         </View>
-        <Text style={[s.status, rtlTextStyle(lang)]}>{t('certStatusLabel', lang)}</Text>
-        <Text style={[s.status, rtlTextStyle(lang)]}>{t('certSectionTitle', lang)}</Text>
+        <Text style={[s.status, rtlTextStyle(lang)]}>
+          {t('certStatusLabel', lang)}: {t('certSectionTitle', lang)}
+        </Text>
         <Text style={[s.note, rtlTextStyle(lang)]}>{t('certCombinedNote', lang)}</Text>
       </View>
 
@@ -260,13 +261,12 @@ export function CertifiedCoverPage({
       ))}
       <MoneyRow lang={lang} total label={t('certOpeningTotal', lang)} amount={fmt(dto.openingDueToJj)} />
 
-      <View style={{ marginTop: 10 }}>
+      <View style={{ marginTop: 8 }} wrap={false}>
         <Text style={[s.sectionTitle, rtlTextStyle(lang)]}>{t('certNotesTitle', lang)}</Text>
         <Text style={[s.method, rtlTextStyle(lang)]}>{t('certMethodCash', lang)}</Text>
         <Text style={[s.method, rtlTextStyle(lang)]}>{t('certMethodPnl', lang)}</Text>
         <Text style={[s.method, rtlTextStyle(lang)]}>{t('certMethodNoncash', lang)}</Text>
-        <Text style={[s.method, rtlTextStyle(lang)]}>{t('certCutoffInclusive', lang)}</Text>
-        <Text style={s.method}>{cutoff}</Text>
+        <Text style={[s.method, rtlTextStyle(lang)]}>{`${t('certCutoffInclusive', lang)} ${cutoff}`}</Text>
       </View>
 
       <View style={s.footer} fixed>
