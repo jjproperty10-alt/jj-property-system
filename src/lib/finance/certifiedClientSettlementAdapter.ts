@@ -15,15 +15,19 @@ import {
   certifiedCents,
   closingDirectionFromDueToJj,
   composeCertifiedClosingDueToJj,
+  composeCertifiedRemainingDueToJj,
   roundCertifiedEur,
 } from './certifiedClientSettlementPresentation'
 import type {
+  CertifiedCashExecutionRef,
   CertifiedClientSettlementAvailable,
   CertifiedClientSettlementDto,
   CertifiedClientSettlementUnavailable,
   CertifiedExclusionLine,
   CertifiedFifoCreditLine,
+  CertifiedObligationSlice,
   CertifiedPropertyObligationLine,
+  CertifiedUnboundLine,
   CertifiedUnavailableReason,
 } from './certifiedClientSettlementTypes'
 
@@ -195,10 +199,145 @@ function parseExclusions(raw: unknown): CertifiedExclusionLine[] | null {
   return exclusions
 }
 
+function parseObligationSlices(raw: unknown): CertifiedObligationSlice[] | null {
+  if (raw == null) return []
+  if (!Array.isArray(raw)) return null
+  const slices: CertifiedObligationSlice[] = []
+  for (const item of raw) {
+    const row = record(item)
+    if (!row) return null
+    const certificationLineId = asText(row.certification_line_id)
+    const lineOrder = asNumber(row.line_order)
+    const propertyKey = asText(row.property_key)
+    const propertyName = asText(row.property_name)
+    const bindingRaw = asText(row.binding_status)
+    const original = asNumber(row.original_signed_amount)
+    const allocated = asNumber(row.allocated_signed_amount)
+    const remaining = asNumber(row.remaining_signed_amount)
+    const propertyRaw = row.property_id
+    const propertyId =
+      propertyRaw == null || propertyRaw === ''
+        ? null
+        : asText(propertyRaw)
+    if (
+      !certificationLineId ||
+      !isValidUUID(certificationLineId) ||
+      lineOrder == null ||
+      !Number.isInteger(lineOrder) ||
+      !propertyKey ||
+      !propertyName ||
+      (bindingRaw !== 'bound' && bindingRaw !== 'unbound') ||
+      original == null ||
+      allocated == null ||
+      remaining == null ||
+      certifiedCents(original) == null ||
+      certifiedCents(allocated) == null ||
+      certifiedCents(remaining) == null
+    ) {
+      return null
+    }
+    if (propertyId != null && !isValidUUID(propertyId)) return null
+    if (bindingRaw === 'bound' && !propertyId) return null
+    if (certifiedCents(roundCertifiedEur(original + allocated)) !== certifiedCents(remaining)) {
+      return null
+    }
+    slices.push({
+      certificationLineId,
+      lineOrder,
+      propertyKey,
+      propertyName,
+      propertyId,
+      bindingStatus: bindingRaw,
+      originalSignedAmount: original,
+      allocatedSignedAmount: allocated,
+      remainingSignedAmount: remaining,
+    })
+  }
+  return slices
+}
+
+function parseUnboundLines(raw: unknown): CertifiedUnboundLine[] | null {
+  if (raw == null) return []
+  if (!Array.isArray(raw)) return null
+  const lines: CertifiedUnboundLine[] = []
+  for (const item of raw) {
+    const row = record(item)
+    if (!row) return null
+    const certificationLineId = asText(row.certification_line_id)
+    const propertyKey = asText(row.property_key)
+    const lineOrder = asNumber(row.line_order)
+    const original = asNumber(row.original_signed_amount)
+    const remaining = asNumber(row.remaining_signed_amount)
+    const blocked = asText(row.blocked_code)
+    if (
+      !certificationLineId ||
+      !isValidUUID(certificationLineId) ||
+      !propertyKey ||
+      lineOrder == null ||
+      original == null ||
+      remaining == null ||
+      blocked !== 'unbound_certification_line'
+    ) {
+      return null
+    }
+    lines.push({
+      certificationLineId,
+      propertyKey,
+      lineOrder,
+      originalSignedAmount: original,
+      remainingSignedAmount: remaining,
+      blockedCode: 'unbound_certification_line',
+    })
+  }
+  return lines
+}
+
+function parseCashExecutions(raw: unknown): CertifiedCashExecutionRef[] | null {
+  if (raw == null) return []
+  if (!Array.isArray(raw)) return null
+  const rows: CertifiedCashExecutionRef[] = []
+  for (const item of raw) {
+    const row = record(item)
+    if (!row) return null
+    const executionId = asText(row.execution_id)
+    const transactionId = asText(row.transaction_id)
+    const direction = asText(row.direction)
+    const amount = asNumber(row.amount)
+    const effectiveDate = asIsoDate(row.effective_date)
+    if (
+      !executionId ||
+      !isValidUUID(executionId) ||
+      !transactionId ||
+      !isValidUUID(transactionId) ||
+      (direction !== 'JJ_TO_CLIENT' && direction !== 'CLIENT_TO_JJ') ||
+      amount == null ||
+      amount <= 0 ||
+      !effectiveDate
+    ) {
+      return null
+    }
+    const reversalRaw = row.reversal_of
+    const reversalOf =
+      reversalRaw == null || reversalRaw === ''
+        ? null
+        : asText(reversalRaw)
+    if (reversalOf != null && !isValidUUID(reversalOf)) return null
+    rows.push({
+      executionId,
+      transactionId,
+      direction,
+      amount,
+      effectiveDate,
+      reversalOf,
+    })
+  }
+  return rows
+}
+
 /**
  * Parse the JSONB reader payload. Malformed → unavailable (never a fabricated zero).
- * Trust the reader's certified_closing_due_to_jj after verifying it equals opening − FIFO
- * and that exclusions have not been subtracted.
+ * Overlay closing must equal opening − FIFO. Remaining due_to_jj applies cash
+ * allocation signed totals only — never cash amount_eur a second time.
  */
 export function parseCertifiedReaderPayload(
   raw: unknown,
@@ -219,13 +358,29 @@ export function parseCertifiedReaderPayload(
   const header = record(payload.certification)
   const certificationId = asText(header?.id) ?? asText(payload.certification_id)
   const headerEntity = asText(header?.entity_id) ?? entityId
-  const headerAsOf = asIsoDate(header?.as_of) ?? asOf
+  const headerAsOf = asIsoDate(header?.as_of)
+  const payloadAsOf = asIsoDate(payload.as_of) ?? headerAsOf ?? asOf
+  const certificationAsOf = asIsoDate(payload.certification_as_of) ?? headerAsOf ?? asOf
   const opening = asNumber(payload.certified_opening_due_to_jj)
   const fifoTotal = asNumber(payload.fifo_credits_total)
-  const closing = asNumber(payload.certified_closing_due_to_jj)
+  const overlayClosing = asNumber(payload.certified_closing_due_to_jj)
   const lines = parseLines(payload.lines)
   const fifoCredits = parseFifoCredits(payload.fifo_credits)
   const exclusions = parseExclusions(payload.exclusions)
+  const slices = parseObligationSlices(payload.obligation_slices)
+  const unboundLines = parseUnboundLines(payload.unbound_lines)
+  const cashExecutions = parseCashExecutions(payload.cash_executions)
+
+  const hasCashKeys =
+    payload.cash_allocation_signed_total !== undefined ||
+    payload.certified_remaining_due_to_jj !== undefined ||
+    payload.remaining_r !== undefined
+  const cashSigned = hasCashKeys ? asNumber(payload.cash_allocation_signed_total) : 0
+  const remainingDue = hasCashKeys
+    ? asNumber(payload.certified_remaining_due_to_jj)
+    : overlayClosing
+  const remainingR = hasCashKeys ? asNumber(payload.remaining_r) : null
+  const remainingS = hasCashKeys ? asNumber(payload.remaining_s) : overlayClosing
 
   if (
     payload.unavailable !== false ||
@@ -233,16 +388,25 @@ export function parseCertifiedReaderPayload(
     !isValidUUID(certificationId) ||
     !isValidUUID(headerEntity) ||
     headerEntity !== entityId ||
-    headerAsOf !== asOf ||
+    payloadAsOf !== asOf ||
+    certificationAsOf > asOf ||
     opening == null ||
     fifoTotal == null ||
-    closing == null ||
+    overlayClosing == null ||
+    cashSigned == null ||
+    remainingDue == null ||
+    remainingS == null ||
     certifiedCents(opening) == null ||
     certifiedCents(fifoTotal) == null ||
-    certifiedCents(closing) == null ||
+    certifiedCents(overlayClosing) == null ||
+    certifiedCents(cashSigned) == null ||
+    certifiedCents(remainingDue) == null ||
     lines == null ||
     fifoCredits == null ||
-    exclusions == null
+    exclusions == null ||
+    slices == null ||
+    unboundLines == null ||
+    cashExecutions == null
   ) {
     return unavailable('malformed_payload', entityId, asOf)
   }
@@ -254,9 +418,24 @@ export function parseCertifiedReaderPayload(
     return unavailable('malformed_payload', entityId, asOf)
   }
 
-  const expectedClosing = composeCertifiedClosingDueToJj(opening, fifoTotal)
-  if (certifiedCents(expectedClosing) !== certifiedCents(closing)) {
+  const expectedOverlay = composeCertifiedClosingDueToJj(opening, fifoTotal)
+  if (certifiedCents(expectedOverlay) !== certifiedCents(overlayClosing)) {
     return unavailable('malformed_payload', entityId, asOf)
+  }
+
+  const expectedRemaining = composeCertifiedRemainingDueToJj(overlayClosing, cashSigned)
+  if (certifiedCents(expectedRemaining) !== certifiedCents(remainingDue)) {
+    return unavailable('malformed_payload', entityId, asOf)
+  }
+
+  const expectedR = roundCertifiedEur(-remainingDue)
+  if (hasCashKeys) {
+    if (remainingR == null || certifiedCents(remainingR) !== certifiedCents(expectedR)) {
+      return unavailable('malformed_payload', entityId, asOf)
+    }
+    if (certifiedCents(remainingS) !== certifiedCents(remainingDue)) {
+      return unavailable('malformed_payload', entityId, asOf)
+    }
   }
 
   const exclusionEffect = exclusions.reduce((sum, e) => sum + e.arithmeticEffect, 0)
@@ -269,13 +448,21 @@ export function parseCertifiedReaderPayload(
     certificationId,
     entityId,
     asOf,
+    certificationAsOf,
     openingDueToJj: opening,
     propertyLines: lines,
     fifoCredits,
     exclusions,
     fifoCreditsTotal: fifoTotal,
-    closingDueToJj: closing,
-    closingDirection: closingDirectionFromDueToJj(closing),
+    overlayClosingDueToJj: overlayClosing,
+    cashAllocationSignedTotal: cashSigned,
+    remainingR: hasCashKeys ? remainingR! : expectedR,
+    remainingS: remainingDue,
+    obligationSlices: slices,
+    unboundLines,
+    cashExecutions,
+    closingDueToJj: remainingDue,
+    closingDirection: closingDirectionFromDueToJj(remainingDue),
   }
   return available
 }

@@ -31,6 +31,7 @@ export const URIEL_SHAPED_CERTIFIED: CertifiedClientSettlementAvailable = {
   certificationId: CERT,
   entityId: ENTITY,
   asOf: AS_OF,
+  certificationAsOf: AS_OF,
   openingDueToJj: 119677.42,
   propertyLines: [
     line(1, 20000, 'Property A'),
@@ -73,6 +74,13 @@ export const URIEL_SHAPED_CERTIFIED: CertifiedClientSettlementAvailable = {
     },
   ],
   fifoCreditsTotal: 69000,
+  overlayClosingDueToJj: 50677.42,
+  cashAllocationSignedTotal: 0,
+  remainingR: -50677.42,
+  remainingS: 50677.42,
+  obligationSlices: [],
+  unboundLines: [],
+  cashExecutions: [],
   closingDueToJj: 50677.42,
   closingDirection: 'client_owes_jj',
 }
