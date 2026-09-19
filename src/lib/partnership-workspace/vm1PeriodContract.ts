@@ -35,8 +35,18 @@ export const VM1_DRAFT_ADMISSION_SECTION_TITLE = 'Draft admission review / בד�
 export const VM1_DRAFT_ADMISSION_STAFF_NOTE =
   'Admission gates only — not a saved Draft, not settlement, not Certified, and no partner split.' as const
 
+export const VM1_OS_EVIDENCE_VERIFIED_LABEL = 'Evidence source verified' as const
+
+export const VM1_OS_DRAFT_CANDIDATE_LABEL = 'Draft candidate' as const
+
+export const VM1_OS_EVIDENCE_STAFF_NOTE =
+  'Hostaway Owner Statement Net Owner Payout is the only income candidate. Not Platform Income, not RPC payout, not a saved Draft, not Certified, and not a bank receipt.' as const
+
+export const VM1_OS_EVIDENCE_MISSING_STORE_LABEL =
+  'Canonical stored Hostaway Owner Statement evidence is not attached. Draft revenue is not admitted.' as const
+
 export const VM1_DRAFT_ADMISSION_STATE_LABEL = {
-  admitted: 'Admitted candidate',
+  admitted: 'Draft candidate',
   blocked: 'Blocked',
   completed_pending_authoritative_evidence:
     'Blocked — authoritative statement evidence required / חסום — נדרשת ראיית דוח בעלים',

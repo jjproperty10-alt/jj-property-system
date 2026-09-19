@@ -32,6 +32,10 @@ export type Vm1AuthoritativeReconciliationStatus = 'not_required' | 'matched' | 
 export interface Vm1AuthoritativeOwnerStatementEvidence {
   readonly sourceKind: Vm1AuthoritativePayoutSourceKind
   readonly sourceId: string
+  /** SHA-256 of the verified Owner Statement document. Same hash may cover many reservations. */
+  readonly documentHash?: string
+  /** Bound reservation id. Row key is (sourceKind, documentHash, reservationId). */
+  readonly reservationId?: string
   readonly payoutEur: number
   readonly cleaningEur: number
   readonly status: Vm1AuthoritativeEvidenceStatus
@@ -83,7 +87,8 @@ export const VM1_DRAFT_ADMISSION_REASON = {
   reconConflict: 'Proven Hostaway vs ledger counterpart reconciliation conflict. Row is blocked.',
   reconStatus: 'Authoritative evidence reconciliationStatus is not a known fail-closed value.',
   unknownChannel: 'Channel has no VM1 Draft payout evidence.',
-  duplicateStatementSource: 'duplicate authoritative statement source across reservations',
+  duplicateStatementSource:
+    'duplicate Owner Statement row key (sourceKind, documentHash, reservationId)',
   duplicateReservationId: (externalId: string) => `Duplicate reservation external_id: ${externalId}`,
 } as const
 
@@ -144,11 +149,21 @@ function parseAuthoritativeEvidence(
   ) {
     return { ok: false, reason: VM1_DRAFT_ADMISSION_REASON.reconStatus }
   }
+  const documentHash =
+    typeof rec.documentHash === 'string' && rec.documentHash.trim() !== ''
+      ? rec.documentHash.trim().toLowerCase()
+      : sourceId
+  const reservationId =
+    typeof rec.reservationId === 'string' && rec.reservationId.trim() !== ''
+      ? rec.reservationId.trim()
+      : undefined
   return {
     ok: true,
     evidence: {
       sourceKind: 'hostaway_owner_statement',
       sourceId,
+      documentHash,
+      reservationId,
       payoutEur: rec.payoutEur,
       cleaningEur: rec.cleaningEur,
       status: 'verified',
@@ -214,22 +229,25 @@ export function admitVm1DraftReservation(
     return out('excluded', row.reason)
   }
 
+  const supplied = input.authoritativeEvidenceByReservationId?.get(row.externalId)
+  const parsed = supplied == null ? null : parseAuthoritativeEvidence(supplied)
+  const evidenceLinked =
+    parsed != null && parsed.ok && parsed.evidence.reconciliationStatus !== 'conflict'
+
   if (row.disposition === 'needs_review' || status === 'modified') {
-    return out('needs_review', VM1_DRAFT_ADMISSION_REASON.modified)
+    return out('needs_review', VM1_DRAFT_ADMISSION_REASON.modified, evidenceLinked)
   }
 
   if (row.checkOut == null || row.checkOut === '') {
-    return out('blocked', VM1_DRAFT_ADMISSION_REASON.checkoutMissing)
+    return out('blocked', VM1_DRAFT_ADMISSION_REASON.checkoutMissing, evidenceLinked)
   }
   if (!checkoutCompleted) {
-    return out('forecast', VM1_DRAFT_ADMISSION_REASON.futureCheckout)
+    return out('forecast', VM1_DRAFT_ADMISSION_REASON.futureCheckout, evidenceLinked)
   }
 
-  const supplied = input.authoritativeEvidenceByReservationId?.get(row.externalId)
   if (supplied != null) {
-    const parsed = parseAuthoritativeEvidence(supplied)
-    if (!parsed.ok) {
-      return out('blocked', parsed.reason)
+    if (parsed == null || !parsed.ok) {
+      return out('blocked', parsed?.reason ?? VM1_DRAFT_ADMISSION_REASON.missingAuthoritative)
     }
     if (parsed.evidence.reconciliationStatus === 'conflict') {
       return out('blocked', VM1_DRAFT_ADMISSION_REASON.reconConflict, true)
@@ -251,14 +269,22 @@ export function admitVm1DraftReservation(
   return out('completed_pending_authoritative_evidence', VM1_DRAFT_ADMISSION_REASON.missingAuthoritative)
 }
 
-function uniquenessKey(value: unknown): string | null {
+function uniquenessKey(reservationId: string, value: unknown): string | null {
   const rec = asRecord(value)
   if (rec == null) return null
   if (rec.sourceKind !== 'hostaway_owner_statement') return null
   if (rec.status !== 'verified') return null
-  const sourceId = typeof rec.sourceId === 'string' ? rec.sourceId.trim() : ''
-  if (sourceId === '') return null
-  return `${rec.sourceKind}\0${sourceId}`
+  const sourceId = typeof rec.sourceId === 'string' ? rec.sourceId.trim().toLowerCase() : ''
+  const documentHash =
+    typeof rec.documentHash === 'string' && rec.documentHash.trim() !== ''
+      ? rec.documentHash.trim().toLowerCase()
+      : sourceId
+  if (documentHash === '') return null
+  const boundReservationId =
+    typeof rec.reservationId === 'string' && rec.reservationId.trim() !== ''
+      ? rec.reservationId.trim()
+      : reservationId
+  return `${rec.sourceKind}\0${documentHash}\0${boundReservationId}`
 }
 
 export type Vm1DraftAdmissionBatchResult =
@@ -281,7 +307,7 @@ export function admitVm1DraftReservations(
   for (const row of rows) {
     const supplied = input.authoritativeEvidenceByReservationId?.get(row.externalId)
     if (supplied == null) continue
-    const key = uniquenessKey(supplied)
+    const key = uniquenessKey(row.externalId, supplied)
     if (key == null) continue
     const owners = sourceOwners.get(key) ?? []
     owners.push(row.externalId)

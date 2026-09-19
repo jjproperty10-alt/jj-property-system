@@ -4,6 +4,7 @@
  */
 import * as fs from 'fs'
 import * as path from 'path'
+import { TM20_OS_TEST_DOCUMENT_HASH } from '@/lib/partnership-workspace/__tests__/vm1OwnerStatementEvidence.fixture'
 
 function read(rel: string): string {
   return fs.readFileSync(path.join(process.cwd(), rel), 'utf8')
@@ -33,6 +34,7 @@ const OPERATIONS_FILES = [
   'src/lib/partnership-workspace/vm1ForecastPresentation.ts',
   'src/lib/partnership-workspace/vm1PeriodContract.ts',
   'src/lib/partnership-workspace/vm1DraftAdmission.ts',
+  'src/lib/partnership-workspace/vm1OwnerStatementEvidence.ts',
   'src/lib/partnership-workspace/vm1ExpenseAdmission.ts',
   'src/lib/partnership-workspace/vm1ExpenseAdmissionService.ts',
   'src/lib/partnership-workspace/aviCertifiedReservationIds.ts',
@@ -80,8 +82,9 @@ describe('VM1 operations leak guards', () => {
       expect(joined).not.toContain(needle)
     }
     expect(joined).not.toContain('guestName')
-    expect(joined).not.toContain('Net Owner Payout')
     expect(joined).not.toContain('594.25')
+    expect(read('src/lib/partnership-workspace/vm1OwnerStatementEvidence.ts')).not.toContain('.xlsx')
+    expect(read('src/lib/partnership-workspace/vm1OwnerStatementEvidence.ts')).not.toContain('OWNER_MINIMAL')
     expect(joined).not.toContain('strStatementLine')
     expect(joined).not.toContain('applyAirbnbCyprusVat')
     expect(joined).not.toContain('buildOwnerStrStatement')
@@ -130,6 +133,13 @@ describe('VM1 operations leak guards', () => {
       expect(text).not.toContain('approved_future_draft_expense')
       expect(text).not.toContain('efe4e1f5')
       expect(text).not.toContain('Approved future-Draft expenses')
+      expect(text).not.toContain('vm1OwnerStatementEvidence')
+      expect(text).not.toContain('Evidence source verified')
+      expect(text).not.toContain(TM20_OS_TEST_DOCUMENT_HASH)
+      expect(text).not.toContain('498.37')
+      expect(text).not.toContain('716.78')
+      expect(text).not.toContain('1307.78')
+      expect(text).not.toContain('1458.26')
     }
   })
 
@@ -175,8 +185,41 @@ describe('VM1 operations leak guards', () => {
       expect(text).not.toContain('aviCertifiedReservationIds')
       expect(text).not.toContain('vm1OperationsService')
       expect(text).not.toContain('vm1ExpenseAdmissionService')
+      expect(text).not.toContain('vm1OwnerStatementEvidence')
       expect(text).not.toMatch(/from ['"]@\/lib\/partnership-workspace/)
     }
+  })
+
+  it('Production operations path does not hard-code the TM20 Owner Statement digest or stay amounts', () => {
+    const productionFiles = [
+      'src/lib/partnership-workspace/vm1OwnerStatementEvidence.ts',
+      'src/lib/partnership-workspace/vm1OperationsService.ts',
+      'src/lib/partnership-workspace/vm1DraftAdmission.ts',
+      'src/lib/partnership-workspace/vm1PeriodContract.ts',
+      'src/components/finance/Vm1OperationsView.tsx',
+      'src/app/(app)/finance/external-partner/avi/operations/page.tsx',
+    ]
+    for (const rel of productionFiles) {
+      const text = read(rel)
+      expect(text).not.toContain(TM20_OS_TEST_DOCUMENT_HASH)
+      expect(text).not.toContain('vm1OwnerStatementEvidence.fixture')
+    }
+    const adapter = read('src/lib/partnership-workspace/vm1OwnerStatementEvidence.ts')
+    const service = read('src/lib/partnership-workspace/vm1OperationsService.ts')
+    const view = read('src/components/finance/Vm1OperationsView.tsx')
+    const page = read('src/app/(app)/finance/external-partner/avi/operations/page.tsx')
+    for (const src of [adapter, service, view, page]) {
+      expect(src).not.toContain('498.37')
+      expect(src).not.toContain('716.78')
+      expect(src).not.toContain('1307.78')
+      expect(src).not.toContain('1458.26')
+    }
+    expect(adapter).toContain("import 'server-only'")
+    expect(service).toContain("import 'server-only'")
+    expect(service).not.toContain('adaptVm1OwnerStatementEvidence')
+    expect(service).not.toContain('authoritativeEvidenceByReservationId')
+    expect(view).not.toContain('documentHash')
+    expect(page).not.toContain('documentHash')
   })
 
   it('only a derived Set of reservation IDs is passed to loadVm1Identity', () => {

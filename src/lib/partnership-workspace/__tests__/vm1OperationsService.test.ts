@@ -5,6 +5,8 @@ import {
   VM1_APPROVED_FUTURE_DRAFT_EXPENSE_TRANSACTION_ID,
 } from '../vm1ExpenseAdmission'
 import { VM1_EXPENSE_LEDGER_SELECT } from '../vm1ExpenseAdmissionService'
+import { VM1_OS_EVIDENCE_REASON } from '../vm1OwnerStatementEvidence'
+import { TM20_OS_TEST_DOCUMENT_HASH } from './vm1OwnerStatementEvidence.fixture'
 
 const NEER_CANONICAL_ID = 'b587f463-279d-4376-bb14-38789f34cbba'
 const NEER_LISTING_ID = '426237'
@@ -210,7 +212,7 @@ describe('loadVm1OperationsView', () => {
     expect(result.draftAdmissionLines[0].admittedCandidate).toBe(false)
   })
 
-  it('forecasts Airbnb 65733679 and blocks Booking without payout', async () => {
+  it('admits zero Draft revenue without a stored Owner Statement and does not use test fixtures', async () => {
     const { client } = mockClient({
       reservations: [
         {
@@ -245,33 +247,78 @@ describe('loadVm1OperationsView', () => {
             taxAmount: null,
           },
         },
+        {
+          external_id: '64232458',
+          external_property_id: VM1_HOSTAWAY_LISTING_ID,
+          channel: 'airbnb',
+          status: 'confirmed',
+          check_in: '2026-09-18',
+          check_out: '2026-09-22',
+          nights: 4,
+          total_price: 2346,
+          cleaning_fee: 150,
+          raw: {
+            airbnbExpectedPayoutAmount: 1982.37,
+            airbnbListingHostFee: 363.63,
+            taxAmount: 0,
+          },
+        },
+        {
+          external_id: '54972355',
+          external_property_id: VM1_HOSTAWAY_LISTING_ID,
+          channel: 'booking',
+          status: 'modified',
+          check_in: '2026-09-22',
+          check_out: '2026-09-26',
+          nights: 4,
+          total_price: 2365.5,
+          cleaning_fee: 150,
+          raw: {
+            airbnbExpectedPayoutAmount: null,
+            taxAmount: null,
+          },
+        },
+        {
+          external_id: '63995050',
+          external_property_id: VM1_HOSTAWAY_LISTING_ID,
+          channel: 'airbnb',
+          status: 'inquiry',
+          check_in: '2026-09-03',
+          check_out: '2026-09-07',
+          nights: 4,
+          total_price: 2208,
+          cleaning_fee: 150,
+          raw: {},
+        },
       ],
     })
-    const result = await loadVm1OperationsView({ client, now: NOW })
+    const asOf = new Date(Date.UTC(2026, 8, 19))
+    const result = await loadVm1OperationsView({ client, now: asOf })
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    const airbnb = result.forecastLines.find((l) => l.externalId === '65733679')
-    const booking = result.forecastLines.find((l) => l.externalId === '53082517')
-    expect(airbnb?.calculable).toBe(true)
-    expect(airbnb?.propertyNet).toBe(498.37)
-    expect(airbnb?.recognitionState).toBe('completed_pending_reconciliation')
-    expect(booking?.calculable).toBe(false)
-    expect(booking?.recognitionState).toBe('blocked')
-    expect(booking?.propertyNet).toBeNull()
-    expect(result.reservations.find((r) => r.externalId === '65733679')?.disposition).toBe(
-      'operational_candidate',
-    )
-    const airbnbAdmission = result.draftAdmissionLines.find((l) => l.externalId === '65733679')
-    const bookingAdmission = result.draftAdmissionLines.find((l) => l.externalId === '53082517')
-    expect(airbnbAdmission?.admissionState).toBe('completed_pending_authoritative_evidence')
-    expect(airbnbAdmission?.admittedCandidate).toBe(false)
-    expect(airbnbAdmission?.periodMember).toBe(true)
-    expect(airbnbAdmission?.checkoutCompleted).toBe(true)
-    expect(airbnbAdmission?.operationalEvidencePresent).toBe(true)
-    expect(bookingAdmission?.admissionState).toBe('blocked')
-    expect(bookingAdmission?.admittedCandidate).toBe(false)
-    expect(result.draftAdmissionLines.every((l) => l.admittedCandidate === false)).toBe(true)
+    expect(result.ownerStatementEvidence.ok).toBe(false)
+    expect(result.ownerStatementEvidence.reason).toBe(VM1_OS_EVIDENCE_REASON.missingStore)
+    expect(result.ownerStatementLines).toEqual([])
+    expect(result.draftAdmissionLines.filter((l) => l.admittedCandidate)).toHaveLength(0)
+    const airbnb = result.draftAdmissionLines.find((l) => l.externalId === '65733679')
+    const booking = result.draftAdmissionLines.find((l) => l.externalId === '53082517')
+    const future = result.draftAdmissionLines.find((l) => l.externalId === '64232458')
+    const modified = result.draftAdmissionLines.find((l) => l.externalId === '54972355')
+    expect(airbnb?.admissionState).toBe('completed_pending_authoritative_evidence')
+    expect(airbnb?.admittedCandidate).toBe(false)
+    expect(airbnb?.authoritativeEvidenceLinked).toBe(false)
+    expect(booking?.admissionState).toBe('blocked')
+    expect(booking?.admittedCandidate).toBe(false)
+    expect(booking?.authoritativeEvidenceLinked).toBe(false)
+    expect(future?.admissionState).toBe('forecast')
+    expect(future?.admittedCandidate).toBe(false)
+    expect(future?.authoritativeEvidenceLinked).toBe(false)
+    expect(modified?.admissionState).toBe('needs_review')
+    expect(modified?.admittedCandidate).toBe(false)
+    expect(JSON.stringify(result.ownerStatementLines)).not.toContain('498.37')
+    expect(JSON.stringify(result.ownerStatementLines)).not.toContain('716.78')
     expect(JSON.stringify(result.draftAdmissionLines)).not.toContain('594.25')
+    expect(JSON.stringify(result)).not.toContain(TM20_OS_TEST_DOCUMENT_HASH)
   })
 
   it('loads the approved expense independently of zero revenue admission', async () => {
@@ -315,8 +362,10 @@ describe('loadVm1OperationsView', () => {
     expect(result.expenseAdmission.partnershipChargeEur).toBe(30)
     expect(result.expenseAdmission.jjActualCostEur).toBe(30)
     expect(result.expenseAdmission.jjOperatingProfitEur).toBe(0)
-    expect(result.draftAdmissionLines.every((l) => l.admittedCandidate === false)).toBe(true)
     expect(result.draftAdmissionLines[0].admissionState).toBe('completed_pending_authoritative_evidence')
+    expect(result.draftAdmissionLines[0].admittedCandidate).toBe(false)
+    expect(result.ownerStatementLines).toEqual([])
+    expect(result.ownerStatementEvidence.ok).toBe(false)
     expect(expenseSelects).toEqual([
       {
         relation: 'transactions',
@@ -360,7 +409,8 @@ describe('loadVm1OperationsView', () => {
     expect(result.expenseAdmission.jjOperatingProfitEur).toBeNull()
     expect(result.reservations[0].externalId).toBe('65733679')
     expect(result.identity.hostawayListingId).toBe('412148')
-    expect(result.draftAdmissionLines.every((l) => l.admittedCandidate === false)).toBe(true)
+    expect(result.draftAdmissionLines[0].admittedCandidate).toBe(false)
+    expect(result.draftAdmissionLines[0].admissionState).toBe('completed_pending_authoritative_evidence')
     expect(expenseSelects).toHaveLength(1)
     expect(VM1_EXPENSE_LEDGER_SELECT).not.toContain('payer')
   })
@@ -407,5 +457,12 @@ describe('loadVm1OperationsView', () => {
     expect(identityFail).toBeGreaterThan(identityCall)
     expect(identityFail).toBeLessThan(expenseCall)
     expect(src).toContain('verifiedIdentity: loaded.identity')
+    expect(src).toContain('utcTodayIso(input.now)')
+    expect(src).not.toContain('adaptVm1OwnerStatementEvidence')
+    expect(src).not.toContain('authoritativeEvidenceByReservationId')
+    expect(src).not.toContain(TM20_OS_TEST_DOCUMENT_HASH)
+    expect(src).not.toContain('498.37')
+    expect(src).not.toContain('716.78')
+    expect(src).toContain('VM1_OS_EVIDENCE_REASON.missingStore')
   })
 })

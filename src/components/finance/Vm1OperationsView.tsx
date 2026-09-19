@@ -22,6 +22,10 @@ import {
   VM1_INITIAL_PERIOD_FROM,
   VM1_INITIAL_PERIOD_NAME,
   VM1_INITIAL_PERIOD_TO,
+  VM1_OS_DRAFT_CANDIDATE_LABEL,
+  VM1_OS_EVIDENCE_MISSING_STORE_LABEL,
+  VM1_OS_EVIDENCE_STAFF_NOTE,
+  VM1_OS_EVIDENCE_VERIFIED_LABEL,
 } from '@/lib/partnership-workspace/vm1PeriodContract'
 import {
   formatVm1EvidenceAmount,
@@ -55,6 +59,9 @@ export interface Vm1OperationsViewProps {
   readonly reservations?: readonly Vm1ReservationRow[]
   readonly forecastLines?: readonly Vm1ForecastLine[]
   readonly draftAdmissionLines?: readonly Vm1DraftAdmissionLine[]
+  readonly ownerStatementLines?: readonly { readonly reservationId: string; readonly netOwnerPayoutEur: number }[]
+  readonly ownerStatementEvidenceOk?: boolean
+  readonly ownerStatementEvidenceReason?: string | null
   readonly expenseAdmission?: Vm1ExpenseAdmissionLine
   readonly errorTitle?: string
   readonly errorDescription?: string
@@ -100,6 +107,9 @@ export function Vm1OperationsView({
   reservations = [],
   forecastLines = [],
   draftAdmissionLines = [],
+  ownerStatementLines = [],
+  ownerStatementEvidenceOk,
+  ownerStatementEvidenceReason,
   expenseAdmission,
   errorTitle,
   errorDescription,
@@ -239,7 +249,14 @@ export function Vm1OperationsView({
         )}
 
         {identityVerified ? <ForecastSection lines={forecastLines} /> : null}
-        {identityVerified ? <DraftAdmissionSection lines={draftAdmissionLines} /> : null}
+        {identityVerified ? (
+          <DraftAdmissionSection
+            lines={draftAdmissionLines}
+            ownerStatementLines={ownerStatementLines}
+            ownerStatementEvidenceOk={ownerStatementEvidenceOk}
+            ownerStatementEvidenceReason={ownerStatementEvidenceReason}
+          />
+        ) : null}
         {identityVerified ? <ExpenseAdmissionSection line={expenseAdmission} /> : null}
       </PageShell>
     </div>
@@ -372,7 +389,20 @@ const ADMISSION_BADGE_STATUS: Record<
   needs_review: 'attention',
 }
 
-function DraftAdmissionSection({ lines }: { lines: readonly Vm1DraftAdmissionLine[] }) {
+function DraftAdmissionSection({
+  lines,
+  ownerStatementLines,
+  ownerStatementEvidenceOk,
+  ownerStatementEvidenceReason,
+}: {
+  lines: readonly Vm1DraftAdmissionLine[]
+  ownerStatementLines: readonly { readonly reservationId: string; readonly netOwnerPayoutEur: number }[]
+  ownerStatementEvidenceOk?: boolean
+  ownerStatementEvidenceReason?: string | null
+}) {
+  const osByReservationId = new Map(ownerStatementLines.map((line) => [line.reservationId, line]))
+  const evidenceVerified = ownerStatementEvidenceOk === true && ownerStatementLines.length > 0
+
   return (
     <section className="mt-10 min-w-0" data-testid="vm1-draft-admission-section">
       <h2 className="mb-3 text-lg font-semibold text-gray-900" data-testid="vm1-draft-admission-title">
@@ -388,26 +418,55 @@ function DraftAdmissionSection({ lines }: { lines: readonly Vm1DraftAdmissionLin
         {VM1_INITIAL_PERIOD_NAME}: {VM1_INITIAL_PERIOD_FROM} → {VM1_INITIAL_PERIOD_TO} (check-in inclusive).{' '}
         {VM1_HOSTAWAY_INVENTORY_EVIDENCE_NOTE}
       </p>
+      {evidenceVerified ? (
+        <p
+          className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+          data-testid="vm1-os-evidence-verified"
+        >
+          {VM1_OS_EVIDENCE_VERIFIED_LABEL}
+          <span className="mt-1 block text-xs">{VM1_OS_EVIDENCE_STAFF_NOTE}</span>
+        </p>
+      ) : (
+        <div className="mb-4" data-testid="vm1-os-evidence-blocked">
+          <AttentionBanner
+            type="error"
+            title="Owner Statement evidence not stored"
+            description={ownerStatementEvidenceReason ?? VM1_OS_EVIDENCE_MISSING_STORE_LABEL}
+          />
+        </div>
+      )}
       <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white" data-testid="vm1-draft-admission-list">
-        {lines.map((line) => (
-          <li
-            key={line.externalId}
-            className="grid grid-cols-1 gap-2 p-4 text-sm text-gray-800 sm:grid-cols-2 lg:grid-cols-4"
-            data-testid={`vm1-draft-admission-${line.externalId}`}
-          >
-            <span dir="ltr" data-testid={`vm1-draft-admission-id-${line.externalId}`}>
-              {line.externalId}
-            </span>
-            <span dir="ltr">{line.checkIn ?? '—'}</span>
-            <span data-testid={`vm1-draft-admission-state-${line.externalId}`}>
-              <StatusBadge
-                status={ADMISSION_BADGE_STATUS[line.admissionState]}
-                label={VM1_DRAFT_ADMISSION_STATE_LABEL[line.admissionState]}
-              />
-            </span>
-            <span data-testid={`vm1-draft-admission-reason-${line.externalId}`}>{line.reason}</span>
-          </li>
-        ))}
+        {lines.map((line) => {
+          const os = osByReservationId.get(line.externalId)
+          return (
+            <li
+              key={line.externalId}
+              className="grid grid-cols-1 gap-2 p-4 text-sm text-gray-800 sm:grid-cols-2 lg:grid-cols-4"
+              data-testid={`vm1-draft-admission-${line.externalId}`}
+            >
+              <span dir="ltr" data-testid={`vm1-draft-admission-id-${line.externalId}`}>
+                {line.externalId}
+              </span>
+              <span dir="ltr">{line.checkIn ?? '—'}</span>
+              <span data-testid={`vm1-draft-admission-state-${line.externalId}`}>
+                <StatusBadge
+                  status={ADMISSION_BADGE_STATUS[line.admissionState]}
+                  label={
+                    line.admittedCandidate
+                      ? VM1_OS_DRAFT_CANDIDATE_LABEL
+                      : VM1_DRAFT_ADMISSION_STATE_LABEL[line.admissionState]
+                  }
+                />
+              </span>
+              <span data-testid={`vm1-draft-admission-reason-${line.externalId}`}>{line.reason}</span>
+              {os != null ? (
+                <span dir="ltr" data-testid={`vm1-os-nto-${line.externalId}`}>
+                  {formatVm1EvidenceAmount(os.netOwnerPayoutEur)}
+                </span>
+              ) : null}
+            </li>
+          )
+        })}
       </ul>
     </section>
   )

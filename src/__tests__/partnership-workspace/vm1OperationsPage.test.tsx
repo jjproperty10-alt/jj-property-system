@@ -99,6 +99,12 @@ describe('VM1 operations route — staff authorization (fail closed)', () => {
       reservations: [],
       forecastLines: [],
       draftAdmissionLines: [],
+      ownerStatementLines: [],
+      ownerStatementEvidence: {
+        ok: false,
+        reason:
+          'Canonical stored Hostaway Owner Statement evidence is not attached. Draft revenue is not admitted.',
+      },
       expenseAdmission: {
         transactionId: null,
         date: null,
@@ -120,6 +126,9 @@ describe('VM1 operations route — staff authorization (fail closed)', () => {
     expect(html).toContain('Draft admission review / בדיקת קבלה לטיוטה')
     expect(html).toContain('Approved future-Draft expenses / הוצאות מאושרות לטיוטה עתידית')
     expect(html).toContain('Expense admission blocked')
+    expect(html).toContain('Owner Statement evidence not stored')
+    expect(html).toContain('Canonical stored Hostaway Owner Statement evidence is not attached')
+    expect(html).not.toContain('b2945e7fb84452ff08f2cee224bd8cd960ca1ba85b2941968d5ce108c5f79951')
   })
 
   it('invalid range after auth shows a blocked staff error, not reservation rows', async () => {

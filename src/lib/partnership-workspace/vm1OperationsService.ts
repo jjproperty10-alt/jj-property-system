@@ -8,9 +8,12 @@
  *   1. parse range
  *   2. loadVm1Identity
  *   3. identity failure → blocked workspace, no expense SELECT
- *   4. verified identity → expense SELECT
- *   5. expense failure does not collapse reservations/forecast
+ *   4. verified identity → Draft admission WITHOUT Owner Statement store
+ *   5. verified identity → expense SELECT
+ *   6. expense failure does not collapse reservations/forecast
  *
+ * Canonical stored Hostaway Owner Statement evidence is not attached in this
+ * slice. Raw Hostaway reservation payout is operational evidence only.
  * server-only.
  */
 
@@ -23,6 +26,7 @@ import type { Vm1ExpenseAdmissionLine } from './vm1ExpenseAdmission'
 import { forecastVm1Reservations, type Vm1ForecastLine } from './vm1ForecastCalculator'
 import { loadVm1Identity, type Vm1IdentityResult, type Vm1RpcClient } from './vm1IdentityAdapter'
 import { parseVm1OperationsRange, utcTodayIso } from './vm1OperationsPresentation'
+import { VM1_OS_EVIDENCE_REASON, type Vm1OwnerStatementEvidenceLine } from './vm1OwnerStatementEvidence'
 
 export type Vm1OperationsClient = Vm1RpcClient
 
@@ -35,6 +39,8 @@ export type Vm1OperationsLoadResult =
       readonly reservations: Extract<Vm1IdentityResult, { ok: true }>['reservations']
       readonly forecastLines: readonly Vm1ForecastLine[]
       readonly draftAdmissionLines: readonly Vm1DraftAdmissionLine[]
+      readonly ownerStatementLines: readonly Vm1OwnerStatementEvidenceLine[]
+      readonly ownerStatementEvidence: { readonly ok: false; readonly reason: string }
       readonly expenseAdmission: Vm1ExpenseAdmissionLine
     }
   | {
@@ -85,8 +91,10 @@ export async function loadVm1OperationsView(
   }
 
   const asOfIso = utcTodayIso(input.now)
-  // Raw Hostaway reservation payout is operational evidence only.
-  // This slice does not attach hostaway_owner_statement provenance, so no row is Draft-admitted.
+  const ownerStatementEvidence = {
+    ok: false as const,
+    reason: VM1_OS_EVIDENCE_REASON.missingStore,
+  }
   const admission = admitVm1DraftReservations(loaded.reservations, {
     asOfIso,
     certifiedReservationIds,
@@ -116,6 +124,8 @@ export async function loadVm1OperationsView(
       asOfIso,
     }),
     draftAdmissionLines: admission.lines,
+    ownerStatementLines: [],
+    ownerStatementEvidence,
     expenseAdmission,
   }
 }
