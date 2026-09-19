@@ -154,12 +154,13 @@ describe('certified settlement source / security audits', () => {
     return fs.readFileSync(path.join(root, rel), 'utf8')
   }
 
-  test('reader is service-role schema RPC only', () => {
+  test('reader is the public service-role RPC only', () => {
     const adapter = read('src/lib/finance/certifiedClientSettlementAdapter.ts')
-    expect(adapter).toContain("schema('finance')")
+    expect(adapter).toContain('.rpc(CLIENT_SETTLEMENT_CERTIFICATION_RPC.read')
     expect(adapter).toContain('read_certified_client_settlement')
     expect(adapter).toContain("from '@/lib/supabase'")
     expect(adapter).toContain("import 'server-only'")
+    expect(adapter).not.toContain("schema('finance')")
     expect(adapter).not.toContain('createSupabaseBrowserClient')
     expect(adapter).not.toContain('createSupabaseServerClient')
   })

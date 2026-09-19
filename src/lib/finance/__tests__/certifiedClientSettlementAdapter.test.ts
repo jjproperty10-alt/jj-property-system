@@ -4,34 +4,12 @@ const mockRpc = jest.fn()
 const mockEpaEq = jest.fn()
 const mockMrIs = jest.fn()
 const mockResolveProperty = jest.fn()
+const mockSchema = jest.fn()
 
 jest.mock('@/lib/supabase', () => ({
   createServiceClient: () => ({
-    schema: (schemaName: string) => {
-      if (schemaName === 'finance') {
-        return { rpc: mockRpc }
-      }
-      return {
-        from: (table: string) => {
-          if (table === 'entity_property_associations') {
-            return {
-              select: () => ({
-                eq: () => ({
-                  eq: mockEpaEq,
-                }),
-              }),
-            }
-          }
-          return {
-            select: () => ({
-              eq: () => ({
-                is: mockMrIs,
-              }),
-            }),
-          }
-        },
-      }
-    },
+    rpc: mockRpc,
+    schema: (...args: unknown[]) => mockSchema(...args),
   }),
 }))
 
@@ -108,9 +86,30 @@ describe('readCertifiedClientSettlement adapter', () => {
     mockEpaEq.mockReset()
     mockMrIs.mockReset()
     mockResolveProperty.mockReset()
+    mockSchema.mockReset()
+    mockSchema.mockImplementation(() => ({
+      from: (table: string) => {
+        if (table === 'entity_property_associations') {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: mockEpaEq,
+              }),
+            }),
+          }
+        }
+        return {
+          select: () => ({
+            eq: () => ({
+              is: mockMrIs,
+            }),
+          }),
+        }
+      },
+    }))
   })
 
-  test('calls finance.read_certified_client_settlement through service-role schema', async () => {
+  test('calls public.read_certified_client_settlement through the service-role client', async () => {
     mockRpc.mockResolvedValue({ data: readerPayloadFromDto(URIEL_SHAPED_CERTIFIED), error: null })
     const dto = await readCertifiedClientSettlement(ENTITY, AS_OF)
     expect(mockRpc).toHaveBeenCalledTimes(1)
@@ -118,6 +117,8 @@ describe('readCertifiedClientSettlement adapter', () => {
       p_entity_id: ENTITY,
       p_as_of: AS_OF,
     })
+    expect(mockSchema).not.toHaveBeenCalled()
+    expect(mockSchema).not.toHaveBeenCalledWith('finance')
     expect(dto.unavailable).toBe(false)
   })
 
@@ -138,6 +139,31 @@ describe('readCertifiedClientSettlement adapter', () => {
     expect(dto.unavailable).toBe(true)
     if (!dto.unavailable) return
     expect(dto.reason).toBe('reader_failed')
+  })
+
+  test('PGRST/RPC error fails closed', async () => {
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { code: 'PGRST106', message: 'Invalid schema: finance' },
+    })
+    const dto = await readCertifiedClientSettlement(ENTITY, AS_OF)
+    expect(dto).toEqual({
+      unavailable: true,
+      reason: 'reader_failed',
+      entityId: ENTITY,
+      asOf: AS_OF,
+    })
+  })
+
+  test('missing reader payload fails closed', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: null })
+    const dto = await readCertifiedClientSettlement(ENTITY, AS_OF)
+    expect(dto).toEqual({
+      unavailable: true,
+      reason: 'malformed_payload',
+      entityId: ENTITY,
+      asOf: AS_OF,
+    })
   })
 
   test('ambiguous property identity is fail-closed', async () => {
@@ -170,5 +196,22 @@ describe('readCertifiedClientSettlement adapter', () => {
     const dto = await loadCertifiedSettlementForProperty('Alpha', AS_OF)
     expect(dto.unavailable).toBe(false)
     expect(mockRpc).toHaveBeenCalledTimes(1)
+    expect(mockSchema).toHaveBeenCalledWith('lifecycle')
+    expect(mockSchema).not.toHaveBeenCalledWith('finance')
+  })
+})
+
+describe('certified settlement adapter source contract', () => {
+  test('service client only; public RPC; browser imports forbidden', () => {
+    const src = require('fs').readFileSync(
+      require('path').join(process.cwd(), 'src/lib/finance/certifiedClientSettlementAdapter.ts'),
+      'utf8',
+    )
+    expect(src).toContain("import 'server-only'")
+    expect(src).toContain("import { createServiceClient } from '@/lib/supabase'")
+    expect(src).toContain('.rpc(CLIENT_SETTLEMENT_CERTIFICATION_RPC.read')
+    expect(src).not.toContain("schema('finance')")
+    expect(src).not.toContain('createSupabaseBrowserClient')
+    expect(src).not.toContain('createSupabaseServerClient')
   })
 })
