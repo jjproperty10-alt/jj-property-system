@@ -303,7 +303,7 @@ const s = StyleSheet.create({
   tdMuted: { fontSize: 7.5, color: C.grayText },
   tdBold: { fontSize: 7.5, fontWeight: 'bold', color: C.grayDark },
   tdInfo: { fontSize: 7, color: C.grayMid },
-  cDate: { width: 54 },
+  cDate: { width: 68, paddingRight: 6, paddingLeft: 4 },
   cDesc: { flex: 1 },
   // NOTE: cAmt no longer has static textAlign — use rtlColumnOrder(lang) inline
   cAmt: { width: 74 },
@@ -837,7 +837,7 @@ function TxGroupTable({
             style={[s.tableRow, i % 2 === 1 ? s.tableRowAlt : {}, rtlRowDirection(lang)]}
             wrap={false}
           >
-            <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date, lang)}</Text>
+            <Text style={[s.tdMuted, s.cDate, { textAlign: isRTL(lang) ? 'right' : 'left' }]}>{fmtDate(row.date, lang)}</Text>
             <View style={s.cDesc}>
               <Text style={[s.td, rtlTextStyle(lang)]}>{desc}</Text>
             </View>
@@ -870,7 +870,7 @@ function RefSection({ rows, lang }: { rows: ClientDisplayRow[]; lang: Lang }) {
         const desc = buildRowLabel(row, lang)
         return (
           <View key={row.id} style={[s.refRow, rtlRowDirection(lang)]} wrap={false}>
-            <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date, lang)}</Text>
+            <Text style={[s.tdMuted, s.cDate, { textAlign: isRTL(lang) ? 'right' : 'left' }]}>{fmtDate(row.date, lang)}</Text>
             <View style={s.cDesc}>
               <Text style={[s.tdInfo, rtlTextStyle(lang)]}>{desc}</Text>
             </View>
@@ -906,7 +906,7 @@ function GroupedExpensesPdf({
           </View>
           {groupRows.map((row, i) => (
             <View key={row.id} style={[s.tableRow, i % 2 === 1 ? s.tableRowAlt : {}, { paddingLeft: isRTL(lang) ? 6 : 18, paddingRight: isRTL(lang) ? 18 : 6 }, rtlRowDirection(lang)]} wrap={false}>
-              <Text style={[s.tdMuted, s.cDate]}>{fmtDate(row.date, lang)}</Text>
+              <Text style={[s.tdMuted, s.cDate, { textAlign: isRTL(lang) ? 'right' : 'left' }]}>{fmtDate(row.date, lang)}</Text>
               <View style={s.cDesc}><Text style={[s.tdMuted, rtlTextStyle(lang)]}>{buildRowLabel(row, lang)}</Text></View>
               <Text style={[s.cAmt, s.tdMuted, rtlColumnOrder(lang)]}>{fmt(row.client_amount)}</Text>
             </View>

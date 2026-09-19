@@ -31,16 +31,16 @@ const C = {
 const s = StyleSheet.create({
   page: {
     paddingHorizontal: 46,
-    paddingTop: 38,
-    paddingBottom: 58,
+    paddingTop: 28,
+    paddingBottom: 44,
     fontFamily: 'Heebo',
     backgroundColor: C.white,
     color: C.grayDark,
     fontSize: 9,
   },
   header: {
-    marginBottom: 14,
-    paddingBottom: 10,
+    marginBottom: 8,
+    paddingBottom: 8,
     borderBottomWidth: 2,
     borderBottomColor: C.navy,
   },
@@ -62,7 +62,7 @@ const s = StyleSheet.create({
   heroAmount: { fontSize: 22, fontWeight: 'bold' },
   heroDir: { fontSize: 9, color: '#fca5a5', marginTop: 4, fontWeight: 'bold' },
   sectionTitle: { fontSize: 9, fontWeight: 'bold', color: C.navy, marginBottom: 8, marginTop: 4 },
-  row: { flexDirection: 'row', paddingVertical: 4, alignItems: 'center' },
+  row: { flexDirection: 'row', paddingVertical: 3, alignItems: 'center' },
   rowLine: { borderBottomWidth: 0.5, borderBottomColor: C.grayBorder },
   label: { width: '68%', fontSize: 8, color: C.grayDark },
   amount: { width: '32%', fontSize: 8, color: C.grayDark, textAlign: 'left' },
@@ -77,7 +77,7 @@ const s = StyleSheet.create({
   },
   totalLabel: { width: '68%', fontSize: 9, fontWeight: 'bold', color: C.navy },
   totalAmount: { width: '32%', fontSize: 9, fontWeight: 'bold', color: C.navy, textAlign: 'left' },
-  method: { fontSize: 7.5, color: C.grayText, lineHeight: 1.45, marginBottom: 3 },
+  method: { fontSize: 7, color: C.grayText, lineHeight: 1.35, marginBottom: 2 },
   footer: {
     position: 'absolute',
     bottom: 18,
@@ -205,9 +205,9 @@ export function CertifiedCoverPage({
         <Text style={[s.company, rtlTextStyle(lang)]}>JJ Property 10</Text>
         <Text style={[s.coverTitle, rtlTextStyle(lang)]}>{t('certCoverTitle', lang)}</Text>
         <Text style={[s.meta, rtlTextStyle(lang)]}>{owner}</Text>
-        <View style={[s.row, { paddingVertical: 2 }, rtlRowDirection(lang)]}>
-          <Text style={[s.meta, { width: '55%' }, rtlTextStyle(lang)]}>{t('certCutoffLabel', lang)}</Text>
-          <Text style={[s.meta, { width: '45%', textAlign: 'left' }]}>{cutoff}</Text>
+        <View style={[{ flexDirection: lang === 'he' ? 'row-reverse' : 'row', marginTop: 3, alignItems: 'center' }]}>
+          <Text style={[s.meta, rtlTextStyle(lang)]}>{t('certCutoffLabel', lang)}</Text>
+          <Text style={s.meta}>{` ${cutoff}`}</Text>
         </View>
         <Text style={[s.status, rtlTextStyle(lang)]}>
           {t('certStatusLabel', lang)}: {t('certSectionTitle', lang)}
@@ -215,7 +215,7 @@ export function CertifiedCoverPage({
         <Text style={[s.note, rtlTextStyle(lang)]}>{t('certCombinedNote', lang)}</Text>
       </View>
 
-      <View style={[heroStyle, { padding: 12, marginTop: 8, marginBottom: 10 }]} wrap={false}>
+      <View style={[heroStyle, { padding: 10, marginTop: 6, marginBottom: 8 }]} wrap={false}>
         <Text style={[s.heroKicker, rtlTextStyle(lang)]}>{t('certSectionTitle', lang)}</Text>
         <Text style={[s.heroAmount, { color: amountColor, marginTop: 4 }]}>{fmt(Math.abs(dto.closingDueToJj))}</Text>
         <DirectionLine lang={lang} color={amountColor} prefix={copy.heroPrefix} suffix={copy.heroSuffix} />
@@ -250,7 +250,7 @@ export function CertifiedCoverPage({
         </View>
       ))}
 
-      <Text style={[s.sectionTitle, rtlTextStyle(lang), { marginTop: 10 }]}>{t('certPropertyLinesTitle', lang)}</Text>
+      <Text style={[s.sectionTitle, rtlTextStyle(lang), { marginTop: 6 }]}>{t('certPropertyLinesTitle', lang)}</Text>
       {dto.propertyLines.map((line) => (
         <MoneyRow
           key={`line-${line.lineOrder}-${line.propertyName}`}
@@ -261,7 +261,7 @@ export function CertifiedCoverPage({
       ))}
       <MoneyRow lang={lang} total label={t('certOpeningTotal', lang)} amount={fmt(dto.openingDueToJj)} />
 
-      <View style={{ marginTop: 8 }} wrap={false}>
+      <View style={{ marginTop: 6 }} wrap={false}>
         <Text style={[s.sectionTitle, rtlTextStyle(lang)]}>{t('certNotesTitle', lang)}</Text>
         <Text style={[s.method, rtlTextStyle(lang)]}>{t('certMethodCash', lang)}</Text>
         <Text style={[s.method, rtlTextStyle(lang)]}>{t('certMethodPnl', lang)}</Text>
