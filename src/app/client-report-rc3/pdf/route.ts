@@ -96,6 +96,7 @@ export async function GET(req: Request): Promise<Response> {
       lang,
       reportType: type,
       certifiedSettlement,
+      ownerName: property,
     })
     // renderToBuffer expects a react-pdf DocumentElement; OwnerSettlementPdfV3
     // renders one at runtime (same cast as the existing owner PDF route).
