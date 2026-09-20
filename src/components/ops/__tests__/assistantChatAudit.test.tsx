@@ -15,6 +15,9 @@ jest.mock('@/lib/ops/assistant/clientCashSettlementActions', () => ({
   executeClientCashSettlement: jest.fn(),
   listClientSettlementEntities: jest.fn(),
   readClientSettlementBalance: jest.fn(),
+  listPartnerFundingActors: jest.fn(),
+  previewPartnerFundedClientSettlement: jest.fn(),
+  executePartnerFundedClientSettlement: jest.fn(),
 }))
 
 const ROOT = path.join(__dirname, '..', '..', '..', '..')
@@ -66,18 +69,25 @@ describe('assistant source audit and confirmation UI', () => {
 
   it('records cash only from the confirmation button, never from Send', () => {
     expect(chat).toContain('executeClientCashSettlement')
+    expect(chat).toContain('executePartnerFundedClientSettlement')
     expect(chat).toContain('data-testid="assistant-record-cash"')
     expect(chat).toContain('רשום תשלום')
     expect(chat).toContain('CASH_SUMMARY_TITLE')
+    expect(chat).toContain('PERSONAL_SUMMARY_TITLE')
+    expect(chat).toContain('FUNDING_QUESTION')
     expect(chat).not.toMatch(/sendBody\([\s\S]{0,400}executeClientCashSettlement/)
+    expect(chat).not.toMatch(/sendBody\([\s\S]{0,400}executePartnerFundedClientSettlement/)
     expect(chat).not.toMatch(/useEffect\([\s\S]{0,200}onRecordCash/)
+    expect(chat).not.toMatch(/staffPayerName[\s\S]{0,80}PARTNER_PERSONAL/)
     const cashActions = read('src/lib/ops/assistant/clientCashSettlementActions.ts')
     expect(cashActions).not.toMatch(/from\(\s*['"]transactions['"]\s*\)/)
     expect(cashActions).not.toContain('createServiceClient')
     expect(cashActions).not.toMatch(/service_role/)
     expect(cashActions).toContain('preview_client_cash_settlement')
     expect(cashActions).toContain('execute_client_cash_settlement')
-    expect(cashActions).toContain('read_client_settlement_balance')
+    expect(cashActions).toContain('preview_partner_funded_client_settlement')
+    expect(cashActions).toContain('execute_partner_funded_client_settlement')
+    expect(cashActions).toContain('list_partner_funding_actors')
     expect(chat).toContain('התשלום נרשם')
     expect(chat).toContain('/owners')
     expect(chat).toContain('יתרת הדוח לא אומתה')

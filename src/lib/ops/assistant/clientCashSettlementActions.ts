@@ -129,3 +129,73 @@ export async function executeClientCashSettlement(input: {
     reportUpdated,
   }
 }
+
+export async function listPartnerFundingActors(): Promise<
+  { readonly ok: true; readonly actors: readonly { id: string; canonicalName: string }[] } | Failure
+> {
+  const auth = await authenticateStatementUser()
+  if (!auth.ok) return authError(auth.error)
+  const session = createSupabaseServerClient()
+  const { data, error } = await session.rpc('list_partner_funding_actors')
+  if (error || data == null) return { ok: false, error: error?.message ?? 'Could not list partners.' }
+  const rows = Array.isArray(data) ? data : [data]
+  return {
+    ok: true,
+    actors: rows.map((r: { entity_id: string; canonical_name: string }) => ({
+      id: String(r.entity_id),
+      canonicalName: String(r.canonical_name),
+    })),
+  }
+}
+
+export async function previewPartnerFundedClientSettlement(input: {
+  readonly clientEntityId: string
+  readonly partnerEntityId: string
+  readonly amount: number
+  readonly effectiveDate: string
+}): Promise<{ readonly ok: true; readonly preview: Record<string, unknown> } | Failure> {
+  const auth = await authenticateStatementUser()
+  if (!auth.ok) return authError(auth.error)
+  const session = createSupabaseServerClient()
+  const { data, error } = await session.rpc('preview_partner_funded_client_settlement', {
+    p_client_entity_id: input.clientEntityId,
+    p_partner_entity_id: input.partnerEntityId,
+    p_direction: 'JJ_TO_CLIENT',
+    p_amount: input.amount,
+    p_effective_date: input.effectiveDate,
+  })
+  const row = firstRpcRow(data as Record<string, unknown> | Record<string, unknown>[] | null)
+  if (error || !row) return { ok: false, error: error?.message ?? 'Preview failed.' }
+  return { ok: true, preview: row }
+}
+
+export async function executePartnerFundedClientSettlement(input: {
+  readonly clientEntityId: string
+  readonly partnerEntityId: string
+  readonly amount: number
+  readonly effectiveDate: string
+  readonly previewHash: string
+  readonly previewSnapshot: Record<string, unknown>
+  readonly idempotencyKey: string
+}): Promise<{ readonly ok: true; readonly transactionId: string; readonly replay: boolean } | Failure> {
+  const auth = await authenticateStatementUser()
+  if (!auth.ok) return authError(auth.error)
+  const session = createSupabaseServerClient()
+  const { data, error } = await session.rpc('execute_partner_funded_client_settlement', {
+    p_client_entity_id: input.clientEntityId,
+    p_partner_entity_id: input.partnerEntityId,
+    p_direction: 'JJ_TO_CLIENT',
+    p_amount: input.amount,
+    p_effective_date: input.effectiveDate,
+    p_preview_hash: input.previewHash,
+    p_preview_snapshot: input.previewSnapshot,
+    p_idempotency_key: input.idempotencyKey,
+  })
+  const row = firstRpcRow(data as Record<string, unknown> | Record<string, unknown>[] | null)
+  if (error || !row) return { ok: false, error: error?.message ?? 'Execute failed.' }
+  return {
+    ok: true,
+    transactionId: String(row.transaction_id ?? ''),
+    replay: Boolean(row.replay),
+  }
+}

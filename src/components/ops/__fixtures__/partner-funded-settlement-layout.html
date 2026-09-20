@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Partner-funded settlement — local visual fixture</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; background: #f8fafc; color: #111827; }
+    .wrap { max-width: 48rem; margin: 0 auto; padding: 1rem; }
+    .card { background: #fff; border-radius: 1rem; padding: 1rem; box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); margin-bottom: 1rem; }
+    h1, h2 { font-size: 1rem; margin: 0 0 0.75rem; }
+    button { border-radius: 0.5rem; padding: 0.5rem 0.75rem; border: 1px solid #e5e7eb; background: #fff; }
+    .primary { background: #0f766e; color: #fff; border: 0; }
+    .stack { display: flex; flex-direction: column; gap: 0.5rem; }
+    .row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    dl { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(8rem, 1fr); gap: 0.5rem 1rem; font-size: 0.9rem; margin: 0; }
+    dt { color: #6b7280; }
+    dd { margin: 0; }
+    @media (max-width: 420px) { dl { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="card" data-testid="assistant-funding-choices">
+      <h1>מאיזה כסף בוצע התשלום?</h1>
+      <div class="stack">
+        <button type="button">1. מחשבון או מקופת JJ</button>
+        <button type="button">2. מכסף פרטי של שותף</button>
+        <button type="button">3. ביטול</button>
+      </div>
+    </section>
+    <section class="card" data-testid="assistant-partner-pick">
+      <h2>בחרו את השותף ששילם מכסף פרטי, בלי ניחוש:</h2>
+      <div class="stack">
+        <button type="button">1. Partner North</button>
+        <button type="button">2. Partner South</button>
+      </div>
+    </section>
+    <section class="card" data-testid="assistant-cash-review">
+      <h1>סיכום תשלום מכסף פרטי — עדיין לא נרשם</h1>
+      <dl>
+        <dt>משלם בפועל</dt><dd>Partner North — כסף פרטי</dd>
+        <dt>מקבל</dt><dd>Client Zeta</dd>
+        <dt>סכום</dt><dd>€3,260</dd>
+        <dt>תאריך</dt><dd>17/09/2026</dd>
+        <dt>יתרת לקוח</dt><dd>5000 → 1740</dd>
+        <dt>FIFO</dt><dd>Property Z · 3260 · נותר 1740</dd>
+        <dt>יתרת JJ לשותף</dt><dd>0 → 3260</dd>
+        <dt>השפעת קופת JJ</dt><dd>€0</dd>
+        <dt>השפעת רווח והפסד</dt><dd>€0</dd>
+      </dl>
+      <div class="row" style="margin-top:1rem">
+        <button class="primary" type="button">1. רשום תשלום</button>
+        <button type="button">2. שנה פרטים</button>
+        <button type="button">3. בטל</button>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

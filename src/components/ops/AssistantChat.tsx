@@ -28,14 +28,22 @@ import { useSpeechToText } from './useSpeechToText'
 import { extractDate } from '@/lib/ops/assistant/cyprusDate'
 import {
   CASH_SUMMARY_TITLE,
+  FUNDING_CHOICE_CANCEL,
+  FUNDING_CHOICE_JJ,
+  FUNDING_CHOICE_PERSONAL,
+  FUNDING_QUESTION,
+  PERSONAL_SUMMARY_TITLE,
   matchEntitiesByCanonicalName,
   parseClientCashSettlementUtterance,
   type CashSettlementDirection,
   type EntityChoice,
+  type SettlementFundingSource,
 } from '@/lib/ops/assistant/clientCashSettlementIntent'
 import {
   executeClientCashSettlement,
+  executePartnerFundedClientSettlement,
   previewClientCashSettlement,
+  previewPartnerFundedClientSettlement,
 } from '@/lib/ops/assistant/clientCashSettlementActions'
 
 function formatCashSuccess(input: {
@@ -93,6 +101,7 @@ export function AssistantChat(props: {
   readonly staffPayerName: string
   readonly catalog: readonly PropertyCatalogEntry[]
   readonly entities?: readonly EntityChoice[]
+  readonly partners?: readonly EntityChoice[]
   readonly initialConversationId: string | null
 }) {
   const ctx: CollectorContext = useMemo(
@@ -111,16 +120,38 @@ export function AssistantChat(props: {
     readonly amount: number
     readonly effectiveDate: string
     readonly preview: Record<string, unknown>
+    readonly funding: SettlementFundingSource
+    readonly partnerId: string | null
+    readonly partnerName: string | null
   } | null>(null)
   const [cashPostedId, setCashPostedId] = useState<string | null>(null)
   const [pendingCash, setPendingCash] = useState<{
     readonly direction: CashSettlementDirection
     readonly amount: number
     readonly entity: EntityChoice
+    readonly funding: SettlementFundingSource
+    readonly partnerId: string | null
+    readonly partnerName: string | null
   } | null>(null)
   const [pendingName, setPendingName] = useState<{
     readonly direction: CashSettlementDirection
     readonly amount: number
+    readonly needsDate: boolean
+    readonly funding: SettlementFundingSource
+    readonly partnerId: string | null
+    readonly partnerNameQuery: string | null
+  } | null>(null)
+  const [pendingFunding, setPendingFunding] = useState<{
+    readonly direction: CashSettlementDirection
+    readonly amount: number
+    readonly entity: EntityChoice
+    readonly needsDate: boolean
+    readonly partnerNameQuery: string | null
+  } | null>(null)
+  const [pendingPartner, setPendingPartner] = useState<{
+    readonly direction: CashSettlementDirection
+    readonly amount: number
+    readonly entity: EntityChoice
     readonly needsDate: boolean
   } | null>(null)
   const [conversationId, setConversationId] = useState<string | null>(props.initialConversationId)
@@ -194,7 +225,48 @@ export function AssistantChat(props: {
       direction: CashSettlementDirection,
       amount: number,
       effectiveDate: string,
+      funding: SettlementFundingSource,
+      partnerId: string | null,
+      partnerName: string | null,
     ) => {
+      if (funding === 'PARTNER_PERSONAL') {
+        if (!partnerId || !partnerName) {
+          setLoading(false)
+          setError('יש לבחור שותף מהרשימה הקנונית.')
+          return
+        }
+        const previewed = await previewPartnerFundedClientSettlement({
+          clientEntityId: entity.id,
+          partnerEntityId: partnerId,
+          amount,
+          effectiveDate,
+        })
+        if (!previewed.ok) {
+          setLoading(false)
+          setError(previewed.error)
+          return
+        }
+        setPendingCash(null)
+        setCashCard({
+          entityId: entity.id,
+          entityName: entity.canonicalName,
+          direction,
+          amount,
+          effectiveDate,
+          preview: previewed.preview,
+          funding,
+          partnerId,
+          partnerName,
+        })
+        setItems((prev) => [
+          ...prev,
+          { id: messageKey, role: 'user', text: trimmed },
+          { id: `${messageKey}-a`, role: 'assistant', text: PERSONAL_SUMMARY_TITLE },
+        ])
+        setText('')
+        setLoading(false)
+        return
+      }
       const previewed = await previewClientCashSettlement({
         entityId: entity.id,
         direction,
@@ -214,6 +286,9 @@ export function AssistantChat(props: {
         amount,
         effectiveDate,
         preview: previewed.preview,
+        funding: 'JJ',
+        partnerId: null,
+        partnerName: null,
       })
       setItems((prev) => [
         ...prev,
@@ -222,6 +297,103 @@ export function AssistantChat(props: {
       ])
       setText('')
       setLoading(false)
+    }
+
+    if (pendingFunding) {
+      if (trimmed === FUNDING_CHOICE_CANCEL || trimmed === 'ביטול') {
+        setPendingFunding(null)
+        setItems((prev) => [...prev, { id: messageKey, role: 'user', text: trimmed }, { id: `${messageKey}-a`, role: 'assistant', text: 'בוטל. לא נרשם תשלום.' }])
+        setText('')
+        setLoading(false)
+        return
+      }
+      if (trimmed === FUNDING_CHOICE_JJ) {
+        const next = pendingFunding
+        setPendingFunding(null)
+        if (next.needsDate) {
+          setPendingCash({
+            entity: next.entity, direction: next.direction, amount: next.amount,
+            funding: 'JJ', partnerId: null, partnerName: null,
+          })
+          setItems((prev) => [...prev, { id: messageKey, role: 'user', text: trimmed }, { id: `${messageKey}-a`, role: 'assistant', text: `לקוח: ${next.entity.canonicalName}. מה התאריך? התשלום עדיין לא נרשם.` }])
+          setText('')
+          setLoading(false)
+          return
+        }
+        const dateIso = extractDate(trimmed)
+        if (!dateIso) {
+          setPendingCash({
+            entity: next.entity, direction: next.direction, amount: next.amount,
+            funding: 'JJ', partnerId: null, partnerName: null,
+          })
+          setItems((prev) => [...prev, { id: messageKey, role: 'user', text: trimmed }, { id: `${messageKey}-a`, role: 'assistant', text: `לקוח: ${next.entity.canonicalName}. מה התאריך? התשלום עדיין לא נרשם.` }])
+          setText('')
+          setLoading(false)
+          return
+        }
+        await finishCash(next.entity, next.direction, next.amount, dateIso, 'JJ', null, null)
+        return
+      }
+      if (trimmed === FUNDING_CHOICE_PERSONAL) {
+        setPendingFunding(null)
+        setPendingPartner({
+          direction: pendingFunding.direction,
+          amount: pendingFunding.amount,
+          entity: pendingFunding.entity,
+          needsDate: pendingFunding.needsDate,
+        })
+        const actors = (props.partners ?? []).slice(0, 3)
+        const textOut = actors.length === 0
+          ? 'אין שותף קנוני ברשימה. לא ניחשתי ולא השתמשתי במשתמש המחובר.'
+          : 'בחרו את השותף ששילם מכסף פרטי, בלי ניחוש:\n' + actors.map((m, i) => `${i + 1}. ${m.canonicalName}`).join('\n')
+        setItems((prev) => [...prev, { id: messageKey, role: 'user', text: trimmed }, { id: `${messageKey}-a`, role: 'assistant', text: textOut }])
+        setText('')
+        setLoading(false)
+        return
+      }
+      setItems((prev) => [...prev, { id: messageKey, role: 'user', text: trimmed }, { id: `${messageKey}-a`, role: 'assistant', text: FUNDING_QUESTION }])
+      setText('')
+      setLoading(false)
+      return
+    }
+
+    if (pendingPartner) {
+      const actors = props.partners ?? []
+      const numbered = trimmed.match(/^(\d+)/)
+      const byIndex = numbered ? actors[Number(numbered[1]) - 1] : undefined
+      const matches = byIndex ? [byIndex] : matchEntitiesByCanonicalName(trimmed, actors)
+      if (matches.length !== 1) {
+        setItems((prev) => [...prev, { id: messageKey, role: 'user', text: trimmed }, { id: `${messageKey}-a`, role: 'assistant', text: 'בחרו שותף מהרשימה הקנונית. לא ניחשתי ולא השתמשתי במשתמש המחובר.' }])
+        setText('')
+        setLoading(false)
+        return
+      }
+      const partner = matches[0]
+      const next = pendingPartner
+      setPendingPartner(null)
+      if (next.needsDate) {
+        setPendingCash({
+          entity: next.entity, direction: next.direction, amount: next.amount,
+          funding: 'PARTNER_PERSONAL', partnerId: partner.id, partnerName: partner.canonicalName,
+        })
+        setItems((prev) => [...prev, { id: messageKey, role: 'user', text: trimmed }, { id: `${messageKey}-a`, role: 'assistant', text: `שותף: ${partner.canonicalName}. מה התאריך? התשלום עדיין לא נרשם.` }])
+        setText('')
+        setLoading(false)
+        return
+      }
+      const dateIso = extractDate(trimmed)
+      if (!dateIso) {
+        setPendingCash({
+          entity: next.entity, direction: next.direction, amount: next.amount,
+          funding: 'PARTNER_PERSONAL', partnerId: partner.id, partnerName: partner.canonicalName,
+        })
+        setItems((prev) => [...prev, { id: messageKey, role: 'user', text: trimmed }, { id: `${messageKey}-a`, role: 'assistant', text: `שותף: ${partner.canonicalName}. מה התאריך? התשלום עדיין לא נרשם.` }])
+        setText('')
+        setLoading(false)
+        return
+      }
+      await finishCash(next.entity, next.direction, next.amount, dateIso, 'PARTNER_PERSONAL', partner.id, partner.canonicalName)
+      return
     }
 
     if (pendingCash) {
@@ -236,7 +408,10 @@ export function AssistantChat(props: {
         setLoading(false)
         return
       }
-      await finishCash(pendingCash.entity, pendingCash.direction, pendingCash.amount, dateIso)
+      await finishCash(
+        pendingCash.entity, pendingCash.direction, pendingCash.amount, dateIso,
+        pendingCash.funding, pendingCash.partnerId, pendingCash.partnerName,
+      )
       return
     }
 
@@ -266,9 +441,26 @@ export function AssistantChat(props: {
         setLoading(false)
         return
       }
+      const funding = pendingName.funding
       setPendingName(null)
+      if (funding === 'UNKNOWN') {
+        setPendingFunding({
+          direction: pendingName.direction,
+          amount: pendingName.amount,
+          entity: matches[0],
+          needsDate: pendingName.needsDate,
+          partnerNameQuery: pendingName.partnerNameQuery,
+        })
+        setItems((prev) => [...prev, { id: messageKey, role: 'user', text: trimmed }, { id: `${messageKey}-a`, role: 'assistant', text: FUNDING_QUESTION }])
+        setText('')
+        setLoading(false)
+        return
+      }
       if (pendingName.needsDate) {
-        setPendingCash({ entity: matches[0], direction: pendingName.direction, amount: pendingName.amount })
+        setPendingCash({
+          entity: matches[0], direction: pendingName.direction, amount: pendingName.amount,
+          funding, partnerId: pendingName.partnerId, partnerName: null,
+        })
         setItems((prev) => [
           ...prev,
           { id: messageKey, role: 'user', text: trimmed },
@@ -280,7 +472,10 @@ export function AssistantChat(props: {
       }
       const dateIso = extractDate(trimmed)
       if (!dateIso) {
-        setPendingCash({ entity: matches[0], direction: pendingName.direction, amount: pendingName.amount })
+        setPendingCash({
+          entity: matches[0], direction: pendingName.direction, amount: pendingName.amount,
+          funding, partnerId: pendingName.partnerId, partnerName: null,
+        })
         setItems((prev) => [
           ...prev,
           { id: messageKey, role: 'user', text: trimmed },
@@ -290,7 +485,7 @@ export function AssistantChat(props: {
         setLoading(false)
         return
       }
-      await finishCash(matches[0], pendingName.direction, pendingName.amount, dateIso)
+      await finishCash(matches[0], pendingName.direction, pendingName.amount, dateIso, funding, pendingName.partnerId, null)
       return
     }
 
@@ -301,18 +496,41 @@ export function AssistantChat(props: {
       if (matches.length === 0) {
         assistantText = 'לא מצאתי לקוח ב-lifecycle.entity_identity. לא ניחשתי.'
       } else if (matches.length > 1) {
-        setPendingName({ direction: parsed.direction, amount: parsed.amount, needsDate: parsed.needsDate })
+        setPendingName({
+          direction: parsed.direction, amount: parsed.amount, needsDate: parsed.needsDate,
+          funding: parsed.fundingSource, partnerId: null, partnerNameQuery: parsed.partnerNameQuery,
+        })
         assistantText = 'יש כמה לקוחות תואמים. בחרו אחד, בלי ניחוש:\n' + matches.map((m, i) => `${i + 1}. ${m.canonicalName}`).join('\n')
+      } else if (parsed.fundingSource === 'UNKNOWN') {
+        setPendingFunding({
+          direction: parsed.direction, amount: parsed.amount, entity: matches[0],
+          needsDate: parsed.needsDate, partnerNameQuery: parsed.partnerNameQuery,
+        })
+        assistantText = FUNDING_QUESTION
       } else if (parsed.needsDate) {
-        setPendingCash({ entity: matches[0], direction: parsed.direction, amount: parsed.amount })
+        setPendingCash({
+          entity: matches[0], direction: parsed.direction, amount: parsed.amount,
+          funding: parsed.fundingSource, partnerId: null, partnerName: null,
+        })
         assistantText = `לקוח: ${matches[0].canonicalName}. מה התאריך? התשלום עדיין לא נרשם.`
       } else {
         const dateIso = extractDate(trimmed)
         if (!dateIso) {
-          setPendingCash({ entity: matches[0], direction: parsed.direction, amount: parsed.amount })
+          setPendingCash({
+            entity: matches[0], direction: parsed.direction, amount: parsed.amount,
+            funding: parsed.fundingSource, partnerId: null, partnerName: null,
+          })
           assistantText = `לקוח: ${matches[0].canonicalName}. מה התאריך? התשלום עדיין לא נרשם.`
+        } else if (parsed.fundingSource === 'PARTNER_PERSONAL') {
+          setPendingPartner({
+            direction: parsed.direction, amount: parsed.amount, entity: matches[0], needsDate: false,
+          })
+          const actors = (props.partners ?? []).slice(0, 3)
+          assistantText = actors.length === 0
+            ? 'אין שותף קנוני ברשימה. לא ניחשתי ולא השתמשתי במשתמש המחובר.'
+            : 'בחרו את השותף ששילם מכסף פרטי, בלי ניחוש:\n' + actors.map((m, i) => `${i + 1}. ${m.canonicalName}`).join('\n')
         } else {
-          await finishCash(matches[0], parsed.direction, parsed.amount, dateIso)
+          await finishCash(matches[0], parsed.direction, parsed.amount, dateIso, 'JJ', null, null)
           return
         }
       }
@@ -396,6 +614,48 @@ export function AssistantChat(props: {
     recordingCashRef.current = true
     setLoading(true)
     setError('')
+    if (cashCard.funding === 'PARTNER_PERSONAL') {
+      if (!cashCard.partnerId) {
+        recordingCashRef.current = false
+        setLoading(false)
+        setError('יש לבחור שותף מהרשימה הקנונית.')
+        return
+      }
+      const result = await executePartnerFundedClientSettlement({
+        clientEntityId: cashCard.entityId,
+        partnerEntityId: cashCard.partnerId,
+        amount: cashCard.amount,
+        effectiveDate: cashCard.effectiveDate,
+        previewHash: String(cashCard.preview.preview_hash ?? ''),
+        previewSnapshot: (cashCard.preview.canonical_snapshot as Record<string, unknown>) ?? {},
+        idempotencyKey: cashKeyRef.current,
+      })
+      setLoading(false)
+      if (!result.ok) {
+        recordingCashRef.current = false
+        setError(result.error)
+        return
+      }
+      setCashPostedId(result.transactionId)
+      setItems((prev) => [
+        ...prev,
+        {
+          id: `cash-${result.transactionId}`,
+          role: 'assistant',
+          text: [
+            'התשלום נרשם.',
+            `מזהה עסקה: ${result.transactionId}`,
+            `לקוח: ${cashCard.entityName}`,
+            `משלם בפועל: ${cashCard.partnerName} — כסף פרטי`,
+            `סכום/תאריך: ${cashCard.amount} / ${cashCard.effectiveDate}`,
+            'השפעת קופת JJ כרגע: €0',
+            'השפעת רווח והפסד: €0',
+            'מסך לקוחות: /owners',
+          ].join('\n'),
+        },
+      ])
+      return
+    }
     const result = await executeClientCashSettlement({
       entityId: cashCard.entityId,
       direction: cashCard.direction,
@@ -596,12 +856,44 @@ export function AssistantChat(props: {
           </div>
         )}
 
+        {pendingFunding && (
+          <div className="mx-auto mt-4 max-w-3xl space-y-2" data-testid="assistant-funding-choices" dir="rtl">
+            <p className="text-sm font-medium">{FUNDING_QUESTION}</p>
+            <button type="button" className="block w-full rounded-xl border border-gray-200 bg-white px-4 py-2 text-right text-sm hover:bg-gray-50" disabled={loading} onClick={() => void sendBody(FUNDING_CHOICE_JJ)}>
+              1. {FUNDING_CHOICE_JJ}
+            </button>
+            <button type="button" className="block w-full rounded-xl border border-gray-200 bg-white px-4 py-2 text-right text-sm hover:bg-gray-50" disabled={loading} onClick={() => void sendBody(FUNDING_CHOICE_PERSONAL)}>
+              2. {FUNDING_CHOICE_PERSONAL}
+            </button>
+            <button type="button" className="block w-full rounded-xl border border-gray-200 bg-white px-4 py-2 text-right text-sm hover:bg-gray-50" disabled={loading} onClick={() => void sendBody(FUNDING_CHOICE_CANCEL)}>
+              3. {FUNDING_CHOICE_CANCEL}
+            </button>
+          </div>
+        )}
+
         {cashCard && (
           <div className="mx-auto mt-4 max-w-3xl rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-200" data-testid="assistant-cash-review" dir="rtl">
-            <h2 className="mb-3 text-sm font-semibold">{CASH_SUMMARY_TITLE}</h2>
+            <h2 className="mb-3 text-sm font-semibold">
+              {cashCard.funding === 'PARTNER_PERSONAL' ? PERSONAL_SUMMARY_TITLE : CASH_SUMMARY_TITLE}
+            </h2>
             <p className="text-sm">{cashCard.entityName} · {cashCard.direction} · {cashCard.amount} · {cashCard.effectiveDate}</p>
+            {cashCard.funding === 'PARTNER_PERSONAL' && (
+              <p className="mt-2 text-sm">משלם בפועל: {cashCard.partnerName} — כסף פרטי</p>
+            )}
             <p className="mt-2 text-xs text-gray-600">
               R לפני: {String(cashCard.preview.balance_before_R ?? '')} · R אחרי: {String(cashCard.preview.balance_after_R ?? '')}
+            </p>
+            {cashCard.funding === 'PARTNER_PERSONAL' && (
+              <p className="mt-2 text-xs text-gray-600">
+                יתרת JJ לשותף לפני: {String(cashCard.preview.partner_balance_before ?? '')}
+                {' · '}
+                אחרי: {String(cashCard.preview.partner_balance_after ?? '')}
+              </p>
+            )}
+            <p className="mt-2 text-xs text-gray-600">
+              השפעת קופת JJ כרגע: €{String(cashCard.preview.company_cash_effect ?? (cashCard.funding === 'PARTNER_PERSONAL' ? '0' : ''))}
+              {' · '}
+              השפעת רווח והפסד: €{String(cashCard.preview.pnl_effect ?? '0')}
             </p>
             {cashCard.preview.blocked_code != null && (
               <p className="mt-2 text-sm text-red-700">חסום: {String(cashCard.preview.blocked_code)}</p>
@@ -638,6 +930,8 @@ export function AssistantChat(props: {
                   setCashCard(null)
                   setPendingCash(null)
                   setPendingName(null)
+                  setPendingFunding(null)
+                  setPendingPartner(null)
                   cashKeyRef.current = crypto.randomUUID()
                 }}
               >
@@ -651,6 +945,8 @@ export function AssistantChat(props: {
                   setCashCard(null)
                   setPendingCash(null)
                   setPendingName(null)
+                  setPendingFunding(null)
+                  setPendingPartner(null)
                   cashKeyRef.current = crypto.randomUUID()
                 }}
               >
