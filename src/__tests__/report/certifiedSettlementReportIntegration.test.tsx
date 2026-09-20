@@ -12,7 +12,7 @@ import { OwnerSettlementPdfV3 } from '@/lib/pdf/OwnerSettlementPdfV3'
 import { toClientReport } from '@/lib/report/clientReportDto'
 import type { RC3PropertyReport, RC3AccountSection } from '@/lib/report/types'
 import { URIEL_SHAPED_CERTIFIED } from '@/lib/finance/__fixtures__/certifiedClientSettlement'
-import { t } from '@/lib/report/labels'
+import { t, tFill, ownerReportDisplayName } from '@/lib/report/labels'
 import fs from 'fs'
 import path from 'path'
 import type { OwnerFinancialDTO } from '@/lib/owners/ownerWorkspaceTypes'
@@ -96,6 +96,12 @@ describe('certified settlement consumers share DTO/sign rules', () => {
     expect(html).toContain('לא מזומן')
   })
 
+  test('Hebrew owner-facing direction uses the given name overlay', () => {
+    expect(tFill('certOwnerOwesJj', 'he', { owner: ownerReportDisplayName('Uriel', 'he') })).toBe('אוריאל חייב ל-JJ')
+    expect(tFill('certPayableToJjByOwner', 'he', { owner: ownerReportDisplayName('Uriel', 'he') })).toBe('לתשלום ל-JJ על ידי אוריאל')
+    expect(t('certSupportingLedger', 'he')).toBe('פירוט פעילות תומך — אינו יתרת ההתחשבנות הסופית')
+  })
+
   test('Owner Workspace uses certified closing as the hero and keeps RC3 net supporting', () => {
     const html = renderToStaticMarkup(
       <FinancialTab
@@ -134,17 +140,20 @@ describe('certified settlement consumers share DTO/sign rules', () => {
     expect(dto.certifiedSettlement.closingDueToJj).not.toBe(60 + 119677.42)
   })
 
-  test('PDF composes a certified block without changing page count', () => {
+  test('PDF composes a certified cover plus supporting property page', () => {
     const doc: any = OwnerSettlementPdfV3({
       report: report(60),
       lang: 'en',
       certifiedSettlement: URIEL_SHAPED_CERTIFIED,
+      ownerName: 'Alpha',
     })
-    expect(React.Children.toArray(doc.props.children).length).toBe(1)
-    const page = React.Children.toArray(doc.props.children)[0] as any
-    expect(page.props.certifiedSettlement.closingDueToJj).toBe(50677.42)
-    expect(page.props.certifiedSettlement.fifoCreditsTotal).toBe(69000)
-    expect(page.props.report.accounts[0].closing_balance).toBe(60)
+    const pages = React.Children.toArray(doc.props.children) as any[]
+    expect(pages.length).toBe(2)
+    expect(pages[0].props.dto.closingDueToJj).toBe(50677.42)
+    expect(pages[0].props.dto.fifoCreditsTotal).toBe(69000)
+    expect(pages[0].props.ownerName).toBe('Alpha')
+    expect(pages[1].props.supportingLedger).toBe(true)
+    expect(pages[1].props.report.accounts[0].closing_balance).toBe(60)
   })
 })
 
@@ -188,6 +197,7 @@ describe('certified settlement source / security audits', () => {
       'src/lib/owners/ownerWorkspaceService.ts',
       'src/lib/report/getClientReportAction.tsx',
       'src/lib/pdf/OwnerSettlementPdfV3.tsx',
+      'src/lib/pdf/CertifiedSettlementPdf.tsx',
     ]
     for (const file of appFiles) {
       const src = read(file)

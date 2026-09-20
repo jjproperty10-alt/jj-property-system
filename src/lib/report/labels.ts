@@ -214,9 +214,38 @@ const L = {
   certExclusionDoubleCount: { en: 'Excluded from settlement – double representation', he: 'הוצא מההתחשבנות – ייצוג כפול' },
   certClosingDueToJj:   { en: 'Final balance due to JJ',                   he: 'יתרה סופית לתשלום ל-JJ' },
   certClosingDueToClient: { en: 'Final balance due to client',             he: 'יתרה סופית לתשלום ללקוח' },
+  certClosingShort:     { en: 'Final certified balance',                   he: 'יתרה סופית לתשלום' },
   certNoncash:          { en: 'Noncash',                                   he: 'לא מזומן' },
-  certExclusionNote:    { en: 'Shown for explanation only. Arithmetic effect €0.', he: 'מוצג להסבר בלבד. השפעה חשבונאית €0.' },
-  certSupportingLedger: { en: 'Supporting ledger detail',                  he: 'פירוט ספר תומך' },
+  certExclusionNote:    { en: 'Shown for explanation only. Arithmetic effect is zero.', he: 'מוצג להסבר בלבד. השפעה חשבונאית אפס.' },
+  certSupportingLedger: { en: 'Supporting activity detail — not the final settlement balance',
+                          he: 'פירוט פעילות תומך — אינו יתרת ההתחשבנות הסופית' },
+  certOwnerOwesJj:      { en: '{owner} owes JJ',                           he: '{owner} חייב ל-JJ' },
+  certPayableToJjByOwner: { en: 'Payable to JJ by {owner}',                 he: 'לתשלום ל-JJ על ידי {owner}' },
+  certJjOwesOwner:      { en: 'JJ owes {owner}',                           he: 'JJ חייב ל-{owner}' },
+  certPayableToOwnerByJj: { en: 'Payable to {owner} by JJ',                 he: 'לתשלום ל-{owner} על ידי JJ' },
+  certDefaultOwner:     { en: 'The client',                                he: 'הלקוח' },
+  certCutoffLabel:      { en: 'Report cutoff',                             he: 'מועד חתך הדוח' },
+  certStatusLabel:      { en: 'Status',                                    he: 'סטטוס' },
+  certCombinedNote:     { en: 'Combined owner report. Partner separation will follow later',
+                          he: 'דוח בעלים מאוחד. הפרדת שותפים תתבצע בהמשך' },
+  certFifoCreditsTotal: { en: 'Total settlement credits',                  he: 'סה"כ זיכויי יישוב' },
+  certPropertyLinesTitle: { en: 'Certified opening obligations by property', he: 'התחייבויות פתיחה מאושרות לפי נכס' },
+  certOpeningTotal:     { en: 'Opening total',                             he: 'סה"כ פתיחה' },
+  certExclusionCustodyNote: { en: 'Cash held by Jacob remains outside this settlement calculation.',
+                          he: 'מזומן אצל יעקב נשאר מחוץ לחישוב התחשבנות זה.' },
+  certMethodCash:       { en: 'Settlement is separate from cash custody.',  he: 'ההתחשבנות נפרדת ממשמורת המזומן.' },
+  certMethodPnl:        { en: 'Settlement is separate from JJ profit and loss.',
+                          he: 'ההתחשבנות נפרדת מרווח והפסד של החברה.' },
+  certMethodNoncash:    { en: 'Noncash assignment credits reduce settlement by received order only. They are not a client payment, not cashbox movement, and not JJ income.',
+                          he: 'זיכוי המחאה ללא מזומן מקטין את ההתחשבנות לפי סדר קבלה בלבד. אינו תשלום לקוח, אינו תנועת קופה ואינו הכנסה של החברה.' },
+  certCutoffInclusive:  { en: 'Report cutoff is inclusive through the stated date.',
+                          he: 'מועד החתך כולל את התאריך הנקוב במלואו.' },
+  certPeriodUpTo:       { en: 'Up to',                                     he: 'עד' },
+  certPeriodFrom:       { en: 'From',                                      he: 'מ-' },
+  certNotesTitle:       { en: 'Notes',                                     he: 'הערות ושיטה' },
+  certSupportingNet:    { en: 'Supporting activity',                       he: 'פעילות תומכת' },
+  certMonthActivity:    { en: 'Monthly total',                             he: 'סה"כ חודשי' },
+  certCoverTitle:       { en: 'Owner financial statement',                 he: 'דוח פיננסי לבעל הנכס' },
 
   /* ── Final Summary ───────────────────────────────────────────────────────── */
   finalTitle:           { en: 'Settlement Summary',              he: 'סיכום התחשבנות'          },
@@ -294,6 +323,27 @@ export function t(key: LabelKey, lang: Lang = 'en'): string {
   const entry = L[key] as Record<Lang, string> | undefined
   if (!entry) return key
   return entry[lang] ?? entry.en
+}
+
+/** Fill `{name}` placeholders in a translated label. */
+export function tFill(key: LabelKey, lang: Lang, vars: Record<string, string>): string {
+  let out = t(key, lang)
+  for (const [name, value] of Object.entries(vars)) {
+    out = out.split(`{${name}}`).join(value)
+  }
+  return out
+}
+
+const HEBREW_OWNER_DISPLAY: Record<string, string> = {
+  Uriel: 'אוריאל',
+}
+
+/** Client-facing owner name. Hebrew reports use a given-name overlay when known. */
+export function ownerReportDisplayName(canonicalName: string, lang: Lang): string {
+  const trimmed = canonicalName.trim()
+  if (!trimmed) return t('certDefaultOwner', lang)
+  if (lang !== 'he') return trimmed
+  return HEBREW_OWNER_DISPLAY[trimmed] ?? trimmed
 }
 
 /* ──────────────────────────────────────────────────────────────────────────────
