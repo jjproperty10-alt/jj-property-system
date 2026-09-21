@@ -10,7 +10,10 @@ import { redirect, notFound } from 'next/navigation'
 import { authenticateStatementUser } from '@/lib/statements/statementAuthService'
 import { resolveFrameUser } from '@/lib/nav/resolveFrameUser'
 import { listAssistantProperties } from '@/lib/ops/assistant/opsConversationActions'
-import { listClientSettlementEntities } from '@/lib/ops/assistant/clientCashSettlementActions'
+import {
+  listClientSettlementEntities,
+  listPartnerFundingActors,
+} from '@/lib/ops/assistant/clientCashSettlementActions'
 import { AssistantChat } from '@/components/ops/AssistantChat'
 
 export const dynamic = 'force-dynamic'
@@ -35,6 +38,7 @@ export default async function AssistantPage({
   const frame = await resolveFrameUser()
   const catalog = await listAssistantProperties()
   const entities = await listClientSettlementEntities()
+  const partners = await listPartnerFundingActors()
   const conversationId = typeof searchParams?.c === 'string' && searchParams.c.trim()
     ? searchParams.c.trim()
     : null
@@ -44,6 +48,7 @@ export default async function AssistantPage({
       staffPayerName={frame?.name ?? ''}
       catalog={catalog.ok ? catalog.properties : []}
       entities={entities.ok ? entities.entities : []}
+      partners={partners.ok ? partners.actors : []}
       initialConversationId={conversationId}
     />
   )
