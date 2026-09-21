@@ -209,6 +209,7 @@ DECLARE
   ok boolean;
   detail text;
   has_listing boolean;
+  has_status boolean;
   has_guest boolean;
   exec_ok boolean;
   returns_uuid boolean;
@@ -229,6 +230,99 @@ BEGIN
     WHERE table_schema = 'partnership' AND table_name = 'owner_statement_line' AND column_name = 'listing_id'
   ) INTO has_listing;
   PERFORM pg_temp.record('line_has_no_listing_id', NOT has_listing, 'listing_id_present=' || has_listing::text);
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'partnership' AND table_name = 'owner_statement_document' AND column_name = 'status'
+  ) INTO has_status;
+  PERFORM pg_temp.record('document_has_no_status', NOT has_status, 'status_present=' || has_status::text);
+
+  PERFORM pg_temp.record(
+    'session_is_postgres',
+    current_user = 'postgres',
+    'current_user=' || current_user
+  );
+  PERFORM pg_temp.record(
+    'supabase_admin_exists',
+    EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_admin'),
+    'role'
+  );
+  PERFORM pg_temp.record(
+    'postgres_not_recorded_member_of_supabase_admin',
+    NOT EXISTS (
+      SELECT 1
+      FROM pg_auth_members m
+      JOIN pg_roles mem ON mem.oid = m.member
+      JOIN pg_roles tgt ON tgt.oid = m.roleid
+      WHERE mem.rolname = 'postgres' AND tgt.rolname = 'supabase_admin'
+    ),
+    'membership'
+  );
+  IF to_regclass('public.os_ddl_log') IS NULL THEN
+    PERFORM pg_temp.record('creator_default_privileges_secured', false, 'missing ddl log');
+    PERFORM pg_temp.record(
+      'supabase_admin_defaults_untouched',
+      NOT EXISTS (
+        SELECT 1
+        FROM pg_default_acl d
+        JOIN pg_roles r ON r.oid = d.defaclrole
+        JOIN pg_namespace n ON n.oid = d.defaclnamespace
+        WHERE n.nspname = 'partnership' AND r.rolname = 'supabase_admin'
+      ),
+      'acl'
+    );
+  ELSE
+    PERFORM pg_temp.record(
+      'creator_default_privileges_secured',
+      EXISTS (
+        SELECT 1
+        FROM public.os_ddl_log
+        WHERE command_tag = 'ALTER DEFAULT PRIVILEGES'
+      ),
+      'ddl_log'
+    );
+    PERFORM pg_temp.record(
+      'supabase_admin_defaults_untouched',
+      NOT EXISTS (
+        SELECT 1
+        FROM pg_default_acl d
+        JOIN pg_roles r ON r.oid = d.defaclrole
+        JOIN pg_namespace n ON n.oid = d.defaclnamespace
+        WHERE n.nspname = 'partnership' AND r.rolname = 'supabase_admin'
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM public.os_ddl_log
+        WHERE command_tag = 'ALTER DEFAULT PRIVILEGES'
+          AND (
+            COALESCE(object_identity, '') ILIKE '%supabase_admin%'
+            OR COALESCE(object_type, '') ILIKE '%supabase_admin%'
+          )
+      ),
+      'acl'
+    );
+  END IF;
+  PERFORM pg_temp.record(
+    'definer_empty_search_path',
+    NOT EXISTS (
+      SELECT 1
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname IN ('partnership', 'public')
+        AND p.prosecdef
+        AND p.proname IN (
+          'ingest_owner_statement_document',
+          'read_owner_statement_for_listing',
+          'void_owner_statement_document',
+          'assert_document_not_certified',
+          'ingest_partnership_owner_statement_document',
+          'read_partnership_owner_statement_for_listing',
+          'void_partnership_owner_statement_document'
+        )
+        AND COALESCE(p.proconfig, ARRAY[]::text[]) IS DISTINCT FROM ARRAY['search_path=""']
+    ),
+    'search_path'
+  );
 
   SELECT EXISTS (
     SELECT 1 FROM information_schema.columns
@@ -351,6 +445,16 @@ BEGIN
   END;
 
   BEGIN
+    SET ROLE authenticated;
+    INSERT INTO partnership.owner_statement_document DEFAULT VALUES;
+    RESET ROLE;
+    PERFORM pg_temp.record('authenticated_direct_insert_denied', false, 'insert allowed');
+  EXCEPTION WHEN others THEN
+    RESET ROLE;
+    PERFORM pg_temp.record('authenticated_direct_insert_denied', true, SQLERRM);
+  END;
+
+  BEGIN
     SET ROLE service_role;
     INSERT INTO partnership.owner_statement_document DEFAULT VALUES;
     RESET ROLE;
@@ -358,6 +462,16 @@ BEGIN
   EXCEPTION WHEN others THEN
     RESET ROLE;
     PERFORM pg_temp.record('service_role_direct_insert_denied', true, SQLERRM);
+  END;
+
+  BEGIN
+    SET ROLE anon;
+    INSERT INTO partnership.owner_statement_document DEFAULT VALUES;
+    RESET ROLE;
+    PERFORM pg_temp.record('anon_direct_insert_denied', false, 'insert allowed');
+  EXCEPTION WHEN others THEN
+    RESET ROLE;
+    PERFORM pg_temp.record('anon_direct_insert_denied', true, SQLERRM);
   END;
 
   -- Happy ingest

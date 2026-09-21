@@ -1206,26 +1206,55 @@ GRANT EXECUTE ON FUNCTION public.ingest_partnership_owner_statement_document(JSO
 GRANT EXECUTE ON FUNCTION public.read_partnership_owner_statement_for_listing(TEXT, DATE, DATE) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.void_partnership_owner_statement_document(UUID, TEXT, TEXT) TO authenticated;
 
+-- Default privileges are owned by a role, not by the schema. This migration
+-- protects the deploying creator role (current_user; Production apply uses
+-- postgres) and explicitly REVOKE ALL on every object it creates.
+-- It does not change supabase_admin default privileges unless the session is
+-- supabase_admin or has a recorded pg_auth_members membership of that role.
+-- Catalog membership is used; superuser-implied membership is not.
+
 DO $priv$
 DECLARE
   r TEXT;
+  v_roles TEXT[];
 BEGIN
-  FOREACH r IN ARRAY ARRAY['postgres', 'supabase_admin']
+  SELECT array_agg(x.rolname ORDER BY x.rolname)
+    INTO v_roles
+  FROM (
+    SELECT DISTINCT u.rolname
+    FROM unnest(ARRAY[current_user::text, 'postgres', 'supabase_admin']) AS u(rolname)
+    WHERE EXISTS (SELECT 1 FROM pg_catalog.pg_roles pr WHERE pr.rolname = u.rolname)
+      AND (
+        u.rolname = current_user
+        OR EXISTS (
+          SELECT 1
+          FROM pg_catalog.pg_auth_members m
+          JOIN pg_catalog.pg_roles mem ON mem.oid = m.member
+          JOIN pg_catalog.pg_roles tgt ON tgt.oid = m.roleid
+          WHERE mem.rolname = current_user
+            AND tgt.rolname = u.rolname
+        )
+      )
+  ) x;
+
+  IF v_roles IS NULL OR pg_catalog.array_length(v_roles, 1) IS NULL THEN
+    RAISE EXCEPTION '[privileges] no authorized role for ALTER DEFAULT PRIVILEGES';
+  END IF;
+
+  FOREACH r IN ARRAY v_roles
   LOOP
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
-      EXECUTE format(
-        'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA partnership REVOKE ALL ON TABLES FROM PUBLIC, anon, authenticated, service_role',
-        r
-      );
-      EXECUTE format(
-        'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA partnership REVOKE ALL ON SEQUENCES FROM PUBLIC, anon, authenticated, service_role',
-        r
-      );
-      EXECUTE format(
-        'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA partnership REVOKE ALL ON FUNCTIONS FROM PUBLIC, anon, authenticated, service_role',
-        r
-      );
-    END IF;
+    EXECUTE pg_catalog.format(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA partnership REVOKE ALL ON TABLES FROM PUBLIC, anon, authenticated, service_role',
+      r
+    );
+    EXECUTE pg_catalog.format(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA partnership REVOKE ALL ON SEQUENCES FROM PUBLIC, anon, authenticated, service_role',
+      r
+    );
+    EXECUTE pg_catalog.format(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA partnership REVOKE ALL ON FUNCTIONS FROM PUBLIC, anon, authenticated, service_role',
+      r
+    );
   END LOOP;
 END;
 $priv$;

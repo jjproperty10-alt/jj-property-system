@@ -76,6 +76,15 @@ function assertMigrationGuards(sql) {
   if (/listing_id\s+TEXT NOT NULL/.test(ddl.split('owner_statement_line')[1] || '')) {
     throw new Error('line table must not contain listing_id')
   }
+  if (/FOREACH r IN ARRAY ARRAY\['postgres',\s*'supabase_admin'\]/.test(ddl)) {
+    throw new Error('migration must not unconditionally ALTER DEFAULT PRIVILEGES for supabase_admin')
+  }
+  if (!/pg_auth_members/.test(ddl) || !/current_user/.test(ddl)) {
+    throw new Error('migration must gate default privileges on current_user and catalog membership')
+  }
+  if (/EXCEPTION WHEN insufficient_privilege/.test(ddl) || /EXCEPTION WHEN OTHERS THEN\s+NULL/i.test(ddl)) {
+    throw new Error('migration must not swallow privilege errors')
+  }
 }
 
 function line(res, ci, co, gross, net) {
@@ -271,6 +280,105 @@ async function main() {
       if (path.basename(file) === path.basename(MIGRATION)) {
         grantsBefore = await grantsFor(CASH_WRAPPERS)
         console.log('CASH_WRAPPER_GRANTS_BEFORE ' + JSON.stringify(grantsBefore))
+        const session = await client.query('SELECT current_user AS u, current_user = $1 AS is_postgres', [
+          'postgres',
+        ])
+        if (session.rows[0].is_postgres !== true) {
+          throw new Error('migration session must be postgres, got ' + session.rows[0].u)
+        }
+        await client.query(`
+          DO $role$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_admin') THEN
+              CREATE ROLE supabase_admin NOLOGIN;
+            END IF;
+          END
+          $role$;
+        `)
+        const member = await client.query(`
+          SELECT EXISTS (
+            SELECT 1
+            FROM pg_auth_members m
+            JOIN pg_roles mem ON mem.oid = m.member
+            JOIN pg_roles tgt ON tgt.oid = m.roleid
+            WHERE mem.rolname = current_user AND tgt.rolname = 'supabase_admin'
+          ) AS is_member
+        `)
+        if (member.rows[0].is_member === true) {
+          await client.query('REVOKE supabase_admin FROM CURRENT_USER')
+        }
+        const memberAfter = await client.query(`
+          SELECT EXISTS (
+            SELECT 1
+            FROM pg_auth_members m
+            JOIN pg_roles mem ON mem.oid = m.member
+            JOIN pg_roles tgt ON tgt.oid = m.roleid
+            WHERE mem.rolname = current_user AND tgt.rolname = 'supabase_admin'
+          ) AS is_member
+        `)
+        if (memberAfter.rows[0].is_member === true) {
+          throw new Error('postgres still recorded as member of supabase_admin')
+        }
+        console.log('PRODUCTION_LIKE_ROLES session=postgres supabase_admin=exists membership=false')
+        await client.query(`
+          DO $repro$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'jj_os_nonsuper') THEN
+              CREATE ROLE jj_os_nonsuper NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT LOGIN PASSWORD 'testonly';
+            END IF;
+          END
+          $repro$;
+        `)
+        await client.query('BEGIN')
+        try {
+          await client.query('SET LOCAL ROLE jj_os_nonsuper')
+          const who = await client.query('SELECT current_user AS u, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS super')
+          if (who.rows[0].u !== 'jj_os_nonsuper' || who.rows[0].super !== false) {
+            throw new Error('local role repro did not run as NOSUPERUSER jj_os_nonsuper')
+          }
+          try {
+            await client.query(`
+              ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin
+              IN SCHEMA public
+              REVOKE ALL ON TABLES FROM PUBLIC
+            `)
+            throw new Error('expected 42501 for unauthorized supabase_admin default privileges')
+          } catch (err) {
+            const msg = String(err && err.message)
+            if (!/42501|permission denied to change default privileges/i.test(msg)) {
+              throw err
+            }
+            console.log('LOCAL_ROLE_REPRO_42501 ' + msg)
+          }
+        } finally {
+          await client.query('ROLLBACK')
+        }
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS public.os_ddl_log (
+            command_tag text NOT NULL,
+            object_type text,
+            object_identity text
+          )
+        `)
+        await client.query(`
+          CREATE OR REPLACE FUNCTION public.os_ddl_log_fn()
+          RETURNS event_trigger
+          LANGUAGE plpgsql
+          SET search_path TO ''
+          AS $fn$
+          BEGIN
+            INSERT INTO public.os_ddl_log(command_tag, object_type, object_identity)
+            SELECT command_tag, object_type, object_identity
+            FROM pg_catalog.pg_event_trigger_ddl_commands();
+          END;
+          $fn$;
+        `)
+        await client.query('DROP EVENT TRIGGER IF EXISTS os_ddl_log_trg')
+        await client.query(`
+          CREATE EVENT TRIGGER os_ddl_log_trg
+            ON ddl_command_end
+            EXECUTE FUNCTION public.os_ddl_log_fn()
+        `)
       }
       const lastResult = await client.query(fs.readFileSync(file, 'utf8'))
       if (path.basename(file) === path.basename(MIGRATION)) {
@@ -280,6 +388,47 @@ async function main() {
           throw new Error('PR243 wrapper grants changed after Owner Statement migration')
         }
         console.log('PR243_WRAPPER_GRANTS_UNCHANGED')
+        const emptyOs = await client.query(`
+          SELECT
+            (SELECT count(*) FROM partnership.owner_statement_document) AS documents,
+            (SELECT count(*) FROM partnership.owner_statement_line) AS lines,
+            (SELECT count(*) FROM partnership.owner_statement_document_event) AS events,
+            (SELECT count(*) FROM partnership.owner_statement_audit) AS audits
+        `)
+        console.log('OS_TABLES_EMPTY_AFTER_INSTALL ' + JSON.stringify(emptyOs.rows[0]))
+        if (Object.values(emptyOs.rows[0]).some((n) => Number(n) !== 0)) {
+          throw new Error('OS tables not empty after clean install')
+        }
+        const defAcl = await client.query(`
+          SELECT r.rolname
+          FROM pg_default_acl d
+          JOIN pg_roles r ON r.oid = d.defaclrole
+          JOIN pg_namespace n ON n.oid = d.defaclnamespace
+          WHERE n.nspname = 'partnership'
+          ORDER BY r.rolname
+        `)
+        const aclRoles = defAcl.rows.map((r) => r.rolname)
+        console.log('PARTNERSHIP_DEFAULT_ACL_ROLES ' + JSON.stringify(aclRoles))
+        if (aclRoles.includes('supabase_admin')) {
+          throw new Error('supabase_admin default privileges were changed without authorization')
+        }
+        const ddlAll = await client.query(`
+          SELECT command_tag, object_type, object_identity
+          FROM public.os_ddl_log
+          WHERE command_tag = 'ALTER DEFAULT PRIVILEGES'
+        `)
+        console.log('ALTER_DEFAULT_PRIVILEGES_LOG ' + JSON.stringify(ddlAll.rows))
+        if (ddlAll.rows.length === 0) {
+          throw new Error('expected ALTER DEFAULT PRIVILEGES for the authorized creator role')
+        }
+        const ddlHits = ddlAll.rows.filter(
+          (row) =>
+            String(row.object_identity || '').toLowerCase().includes('supabase_admin') ||
+            String(row.object_type || '').toLowerCase().includes('supabase_admin'),
+        )
+        if (ddlHits.length > 0) {
+          throw new Error('unauthorized supabase_admin default-privilege statement was emitted')
+        }
         const osGrants = await grantsFor([
           'public.ingest_partnership_owner_statement_document(jsonb)',
           'public.read_partnership_owner_statement_for_listing(text,date,date)',
