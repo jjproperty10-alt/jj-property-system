@@ -199,8 +199,11 @@ describe('certified settlement source / security audits', () => {
       'src/lib/pdf/OwnerSettlementPdfV3.tsx',
       'src/lib/pdf/CertifiedSettlementPdf.tsx',
       'src/lib/pdf/CertifiedOwnerStatementPdf.tsx',
+      'src/lib/pdf/CertifiedPropertyAccountPdf.tsx',
       'src/lib/finance/certifiedPropertyBridge.ts',
       'src/lib/report/certifiedPropertyBridgePack.ts',
+      'src/lib/finance/certifiedPropertyAccount.ts',
+      'src/lib/report/certifiedPropertyAccountPack.ts',
       'src/app/(app)/owners/[slug]/report/pdf/route.ts',
     ]
     for (const file of appFiles) {
@@ -218,10 +221,16 @@ describe('certified settlement source / security audits', () => {
   test('client certified PDFs do not mention Jacob cash custody', () => {
     const cover = read('src/lib/pdf/CertifiedSettlementPdf.tsx')
     const statement = read('src/lib/pdf/CertifiedOwnerStatementPdf.tsx')
+    const account = read('src/lib/pdf/CertifiedPropertyAccountPdf.tsx')
     expect(cover).not.toContain('certExclusionCustodyNote')
     expect(cover).not.toContain('Jacob')
     expect(statement).not.toContain('Jacob')
     expect(statement).not.toContain('RC3')
     expect(statement).not.toContain('Overall Net')
+    expect(account).not.toContain('Jacob')
+    expect(account).not.toContain('RC3')
+    expect(account).not.toContain('Overall Net')
+    expect(account).not.toContain('FIFO')
+    expect(account).not.toContain('Current Balance')
   })
 })

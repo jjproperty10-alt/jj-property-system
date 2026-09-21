@@ -40,8 +40,8 @@ import { getOwnerClientReport, getPortfolioOwnerNet } from '../report/ownerClien
 import { renovationGroupHeaders, splitOperatingIncome, splitOperatingIncomeTotals, computeStatementComponents } from '../report/statementPresentation'
 import type { CertifiedClientSettlementAvailable } from '../finance/certifiedClientSettlementTypes'
 import { CertifiedCoverPage, CertifiedSupportingBanner } from './CertifiedSettlementPdf'
-import { CertifiedOwnerStatementPdf } from './CertifiedOwnerStatementPdf'
-import { composeLiveCertifiedOwnerStatement } from '../report/certifiedPropertyBridgePack'
+import { CertifiedPropertyAccountPdf } from './CertifiedPropertyAccountPdf'
+import { composeLiveCertifiedPropertyAccount } from '../report/certifiedPropertyAccountPack'
 
 /* ─── Palette ───────────────────────────────────────────────────────────────── */
 
@@ -1203,9 +1203,9 @@ function certifiedOrLegacyDocument({
   fallback: () => React.ReactElement
 }): React.ReactElement {
   if (!certifiedSettlement) return fallback()
-  const composed = composeLiveCertifiedOwnerStatement(certifiedSettlement)
+  const composed = composeLiveCertifiedPropertyAccount(certifiedSettlement)
   if (composed.status === 'ready') {
-    return CertifiedOwnerStatementPdf({
+    return CertifiedPropertyAccountPdf({
       statement: composed.statement,
       lang,
       ownerName,

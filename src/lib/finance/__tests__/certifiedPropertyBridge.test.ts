@@ -101,7 +101,7 @@ describe('certified property bridge compose', () => {
     })
     const pages = React.Children.toArray(doc.props.children) as any[]
     expect(pages.length).toBe(10)
-    expect(pages[0].props.dto.closingDueToJj).toBe(50701.54)
+    expect(pages[0].props.statement.certified.closingDueToJj).toBe(50701.54)
     expect(pages[pages.length - 1].props.statement.certified.closingDueToJj).toBe(50701.54)
   })
 })

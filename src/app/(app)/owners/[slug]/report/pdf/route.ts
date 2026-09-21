@@ -29,10 +29,10 @@ import { getOwnerWorkspace } from '@/lib/owners/ownerWorkspaceService'
 import { fetchRC3Report } from '@/lib/report/fetchReport'
 import { createServiceClient } from '@/lib/supabase'
 import { OwnerSettlementPdfV3, OwnerPortfolioPdf, CertifiedBridgeBlockedError } from '@/lib/pdf/OwnerSettlementPdfV3'
-import { CertifiedOwnerStatementPdf } from '@/lib/pdf/CertifiedOwnerStatementPdf'
+import { CertifiedPropertyAccountPdf } from '@/lib/pdf/CertifiedPropertyAccountPdf'
 import { loadCertifiedSettlementForEntity } from '@/lib/finance/certifiedClientSettlementAdapter'
 import { isCertifiedAvailable } from '@/lib/finance/certifiedClientSettlementPresentation'
-import { composeLiveCertifiedOwnerStatement } from '@/lib/report/certifiedPropertyBridgePack'
+import { composeLiveCertifiedPropertyAccount } from '@/lib/report/certifiedPropertyAccountPack'
 import type { CertifiedClientSettlementAvailable } from '@/lib/finance/certifiedClientSettlementTypes'
 import type { Lang } from '@/lib/report/labels'
 import type { ReportType } from '@/lib/report/reportTypes'
@@ -217,13 +217,13 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
   }
 
   if (certifiedSettlement) {
-    const composed = composeLiveCertifiedOwnerStatement(certifiedSettlement)
+    const composed = composeLiveCertifiedPropertyAccount(certifiedSettlement)
     if (composed.status === 'blocked') {
       return new Response('Could not generate report', { status: 500 })
     }
     if (composed.status === 'ready') {
       registerPdfFonts()
-      const element = React.createElement(CertifiedOwnerStatementPdf, {
+      const element = React.createElement(CertifiedPropertyAccountPdf, {
         statement: composed.statement,
         lang,
         ownerName: workspace.identity.name,
