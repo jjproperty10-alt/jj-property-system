@@ -6,7 +6,7 @@
 import React from 'react'
 import { Page, Text, View, StyleSheet } from '@react-pdf/renderer'
 import { fmt, fmtSigned } from './formatters'
-import { rtlRowDirection, rtlTextStyle } from './rtlHelpers'
+import { rtlRowDirection, rtlSentence, rtlTextStyle } from './rtlHelpers'
 import type { CertifiedClientSettlementAvailable } from '../finance/certifiedClientSettlementTypes'
 import {
   fifoCreditDisplayAmount,
@@ -233,7 +233,7 @@ export function CertifiedCoverPage({
         <Text style={[s.status, rtlTextStyle(lang)]}>
           {t('certStatusLabel', lang)}: {t('certSectionTitle', lang)}
         </Text>
-        <Text style={[s.note, rtlTextStyle(lang)]}>{t('certCombinedNote', lang)}</Text>
+        <Text style={[s.note, rtlTextStyle(lang)]}>{rtlSentence(t('certCombinedNote', lang), lang)}</Text>
       </View>
 
       <View style={[heroStyle, { padding: 10, marginTop: 6, marginBottom: 8 }]} wrap={false}>
@@ -277,14 +277,14 @@ export function CertifiedCoverPage({
             label={t('certExclusionDoubleCount', lang)}
             amount={fmt(exclusion.settlementAmount)}
           />
-          <Text style={[s.method, rtlTextStyle(lang)]}>{t('certExclusionNote', lang)}</Text>
-          <Text style={[s.method, rtlTextStyle(lang)]}>{t('certExclusionEffectZero', lang)}</Text>
+          <Text style={[s.method, rtlTextStyle(lang)]}>{rtlSentence(t('certExclusionNote', lang), lang)}</Text>
+          <Text style={[s.method, rtlTextStyle(lang)]}>{rtlSentence(t('certExclusionEffectZero', lang), lang)}</Text>
         </View>
       ))}
 
       <View style={{ marginTop: 6 }} wrap={false}>
         <Text style={[s.sectionTitle, rtlTextStyle(lang)]}>{t('certNotesTitle', lang)}</Text>
-        <Text style={[s.method, rtlTextStyle(lang)]}>{`${t('certCutoffInclusive', lang)} ${cutoff}`}</Text>
+        <Text style={[s.method, rtlTextStyle(lang)]}>{rtlSentence(`${t('certCutoffInclusive', lang)} ${cutoff}`, lang)}</Text>
       </View>
 
       <View style={s.footer} fixed>

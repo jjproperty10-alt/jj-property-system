@@ -86,7 +86,7 @@ const PACKS: readonly CertifiedPropertyBridgePack[] = [
       effectRow('renovation', 'Supporting property total', 'סה"כ תומך בנכס', 5589, 'system_verified'),
       effectRow('adjustment', 'Concrete cost not charged to owner', 'עלות בטון שאינה מחויבת לבעלים', -1500, 'approved_adjustment', {
         detailEn: 'The owner was charged €4,500 once for the two concrete jobs. The additional €1,500 cost is not charged again.',
-        detailHe: 'הבעלים חויב €4,500 פעם אחת עבור שני עבודות הבטון. עלות נוספת של €1,500 אינה מחויבת שוב.',
+        detailHe: 'הבעלים חויב €4,500 פעם אחת עבור שתי עבודות הבטון. עלות נוספת של €1,500 אינה מחויבת שוב.',
       }),
     ],
   },

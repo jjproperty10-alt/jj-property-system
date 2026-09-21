@@ -61,6 +61,8 @@ describe('certified property bridge compose', () => {
     expect(studio?.certifiedBalanceDueToJj).toBe(4089)
     expect(studio?.components.some((c) => c.effectDueToJj === -1500 && c.sourceStatus === 'approved_adjustment')).toBe(true)
     expect(studio?.components.some((c) => /internal|Jacob|JJ P&L/i.test(`${c.labelEn} ${c.detailEn ?? ''}`))).toBe(false)
+    expect(studio?.components.some((c) => (c.detailHe ?? '').includes('שתי עבודות הבטון'))).toBe(true)
+    expect(studio?.components.some((c) => (c.detailHe ?? '').includes('שני עבודות'))).toBe(false)
     const oro = composed.statement.properties.find((p) => p.propertyName === 'Uriel Oroklini 2 Bed')
     expect(oro?.components.map((c) => c.labelEn)).toEqual(['Key', 'Lock replacement', 'Cleaning', 'Plumber'])
     const metro = composed.statement.properties.find((p) => p.propertyName === 'Uriel Sharon English Metro')

@@ -6,7 +6,7 @@
 import React from 'react'
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
 import { fmt, fmtSigned } from './formatters'
-import { rtlRowDirection, rtlTextStyle } from './rtlHelpers'
+import { rtlRowDirection, rtlSentence, rtlTextStyle } from './rtlHelpers'
 import { CertifiedCoverPage, DirectionLine, JjLeadsDirectionLine } from './CertifiedSettlementPdf'
 import type {
   CertifiedBridgeComponent,
@@ -285,7 +285,9 @@ function PropertyBridgePage({
                 <Text style={{ width: colW[3], fontSize: 7 }}>{fmtSigned(row.effectDueToJj)}</Text>
               </View>
               {row.detailHe || row.detailEn ? (
-                <Text style={[s.muted, { width: '100%' }, rtlTextStyle(lang)]}>{lang === 'he' ? row.detailHe : row.detailEn}</Text>
+                <Text style={[s.muted, { width: '100%' }, rtlTextStyle(lang)]}>
+                  {rtlSentence(lang === 'he' ? (row.detailHe ?? '') : (row.detailEn ?? ''), lang)}
+                </Text>
               ) : null}
             </View>
           ))}
@@ -301,7 +303,7 @@ function PropertyBridgePage({
       {page.strMonths.length > 0 ? <StrTable rows={page.strMonths} lang={lang} /> : null}
 
       {(lang === 'he' ? page.notesHe : page.notesEn).map((note, index) => (
-        <Text key={`n-${index}`} style={[s.muted, rtlTextStyle(lang)]}>{note}</Text>
+        <Text key={`n-${index}`} style={[s.muted, rtlTextStyle(lang)]}>{rtlSentence(note, lang)}</Text>
       ))}
 
       <Footer owner={owner} cutoff={cutoff} lang={lang} />
@@ -394,8 +396,8 @@ function CrossCheckPage({
       {certified.exclusions.map((exclusion, index) => (
         <View key={`ex-${index}`} style={{ marginTop: 10 }} wrap={false}>
           <Money lang={lang} label={t('certExclusionDoubleCount', lang)} amount={fmt(exclusion.settlementAmount)} />
-          <Text style={[s.muted, rtlTextStyle(lang)]}>{t('certExclusionNote', lang)}</Text>
-          <Text style={[s.muted, rtlTextStyle(lang)]}>{t('certExclusionEffectZero', lang)}</Text>
+          <Text style={[s.muted, rtlTextStyle(lang)]}>{rtlSentence(t('certExclusionNote', lang), lang)}</Text>
+          <Text style={[s.muted, rtlTextStyle(lang)]}>{rtlSentence(t('certExclusionEffectZero', lang), lang)}</Text>
         </View>
       ))}
       <Footer owner={owner} cutoff={cutoff} lang={lang} />
