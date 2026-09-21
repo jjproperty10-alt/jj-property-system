@@ -133,4 +133,13 @@ describe('VM1 Owner Statement store is not wired into Operations', () => {
     expect(admitted.lines[0]?.admissionState).toBe('excluded')
     expect(admitted.lines[0]?.admittedCandidate).toBe(false)
   })
+
+  it('gates default privileges on catalog membership instead of supabase_admin unconditionally', () => {
+    const sql = read('supabase/migrations/20260920120000_partnership_owner_statement_evidence.sql')
+    expect(sql).toContain('pg_auth_members')
+    expect(sql).toContain('current_user')
+    expect(sql).not.toMatch(/FOREACH r IN ARRAY ARRAY\['postgres',\s*'supabase_admin'\]/)
+    expect(sql).not.toMatch(/EXCEPTION WHEN insufficient_privilege/)
+    expect(sql).not.toContain('SET ROLE supabase_admin')
+  })
 })
