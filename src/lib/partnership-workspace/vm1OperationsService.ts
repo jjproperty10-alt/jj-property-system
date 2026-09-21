@@ -1,19 +1,20 @@
 /**
  * VM1 Property Operations — server load path.
  *
- * Auth is enforced by the page. This module only reads through the Phase 1
- * identity adapter. No settlement, no ledger combination, no DB write.
+ * Auth is enforced by the page. Identity/expense use the injected identity
+ * client. Owner Statement evidence is read through a separate user-JWT
+ * client. No settlement, no ledger combination, no DB write, no ingest,
+ * no void, no admission from stored evidence, no partner split.
  *
  * Loading order:
  *   1. parse range
  *   2. loadVm1Identity
- *   3. identity failure → blocked workspace, no expense SELECT
- *   4. verified identity → Draft admission WITHOUT Owner Statement store
- *   5. verified identity → expense SELECT
- *   6. expense failure does not collapse reservations/forecast
+ *   3. identity failure → blocked workspace, no expense SELECT, no OS read
+ *   4. verified identity → JWT Owner Statement reader (evidence only)
+ *   5. Draft admission WITHOUT stored Owner Statement evidence
+ *   6. verified identity → expense SELECT
+ *   7. expense failure does not collapse reservations/forecast
  *
- * Canonical stored Hostaway Owner Statement evidence is not attached in this
- * slice. Raw Hostaway reservation payout is operational evidence only.
  * server-only.
  */
 
@@ -26,9 +27,22 @@ import type { Vm1ExpenseAdmissionLine } from './vm1ExpenseAdmission'
 import { forecastVm1Reservations, type Vm1ForecastLine } from './vm1ForecastCalculator'
 import { loadVm1Identity, type Vm1IdentityResult, type Vm1RpcClient } from './vm1IdentityAdapter'
 import { parseVm1OperationsRange, utcTodayIso } from './vm1OperationsPresentation'
-import { VM1_OS_EVIDENCE_REASON, type Vm1OwnerStatementEvidenceLine } from './vm1OwnerStatementEvidence'
+import {
+  readVm1PartnershipOwnerStatementForListing,
+  type Vm1OwnerStatementDisplayLine,
+  type Vm1OwnerStatementJwtClient,
+  type Vm1OwnerStatementStoreRead,
+} from './vm1OwnerStatementStoreReader'
 
 export type Vm1OperationsClient = Vm1RpcClient
+
+export type Vm1OwnerStatementEvidenceState =
+  | { readonly ok: true; readonly kind: 'effective' }
+  | {
+      readonly ok: false
+      readonly kind: Exclude<Vm1OwnerStatementStoreRead['kind'], 'effective'>
+      readonly reason: string
+    }
 
 export type Vm1OperationsLoadResult =
   | {
@@ -39,8 +53,8 @@ export type Vm1OperationsLoadResult =
       readonly reservations: Extract<Vm1IdentityResult, { ok: true }>['reservations']
       readonly forecastLines: readonly Vm1ForecastLine[]
       readonly draftAdmissionLines: readonly Vm1DraftAdmissionLine[]
-      readonly ownerStatementLines: readonly Vm1OwnerStatementEvidenceLine[]
-      readonly ownerStatementEvidence: { readonly ok: false; readonly reason: string }
+      readonly ownerStatementLines: readonly Vm1OwnerStatementDisplayLine[]
+      readonly ownerStatementEvidence: Vm1OwnerStatementEvidenceState
       readonly expenseAdmission: Vm1ExpenseAdmissionLine
     }
   | {
@@ -53,9 +67,15 @@ export type Vm1OperationsLoadResult =
 
 export interface Vm1OperationsLoadInput {
   readonly client: Vm1OperationsClient
+  readonly ownerStatementClient: Vm1OwnerStatementJwtClient
   readonly fromParam?: string | string[]
   readonly toParam?: string | string[]
   readonly now?: Date
+}
+
+function toEvidenceState(read: Vm1OwnerStatementStoreRead): Vm1OwnerStatementEvidenceState {
+  if (read.ok) return { ok: true, kind: 'effective' }
+  return { ok: false, kind: read.kind, reason: read.reason }
 }
 
 export async function loadVm1OperationsView(
@@ -91,10 +111,16 @@ export async function loadVm1OperationsView(
   }
 
   const asOfIso = utcTodayIso(input.now)
-  const ownerStatementEvidence = {
-    ok: false as const,
-    reason: VM1_OS_EVIDENCE_REASON.missingStore,
-  }
+  const storeRead = await readVm1PartnershipOwnerStatementForListing({
+    client: input.ownerStatementClient,
+    listingId: loaded.identity.hostawayListingId,
+    canonicalPropertyId: loaded.identity.canonicalPropertyId,
+  })
+  const ownerStatementEvidence = toEvidenceState(storeRead)
+  const ownerStatementLines = storeRead.ok
+    ? storeRead.lines.filter((line) => !certifiedReservationIds.has(line.reservationId))
+    : []
+
   const admission = admitVm1DraftReservations(loaded.reservations, {
     asOfIso,
     certifiedReservationIds,
@@ -124,7 +150,7 @@ export async function loadVm1OperationsView(
       asOfIso,
     }),
     draftAdmissionLines: admission.lines,
-    ownerStatementLines: [],
+    ownerStatementLines,
     ownerStatementEvidence,
     expenseAdmission,
   }

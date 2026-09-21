@@ -45,6 +45,21 @@ export const VM1_OS_EVIDENCE_STAFF_NOTE =
 export const VM1_OS_EVIDENCE_MISSING_STORE_LABEL =
   'Canonical stored Hostaway Owner Statement evidence is not attached. Draft revenue is not admitted.' as const
 
+export const VM1_OS_EVIDENCE_MISSING_TITLE = 'לא נמצא Owner Statement אפקטיבי לתקופה זו' as const
+
+export const VM1_OS_EVIDENCE_MISSING_LABEL =
+  'No effective stored Owner Statement is attached for this period. Draft revenue is not admitted.' as const
+
+export const VM1_OS_EVIDENCE_UNAVAILABLE_TITLE = 'Owner Statement evidence could not be read' as const
+
+export const VM1_OS_EVIDENCE_UNAVAILABLE_LABEL =
+  'The Owner Statement store could not be read. This is not zero income.' as const
+
+export const VM1_OS_EVIDENCE_CONFLICT_TITLE = 'Owner Statement evidence is blocked' as const
+
+export const VM1_OS_EVIDENCE_CONFLICT_LABEL =
+  'Stored Owner Statement evidence is in conflict. This is not zero income.' as const
+
 export const VM1_DRAFT_ADMISSION_STATE_LABEL = {
   admitted: 'Draft candidate',
   blocked: 'Blocked',

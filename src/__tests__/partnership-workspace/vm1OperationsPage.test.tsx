@@ -47,6 +47,11 @@ jest.mock('@/lib/supabase', () => ({
   createServiceClient: () => createServiceClientMock(),
 }))
 
+const createJwtClientMock = jest.fn(() => ({ rpc: jest.fn() }))
+jest.mock('@/lib/supabaseServer', () => ({
+  createSupabaseServerClient: () => createJwtClientMock(),
+}))
+
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import Page from '@/app/(app)/finance/external-partner/avi/operations/page'
@@ -62,6 +67,7 @@ beforeEach(() => {
   authMock.mockClear()
   loadMock.mockReset()
   createServiceClientMock.mockClear()
+  createJwtClientMock.mockClear()
 })
 
 describe('VM1 operations route — staff authorization (fail closed)', () => {
@@ -71,6 +77,7 @@ describe('VM1 operations route — staff authorization (fail closed)', () => {
     expect(redirectMock).toHaveBeenCalledWith('/login')
     expect(loadMock).not.toHaveBeenCalled()
     expect(createServiceClientMock).not.toHaveBeenCalled()
+    expect(createJwtClientMock).not.toHaveBeenCalled()
   })
 
   it('authenticated non-staff → notFound(), data NOT loaded', async () => {
@@ -102,8 +109,8 @@ describe('VM1 operations route — staff authorization (fail closed)', () => {
       ownerStatementLines: [],
       ownerStatementEvidence: {
         ok: false,
-        reason:
-          'Canonical stored Hostaway Owner Statement evidence is not attached. Draft revenue is not admitted.',
+        kind: 'missing_evidence',
+        reason: 'No effective Owner Statement evidence was found for this period.',
       },
       expenseAdmission: {
         transactionId: null,
@@ -126,8 +133,14 @@ describe('VM1 operations route — staff authorization (fail closed)', () => {
     expect(html).toContain('Draft admission review / בדיקת קבלה לטיוטה')
     expect(html).toContain('Approved future-Draft expenses / הוצאות מאושרות לטיוטה עתידית')
     expect(html).toContain('Expense admission blocked')
-    expect(html).toContain('Owner Statement evidence not stored')
-    expect(html).toContain('Canonical stored Hostaway Owner Statement evidence is not attached')
+    expect(loadMock.mock.calls[0][0]).toEqual(expect.objectContaining({
+      client: expect.anything(),
+      ownerStatementClient: expect.anything(),
+    }))
+    expect(createJwtClientMock).toHaveBeenCalled()
+    expect(html).toContain('לא נמצא Owner Statement אפקטיבי לתקופה זו')
+    expect(html).toContain('No effective Owner Statement evidence was found for this period')
+    expect(html).not.toContain('Owner Statement evidence not stored')
     expect(html).not.toContain('b2945e7fb84452ff08f2cee224bd8cd960ca1ba85b2941968d5ce108c5f79951')
   })
 

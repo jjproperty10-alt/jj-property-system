@@ -101,6 +101,10 @@ export const VM1_OS_EVIDENCE_REASON = {
   inventoryListing: 'Inventory listing must be VM1 Hostaway listing 412148.',
   missingStore:
     'Canonical stored Hostaway Owner Statement evidence is not attached. Draft revenue is not admitted.',
+  missingEvidence: 'No effective Owner Statement evidence was found for this period.',
+  readerUnavailable: 'Owner Statement evidence could not be read. This is not zero income.',
+  malformed: 'Owner Statement evidence payload was rejected. This is not zero income.',
+  conflict: 'Owner Statement evidence is in conflict. This is not zero income.',
 } as const
 
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/
