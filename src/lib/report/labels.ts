@@ -209,14 +209,15 @@ const L = {
   /* ── Certified client settlement overlay ─────────────────────────────────── */
   certSectionTitle:     { en: 'Certified settlement',                      he: 'התחשבנות מאושרת' },
   certOpeningBalance:   { en: 'Certified opening obligation balance',      he: 'יתרת התחייבויות פתיחה מאושרת' },
-  certNoncashCredit:    { en: 'Noncash settlement credit',                 he: 'זיכוי יישוב ללא מזומן' },
+  certNoncashCredit:    { en: 'Sharon assignment credit',                  he: 'זיכוי שרון' },
   certIncludedCash:     { en: 'Cash payment included in settlement',       he: 'תשלום מזומן שנכלל ביישוב' },
   certExclusionDoubleCount: { en: 'Excluded from settlement – double representation', he: 'הוצא מההתחשבנות – ייצוג כפול' },
   certClosingDueToJj:   { en: 'Final balance due to JJ',                   he: 'יתרה סופית לתשלום ל-JJ' },
   certClosingDueToClient: { en: 'Final balance due to client',             he: 'יתרה סופית לתשלום ללקוח' },
   certClosingShort:     { en: 'Final certified balance',                   he: 'יתרה סופית לתשלום' },
   certNoncash:          { en: 'Noncash',                                   he: 'לא מזומן' },
-  certExclusionNote:    { en: 'Shown for explanation only. Arithmetic effect is zero.', he: 'מוצג להסבר בלבד. השפעה חשבונאית אפס.' },
+  certExclusionNote:    { en: 'The payment was excluded to prevent double counting and does not reduce the balance again.',
+                          he: 'התשלום הוחרג כדי למנוע ספירה כפולה ואינו מקטין את היתרה פעם נוספת.' },
   certSupportingLedger: { en: 'Supporting activity detail — not the final settlement balance',
                           he: 'פירוט פעילות תומך — אינו יתרת ההתחשבנות הסופית' },
   certOwnerOwesJj:      { en: '{owner} owes JJ',                           he: '{owner} חייב ל-JJ' },
@@ -245,7 +246,40 @@ const L = {
   certNotesTitle:       { en: 'Notes',                                     he: 'הערות ושיטה' },
   certSupportingNet:    { en: 'Supporting activity',                       he: 'פעילות תומכת' },
   certMonthActivity:    { en: 'Monthly total',                             he: 'סה"כ חודשי' },
-  certCoverTitle:       { en: 'Owner financial statement',                 he: 'דוח פיננסי לבעל הנכס' },
+  certCoverTitle:       { en: 'Certified consolidated settlement',         he: 'התחשבנות מאוחדת מאושרת' },
+  certCatPurchase:      { en: 'Purchase',                                  he: 'רכישה' },
+  certCatRenovation:    { en: 'Renovation',                                he: 'שיפוץ' },
+  certCatSetup:         { en: 'Setup',                                     he: 'הקמה' },
+  certCatRecurring:     { en: 'Recurring expenses',                        he: 'הוצאות שוטפות' },
+  certCatRepairs:       { en: 'Repairs',                                   he: 'תקלות' },
+  certCatRental:        { en: 'Rental income',                             he: 'הכנסות שכירות' },
+  certCatStr:           { en: 'Short-term rental income',                  he: 'הכנסות שכירות קצרה' },
+  certCatOwnerPayment:  { en: 'Owner / client payments',                   he: 'תשלומי בעלים' },
+  certCatAdjustment:    { en: 'Approved adjustment',                       he: 'התאמה מאושרת' },
+  certBridgeTitle:      { en: 'Property bridge',                           he: 'גשר יתרת הנכס' },
+  certBridgeCharges:    { en: 'Charges due to JJ',                         he: 'חיובים והוצאות' },
+  certBridgeCredits:    { en: 'Income and credits',                        he: 'הכנסות וזיכויים' },
+  certBridgeEffect:     { en: 'Net effect on property balance',            he: 'השפעה נטו על יתרת הנכס' },
+  certBridgeComponent:  { en: 'Component',                                 he: 'רכיב' },
+  certSourceVerified:   { en: 'Verified in the system',                    he: 'מאומת במערכת' },
+  certSourceApproved:   { en: 'Approved adjustment',                       he: 'התאמה מאושרת' },
+  certPropertyBalance:  { en: 'Certified property balance',                he: 'יתרת נכס מאושרת' },
+  certFormulaTitle:     { en: 'Arithmetic',                                he: 'נוסחת החישוב' },
+  certCrossCheckTitle:  { en: 'Consolidated cross-check',                  he: 'בקרת סיכום מאוחדת' },
+  certStrTitle:         { en: 'Short-term rental credits',                 he: 'זיכויי שכירות קצרה' },
+  certStrMonth:         { en: 'Month',                                     he: 'חודש' },
+  certStrBookings:      { en: 'Bookings',                                  he: 'הזמנות' },
+  certStrNights:        { en: 'Nights',                                    he: 'לילות' },
+  certStrGross:         { en: 'Gross',                                     he: 'ברוטו' },
+  certStrPlatform:      { en: 'Platform fees',                             he: 'עמלת פלטפורמה' },
+  certStrCleaning:      { en: 'Cleaning',                                  he: 'ניקיון' },
+  certStrTax:           { en: 'Tax',                                       he: 'מס' },
+  certStrMgmt:          { en: 'Management',                                he: 'ניהול' },
+  certStrOwnerNet:      { en: 'Owner net',                                 he: 'נטו לבעלים' },
+  certSystemName:       { en: 'System name',                               he: 'שם במערכת' },
+  certLessSharon:       { en: 'Less Sharon assignment credit',             he: 'פחות זיכוי שרון' },
+  certLessCash:         { en: 'Less cash payment',                         he: 'פחות תשלום מזומן' },
+  certExclusionEffectZero: { en: 'Arithmetic effect €0.00',                he: 'השפעה חשבונאית €0.00' },
 
   /* ── Final Summary ───────────────────────────────────────────────────────── */
   finalTitle:           { en: 'Settlement Summary',              he: 'סיכום התחשבנות'          },
@@ -344,6 +378,25 @@ export function ownerReportDisplayName(canonicalName: string, lang: Lang): strin
   if (!trimmed) return t('certDefaultOwner', lang)
   if (lang !== 'he') return trimmed
   return HEBREW_OWNER_DISPLAY[trimmed] ?? trimmed
+}
+
+const HEBREW_PROPERTY_DISPLAY: Record<string, string> = {
+  'Uriel Kamares': 'קמארס',
+  'Uriel Oroklini 2 Bed': 'אורוקליני 2 חדרי שינה',
+  'Uriel Studio Kitty': 'סטודיו קיטי',
+  'Uriel Sharon English Metro': 'מטרו שרון אינגליש',
+  'Uriel Debenhams': 'דבנהמס',
+  'Uriel Kokkines': 'קוקינס',
+  'Apartment Neer Yoav Dekelia': 'דירת ניר יואב דקליה',
+  'Uriel Duplex': 'דופלקס',
+}
+
+/** Client-facing property name. Hebrew reports use a given overlay when known. */
+export function propertyReportDisplayName(canonicalName: string, lang: Lang): string {
+  const trimmed = canonicalName.trim()
+  if (!trimmed) return canonicalName
+  if (lang !== 'he') return trimmed
+  return HEBREW_PROPERTY_DISPLAY[trimmed] ?? trimmed
 }
 
 /* ──────────────────────────────────────────────────────────────────────────────

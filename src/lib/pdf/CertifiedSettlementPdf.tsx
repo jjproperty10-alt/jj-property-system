@@ -14,6 +14,7 @@ import {
 } from '../finance/certifiedClientSettlementPresentation'
 import {
   ownerReportDisplayName,
+  propertyReportDisplayName,
   t,
   tFill,
   type Lang,
@@ -107,7 +108,7 @@ function ownerNameForReport(ownerName: string | undefined, lang: Lang): string {
   return ownerReportDisplayName(ownerName?.trim() || t('certDefaultOwner', lang), lang)
 }
 
-function DirectionLine({
+export function DirectionLine({
   prefix,
   suffix,
   lang,
@@ -123,6 +124,26 @@ function DirectionLine({
       <Text style={[{ fontSize: 9, fontWeight: 'bold', color }, rtlTextStyle(lang)]}>{prefix}</Text>
       <Text style={{ fontSize: 9, fontWeight: 'bold', color }}>{'\u00A0JJ\u00A0'}</Text>
       {suffix ? <Text style={[{ fontSize: 9, fontWeight: 'bold', color }, rtlTextStyle(lang)]}>{suffix}</Text> : null}
+    </View>
+  )
+}
+
+/** Place Latin “JJ” on the visual right so RTL reads “JJ …” first. */
+export function JjLeadsDirectionLine({
+  hebrew,
+  lang,
+  color,
+  fontSize = 9,
+}: {
+  hebrew: string
+  lang: Lang
+  color?: string
+  fontSize?: number
+}) {
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', marginTop: 4, alignItems: 'center' }}>
+      <Text style={[{ fontSize, fontWeight: 'bold', color }, rtlTextStyle(lang)]}>{hebrew}</Text>
+      <Text style={{ fontSize, fontWeight: 'bold', color }}>{'\u00A0JJ'}</Text>
     </View>
   )
 }
@@ -222,14 +243,25 @@ export function CertifiedCoverPage({
         <DirectionLine lang={lang} color={amountColor} prefix={copy.directionPrefix} suffix={copy.directionSuffix} />
       </View>
 
-      <Text style={[s.sectionTitle, rtlTextStyle(lang)]}>{t('certSectionTitle', lang)}</Text>
+      <Text style={[s.sectionTitle, rtlTextStyle(lang)]}>{t('certPropertyLinesTitle', lang)}</Text>
+      <MoneyRow lang={lang} label={t('certOpeningBalance', lang)} amount={fmt(dto.openingDueToJj)} />
+      {dto.propertyLines.map((line) => (
+        <MoneyRow
+          key={`line-${line.lineOrder}-${line.propertyName}`}
+          lang={lang}
+          label={propertyReportDisplayName(line.propertyName, lang)}
+          amount={fmtPropertyAmount(line.amountDueToJj)}
+        />
+      ))}
+      <MoneyRow lang={lang} total label={t('certOpeningTotal', lang)} amount={fmt(dto.openingDueToJj)} />
+
+      <Text style={[s.sectionTitle, rtlTextStyle(lang), { marginTop: 6 }]}>{t('certSectionTitle', lang)}</Text>
       <View wrap={false}>
-        <MoneyRow lang={lang} label={t('certOpeningBalance', lang)} amount={fmt(dto.openingDueToJj)} />
         {dto.fifoCredits.map((credit, index) => (
           <MoneyRow
             key={`fifo-${index}-${credit.cash ? 'cash' : 'noncash'}-${credit.effectiveDate}`}
             lang={lang}
-            label={`${t(fifoCreditLabelKey(credit), lang)}${!credit.cash ? ` · ${t('certNoncash', lang)}` : ''}`}
+            label={`${t(fifoCreditLabelKey(credit), lang)}${!credit.cash ? ` · ${t('certNoncash', lang)}` : ''} · ${fmtCutoffDot(credit.effectiveDate)}`}
             amount={fmtSigned(fifoCreditDisplayAmount(credit))}
           />
         ))}
@@ -238,7 +270,7 @@ export function CertifiedCoverPage({
       </View>
 
       {dto.exclusions.map((exclusion, index) => (
-        <View key={`ex-${index}-${exclusion.effectiveDate}`} style={{ marginTop: 10 }} wrap={false}>
+        <View key={`ex-${index}-${exclusion.effectiveDate}`} style={{ marginTop: 8 }} wrap={false}>
           <MoneyRow
             lang={lang}
             muted
@@ -246,26 +278,12 @@ export function CertifiedCoverPage({
             amount={fmt(exclusion.settlementAmount)}
           />
           <Text style={[s.method, rtlTextStyle(lang)]}>{t('certExclusionNote', lang)}</Text>
-          <Text style={[s.method, rtlTextStyle(lang)]}>{t('certExclusionCustodyNote', lang)}</Text>
+          <Text style={[s.method, rtlTextStyle(lang)]}>{t('certExclusionEffectZero', lang)}</Text>
         </View>
       ))}
 
-      <Text style={[s.sectionTitle, rtlTextStyle(lang), { marginTop: 6 }]}>{t('certPropertyLinesTitle', lang)}</Text>
-      {dto.propertyLines.map((line) => (
-        <MoneyRow
-          key={`line-${line.lineOrder}-${line.propertyName}`}
-          lang={lang}
-          label={line.propertyName}
-          amount={fmtPropertyAmount(line.amountDueToJj)}
-        />
-      ))}
-      <MoneyRow lang={lang} total label={t('certOpeningTotal', lang)} amount={fmt(dto.openingDueToJj)} />
-
       <View style={{ marginTop: 6 }} wrap={false}>
         <Text style={[s.sectionTitle, rtlTextStyle(lang)]}>{t('certNotesTitle', lang)}</Text>
-        <Text style={[s.method, rtlTextStyle(lang)]}>{t('certMethodCash', lang)}</Text>
-        <Text style={[s.method, rtlTextStyle(lang)]}>{t('certMethodPnl', lang)}</Text>
-        <Text style={[s.method, rtlTextStyle(lang)]}>{t('certMethodNoncash', lang)}</Text>
         <Text style={[s.method, rtlTextStyle(lang)]}>{`${t('certCutoffInclusive', lang)} ${cutoff}`}</Text>
       </View>
 
