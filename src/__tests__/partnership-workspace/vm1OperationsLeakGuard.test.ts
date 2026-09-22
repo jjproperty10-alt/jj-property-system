@@ -138,6 +138,13 @@ describe('VM1 operations leak guards', () => {
       expect(text).not.toContain('vm1OwnerStatementStoreReader')
       expect(text).not.toContain('read_partnership_owner_statement_for_listing')
       expect(text).not.toContain('Evidence source verified')
+      expect(text).not.toContain('Vm1OwnerStatementUploadPanel')
+      expect(text).not.toContain('ownerStatementUploadActions')
+      expect(text).not.toContain('previewOwnerStatementUpload')
+      expect(text).not.toContain('ingestOwnerStatementUpload')
+      expect(text).not.toContain('ingest_partnership_owner_statement_document')
+      expect(text).not.toContain('hostaway_owner_minimal_xlsx_v1')
+      expect(text).not.toContain('vm1-os-upload')
       expect(text).not.toContain(TM20_OS_TEST_DOCUMENT_HASH)
       expect(text).not.toContain('498.37')
       expect(text).not.toContain('716.78')
@@ -190,6 +197,7 @@ describe('VM1 operations leak guards', () => {
       expect(text).not.toContain('vm1OwnerStatementStoreReader')
       expect(text).not.toContain('vm1ExpenseAdmissionService')
       expect(text).not.toContain('vm1OwnerStatementEvidence')
+      expect(text).not.toContain('ingest_partnership_owner_statement_document')
       expect(text).not.toMatch(/from ['"]@\/lib\/partnership-workspace/)
     }
   })
@@ -225,6 +233,18 @@ describe('VM1 operations leak guards', () => {
     expect(service).not.toContain('authoritativeEvidenceByReservationId')
     expect(view).not.toContain('documentHash')
     expect(page).not.toContain('documentHash')
+    expect(read('src/components/finance/Vm1OwnerStatementUploadPanel.tsx')).not.toContain('documentHash')
+    expect(read('src/components/finance/Vm1OwnerStatementUploadPanel.tsx')).not.toContain('normalized_payload_hash')
+    expect(read('src/components/finance/Vm1OwnerStatementUploadPanel.tsx')).not.toContain('createServiceClient')
+    expect(read('src/app/(app)/finance/external-partner/avi/operations/ownerStatementUploadActions.ts')).toContain(
+      'createSupabaseServerClient',
+    )
+    expect(read('src/app/(app)/finance/external-partner/avi/operations/ownerStatementUploadActions.ts')).not.toContain(
+      'createServiceClient',
+    )
+    expect(read('src/app/(app)/finance/external-partner/avi/operations/ownerStatementUploadActions.ts')).not.toContain(
+      'service_role',
+    )
   })
 
   it('only a derived Set of reservation IDs is passed to loadVm1Identity', () => {

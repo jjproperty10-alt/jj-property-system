@@ -9,9 +9,14 @@ const redirectMock = jest.fn((url: string) => {
 const notFoundMock = jest.fn(() => {
   throw new Error('NOT_FOUND')
 })
+const refreshMock = jest.fn()
 jest.mock('next/navigation', () => ({
   redirect: (u: string) => redirectMock(u),
   notFound: () => notFoundMock(),
+  useRouter: () => ({ refresh: refreshMock }),
+}))
+jest.mock('next/cache', () => ({
+  revalidatePath: jest.fn(),
 }))
 
 jest.mock('next/link', () => {
@@ -142,6 +147,49 @@ describe('VM1 operations route — staff authorization (fail closed)', () => {
     expect(html).toContain('No effective Owner Statement evidence was found for this period')
     expect(html).not.toContain('Owner Statement evidence not stored')
     expect(html).not.toContain('b2945e7fb84452ff08f2cee224bd8cd960ca1ba85b2941968d5ce108c5f79951')
+    expect(html).toContain('data-testid="vm1-os-upload-section"')
+    expect(html).toContain('Hostaway Owner Statement upload')
+    expect(html).not.toContain('documentHash')
+    expect(html).not.toContain('normalized_payload_hash')
+    expect(html).not.toContain('50/25/25')
+  })
+
+  it('authorized operations staff sees the reader without the Owner Statement upload panel', async () => {
+    authMock.mockResolvedValue({ ok: true, staffRole: 'operations', userId: 'u1' })
+    loadMock.mockResolvedValue({
+      ok: true,
+      from: '2026-08-25',
+      to: '2026-09-17',
+      identity: {
+        canonicalPropertyId: VM1_CANONICAL_PROPERTY_ID,
+        legacyLedgerPropertyId: VM1_LEGACY_LEDGER_PROPERTY_ID,
+        hostawayListingId: VM1_HOSTAWAY_LISTING_ID,
+      },
+      reservations: [],
+      forecastLines: [],
+      draftAdmissionLines: [],
+      ownerStatementLines: [],
+      ownerStatementEvidence: {
+        ok: false,
+        kind: 'missing_evidence',
+        reason: 'No effective Owner Statement evidence was found for this period.',
+      },
+      expenseAdmission: {
+        transactionId: null,
+        date: null,
+        category: null,
+        subcategory: null,
+        admissionState: 'blocked',
+        partnershipChargeEur: null,
+        jjActualCostEur: null,
+        jjOperatingProfitEur: null,
+        reason: 'Approved expense row was not returned as exactly one Production transaction.',
+      },
+    })
+    const html = renderToStaticMarkup(await Page({ searchParams: { from: '2026-08-25', to: '2026-09-17' } }))
+    expect(loadMock).toHaveBeenCalledTimes(1)
+    expect(html).toContain('data-testid="vm1-operations-root"')
+    expect(html).not.toContain('data-testid="vm1-os-upload-section"')
   })
 
   it('invalid range after auth shows a blocked staff error, not reservation rows', async () => {
@@ -164,5 +212,6 @@ describe('VM1 operations route — staff authorization (fail closed)', () => {
     expect(html).not.toContain('JJ actual cost')
     expect(html).not.toContain('JJ operating profit')
     expect(html).not.toContain('data-testid="vm1-expense-admission-approved"')
+    expect(html).not.toContain('data-testid="vm1-os-upload-section"')
   })
 })

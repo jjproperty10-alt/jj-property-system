@@ -22,7 +22,9 @@ import { authenticateStatementUser } from '@/lib/statements/statementAuthService
 import { createServiceClient } from '@/lib/supabase'
 import { createSupabaseServerClient } from '@/lib/supabaseServer'
 import { Vm1OperationsView } from '@/components/finance/Vm1OperationsView'
+import { Vm1OwnerStatementUploadPanel } from '@/components/finance/Vm1OwnerStatementUploadPanel'
 import { loadVm1OperationsView } from '@/lib/partnership-workspace/vm1OperationsService'
+import { isVm1OsUploadStaffRole } from '@/lib/partnership-workspace/vm1OwnerStatementUploadContract'
 
 export const dynamic = 'force-dynamic'
 
@@ -51,6 +53,8 @@ export default async function Vm1PropertyOperationsPage({ searchParams }: Props)
     toParam: searchParams.to,
   })
 
+  const uploadPanel = isVm1OsUploadStaffRole(auth.staffRole) ? <Vm1OwnerStatementUploadPanel /> : null
+
   if (!loaded.ok) {
     return (
       <Vm1OperationsView
@@ -63,7 +67,9 @@ export default async function Vm1PropertyOperationsPage({ searchParams }: Props)
             : 'VM1 identity verification failed'
         }
         errorDescription="Operational reservation data is not shown. The range or VM1 identity did not verify."
-      />
+      >
+        {uploadPanel}
+      </Vm1OperationsView>
     )
   }
 
@@ -85,6 +91,8 @@ export default async function Vm1PropertyOperationsPage({ searchParams }: Props)
           : null
       }
       expenseAdmission={loaded.expenseAdmission}
-    />
+    >
+      {uploadPanel}
+    </Vm1OperationsView>
   )
 }
