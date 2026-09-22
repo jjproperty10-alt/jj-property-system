@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseBrowserClient } from '@/lib/supabase'
 import {
   ArrowLeft, Building2, RefreshCw, TrendingUp, TrendingDown,
   Calendar, User, PieChart, Plus, Trash2, Save, X, Pencil,
@@ -97,6 +97,7 @@ export default function PropertyDetailPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
+    const supabase = createSupabaseBrowserClient()
     const [sumRes, txRes, ownRes] = await Promise.all([
       supabase.from('v_property_summary').select('*').eq('name', propertyName).single(),
       supabase.from('transactions').select('*')
@@ -150,6 +151,7 @@ export default function PropertyDetailPage() {
     }
     setOwnerSaving(true)
     setOwnerError('')
+    const supabase = createSupabaseBrowserClient()
 
     // Delete all existing rows for this property, then insert fresh
     const { error: delErr } = await supabase

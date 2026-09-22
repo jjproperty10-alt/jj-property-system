@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseBrowserClient } from '@/lib/supabase'
 import type { RentalContract, Transaction } from '@/types'
 import { format, parseISO, differenceInDays, startOfMonth, endOfMonth, eachMonthOfInterval } from 'date-fns'
 import { ArrowLeft, CheckCircle, Clock, AlertTriangle, Edit2 } from 'lucide-react'
@@ -29,7 +29,8 @@ export default function ContractDetailPage() {
 
   useEffect(() => {
     async function load() {
-      const [{ data: c }, { data: txs }] = await Promise.all([
+      const supabase = createSupabaseBrowserClient()
+      const [contractRes, txRes] = await Promise.all([
         supabase.from('rental_contracts').select('*, properties(name, nickname, address)').eq('id', id).single(),
         supabase.from('transactions')
           .select('*')
@@ -37,7 +38,12 @@ export default function ContractDetailPage() {
           .in('subcategory', ['Tenant Payment', 'Tenant Bank Payment', 'Client Payment'])
           .order('date', { ascending: false }),
       ])
-      if (!c) return
+      const c = contractRes.data
+      const txs = txRes.data
+      if (!c) {
+        setLoading(false)
+        return
+      }
       setContract(c as any)
       setProperty((c as any).properties)
       setTransactions((txs ?? []) as Transaction[])
