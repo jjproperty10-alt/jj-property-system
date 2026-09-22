@@ -10,6 +10,8 @@
  *   - NO_SESSION            -> redirect('/login')
  *   - NOT_STAFF / INACTIVE  -> notFound()
  *
+ * Owner Statement evidence is read after staff auth through the request
+ * JWT session client. Identity/expense keep the existing identity client.
  * No Avi login. Not exposed through a share token.
  */
 
@@ -18,6 +20,7 @@ import type { Metadata } from 'next'
 import { redirect, notFound } from 'next/navigation'
 import { authenticateStatementUser } from '@/lib/statements/statementAuthService'
 import { createServiceClient } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabaseServer'
 import { Vm1OperationsView } from '@/components/finance/Vm1OperationsView'
 import { loadVm1OperationsView } from '@/lib/partnership-workspace/vm1OperationsService'
 
@@ -43,6 +46,7 @@ export default async function Vm1PropertyOperationsPage({ searchParams }: Props)
 
   const loaded = await loadVm1OperationsView({
     client: createServiceClient(),
+    ownerStatementClient: createSupabaseServerClient(),
     fromParam: searchParams.from,
     toParam: searchParams.to,
   })
@@ -74,6 +78,7 @@ export default async function Vm1PropertyOperationsPage({ searchParams }: Props)
       draftAdmissionLines={loaded.draftAdmissionLines}
       ownerStatementLines={loaded.ownerStatementLines ?? []}
       ownerStatementEvidenceOk={loaded.ownerStatementEvidence?.ok}
+      ownerStatementEvidenceKind={loaded.ownerStatementEvidence?.kind}
       ownerStatementEvidenceReason={
         loaded.ownerStatementEvidence != null && !loaded.ownerStatementEvidence.ok
           ? loaded.ownerStatementEvidence.reason

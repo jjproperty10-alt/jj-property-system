@@ -35,6 +35,7 @@ const OPERATIONS_FILES = [
   'src/lib/partnership-workspace/vm1PeriodContract.ts',
   'src/lib/partnership-workspace/vm1DraftAdmission.ts',
   'src/lib/partnership-workspace/vm1OwnerStatementEvidence.ts',
+  'src/lib/partnership-workspace/vm1OwnerStatementStoreReader.ts',
   'src/lib/partnership-workspace/vm1ExpenseAdmission.ts',
   'src/lib/partnership-workspace/vm1ExpenseAdmissionService.ts',
   'src/lib/partnership-workspace/aviCertifiedReservationIds.ts',
@@ -134,6 +135,8 @@ describe('VM1 operations leak guards', () => {
       expect(text).not.toContain('efe4e1f5')
       expect(text).not.toContain('Approved future-Draft expenses')
       expect(text).not.toContain('vm1OwnerStatementEvidence')
+      expect(text).not.toContain('vm1OwnerStatementStoreReader')
+      expect(text).not.toContain('read_partnership_owner_statement_for_listing')
       expect(text).not.toContain('Evidence source verified')
       expect(text).not.toContain(TM20_OS_TEST_DOCUMENT_HASH)
       expect(text).not.toContain('498.37')
@@ -184,6 +187,7 @@ describe('VM1 operations leak guards', () => {
       const text = fs.readFileSync(abs, 'utf8')
       expect(text).not.toContain('aviCertifiedReservationIds')
       expect(text).not.toContain('vm1OperationsService')
+      expect(text).not.toContain('vm1OwnerStatementStoreReader')
       expect(text).not.toContain('vm1ExpenseAdmissionService')
       expect(text).not.toContain('vm1OwnerStatementEvidence')
       expect(text).not.toMatch(/from ['"]@\/lib\/partnership-workspace/)
@@ -193,6 +197,7 @@ describe('VM1 operations leak guards', () => {
   it('Production operations path does not hard-code the TM20 Owner Statement digest or stay amounts', () => {
     const productionFiles = [
       'src/lib/partnership-workspace/vm1OwnerStatementEvidence.ts',
+      'src/lib/partnership-workspace/vm1OwnerStatementStoreReader.ts',
       'src/lib/partnership-workspace/vm1OperationsService.ts',
       'src/lib/partnership-workspace/vm1DraftAdmission.ts',
       'src/lib/partnership-workspace/vm1PeriodContract.ts',

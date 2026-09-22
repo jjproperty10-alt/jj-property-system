@@ -23,8 +23,13 @@ import {
   VM1_INITIAL_PERIOD_NAME,
   VM1_INITIAL_PERIOD_TO,
   VM1_OS_DRAFT_CANDIDATE_LABEL,
-  VM1_OS_EVIDENCE_MISSING_STORE_LABEL,
+  VM1_OS_EVIDENCE_CONFLICT_LABEL,
+  VM1_OS_EVIDENCE_CONFLICT_TITLE,
+  VM1_OS_EVIDENCE_MISSING_LABEL,
+  VM1_OS_EVIDENCE_MISSING_TITLE,
   VM1_OS_EVIDENCE_STAFF_NOTE,
+  VM1_OS_EVIDENCE_UNAVAILABLE_LABEL,
+  VM1_OS_EVIDENCE_UNAVAILABLE_TITLE,
   VM1_OS_EVIDENCE_VERIFIED_LABEL,
 } from '@/lib/partnership-workspace/vm1PeriodContract'
 import {
@@ -61,6 +66,7 @@ export interface Vm1OperationsViewProps {
   readonly draftAdmissionLines?: readonly Vm1DraftAdmissionLine[]
   readonly ownerStatementLines?: readonly { readonly reservationId: string; readonly netOwnerPayoutEur: number }[]
   readonly ownerStatementEvidenceOk?: boolean
+  readonly ownerStatementEvidenceKind?: 'effective' | 'missing_evidence' | 'conflict' | 'unavailable'
   readonly ownerStatementEvidenceReason?: string | null
   readonly expenseAdmission?: Vm1ExpenseAdmissionLine
   readonly errorTitle?: string
@@ -109,6 +115,7 @@ export function Vm1OperationsView({
   draftAdmissionLines = [],
   ownerStatementLines = [],
   ownerStatementEvidenceOk,
+  ownerStatementEvidenceKind,
   ownerStatementEvidenceReason,
   expenseAdmission,
   errorTitle,
@@ -254,6 +261,7 @@ export function Vm1OperationsView({
             lines={draftAdmissionLines}
             ownerStatementLines={ownerStatementLines}
             ownerStatementEvidenceOk={ownerStatementEvidenceOk}
+            ownerStatementEvidenceKind={ownerStatementEvidenceKind}
             ownerStatementEvidenceReason={ownerStatementEvidenceReason}
           />
         ) : null}
@@ -393,15 +401,18 @@ function DraftAdmissionSection({
   lines,
   ownerStatementLines,
   ownerStatementEvidenceOk,
+  ownerStatementEvidenceKind,
   ownerStatementEvidenceReason,
 }: {
   lines: readonly Vm1DraftAdmissionLine[]
   ownerStatementLines: readonly { readonly reservationId: string; readonly netOwnerPayoutEur: number }[]
   ownerStatementEvidenceOk?: boolean
+  ownerStatementEvidenceKind?: 'effective' | 'missing_evidence' | 'conflict' | 'unavailable'
   ownerStatementEvidenceReason?: string | null
 }) {
   const osByReservationId = new Map(ownerStatementLines.map((line) => [line.reservationId, line]))
   const evidenceVerified = ownerStatementEvidenceOk === true && ownerStatementLines.length > 0
+  const evidenceKind = ownerStatementEvidenceKind ?? (evidenceVerified ? 'effective' : 'missing_evidence')
 
   return (
     <section className="mt-10 min-w-0" data-testid="vm1-draft-admission-section">
@@ -426,12 +437,28 @@ function DraftAdmissionSection({
           {VM1_OS_EVIDENCE_VERIFIED_LABEL}
           <span className="mt-1 block text-xs">{VM1_OS_EVIDENCE_STAFF_NOTE}</span>
         </p>
-      ) : (
-        <div className="mb-4" data-testid="vm1-os-evidence-blocked">
+      ) : evidenceKind === 'conflict' ? (
+        <div className="mb-4" data-testid="vm1-os-evidence-conflict">
           <AttentionBanner
             type="error"
-            title="Owner Statement evidence not stored"
-            description={ownerStatementEvidenceReason ?? VM1_OS_EVIDENCE_MISSING_STORE_LABEL}
+            title={VM1_OS_EVIDENCE_CONFLICT_TITLE}
+            description={ownerStatementEvidenceReason ?? VM1_OS_EVIDENCE_CONFLICT_LABEL}
+          />
+        </div>
+      ) : evidenceKind === 'unavailable' ? (
+        <div className="mb-4" data-testid="vm1-os-evidence-unavailable">
+          <AttentionBanner
+            type="error"
+            title={VM1_OS_EVIDENCE_UNAVAILABLE_TITLE}
+            description={ownerStatementEvidenceReason ?? VM1_OS_EVIDENCE_UNAVAILABLE_LABEL}
+          />
+        </div>
+      ) : (
+        <div className="mb-4" data-testid="vm1-os-evidence-missing">
+          <AttentionBanner
+            type="info"
+            title={VM1_OS_EVIDENCE_MISSING_TITLE}
+            description={ownerStatementEvidenceReason ?? VM1_OS_EVIDENCE_MISSING_LABEL}
           />
         </div>
       )}

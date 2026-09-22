@@ -1,6 +1,7 @@
 import { VM1_CANONICAL_PROPERTY_ID, VM1_HOSTAWAY_LISTING_ID, VM1_LEGACY_LEDGER_PROPERTY_ID } from '../vm1Identity'
 import { VM1_FORBIDDEN_MAPPING_RPC, type Vm1RpcClient } from '../vm1IdentityAdapter'
 import { loadVm1OperationsView, type Vm1OperationsClient } from '../vm1OperationsService'
+import type { Vm1OwnerStatementJwtClient } from '../vm1OwnerStatementStoreReader'
 import {
   VM1_APPROVED_FUTURE_DRAFT_EXPENSE_TRANSACTION_ID,
 } from '../vm1ExpenseAdmission'
@@ -28,9 +29,13 @@ function mockClient(handlers: {
   resolve?: unknown
   reservations?: unknown
   expenseRows?: unknown
+  ownerStatementPayload?: unknown
+  ownerStatementError?: { message: string } | null
 }): {
   client: Vm1OperationsClient
+  ownerStatementClient: Vm1OwnerStatementJwtClient
   rpcCalls: Array<{ name: string; args: Record<string, unknown> | undefined }>
+  osRpcCalls: Array<{ name: string; args: Record<string, unknown> | undefined }>
   expenseSelects: Array<{ relation: string; columns: string; filters: Array<[string, string]> }>
 } {
   const rpcCalls: Array<{ name: string; args: Record<string, unknown> | undefined }> = []
@@ -82,13 +87,26 @@ function mockClient(handlers: {
       }
     },
   }
-  return { client, rpcCalls, expenseSelects }
+  const osRpcCalls: Array<{ name: string; args: Record<string, unknown> | undefined }> = []
+  const ownerStatementClient: Vm1OwnerStatementJwtClient = {
+    rpc: (name, args) => {
+      osRpcCalls.push({ name, args })
+      return Promise.resolve({
+        data:
+          handlers.ownerStatementPayload !== undefined
+            ? handlers.ownerStatementPayload
+            : { ok: false, reason: 'missing_evidence' },
+        error: handlers.ownerStatementError !== undefined ? handlers.ownerStatementError : null,
+      })
+    },
+  }
+  return { client, ownerStatementClient, rpcCalls, osRpcCalls, expenseSelects }
 }
 
 describe('loadVm1OperationsView', () => {
   it('reads listing 412148 and never calls the name mapping RPC', async () => {
-    const { client, rpcCalls } = mockClient({ reservations: [] })
-    const result = await loadVm1OperationsView({ client, now: NOW })
+    const { client, ownerStatementClient, rpcCalls, osRpcCalls } = mockClient({ reservations: [] })
+    const result = await loadVm1OperationsView({ client, ownerStatementClient, now: NOW })
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.identity.hostawayListingId).toBe('412148')
@@ -103,12 +121,23 @@ describe('loadVm1OperationsView', () => {
     expect(rpcCalls.map((c) => c.name)).not.toContain(VM1_FORBIDDEN_MAPPING_RPC)
     expect(JSON.stringify(rpcCalls)).not.toContain('Villa Mazotos')
     expect(JSON.stringify(rpcCalls)).not.toContain('pms_resolve_mapping')
+    expect(osRpcCalls.map((c) => c.name)).toEqual(['read_partnership_owner_statement_for_listing'])
+    expect(osRpcCalls[0].args).toEqual({
+      p_listing_id: VM1_HOSTAWAY_LISTING_ID,
+      p_from: '2026-08-30',
+      p_to: '2026-11-30',
+    })
+    expect(rpcCalls.map((c) => c.name)).not.toContain('read_partnership_owner_statement_for_listing')
+    expect(rpcCalls.map((c) => c.name)).not.toContain('ingest_partnership_owner_statement_document')
+    expect(osRpcCalls.map((c) => c.name)).not.toContain('ingest_partnership_owner_statement_document')
+    expect(osRpcCalls.map((c) => c.name)).not.toContain('void_partnership_owner_statement_document')
   })
 
   it('does not call Hostaway when the date range is invalid', async () => {
-    const { client, rpcCalls, expenseSelects } = mockClient({})
+    const { client, ownerStatementClient, rpcCalls, osRpcCalls, expenseSelects } = mockClient({})
     const result = await loadVm1OperationsView({
       client,
+      ownerStatementClient,
       fromParam: '2026-09-30',
       toParam: '2026-08-25',
       now: NOW,
@@ -117,12 +146,13 @@ describe('loadVm1OperationsView', () => {
     if (result.ok) return
     expect(result.kind).toBe('invalid_range')
     expect(rpcCalls).toEqual([])
+    expect(osRpcCalls).toEqual([])
     expect(expenseSelects).toEqual([])
     expect(result).not.toHaveProperty('expenseAdmission')
   })
 
   it('fails closed on Neer canonical identity', async () => {
-    const { client, rpcCalls, expenseSelects } = mockClient({
+    const { client, ownerStatementClient, rpcCalls, osRpcCalls, expenseSelects } = mockClient({
       resolve: [
         {
           status: 'resolved',
@@ -132,7 +162,7 @@ describe('loadVm1OperationsView', () => {
         },
       ],
     })
-    const result = await loadVm1OperationsView({ client, now: NOW })
+    const result = await loadVm1OperationsView({ client, ownerStatementClient, now: NOW })
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.kind).toBe('identity_blocked')
@@ -141,7 +171,7 @@ describe('loadVm1OperationsView', () => {
   })
 
   it('fails closed if a reservation is on the Neer listing', async () => {
-    const { client, expenseSelects } = mockClient({
+    const { client, ownerStatementClient, osRpcCalls, expenseSelects } = mockClient({
       reservations: [
         {
           external_id: '65733679',
@@ -157,7 +187,7 @@ describe('loadVm1OperationsView', () => {
         },
       ],
     })
-    const result = await loadVm1OperationsView({ client, now: NOW })
+    const result = await loadVm1OperationsView({ client, ownerStatementClient, now: NOW })
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.kind).toBe('identity_blocked')
@@ -166,7 +196,7 @@ describe('loadVm1OperationsView', () => {
   })
 
   it('fails closed on VM2 canonical identity', async () => {
-    const { client, expenseSelects } = mockClient({
+    const { client, ownerStatementClient, osRpcCalls, expenseSelects } = mockClient({
       resolve: [
         {
           status: 'resolved',
@@ -176,16 +206,17 @@ describe('loadVm1OperationsView', () => {
         },
       ],
     })
-    const result = await loadVm1OperationsView({ client, now: NOW })
+    const result = await loadVm1OperationsView({ client, ownerStatementClient, now: NOW })
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.kind).toBe('identity_blocked')
     expect(expenseSelects).toEqual([])
+    expect(osRpcCalls).toEqual([])
     expect(result).not.toHaveProperty('expenseAdmission')
   })
 
   it('labels 53139113 already certified from the frozen Avi stay collection', async () => {
-    const { client } = mockClient({
+    const { client, ownerStatementClient, osRpcCalls } = mockClient({
       reservations: [
         {
           external_id: '53139113',
@@ -201,7 +232,7 @@ describe('loadVm1OperationsView', () => {
         },
       ],
     })
-    const result = await loadVm1OperationsView({ client, now: NOW })
+    const result = await loadVm1OperationsView({ client, ownerStatementClient, now: NOW })
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.reservations[0].disposition).toBe('already_certified')
@@ -213,7 +244,7 @@ describe('loadVm1OperationsView', () => {
   })
 
   it('admits zero Draft revenue without a stored Owner Statement and does not use test fixtures', async () => {
-    const { client } = mockClient({
+    const { client, ownerStatementClient, osRpcCalls } = mockClient({
       reservations: [
         {
           external_id: '65733679',
@@ -293,11 +324,12 @@ describe('loadVm1OperationsView', () => {
       ],
     })
     const asOf = new Date(Date.UTC(2026, 8, 19))
-    const result = await loadVm1OperationsView({ client, now: asOf })
+    const result = await loadVm1OperationsView({ client, ownerStatementClient, now: asOf })
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.ownerStatementEvidence.ok).toBe(false)
-    expect(result.ownerStatementEvidence.reason).toBe(VM1_OS_EVIDENCE_REASON.missingStore)
+    if (result.ownerStatementEvidence.ok) return
+    expect(result.ownerStatementEvidence.reason).toBe(VM1_OS_EVIDENCE_REASON.missingEvidence)
     expect(result.ownerStatementLines).toEqual([])
     expect(result.draftAdmissionLines.filter((l) => l.admittedCandidate)).toHaveLength(0)
     const airbnb = result.draftAdmissionLines.find((l) => l.externalId === '65733679')
@@ -322,7 +354,7 @@ describe('loadVm1OperationsView', () => {
   })
 
   it('loads the approved expense independently of zero revenue admission', async () => {
-    const { client, expenseSelects } = mockClient({
+    const { client, ownerStatementClient, osRpcCalls, expenseSelects } = mockClient({
       expenseRows: [
         {
           id: VM1_APPROVED_FUTURE_DRAFT_EXPENSE_TRANSACTION_ID,
@@ -355,7 +387,7 @@ describe('loadVm1OperationsView', () => {
         },
       ],
     })
-    const result = await loadVm1OperationsView({ client, now: NOW })
+    const result = await loadVm1OperationsView({ client, ownerStatementClient, now: NOW })
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.expenseAdmission.admissionState).toBe('approved_future_draft_expense')
@@ -379,7 +411,7 @@ describe('loadVm1OperationsView', () => {
   })
 
   it('keeps reservations visible when verified identity meets a missing expense row', async () => {
-    const { client, expenseSelects } = mockClient({
+    const { client, ownerStatementClient, osRpcCalls, expenseSelects } = mockClient({
       expenseRows: [],
       reservations: [
         {
@@ -400,7 +432,7 @@ describe('loadVm1OperationsView', () => {
         },
       ],
     })
-    const result = await loadVm1OperationsView({ client, now: NOW })
+    const result = await loadVm1OperationsView({ client, ownerStatementClient, now: NOW })
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.expenseAdmission.admissionState).toBe('blocked')
@@ -416,17 +448,18 @@ describe('loadVm1OperationsView', () => {
   })
 
   it('does not SELECT expense when the identity resolver returns no rows', async () => {
-    const { client, expenseSelects } = mockClient({ resolve: [] })
-    const result = await loadVm1OperationsView({ client, now: NOW })
+    const { client, ownerStatementClient, osRpcCalls, expenseSelects } = mockClient({ resolve: [] })
+    const result = await loadVm1OperationsView({ client, ownerStatementClient, now: NOW })
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.kind).toBe('identity_blocked')
     expect(expenseSelects).toEqual([])
+    expect(osRpcCalls).toEqual([])
     expect(result).not.toHaveProperty('expenseAdmission')
   })
 
   it('does not SELECT expense on canonical mismatch', async () => {
-    const { client, expenseSelects } = mockClient({
+    const { client, ownerStatementClient, osRpcCalls, expenseSelects } = mockClient({
       resolve: [
         {
           status: 'resolved',
@@ -436,7 +469,7 @@ describe('loadVm1OperationsView', () => {
         },
       ],
     })
-    const result = await loadVm1OperationsView({ client, now: NOW })
+    const result = await loadVm1OperationsView({ client, ownerStatementClient, now: NOW })
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.kind).toBe('identity_blocked')
@@ -463,6 +496,80 @@ describe('loadVm1OperationsView', () => {
     expect(src).not.toContain(TM20_OS_TEST_DOCUMENT_HASH)
     expect(src).not.toContain('498.37')
     expect(src).not.toContain('716.78')
-    expect(src).toContain('VM1_OS_EVIDENCE_REASON.missingStore')
+    expect(src).toContain('readVm1PartnershipOwnerStatementForListing')
+    expect(src).not.toContain('VM1_OS_EVIDENCE_REASON.missingStore')
+    expect(src).not.toContain('ingest_partnership_owner_statement_document')
+    expect(src).not.toContain('void_partnership_owner_statement_document')
+  })
+
+  it('does not admit stored Owner Statement lines or split partner shares', async () => {
+    const { client, ownerStatementClient, osRpcCalls } = mockClient({
+      ownerStatementPayload: {
+        ok: true,
+        listing_id: VM1_HOSTAWAY_LISTING_ID,
+        period_from: '2026-08-30',
+        period_to: '2026-11-30',
+        documents: [{ id: '11111111-1111-4111-8111-111111111111', listing_id: VM1_HOSTAWAY_LISTING_ID }],
+        lines: [
+          {
+            reservation_id: '65733679',
+            check_in: '2026-09-03',
+            check_out: '2026-09-06',
+            currency: 'EUR',
+            net_owner_payout: 498.37,
+          },
+          {
+            reservation_id: '53139113',
+            check_in: '2026-08-20',
+            check_out: '2026-08-25',
+            currency: 'EUR',
+            net_owner_payout: 999.99,
+          },
+        ],
+      },
+      reservations: [
+        {
+          external_id: '65733679',
+          external_property_id: VM1_HOSTAWAY_LISTING_ID,
+          channel: 'airbnb',
+          status: 'confirmed',
+          check_in: '2026-09-03',
+          check_out: '2026-09-06',
+          nights: 3,
+          total_price: 1005.9,
+          cleaning_fee: 150,
+          raw: {
+            airbnbExpectedPayoutAmount: 849.99,
+            airbnbListingHostFee: 155.91,
+            taxAmount: 0,
+          },
+        },
+        {
+          external_id: '53139113',
+          external_property_id: VM1_HOSTAWAY_LISTING_ID,
+          channel: 'airbnb',
+          status: 'confirmed',
+          check_in: '2026-08-15',
+          check_out: '2026-08-29',
+          nights: 14,
+          total_price: 100,
+          cleaning_fee: 0,
+          raw: {},
+        },
+      ],
+    })
+    const result = await loadVm1OperationsView({ client, ownerStatementClient, now: NOW })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.ownerStatementEvidence.ok).toBe(true)
+    expect(result.ownerStatementEvidence.kind).toBe('effective')
+    expect(result.ownerStatementLines.map((l) => l.reservationId)).toEqual(['65733679'])
+    expect(result.draftAdmissionLines.filter((l) => l.admittedCandidate)).toHaveLength(0)
+    expect(result.draftAdmissionLines.find((l) => l.externalId === '65733679')?.authoritativeEvidenceLinked).toBe(false)
+    expect(result.draftAdmissionLines.find((l) => l.externalId === '53139113')?.admissionState).toBe('excluded')
+    expect(JSON.stringify(result)).not.toContain('50%')
+    expect(JSON.stringify(result)).not.toContain('25%')
+    expect(JSON.stringify(result)).not.toContain('594.25')
+    expect(osRpcCalls.map((c) => c.name)).toEqual(['read_partnership_owner_statement_for_listing'])
   })
 })
