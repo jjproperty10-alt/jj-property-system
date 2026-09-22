@@ -58,7 +58,7 @@ export type Vm1OwnerStatementStoreRead =
 const HASH_KEY_RE = /sha256/i
 const ISO_DATE_PREFIX_RE = /^(\d{4}-\d{2}-\d{2})/
 const RESERVATION_ID_RE = /^\d+$/
-const AMOUNT_STRING_RE = /^-?\d+(\.\d{1,2})?$/
+const AMOUNT_STRING_RE = /^-?\d+(\.\d+)?$/
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === 'object' && !Array.isArray(value)
@@ -88,16 +88,19 @@ function parseReservationId(value: unknown): string | null {
 }
 
 function parseExactCents(value: unknown): number | null {
+  let amount: number
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) return null
-    return Math.round((value + Number.EPSILON) * 100) / 100
+    amount = value
+  } else if (typeof value === 'string' && AMOUNT_STRING_RE.test(value)) {
+    amount = Number(value)
+    if (!Number.isFinite(amount)) return null
+  } else {
+    return null
   }
-  if (typeof value === 'string' && AMOUNT_STRING_RE.test(value)) {
-    const n = Number(value)
-    if (!Number.isFinite(n)) return null
-    return Math.round((n + Number.EPSILON) * 100) / 100
-  }
-  return null
+  const rounded = Math.round(amount * 100) / 100
+  if (amount !== rounded) return null
+  return rounded
 }
 
 function parseLine(value: unknown): Vm1OwnerStatementDisplayLine | null {
