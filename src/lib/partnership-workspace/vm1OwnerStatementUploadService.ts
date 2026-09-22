@@ -239,4 +239,3 @@ export function parseVm1OwnerStatementXlsx(bytes: Buffer): Vm1OwnerStatementPars
     },
   }
 }
-

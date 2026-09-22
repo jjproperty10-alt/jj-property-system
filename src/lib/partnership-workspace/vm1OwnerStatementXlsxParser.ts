@@ -8,6 +8,11 @@ import 'server-only'
 
 import { readZipEntries, writeZipEntries } from './vm1OwnerStatementXlsxZip'
 
+export const VM1_OS_XLSX_MAX_XML_BYTES = 256 * 1024
+export const VM1_OS_XLSX_MAX_ROWS = 512
+export const VM1_OS_XLSX_MAX_COLS = 32
+export const VM1_OS_XLSX_MAX_CELLS = 4096
+
 export type Vm1OsSheetCell = string | number
 export type Vm1OsSheetRow = readonly Vm1OsSheetCell[]
 
@@ -20,12 +25,24 @@ function decodeXmlEntities(value: string): string {
     .replace(/&amp;/g, '&')
 }
 
-function colRow(ref: string): { col: number; row: number } | null {
-  const match = /^([A-Z]+)(\d+)$/.exec(ref.toUpperCase())
-  if (match == null) return null
+function xmlText(bytes: Buffer | undefined, label: string): string {
+  if (bytes == null) {
+    if (label === 'sharedStrings') return ''
+    throw new Error('malformed_xlsx')
+  }
+  if (bytes.length > VM1_OS_XLSX_MAX_XML_BYTES) throw new Error('malformed_xlsx')
+  return bytes.toString('utf8')
+}
+
+function colRow(ref: string): { col: number; row: number } {
+  const match = /^([A-Z]{1,2})(\d{1,3})$/.exec(ref.toUpperCase())
+  if (match == null) throw new Error('malformed_xlsx')
   let col = 0
   for (const ch of match[1]) col = col * 26 + (ch.charCodeAt(0) - 64)
-  return { col: col - 1, row: Number(match[2]) }
+  const row = Number(match[2])
+  if (!Number.isInteger(row) || row < 1 || row > VM1_OS_XLSX_MAX_ROWS) throw new Error('malformed_xlsx')
+  if (col < 1 || col > VM1_OS_XLSX_MAX_COLS) throw new Error('malformed_xlsx')
+  return { col: col - 1, row }
 }
 
 function sharedStrings(xml: string): string[] {
@@ -43,10 +60,10 @@ function sharedStrings(xml: string): string[] {
 }
 
 function firstSheetPath(entries: Map<string, Buffer>): string {
-  const wb = entries.get('xl/workbook.xml')?.toString('utf8') ?? ''
+  const wb = xmlText(entries.get('xl/workbook.xml'), 'workbook')
   const sheet = /<sheet\b[^>]*\bname="([^"]*)"[^>]*\br:id="([^"]+)"/i.exec(wb)
     ?? /<sheet\b[^>]*\br:id="([^"]+)"[^>]*\bname="([^"]*)"/i.exec(wb)
-  const rels = entries.get('xl/_rels/workbook.xml.rels')?.toString('utf8') ?? ''
+  const rels = xmlText(entries.get('xl/_rels/workbook.xml.rels'), 'rels')
   if (sheet != null) {
     const rId = sheet[1].startsWith('rId') ? sheet[1] : sheet[2]
     const rel = new RegExp(`Id="${rId}"[^>]*Target="([^"]+)"`, 'i').exec(rels)
@@ -88,22 +105,23 @@ function cellValue(cellXml: string, strings: readonly string[]): Vm1OsSheetCell 
 export function readFirstSheetRows(bytes: Buffer): { sheetName: string; rows: Vm1OsSheetRow[] } {
   const entries = readZipEntries(bytes)
   const sheetPath = firstSheetPath(entries)
-  const sheetXml = entries.get(sheetPath)?.toString('utf8')
-  if (sheetXml == null) throw new Error('malformed_xlsx')
-  const strings = entries.has('xl/sharedStrings.xml')
-    ? sharedStrings(entries.get('xl/sharedStrings.xml')!.toString('utf8'))
-    : []
+  const sheetXml = xmlText(entries.get(sheetPath), 'sheet')
+  const strings = xmlText(entries.get('xl/sharedStrings.xml'), 'sharedStrings')
+  const shared = strings === '' ? [] : sharedStrings(strings)
+  if (shared.length > VM1_OS_XLSX_MAX_CELLS) throw new Error('malformed_xlsx')
   const grid = new Map<string, Vm1OsSheetCell>()
   let maxRow = 0
   let maxCol = 0
+  let cellCount = 0
   const cellRe = /<c\b([^>]*)>([\s\S]*?)<\/c>/gi
   let cell: RegExpExecArray | null
   while ((cell = cellRe.exec(sheetXml)) != null) {
+    cellCount += 1
+    if (cellCount > VM1_OS_XLSX_MAX_CELLS) throw new Error('malformed_xlsx')
     const ref = /\br="([^"]+)"/.exec(cell[1])?.[1]
-    if (ref == null) continue
+    if (ref == null) throw new Error('malformed_xlsx')
     const pos = colRow(ref)
-    if (pos == null) continue
-    const value = cellValue(`<c ${cell[1]}>${cell[2]}</c>`, strings)
+    const value = cellValue(`<c ${cell[1]}>${cell[2]}</c>`, shared)
     if (value == null || value === '') continue
     grid.set(`${pos.row}:${pos.col}`, value)
     if (pos.row > maxRow) maxRow = pos.row

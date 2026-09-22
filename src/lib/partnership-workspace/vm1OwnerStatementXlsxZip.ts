@@ -1,6 +1,7 @@
 /**
  * Minimal ZIP reader/writer for hostaway_owner_minimal_xlsx_v1.
  * Reads via the central directory. Supports store and deflate.
+ * Bounds inflation so a compressed XLSX cannot expand without limit.
  * server-only.
  */
 
@@ -11,6 +12,12 @@ import { deflateRawSync, inflateRawSync } from 'zlib'
 const LOCAL_SIG = 0x04034b50
 const CENTRAL_SIG = 0x02014b50
 const EOCD_SIG = 0x06054b50
+const ZIP64_SIZE = 0xffffffff
+
+export const VM1_OS_ZIP_MAX_ENTRIES = 32
+export const VM1_OS_ZIP_MAX_NAME_BYTES = 256
+export const VM1_OS_ZIP_MAX_ENTRY_UNCOMPRESSED_BYTES = 512 * 1024
+export const VM1_OS_ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES = 1024 * 1024
 
 function crc32(buf: Buffer): number {
   let crc = 0xffffffff
@@ -24,46 +31,119 @@ function crc32(buf: Buffer): number {
   return (crc ^ 0xffffffff) >>> 0
 }
 
+function need(bytes: Buffer, offset: number, length: number): void {
+  if (!Number.isInteger(offset) || !Number.isInteger(length) || offset < 0 || length < 0) {
+    throw new Error('malformed_xlsx')
+  }
+  if (offset > bytes.length || length > bytes.length - offset) throw new Error('malformed_xlsx')
+}
+
+function u16(bytes: Buffer, offset: number): number {
+  need(bytes, offset, 2)
+  return bytes.readUInt16LE(offset)
+}
+
+function u32(bytes: Buffer, offset: number): number {
+  need(bytes, offset, 4)
+  return bytes.readUInt32LE(offset)
+}
+
 function findEocd(bytes: Buffer): number {
   const min = Math.max(0, bytes.length - 22 - 65535)
   for (let i = bytes.length - 22; i >= min; i -= 1) {
-    if (bytes.readUInt32LE(i) === EOCD_SIG) return i
+    if (u32(bytes, i) === EOCD_SIG) {
+      const commentLen = u16(bytes, i + 20)
+      if (i + 22 + commentLen !== bytes.length) continue
+      return i
+    }
   }
   throw new Error('malformed_xlsx')
+}
+
+function inflateBounded(compressed: Buffer, declaredUncompressed: number): Buffer {
+  if (declaredUncompressed < 1 || declaredUncompressed > VM1_OS_ZIP_MAX_ENTRY_UNCOMPRESSED_BYTES) {
+    throw new Error('malformed_xlsx')
+  }
+  try {
+    const out = inflateRawSync(compressed, { maxOutputLength: declaredUncompressed })
+    if (out.length !== declaredUncompressed) throw new Error('malformed_xlsx')
+    return out
+  } catch {
+    throw new Error('malformed_xlsx')
+  }
 }
 
 export function readZipEntries(bytes: Buffer): Map<string, Buffer> {
   if (bytes.length < 22) throw new Error('malformed_xlsx')
   const eocd = findEocd(bytes)
-  const count = bytes.readUInt16LE(eocd + 10)
-  const centralSize = bytes.readUInt32LE(eocd + 12)
-  const centralOffset = bytes.readUInt32LE(eocd + 16)
-  if (centralOffset + centralSize > bytes.length) throw new Error('malformed_xlsx')
+  const countThisDisk = u16(bytes, eocd + 8)
+  const count = u16(bytes, eocd + 10)
+  const centralSize = u32(bytes, eocd + 12)
+  const centralOffset = u32(bytes, eocd + 16)
+  if (countThisDisk !== count || count < 1 || count > VM1_OS_ZIP_MAX_ENTRIES) {
+    throw new Error('malformed_xlsx')
+  }
+  if (centralSize === ZIP64_SIZE || centralOffset === ZIP64_SIZE) throw new Error('malformed_xlsx')
+  need(bytes, centralOffset, centralSize)
+  if (centralOffset + centralSize > eocd) throw new Error('malformed_xlsx')
+
   const out = new Map<string, Buffer>()
   let cursor = centralOffset
+  let totalUncompressed = 0
   for (let n = 0; n < count; n += 1) {
-    if (bytes.readUInt32LE(cursor) !== CENTRAL_SIG) throw new Error('malformed_xlsx')
-    const method = bytes.readUInt16LE(cursor + 10)
-    const compressedSize = bytes.readUInt32LE(cursor + 20)
-    const nameLen = bytes.readUInt16LE(cursor + 28)
-    const extraLen = bytes.readUInt16LE(cursor + 30)
-    const commentLen = bytes.readUInt16LE(cursor + 32)
-    const localOffset = bytes.readUInt32LE(cursor + 42)
+    if (u32(bytes, cursor) !== CENTRAL_SIG) throw new Error('malformed_xlsx')
+    const method = u16(bytes, cursor + 10)
+    const compressedSize = u32(bytes, cursor + 20)
+    const uncompressedSize = u32(bytes, cursor + 24)
+    const nameLen = u16(bytes, cursor + 28)
+    const extraLen = u16(bytes, cursor + 30)
+    const commentLen = u16(bytes, cursor + 32)
+    const localOffset = u32(bytes, cursor + 42)
+    need(bytes, cursor + 46, nameLen)
+    if (nameLen < 1 || nameLen > VM1_OS_ZIP_MAX_NAME_BYTES) throw new Error('malformed_xlsx')
     const name = bytes.slice(cursor + 46, cursor + 46 + nameLen).toString('utf8').replace(/\\/g, '/')
-    if (bytes.readUInt32LE(localOffset) !== LOCAL_SIG) throw new Error('malformed_xlsx')
-    const localNameLen = bytes.readUInt16LE(localOffset + 26)
-    const localExtraLen = bytes.readUInt16LE(localOffset + 28)
+    if (name.includes('..') || name.startsWith('/') || name.includes('\0')) throw new Error('malformed_xlsx')
+    if (compressedSize === ZIP64_SIZE || uncompressedSize === ZIP64_SIZE || localOffset === ZIP64_SIZE) {
+      throw new Error('malformed_xlsx')
+    }
+    if (u32(bytes, localOffset) !== LOCAL_SIG) throw new Error('malformed_xlsx')
+    const localNameLen = u16(bytes, localOffset + 26)
+    const localExtraLen = u16(bytes, localOffset + 28)
+    const localCompressedSize = u32(bytes, localOffset + 18)
+    const localUncompressedSize = u32(bytes, localOffset + 22)
+    if (localCompressedSize !== compressedSize || localUncompressedSize !== uncompressedSize) {
+      throw new Error('malformed_xlsx')
+    }
+    if (localNameLen !== nameLen) throw new Error('malformed_xlsx')
     const dataStart = localOffset + 30 + localNameLen + localExtraLen
-    const dataEnd = dataStart + compressedSize
-    if (dataEnd > bytes.length) throw new Error('malformed_xlsx')
-    const compressed = bytes.slice(dataStart, dataEnd)
+    need(bytes, dataStart, compressedSize)
+    if (dataStart + compressedSize > centralOffset) throw new Error('malformed_xlsx')
+    if (uncompressedSize > VM1_OS_ZIP_MAX_ENTRY_UNCOMPRESSED_BYTES) throw new Error('malformed_xlsx')
+    if (totalUncompressed + uncompressedSize > VM1_OS_ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES) {
+      throw new Error('malformed_xlsx')
+    }
+    const compressed = bytes.slice(dataStart, dataStart + compressedSize)
     let uncompressed: Buffer
-    if (method === 0) uncompressed = compressed
-    else if (method === 8) uncompressed = inflateRawSync(compressed)
-    else throw new Error('malformed_xlsx')
+    if (name.endsWith('/')) {
+      if (uncompressedSize !== 0 || compressedSize !== 0) throw new Error('malformed_xlsx')
+      uncompressed = Buffer.alloc(0)
+    } else if (method === 0) {
+      if (compressedSize !== uncompressedSize || compressed.length !== uncompressedSize) {
+        throw new Error('malformed_xlsx')
+      }
+      uncompressed = compressed
+    } else if (method === 8) {
+      uncompressed = inflateBounded(compressed, uncompressedSize)
+    } else {
+      throw new Error('malformed_xlsx')
+    }
+    if (uncompressed.length !== uncompressedSize) throw new Error('malformed_xlsx')
+    totalUncompressed += uncompressed.length
     if (!name.endsWith('/')) out.set(name, uncompressed)
     cursor += 46 + nameLen + extraLen + commentLen
+    if (cursor > centralOffset + centralSize) throw new Error('malformed_xlsx')
   }
+  if (cursor !== centralOffset + centralSize) throw new Error('malformed_xlsx')
   if (out.size === 0) throw new Error('malformed_xlsx')
   return out
 }
