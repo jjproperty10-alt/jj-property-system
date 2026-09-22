@@ -546,5 +546,38 @@ describe('Vm1OperationsView', () => {
     expect(html).not.toContain('JJ actual cost')
     expect(html).not.toContain('JJ operating profit')
     expect(html).not.toContain('efe4e1f5')
+    expect(html).not.toContain('data-testid="vm1-os-upload-section"')
+  })
+
+  it('renders an Owner Statement upload slot only when identity is verified', () => {
+    const verified = renderToStaticMarkup(
+      <Vm1OperationsView
+        identityStatus="verified"
+        from="2026-08-25"
+        to="2026-09-17"
+        identity={IDENTITY}
+        reservations={[]}
+        forecastLines={[]}
+        draftAdmissionLines={[]}
+        expenseAdmission={approvedExpense()}
+      >
+        <div data-testid="vm1-os-upload-section">upload-slot</div>
+      </Vm1OperationsView>,
+    )
+    expect(verified).toContain('data-testid="vm1-os-upload-section"')
+    expect(verified).toContain('upload-slot')
+    const blocked = renderToStaticMarkup(
+      <Vm1OperationsView
+        identityStatus="blocked"
+        from="2026-08-25"
+        to="2026-09-17"
+        errorTitle="VM1 identity verification failed"
+        errorDescription="Operational reservation data is not shown."
+      >
+        <div data-testid="vm1-os-upload-section">upload-slot</div>
+      </Vm1OperationsView>,
+    )
+    expect(blocked).not.toContain('data-testid="vm1-os-upload-section"')
+    expect(blocked).not.toContain('upload-slot')
   })
 })

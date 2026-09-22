@@ -3,6 +3,7 @@
  * Operational Hostaway evidence. Not a certified report or settlement.
  */
 
+import type { ReactNode } from 'react'
 import { AttentionBanner, DataTable, PageShell, StatusBadge, WorkspaceHeader } from '@/components/ds'
 import type { Vm1DraftAdmissionLine } from '@/lib/partnership-workspace/vm1DraftAdmission'
 import {
@@ -71,6 +72,7 @@ export interface Vm1OperationsViewProps {
   readonly expenseAdmission?: Vm1ExpenseAdmissionLine
   readonly errorTitle?: string
   readonly errorDescription?: string
+  readonly children?: ReactNode
 }
 
 const TABLE_COLUMNS = [
@@ -120,6 +122,7 @@ export function Vm1OperationsView({
   expenseAdmission,
   errorTitle,
   errorDescription,
+  children,
 }: Vm1OperationsViewProps) {
   const listingId = identity?.hostawayListingId ?? VM1_HOSTAWAY_LISTING_ID
   const periodLabel = from && to ? `${from} → ${to}` : VM1_UNKNOWN_EVIDENCE_LABEL
@@ -140,6 +143,8 @@ export function Vm1OperationsView({
         >
           {VM1_OPERATIONS_STAFF_NOTE}
         </p>
+
+        {identityVerified ? children : null}
 
         <dl className="mb-6 grid grid-cols-1 gap-4 rounded-xl border border-gray-200 bg-white p-5 sm:grid-cols-2">
           <div>

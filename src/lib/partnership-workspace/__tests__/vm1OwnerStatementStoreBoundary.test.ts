@@ -118,6 +118,8 @@ describe('VM1 Owner Statement store reader wiring', () => {
     expect(service + adapter + reader).not.toContain('50/25/25')
     expect(service).not.toContain('expectedPayout')
     expect(service).not.toContain('authoritativeEvidenceByReservationId')
+    expect(service).not.toContain('previewOwnerStatementUpload')
+    expect(service).not.toContain('ingestOwnerStatementUpload')
   })
 
   it('keeps Avi Certified net, Internet expense id, and 53139113 exclusion unchanged', () => {

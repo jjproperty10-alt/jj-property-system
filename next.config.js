@@ -2,6 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
   experimental: {
+    serverActions: {
+      bodySizeLimit: '2mb',
+    },
     outputFileTracingIncludes: {
       '/owners/[slug]/report/pdf': ['./public/fonts/**'],
       '/finance/external-partner/avi/pdf': ['./public/fonts/**'],
