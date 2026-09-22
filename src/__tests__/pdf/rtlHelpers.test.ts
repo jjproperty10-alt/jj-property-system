@@ -2,6 +2,7 @@ import {
   isRTL,
   rtlRowDirection,
   rtlTextStyle,
+  rtlSentence,
   rtlColumnOrder,
   rtlAlignEnd,
 } from '../../lib/pdf/rtlHelpers'
@@ -31,6 +32,18 @@ describe('RTL PDF helpers', () => {
     })
     it('returns empty object for English (no-op)', () => {
       expect(rtlTextStyle('en')).toEqual({})
+    })
+  })
+
+  describe('rtlSentence', () => {
+    it('wraps Hebrew with RLM so trailing punctuation stays in the RTL run', () => {
+      const out = rtlSentence('שלום.', 'he')
+      expect(out.startsWith('\u200F')).toBe(true)
+      expect(out.endsWith('\u200F')).toBe(true)
+      expect(out).toContain('שלום.')
+    })
+    it('leaves English unchanged', () => {
+      expect(rtlSentence('Hello.', 'en')).toBe('Hello.')
     })
   })
 

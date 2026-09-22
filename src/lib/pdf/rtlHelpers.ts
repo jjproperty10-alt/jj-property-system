@@ -37,6 +37,15 @@ export function rtlTextStyle(lang: Lang): { textAlign?: 'right' } {
 }
 
 /**
+ * Bind punctuation to the Hebrew run. react-pdf does not run Unicode bidi,
+ * so a trailing period otherwise appears at the visual start of the line.
+ */
+export function rtlSentence(text: string, lang: Lang): string {
+  if (!text || !isRTL(lang)) return text
+  return `\u200F${text}\u200F`
+}
+
+/**
  * Amount column alignment:
  *   RTL → `{ textAlign: 'left' }`   (amount col is visually leftmost in a reversed row)
  *   LTR → `{ textAlign: 'right' }`  (standard right-aligned amount column)

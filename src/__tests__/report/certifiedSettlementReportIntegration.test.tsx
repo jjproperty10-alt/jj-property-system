@@ -89,7 +89,7 @@ describe('certified settlement consumers share DTO/sign rules', () => {
       <CertifiedSettlementSection dto={URIEL_SHAPED_CERTIFIED} lang="he" />,
     )
     expect(html).toContain('יתרת התחייבויות פתיחה מאושרת')
-    expect(html).toContain('זיכוי יישוב ללא מזומן')
+    expect(html).toContain('זיכוי שרון')
     expect(html).toContain('תשלום מזומן שנכלל ביישוב')
     expect(html).toContain('הוצא מההתחשבנות – ייצוג כפול')
     expect(html).toContain('יתרה סופית לתשלום ל-JJ')
@@ -198,13 +198,39 @@ describe('certified settlement source / security audits', () => {
       'src/lib/report/getClientReportAction.tsx',
       'src/lib/pdf/OwnerSettlementPdfV3.tsx',
       'src/lib/pdf/CertifiedSettlementPdf.tsx',
+      'src/lib/pdf/CertifiedOwnerStatementPdf.tsx',
+      'src/lib/pdf/CertifiedPropertyAccountPdf.tsx',
+      'src/lib/finance/certifiedPropertyBridge.ts',
+      'src/lib/report/certifiedPropertyBridgePack.ts',
+      'src/lib/finance/certifiedPropertyAccount.ts',
+      'src/lib/report/certifiedPropertyAccountPack.ts',
+      'src/app/(app)/owners/[slug]/report/pdf/route.ts',
     ]
     for (const file of appFiles) {
       const src = read(file)
       expect(src).not.toContain('2944e9ad-c298-4dbf-b666-26561d934b61')
       expect(src).not.toContain('66ddad63-d60c-49bf-a8a6-3fba71a6780f')
+      expect(src).not.toContain('b7f7f824-8506-4dba-bbfa-7cbc767c427d')
       expect(src).not.toContain('119677.42')
       expect(src).not.toContain('50677.42')
+      expect(src).not.toContain('119701.54')
+      expect(src).not.toContain('50701.54')
     }
+  })
+
+  test('client certified PDFs do not mention Jacob cash custody', () => {
+    const cover = read('src/lib/pdf/CertifiedSettlementPdf.tsx')
+    const statement = read('src/lib/pdf/CertifiedOwnerStatementPdf.tsx')
+    const account = read('src/lib/pdf/CertifiedPropertyAccountPdf.tsx')
+    expect(cover).not.toContain('certExclusionCustodyNote')
+    expect(cover).not.toContain('Jacob')
+    expect(statement).not.toContain('Jacob')
+    expect(statement).not.toContain('RC3')
+    expect(statement).not.toContain('Overall Net')
+    expect(account).not.toContain('Jacob')
+    expect(account).not.toContain('RC3')
+    expect(account).not.toContain('Overall Net')
+    expect(account).not.toContain('FIFO')
+    expect(account).not.toContain('Current Balance')
   })
 })
