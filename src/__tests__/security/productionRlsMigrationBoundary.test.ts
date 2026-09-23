@@ -24,6 +24,8 @@ describe('production RLS migration boundary', () => {
     expect(sql).toContain('REVOKE ALL ON TABLE')
     expect(sql).toContain('v_cashbox_audit')
     expect(sql).toContain('v_unmapped_queue')
+    expect(sql.indexOf('RETURN')).toBeGreaterThan(-1)
+    expect(sql.indexOf('DROP POLICY')).toBeGreaterThan(sql.indexOf('RETURN'))
   })
 
   test('the rental contract policy revokes anon and keeps staff-only access', () => {
@@ -34,6 +36,8 @@ describe('production RLS migration boundary', () => {
     expect(sql).toContain('REVOKE ALL ON TABLE public.rental_contracts FROM anon')
     expect(sql).not.toMatch(/GRANT[\s\S]*TO\s+anon/i)
     expect(sql).not.toContain('lifecycle.rental_contracts')
+    expect(sql.indexOf('RETURN')).toBeGreaterThan(-1)
+    expect(sql.indexOf('DROP POLICY')).toBeGreaterThan(sql.indexOf('RETURN'))
   })
 })
 
