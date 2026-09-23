@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
+import { countStaffRentalContracts } from '@/lib/legacy/staffRentalContracts'
 import { PageShell, WorkspaceHeader } from '@/components/ds'
 import { Settings2, Users, Database, RefreshCw, CheckCircle, AlertCircle, KeyRound, Eye, EyeOff } from 'lucide-react'
 
@@ -29,7 +30,7 @@ export default function SettingsPage() {
       supabase.from('employee_config').select('*').order('name'),
       supabase.from('transactions').select('id', { count: 'exact', head: true }),
       supabase.from('properties').select('id', { count: 'exact', head: true }),
-      supabase.from('rental_contracts').select('id', { count: 'exact', head: true }),
+      countStaffRentalContracts(),
       supabase.from('contacts').select('id', { count: 'exact', head: true }),
       supabase.from('property_ownership').select('id', { count: 'exact', head: true }),
     ])
@@ -37,8 +38,8 @@ export default function SettingsPage() {
     const tables = ['transactions','properties','rental_contracts','contacts','property_ownership']
     setDbStatus(tableResults.map((r, i) => ({
       table: tables[i],
-      count: r.count ?? 0,
-      status: r.error ? 'error' : (r.count ?? 0) === 0 ? 'empty' : 'ok',
+      count: r.error || typeof r.count !== 'number' ? Number.NaN : r.count,
+      status: r.error || typeof r.count !== 'number' ? 'error' : r.count === 0 ? 'empty' : 'ok',
     })))
     setLoading(false)
   }
@@ -110,7 +111,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-lg font-bold text-gray-700">{d.count.toLocaleString()}</div>
+                  <div className="text-lg font-bold text-gray-700">{Number.isNaN(d.count) ? '—' : d.count.toLocaleString()}</div>
                   <div className="text-xs text-gray-400">rows</div>
                 </div>
               </div>
