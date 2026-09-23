@@ -83,6 +83,54 @@ describe('readStaffView authorization', () => {
     expect(serviceMock).not.toHaveBeenCalled()
   })
 
+  test('a guest cannot read the client-report contact list', async () => {
+    authMock.mockResolvedValue({ ok: false, error: 'NO_SESSION' })
+
+    const result = await readStaffView({
+      view: 'v_rpt_contact_properties',
+      select: 'contact_id,contact_name,contact_type',
+      order: { column: 'contact_name' },
+      limit: 10000,
+    })
+
+    expect(result).toEqual({ data: null, error: { message: 'not authorized', code: '42501' }, count: null })
+    expect(serviceMock).not.toHaveBeenCalled()
+  })
+
+  test('a signed-in user who is not staff cannot read the client-report property catalog', async () => {
+    authMock.mockResolvedValue({ ok: false, error: 'NOT_STAFF' })
+
+    const result = await readStaffView({
+      view: 'v_rpt_contact_properties',
+      select: 'canonical_name',
+      order: { column: 'canonical_name' },
+      limit: 10000,
+    })
+
+    expect(result.data).toBeNull()
+    expect(result.error?.code).toBe('42501')
+    expect(serviceMock).not.toHaveBeenCalled()
+  })
+
+  test('active staff can read the client-report contact list and no other name is queried', async () => {
+    authMock.mockResolvedValue(staff)
+    const builder = queryBuilder([{ contact_id: 'c1', contact_name: 'Example', contact_type: null }])
+    const from = jest.fn(() => builder)
+    serviceMock.mockReturnValue({ from } as never)
+
+    const result = await readStaffView({
+      view: 'v_rpt_contact_properties',
+      select: 'contact_id,contact_name,contact_type',
+      order: { column: 'contact_name' },
+      limit: 10000,
+    })
+
+    expect(result.error).toBeNull()
+    expect(result.data).toEqual([{ contact_id: 'c1', contact_name: 'Example', contact_type: null }])
+    expect(from).toHaveBeenCalledTimes(1)
+    expect(from).toHaveBeenCalledWith('v_rpt_contact_properties')
+  })
+
   test('active staff can read one whitelisted view and no other name is queried', async () => {
     authMock.mockResolvedValue(staff)
     const builder = queryBuilder([{ property_name: 'Example' }])

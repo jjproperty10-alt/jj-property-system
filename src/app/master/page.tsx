@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
 import { readStaffView } from '@/lib/legacy/staffViewActions'
+import { staffMetricLabel, UNAVAILABLE_METRIC } from '@/lib/legacy/staffMetricLabel'
 import Link from 'next/link'
 import {
   RefreshCw, TrendingUp, TrendingDown, AlertTriangle, CheckCircle,
@@ -22,7 +22,7 @@ export default function MasterDashboard() {
     setLoading(true)
     const [
       cashRes, ceoRes, issuesRes,
-      anastasiaRes, dupeRes, contractRes,
+      anastasiaRes, dupeRes,
     ] = await Promise.all([
       readStaffView({ view: 'v_cashbox_audit' }),
       readStaffView({
@@ -33,17 +33,15 @@ export default function MasterDashboard() {
       readStaffView({ view: 'v_transaction_issues', select: 'severity' }),
       readStaffView({ view: 'v_anastasia_clearing', single: true }),
       readStaffView({ view: 'v_possible_duplicates', select: 'id', head: true }),
-      supabase.from('rental_contracts').select('status, end_date').eq('status', 'active'),
     ])
     setData({
       cash:       cashRes.data      ?? [],
-      ceo:        ceoRes.data       ?? {},
+      ceo:        ceoRes.error || ceoRes.data == null ? null : ceoRes.data,
       open:       [],
       issues:     issuesRes.data    ?? [],
       anastasia:  anastasiaRes.data ?? {},
       settlement: null,
       dupeCount:  dupeRes.count     ?? 0,
-      contracts:  contractRes.data  ?? [],
     })
     setTs(new Date().toLocaleTimeString('he-IL'))
     setLoading(false)
@@ -67,24 +65,17 @@ export default function MasterDashboard() {
                       : n(data.settlement?.yossi_net_position) < n(data.settlement?.jacob_net_position)
                         ? 'jacob_pays_yossi'
                         : 'yossi_pays_jacob'
-  const ceo           = data.ceo ?? {}
+  const ceo           = data.ceo ?? null
+  const ceoAvailable  = ceo != null
   // Due to owners — authoritative source: v_ceo_summary.due_to_owners (correct formula, all categories)
   // NOT v_owner_balances (uses banned COALESCE(client_charge, amount_eur) formula)
-  const ownerDueTotal = n(ceo.due_to_owners)
-
-  const today = new Date()
-  const expiringContracts = (data.contracts ?? []).filter((c: any) => {
-    if (!c.end_date) return false
-    const diff = (new Date(c.end_date).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-    return diff >= 0 && diff <= 60
-  }).length
+  const ownerDueTotal = ceoAvailable && ceo.due_to_owners != null ? n(ceo.due_to_owners) : null
 
   const alerts = [
     issueHigh > 0         && { severity: 'high',   msg: `${issueHigh} data issues (high severity)`,                 href: '/validation'   },
     data.dupeCount > 0    && { severity: 'medium', msg: `${data.dupeCount} possible duplicate transactions`,         href: '/transactions'  },
-    ownerDueTotal > 5000  && { severity: 'medium', msg: `${EUR(ownerDueTotal)} due to property owners`,              href: '/management'   },
+    ownerDueTotal != null && ownerDueTotal > 5000 && { severity: 'medium', msg: `${EUR(ownerDueTotal)} due to property owners`, href: '/management' },
     anastasiaOwes > 1000  && { severity: 'medium', msg: `Anastasia: ${EUR(anastasiaOwes)} cash on hand to transfer`, href: '/settlement'   },
-    expiringContracts > 0 && { severity: 'low',    msg: `${expiringContracts} contract(s) expiring in 60 days`,      href: '/contracts'    },
   ].filter(Boolean) as { severity: string; msg: string; href: string }[]
 
   const CASH_COLORS: Record<string, string> = {
@@ -194,22 +185,27 @@ export default function MasterDashboard() {
         </div>
         <div className="grid grid-cols-5 gap-3">
           {[
-            { label: 'Client Props',  val: n(ceo.client_cash_position_profit)    },
-            { label: 'JJ Properties', val: n(ceo.jj_own_cash_profit)             },
-            { label: 'Partnership',   val: n(ceo.partnership_jj_cash_profit)     },
-            { label: 'JJ Company',    val: n(ceo.company_cash_profit)            },
-            { label: 'Total',         val: n(ceo.total_cash_position_profit), bold: true },
-          ].map(item => (
-            <div key={item.label} className={`card p-4 ${(item as any).bold ? 'bg-gray-50' : ''}`}>
-              <div className="text-xs text-gray-400 mb-1">{item.label}</div>
-              <div className={`text-lg font-bold ${item.val >= 0 ? 'text-green-600' : 'text-red-600'} ${(item as any).bold ? 'text-xl' : ''}`}>
-                {item.val >= 0
-                  ? <TrendingUp size={13} className="inline mr-1" />
-                  : <TrendingDown size={13} className="inline mr-1" />}
-                {EUR(item.val)}
+            { label: 'Client Props',  value: ceo?.client_cash_position_profit },
+            { label: 'JJ Properties', value: ceo?.jj_own_cash_profit },
+            { label: 'Partnership',   value: ceo?.partnership_jj_cash_profit },
+            { label: 'JJ Company',    value: ceo?.company_cash_profit },
+            { label: 'Total',         value: ceo?.total_cash_position_profit, bold: true },
+          ].map(item => {
+            const text = staffMetricLabel(loading, ceoAvailable, item.value)
+            const known = text !== UNAVAILABLE_METRIC && text !== '…'
+            const amount = known ? n(item.value) : 0
+            return (
+              <div key={item.label} className={`card p-4 ${item.bold ? 'bg-gray-50' : ''}`}>
+                <div className="text-xs text-gray-400 mb-1">{item.label}</div>
+                <div className={`font-bold ${known ? (amount >= 0 ? 'text-green-600' : 'text-red-600') : 'text-gray-500'} ${item.bold ? 'text-xl' : 'text-lg'}`}>
+                  {known && (amount >= 0
+                    ? <TrendingUp size={13} className="inline mr-1" />
+                    : <TrendingDown size={13} className="inline mr-1" />)}
+                  {text}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </section>
 
@@ -274,16 +270,20 @@ export default function MasterDashboard() {
         <h2 className="font-semibold text-gray-700 text-sm uppercase tracking-wide mb-3">📈 Key Metrics</h2>
         <div className="grid grid-cols-4 gap-3">
           {[
-            { label: 'Total Receivables', val: n(ceo.total_receivables),     href: '/open-balances', color: 'text-orange-600' },
-            { label: 'Contract Profit',   val: n(ceo.total_contract_profit), href: '/properties',    color: 'text-blue-600'   },
-            { label: 'Due to Owners',     val: n(ceo.due_to_owners),         href: '/management',    color: 'text-purple-600' },
-            { label: 'Cash/Contract Gap', val: n(ceo.cash_contract_gap),     href: '/properties',    color: 'text-gray-700'   },
-          ].map(m => (
-            <Link key={m.label} href={m.href} className="card p-4 hover:shadow-md transition-shadow">
-              <div className="text-xs text-gray-400 mb-1">{m.label}</div>
-              <div className={`text-xl font-bold ${m.color}`}>{EUR(m.val)}</div>
-            </Link>
-          ))}
+            { label: 'Total Receivables', value: ceo?.total_receivables,     href: '/open-balances', color: 'text-orange-600' },
+            { label: 'Contract Profit',   value: ceo?.total_contract_profit, href: '/properties',    color: 'text-blue-600'   },
+            { label: 'Due to Owners',     value: ceo?.due_to_owners,         href: '/management',    color: 'text-purple-600' },
+            { label: 'Cash/Contract Gap', value: ceo?.cash_contract_gap,     href: '/properties',    color: 'text-gray-700'   },
+          ].map(m => {
+            const text = staffMetricLabel(loading, ceoAvailable, m.value)
+            const known = text !== UNAVAILABLE_METRIC && text !== '…'
+            return (
+              <Link key={m.label} href={m.href} className="card p-4 hover:shadow-md transition-shadow">
+                <div className="text-xs text-gray-400 mb-1">{m.label}</div>
+                <div className={`text-xl font-bold ${known ? m.color : 'text-gray-500'}`}>{text}</div>
+              </Link>
+            )
+          })}
         </div>
       </section>
 
@@ -312,14 +312,11 @@ export default function MasterDashboard() {
             </div>
             <div className={`text-2xl font-bold mt-1 ${data.dupeCount > 0 ? 'text-yellow-600' : 'text-green-600'}`}>{data.dupeCount}</div>
           </div>
-          <div className={`card p-4 ${expiringContracts > 0 ? 'bg-orange-50 border-orange-100' : 'bg-green-50 border-green-100'}`}>
+          <div className="card p-4">
             <div className="flex items-center gap-2">
-              {expiringContracts > 0
-                ? <AlertTriangle size={15} className="text-orange-500" />
-                : <CheckCircle  size={15} className="text-green-500" />}
               <div className="text-xs text-gray-500">Contracts Expiring</div>
             </div>
-            <div className={`text-2xl font-bold mt-1 ${expiringContracts > 0 ? 'text-orange-600' : 'text-green-600'}`}>{expiringContracts}</div>
+            <div className="text-sm font-medium mt-2 text-gray-500">{loading ? '…' : UNAVAILABLE_METRIC}</div>
           </div>
         </div>
       </section>
