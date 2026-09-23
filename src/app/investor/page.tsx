@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { readStaffView } from '@/lib/legacy/staffViewActions'
 import { RefreshCw, TrendingUp, TrendingDown, DollarSign, Percent } from 'lucide-react'
 
 const EUR = (n: number) =>
@@ -31,11 +31,11 @@ export default function InvestorPage() {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase
-      .from('v_ownership_summary')
-      .select('*')
-      .in('owner_type', ['investor', 'external'])
-      .order('owner_name')
+    const { data } = await readStaffView({
+      view: 'v_ownership_summary',
+      in: { owner_type: ['investor', 'external'] },
+      order: { column: 'owner_name' },
+    })
     setRows((data ?? []) as OwnershipRow[])
     setLoading(false)
   }

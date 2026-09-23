@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { readStaffView } from '@/lib/legacy/staffViewActions'
 import { RefreshCw, Users, TrendingUp, TrendingDown, PieChart } from 'lucide-react'
 
 const EUR = (n: number) =>
@@ -42,7 +42,7 @@ export default function OwnershipPage() {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('v_ownership_summary').select('*').order('owner_name')
+    const { data } = await readStaffView({ view: 'v_ownership_summary', order: { column: 'owner_name' } })
     setRows((data ?? []) as OwnershipRow[])
     setLoading(false)
   }

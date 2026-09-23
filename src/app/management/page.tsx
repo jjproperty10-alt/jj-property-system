@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { readStaffView } from '@/lib/legacy/staffViewActions'
 import { RefreshCw, TrendingUp, TrendingDown, Home, AlertCircle } from 'lucide-react'
 
 const EUR = (n: number) =>
@@ -25,10 +25,10 @@ export default function ManagementPage() {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase
-      .from('v_owner_balances')
-      .select('*')
-      .order('balance_due_to_owner', { ascending: false })
+    const { data } = await readStaffView({
+      view: 'v_owner_balances',
+      order: { column: 'balance_due_to_owner', ascending: false },
+    })
     setRows((data ?? []) as MgmtRow[])
     setLoading(false)
   }

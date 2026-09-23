@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { readStaffView } from '@/lib/legacy/staffViewActions'
 import { format, differenceInDays, parseISO, isPast } from 'date-fns'
 import {
   AlertTriangle, CheckCircle, Clock, Bell, RefreshCw,
@@ -81,9 +82,7 @@ export default function AlertsPage() {
     }
 
     // ── 2. Owner balances due ──
-    const { data: balances } = await supabase
-      .from('v_owner_balances')
-      .select('*')
+    const { data: balances } = await readStaffView({ view: 'v_owner_balances' })
 
     for (const b of balances ?? []) {
       if ((b.balance_due_to_owner ?? 0) > 100) {
@@ -100,10 +99,10 @@ export default function AlertsPage() {
     }
 
     // ── 3. Duplicate transactions ──
-    const { data: dupes } = await supabase
-      .from('v_possible_duplicates')
-      .select('*')
-      .limit(10)
+    const { data: dupes } = await readStaffView({
+      view: 'v_possible_duplicates',
+      limit: 10,
+    })
 
     if ((dupes ?? []).length > 0) {
       generated.push({
@@ -118,9 +117,7 @@ export default function AlertsPage() {
     }
 
     // ── 4. Negative property P&L ──
-    const { data: props } = await supabase
-      .from('v_property_summary')
-      .select('*')
+    const { data: props } = await readStaffView({ view: 'v_property_summary' })
 
     for (const p of props ?? []) {
       const net = (p.renovation_revenue ?? 0) - (p.renovation_costs ?? 0)

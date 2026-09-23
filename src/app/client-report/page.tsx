@@ -21,13 +21,13 @@
 //   Stage 3: remainingBalance = closingBalance + totalBankPayments
 //
 // Data sources (read-only — no SQL changed):
-//   contacts                  → contact selector
-//   v_rpt_contact_properties  → property chips
-//   v_rpt_client_transactions → transactions (client_amount, jj_margin)
+//   v_rpt_contact_properties  → contact selector and property chips, via active staff
+//   v_rpt_client_transactions → transactions (client_amount, jj_margin), via active staff
 // ============================================================
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { readStaffView } from '@/lib/legacy/staffViewActions'
 import Link from 'next/link'
 import {
   RefreshCw, FileText, User, Building2, ArrowLeft,
@@ -66,7 +66,7 @@ const yearStartStr = (): string => `${new Date().getFullYear()}-01-01`
 
 /* ─────────────────────────── types ─────────────────────────── */
 
-// Fields match v_rpt_contact_properties (no RLS — anon-safe)
+// Fields match v_rpt_contact_properties. Reads go through readStaffView.
 type Contact = {
   contact_id:   string
   contact_name: string
@@ -944,11 +944,14 @@ export default function ClientReportPage() {
   /* ── contacts ── */
   const [contacts,        setContacts]        = useState<Contact[]>([])
   const [contactsLoading, setContactsLoading] = useState(true)
+  const [contactsError,   setContactsError]   = useState<string | null>(null)
   const [selectedId,      setSelectedId]      = useState<string>('')
 
   /* ── properties ── */
   const [properties,     setProperties]    = useState<ContactProperty[]>([])  // contact-linked (for warnings)
-  const [allClientProps, setAllClientProps] = useState<string[]>([])           // all client props for search
+  const [allClientProps, setAllClientProps] = useState<string[]>([])           // property catalog for search
+  const [propsCatalogLoading, setPropsCatalogLoading] = useState(true)
+  const [propsCatalogError, setPropsCatalogError] = useState<string | null>(null)
   const [propsLoading,   setPropsLoading]  = useState(false)
   const [propSearch,     setPropSearch]    = useState<string>('')
   const [selectedProps,  setSelectedProps] = useState<string[]>([])
@@ -987,61 +990,71 @@ export default function ClientReportPage() {
   const [showPdfMenu,   setShowPdfMenu]   = useState(false)
   const [pdfError,      setPdfError]      = useState<string | null>(null)
 
-  /* ── Load contacts on mount ──
-   *  Use v_rpt_contact_properties (relrowsecurity=false) instead of
-   *  the `contacts` table (RLS: auth.role()='authenticated' blocks anon).
-   *  Deduplicate by contact_id so each owner appears once.
-   */
+  /* ── Load contacts on mount through an active staff session ── */
   useEffect(() => {
     setContactsLoading(true)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(supabase as any)
-      .from('v_rpt_contact_properties')
-      .select('contact_id, contact_name, contact_type')
-      .order('contact_name')
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .then(({ data, error }: any) => {
-        console.log('[CR contacts] data:', data, 'error:', error)
-        if (error) {
-          console.error('[CR contacts] Supabase error:', error)
+    setContactsError(null)
+    readStaffView({
+      view: 'v_rpt_contact_properties',
+      select: 'contact_id,contact_name,contact_type',
+      order: { column: 'contact_name' },
+      limit: 10000,
+    })
+      .then(({ data, error }) => {
+        if (error || data == null) {
+          setContacts([])
+          setContactsError(error?.code === '42501' ? 'not authorized' : 'unavailable')
           setContactsLoading(false)
           return
         }
-        // Deduplicate: one entry per contact_id
-        const seen  = new Set<string>()
-        const dedup = (data ?? []).filter((c: Contact) => {
-          if (seen.has(c.contact_id)) return false
+        const seen = new Set<string>()
+        const dedup = (data as Contact[]).filter(c => {
+          if (!c?.contact_id || seen.has(c.contact_id)) return false
           seen.add(c.contact_id)
           return true
         })
         setContacts(dedup)
         setContactsLoading(false)
       })
-      .catch((err: unknown) => {
-        console.error('[CR contacts] Promise rejected:', err)
+      .catch(() => {
+        setContacts([])
+        setContactsError('unavailable')
         setContactsLoading(false)
       })
   }, [])
 
-  /* ── Load all client properties on mount (for direct property search) ── */
+  /* ── Load the property catalog on mount through an active staff session ── */
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(supabase as any)
-      .from('property_definitions')
-      .select('property_name')
-      .eq('relationship_type', 'client')
-      .order('property_name')
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .then(({ data, error }: any) => {
-        console.log('[CR props] data:', data, 'error:', error)
-        if (error) {
-          console.error('[CR props] Supabase error:', error)
+    setPropsCatalogLoading(true)
+    setPropsCatalogError(null)
+    readStaffView({
+      view: 'v_rpt_contact_properties',
+      select: 'canonical_name',
+      order: { column: 'canonical_name' },
+      limit: 10000,
+    })
+      .then(({ data, error }) => {
+        if (error || data == null) {
+          setAllClientProps([])
+          setPropsCatalogError(error?.code === '42501' ? 'not authorized' : 'unavailable')
+          setPropsCatalogLoading(false)
           return
         }
-        setAllClientProps((data ?? []).map((p: { property_name: string }) => p.property_name))
+        const seen = new Set<string>()
+        const names: string[] = []
+        for (const row of data as { canonical_name?: string | null }[]) {
+          const name = row?.canonical_name
+          if (!name || seen.has(name)) continue
+          seen.add(name)
+          names.push(name)
+        }
+        setAllClientProps(names)
+        setPropsCatalogLoading(false)
       })
-      .catch((err: unknown) => {
-        console.error('[CR props] Promise rejected:', err)
+      .catch(() => {
+        setAllClientProps([])
+        setPropsCatalogError('unavailable')
+        setPropsCatalogLoading(false)
       })
   }, [])
 
@@ -1058,14 +1071,21 @@ export default function ClientReportPage() {
     }
     setPropsLoading(true)
     setReportReady(false)
-    supabase
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .from('v_rpt_contact_properties' as any)
-      .select('canonical_name, relationship_role, confirmation_status, link_notes, jj_relationship_type')
-      .eq('contact_id', selectedId)
-      .order('canonical_name')
-      .then(({ data }) => {
-        const props = (data ?? []) as ContactProperty[]
+    readStaffView({
+      view: 'v_rpt_contact_properties',
+      select: 'canonical_name,relationship_role,confirmation_status,link_notes,jj_relationship_type',
+      eq: { contact_id: selectedId },
+      order: { column: 'canonical_name' },
+      limit: 10000,
+    })
+      .then(({ data, error }) => {
+        if (error || data == null) {
+          setProperties([])
+          setSelectedProps([])
+          setPropsLoading(false)
+          return
+        }
+        const props = (data as ContactProperty[]).filter(p => p.canonical_name)
         setProperties(props)
         setSelectedProps(props.map(p => p.canonical_name))
         setPropsLoading(false)
@@ -1079,20 +1099,17 @@ export default function ClientReportPage() {
     setReportReady(false)
     setExpandedSections(new Set())
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let q = (supabase as any)
-      .from('v_rpt_client_transactions')
-      .select('*')
-      .in('canonical_property_name', selectedProps)
-      .gte('date', fromDate)
-      .lte('date', toDate)
-      .order('date')
-
-    // Server-side category filter (reduces payload)
-    if (selectedCategories.length > 0)
-      q = q.in('category', selectedCategories)
-
-    const { data } = await q
+    const filters: { canonical_property_name: string[]; category?: string[] } = {
+      canonical_property_name: selectedProps,
+    }
+    if (selectedCategories.length > 0) filters.category = selectedCategories
+    const { data } = await readStaffView({
+      view: 'v_rpt_client_transactions',
+      in: filters,
+      gte: { date: fromDate },
+      lte: { date: toDate },
+      order: { column: 'date', ascending: true },
+    })
 
     let txns: Tx[] = data ?? []
 
@@ -1459,7 +1476,10 @@ export default function ClientReportPage() {
                 ))}
               </select>
             )}
-            {contacts.length === 0 && !contactsLoading && (
+            {contactsError && !contactsLoading && (
+              <p className="text-xs text-amber-600 mt-1">Contacts are not available.</p>
+            )}
+            {contacts.length === 0 && !contactsLoading && !contactsError && (
               <p className="text-xs text-amber-600 mt-1">No contacts found.</p>
             )}
           </div>
@@ -1593,8 +1613,14 @@ export default function ClientReportPage() {
                 </button>
               )
             })}
-            {allClientProps.length === 0 && (
+            {propsCatalogLoading && (
               <span className="text-xs text-gray-400 italic">Loading properties…</span>
+            )}
+            {!propsCatalogLoading && propsCatalogError && (
+              <span className="text-xs text-amber-600 italic">Properties are not available.</span>
+            )}
+            {!propsCatalogLoading && !propsCatalogError && allClientProps.length === 0 && (
+              <span className="text-xs text-gray-400 italic">No properties found.</span>
             )}
           </div>
           {propSearch && allClientProps.filter(p =>

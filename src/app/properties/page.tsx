@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { readStaffView } from '@/lib/legacy/staffViewActions'
 import { Building2, Search, X } from 'lucide-react'
 import {
   purchaseStatus, partnerStatus, renovationStatus,
@@ -150,7 +150,7 @@ export default function PropertiesPage() {
   const router = useRouter()
 
   useEffect(() => {
-    supabase.from('v_property_summary').select('*').order('name').then(({ data }) => {
+    readStaffView({ view: 'v_property_summary', order: { column: 'name' } }).then(({ data }) => {
       // Filter out rows with null/empty name (transactions with no property_name in DB)
       setProperties(((data ?? []) as P[]).filter(p => p.name != null && p.name !== ''))
       setLoading(false)
