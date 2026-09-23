@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { listStaffRentalContracts } from '@/lib/legacy/staffRentalContracts'
 import type { RentalContract } from '@/types'
 import Link from 'next/link'
 import { format, differenceInDays, isPast, parseISO } from 'date-fns'
@@ -28,17 +28,20 @@ function StatusBadge({ contract }: { contract: RentalContract }) {
 export default function ContractsPage() {
   const [contracts, setContracts] = useState<RentalContract[]>([])
   const [loading, setLoading]     = useState(true)
+  const [unavailable, setUnavailable] = useState(false)
   const [filter, setFilter]       = useState<'all' | 'active' | 'expiring' | 'expired'>('all')
 
   useEffect(() => {
-    supabase
-      .from('rental_contracts')
-      .select(`*, properties(name, nickname)`)
-      .order('end_date', { ascending: true })
-      .then(({ data }) => {
-        setContracts((data ?? []) as any)
-        setLoading(false)
-      })
+    listStaffRentalContracts('list').then(({ data, error }) => {
+      if (error || data == null) {
+        setContracts([])
+        setUnavailable(true)
+      } else {
+        setContracts(data as RentalContract[])
+        setUnavailable(false)
+      }
+      setLoading(false)
+    })
   }, [])
 
   const filtered = contracts.filter(c => {
@@ -60,7 +63,11 @@ export default function ContractsPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Rental Contracts</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{contracts.length} contracts · Active income: {EUR(totalMonthlyRent)}/month</p>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {unavailable
+              ? 'Contracts are not available.'
+              : `${contracts.length} contracts · Active income: ${EUR(totalMonthlyRent)}/month`}
+          </p>
         </div>
         <Link href="/contracts/new" className="btn-primary flex items-center gap-2 text-sm">
           <PlusCircle size={15} />
@@ -87,7 +94,10 @@ export default function ContractsPage() {
       {loading && <div className="text-sm text-gray-400">Loading...</div>}
 
       <div className="space-y-3">
-        {filtered.length === 0 && !loading && (
+        {unavailable && !loading && (
+          <div className="card p-8 text-center text-sm text-amber-700">Contracts are not available.</div>
+        )}
+        {filtered.length === 0 && !loading && !unavailable && (
           <div className="card p-8 text-center text-sm text-gray-400">
             No contracts found.{' '}
             <Link href="/contracts/new" className="text-brand-500 hover:underline">Add the first one →</Link>

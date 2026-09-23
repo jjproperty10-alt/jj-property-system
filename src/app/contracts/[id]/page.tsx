@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
+import { readStaffRentalContract } from '@/lib/legacy/staffRentalContracts'
 import type { RentalContract, Transaction } from '@/types'
 import { format, parseISO, differenceInDays, startOfMonth, endOfMonth, eachMonthOfInterval } from 'date-fns'
-import { ArrowLeft, CheckCircle, Clock, AlertTriangle, Edit2 } from 'lucide-react'
+import { ArrowLeft, CheckCircle, Clock, AlertTriangle } from 'lucide-react'
 
 const EUR = (n: number) =>
   new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n)
@@ -26,24 +27,24 @@ export default function ContractDetailPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [months, setMonths]         = useState<MonthStatus[]>([])
   const [loading, setLoading]       = useState(true)
+  const [unavailable, setUnavailable] = useState(false)
 
   useEffect(() => {
     async function load() {
-      const supabase = createSupabaseBrowserClient()
-      const [contractRes, txRes] = await Promise.all([
-        supabase.from('rental_contracts').select('*, properties(name, nickname, address)').eq('id', id).single(),
-        supabase.from('transactions')
-          .select('*')
-          .eq('property_id', (await supabase.from('rental_contracts').select('property_id').eq('id', id).single()).data?.property_id)
-          .in('subcategory', ['Tenant Payment', 'Tenant Bank Payment', 'Client Payment'])
-          .order('date', { ascending: false }),
-      ])
+      const contractRes = await readStaffRentalContract(id)
       const c = contractRes.data
-      const txs = txRes.data
-      if (!c) {
+      if (contractRes.error || !c) {
+        setUnavailable(Boolean(contractRes.error))
         setLoading(false)
         return
       }
+      const supabase = createSupabaseBrowserClient()
+      const txRes = await supabase.from('transactions')
+        .select('*')
+        .eq('property_id', c.property_id)
+        .in('subcategory', ['Tenant Payment', 'Tenant Bank Payment', 'Client Payment'])
+        .order('date', { ascending: false })
+      const txs = txRes.data
       setContract(c as any)
       setProperty((c as any).properties)
       setTransactions((txs ?? []) as Transaction[])
@@ -80,6 +81,7 @@ export default function ContractDetailPage() {
   }, [id])
 
   if (loading) return <div className="p-8 text-sm text-gray-400">Loading...</div>
+  if (unavailable) return <div className="p-8 text-sm text-amber-700">Contracts are not available.</div>
   if (!contract) return <div className="p-8 text-sm text-gray-500">Contract not found.</div>
 
   const mgmtFee = contract.management_fee_type === 'percentage'

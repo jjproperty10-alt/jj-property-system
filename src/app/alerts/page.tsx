@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
 import { readStaffView } from '@/lib/legacy/staffViewActions'
+import { listStaffRentalContracts } from '@/lib/legacy/staffRentalContracts'
 import { format, differenceInDays, parseISO, isPast } from 'date-fns'
 import {
   AlertTriangle, CheckCircle, Clock, Bell, RefreshCw,
@@ -36,12 +36,18 @@ export default function AlertsPage() {
     const generated: Alert[] = []
 
     // ── 1. Contracts expiring soon ──
-    const { data: contracts } = await supabase
-      .from('rental_contracts')
-      .select('*, properties(name)')
-      .eq('status', 'active')
+    const { data: contracts, error: contractError } = await listStaffRentalContracts('alerts')
+    if (contractError || contracts == null) {
+      generated.push({
+        id: 'contracts-unavailable',
+        type: 'contracts_unavailable',
+        severity: 'medium',
+        title: 'Contract expiry is not available',
+        description: 'Active rental contracts could not be read for an active staff session.',
+      })
+    }
 
-    for (const c of contracts ?? []) {
+    for (const c of contractError || contracts == null ? [] : contracts) {
       if (!c.end_date) continue
       const days = differenceInDays(parseISO(c.end_date), new Date())
       const propName = (c as any).properties?.name ?? 'Unknown'

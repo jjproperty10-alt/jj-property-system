@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { createStaffRentalContract, listStaffContractProperties } from '@/lib/legacy/staffRentalContracts'
 import { CheckCircle, AlertCircle } from 'lucide-react'
 
 type FormState = {
@@ -40,12 +40,14 @@ export default function NewContractPage() {
   const [error, setError]         = useState('')
 
   useEffect(() => {
-    supabase
-      .from('properties')
-      .select('id, name, nickname')
-      .in('status', ['Rent', 'Rent&Sale'])
-      .order('name')
-      .then(({ data }) => setProperties(data ?? []))
+    listStaffContractProperties().then(({ data, error: loadError }) => {
+      if (loadError || !data) {
+        setError('Properties are not available.')
+        setProperties([])
+        return
+      }
+      setProperties(data)
+    })
   }, [])
 
   function set(field: keyof FormState, value: string) {
@@ -65,7 +67,7 @@ export default function NewContractPage() {
       return
     }
     setSaving(true)
-    const { error: err } = await supabase.from('rental_contracts').insert([{
+    const { error: err } = await createStaffRentalContract({
       property_id:          form.property_id,
       tenant_name:          form.tenant_name,
       start_date:           form.start_date,
@@ -75,9 +77,8 @@ export default function NewContractPage() {
       payment_day:          parseInt(form.payment_day) || 1,
       management_fee_type:  form.management_fee_type,
       management_fee_value: feeValue,
-      status:               'active',
       notes:                form.notes || null,
-    }])
+    })
     setSaving(false)
     if (err) { setError(err.message); return }
     setSaved(true)
