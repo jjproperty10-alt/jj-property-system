@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import { createStaffRentalContract } from '@/lib/legacy/staffRentalContracts'
+import { createStaffRentalContract, listStaffContractProperties } from '@/lib/legacy/staffRentalContracts'
 import { CheckCircle, AlertCircle } from 'lucide-react'
 
 type FormState = {
@@ -41,12 +40,14 @@ export default function NewContractPage() {
   const [error, setError]         = useState('')
 
   useEffect(() => {
-    supabase
-      .from('properties')
-      .select('id, name, nickname')
-      .in('status', ['Rent', 'Rent&Sale'])
-      .order('name')
-      .then(({ data }) => setProperties(data ?? []))
+    listStaffContractProperties().then(({ data, error: loadError }) => {
+      if (loadError || !data) {
+        setError('Properties are not available.')
+        setProperties([])
+        return
+      }
+      setProperties(data)
+    })
   }, [])
 
   function set(field: keyof FormState, value: string) {

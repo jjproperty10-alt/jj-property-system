@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase'
 import {
   countStaffRentalContracts,
   createStaffRentalContract,
+  listStaffContractProperties,
   listStaffRentalContracts,
   readStaffRentalContract,
 } from '@/lib/legacy/staffRentalContracts'
@@ -28,10 +29,11 @@ function queryBuilder(rows: unknown[]) {
     eq: jest.fn(),
     order: jest.fn(),
     limit: jest.fn(),
+    in: jest.fn(),
     insert: jest.fn(),
     single: jest.fn(async () => ({ data: rows[0] ?? null, error: null, count: null })),
   }
-  for (const key of ['select', 'eq', 'order', 'limit', 'insert'] as const) {
+  for (const key of ['select', 'eq', 'order', 'limit', 'in', 'insert'] as const) {
     builder[key].mockReturnValue(builder)
   }
   builder.then = (resolve) => {
@@ -70,11 +72,14 @@ describe('public rental contract staff gate', () => {
     const read = await readStaffRentalContract(contractId)
     const counted = await countStaffRentalContracts()
     const created = await createStaffRentalContract(insertInput)
+    const properties = await listStaffContractProperties()
 
     expect(listed.error?.code).toBe('42501')
     expect(read.error?.code).toBe('42501')
     expect(counted.error?.code).toBe('42501')
     expect(created.error?.code).toBe('42501')
+    expect(properties.error?.code).toBe('42501')
+    expect(properties.data).toBeNull()
     expect(listed.data).toBeNull()
     expect(serviceMock).not.toHaveBeenCalled()
   })
@@ -91,6 +96,20 @@ describe('public rental contract staff gate', () => {
     expect(result.data).toEqual([{ id: contractId, tenant_name: 'Example tenant' }])
     expect(from).toHaveBeenCalledTimes(1)
     expect(from).toHaveBeenCalledWith('rental_contracts')
+  })
+
+  test('active staff loads rent properties for the new-contract form', async () => {
+    authMock.mockResolvedValue(staff)
+    const builder = queryBuilder([{ id: propertyId, name: 'Example property', nickname: null }])
+    const from = jest.fn(() => builder)
+    serviceMock.mockReturnValue({ from } as never)
+
+    const result = await listStaffContractProperties()
+
+    expect(result.error).toBeNull()
+    expect(from).toHaveBeenCalledTimes(1)
+    expect(from).toHaveBeenCalledWith('properties')
+    expect(builder.in).toHaveBeenCalledWith('status', ['Rent', 'Rent&Sale'])
   })
 
   test('a bad contract id is rejected before staff lookup', async () => {

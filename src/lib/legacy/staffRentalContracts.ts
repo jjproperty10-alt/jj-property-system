@@ -87,6 +87,26 @@ export async function readStaffRentalContract(id: string): Promise<StaffContract
   }
 }
 
+const RENT_STATUSES = ['Rent', 'Rent&Sale'] as const
+
+export async function listStaffContractProperties(): Promise<StaffContractResult> {
+  const blocked = await authorize()
+  if (blocked) return blocked
+
+  const db = createServiceClient()
+  const result = await db
+    .from('properties')
+    .select('id, name, nickname')
+    .in('status', [...RENT_STATUSES])
+    .order('name')
+    .limit(500)
+  return {
+    data: result.data ?? null,
+    error: result.error ? { message: result.error.message, code: result.error.code ?? 'PGRST' } : null,
+    count: null,
+  }
+}
+
 export async function countStaffRentalContracts(): Promise<StaffContractResult> {
   const blocked = await authorize()
   if (blocked) return blocked
