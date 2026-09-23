@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { readStaffView } from '@/lib/legacy/staffViewActions'
 import Link from 'next/link'
 import {
   RefreshCw, TrendingUp, TrendingDown, AlertTriangle, CheckCircle,
@@ -20,30 +21,27 @@ export default function MasterDashboard() {
   async function load() {
     setLoading(true)
     const [
-      cashRes, ceoRes, openRes, issuesRes,
-      anastasiaRes, settlRes, dupeRes, contractRes,
+      cashRes, ceoRes, issuesRes,
+      anastasiaRes, dupeRes, contractRes,
     ] = await Promise.all([
-      supabase.from('v_cashbox_audit').select('*'),
-      supabase.from('v_ceo_summary').select(
-        'client_cash_position_profit,jj_own_cash_profit,partnership_jj_cash_profit,' +
-        'company_cash_profit,total_cash_position_profit,total_contract_profit,' +
-        'cash_contract_gap,total_receivables,due_to_owners,' +
-        'anastasia_owes_jj,jj_owes_anastasia'
-      ).single(),
-      supabase.from('v_open_balances').select('open_amount, priority, balance_type'),
-      supabase.from('v_transaction_issues').select('severity', { count: 'exact', head: false }),
-      supabase.from('v_anastasia_clearing').select('*').single(),
-      supabase.from('v_settlement_verification').select('*').single(),
-      supabase.from('v_possible_duplicates').select('id', { count: 'exact', head: true }),
+      readStaffView({ view: 'v_cashbox_audit' }),
+      readStaffView({
+        view: 'v_ceo_summary',
+        select: 'client_cash_position_profit,jj_own_cash_profit,partnership_jj_cash_profit,company_cash_profit,total_cash_position_profit,total_contract_profit,cash_contract_gap,total_receivables,due_to_owners,anastasia_owes_jj,jj_owes_anastasia',
+        single: true,
+      }),
+      readStaffView({ view: 'v_transaction_issues', select: 'severity' }),
+      readStaffView({ view: 'v_anastasia_clearing', single: true }),
+      readStaffView({ view: 'v_possible_duplicates', select: 'id', head: true }),
       supabase.from('rental_contracts').select('status, end_date').eq('status', 'active'),
     ])
     setData({
       cash:       cashRes.data      ?? [],
       ceo:        ceoRes.data       ?? {},
-      open:       openRes.data      ?? [],
+      open:       [],
       issues:     issuesRes.data    ?? [],
       anastasia:  anastasiaRes.data ?? {},
-      settlement: settlRes.data     ?? {},
+      settlement: null,
       dupeCount:  dupeRes.count     ?? 0,
       contracts:  contractRes.data  ?? [],
     })
@@ -57,7 +55,6 @@ export default function MasterDashboard() {
   const totalCash     = (data.cash ?? []).reduce((s: number, c: any) => s + n(c.balance), 0)
                         + n(data.anastasia?.cash_on_hand)
   const issueHigh     = (data.issues ?? []).filter((i: any) => i.severity === 'high').length
-  const totalOpenAmt  = (data.open ?? []).reduce((s: number, o: any) => s + n(o.open_amount), 0)
   const anastasiaOwes = n(data.anastasia?.anastasia_owes_jj)
   const settlAmt      = n(data.settlement?.settlement_amount)
   // DB returns 'Jacob pays Yossi' (Title Case, spaces). Normalize to snake_case before comparing.
@@ -224,26 +221,8 @@ export default function MasterDashboard() {
             <Link href="/open-balances" className="text-xs text-brand-500 hover:underline">View All →</Link>
           </div>
           <div className="card p-5">
-            <div className="text-3xl font-bold text-orange-600 mb-2">{EUR(totalOpenAmt)}</div>
-            <div className="text-xs text-gray-400 mb-3">{(data.open ?? []).length} open items</div>
-            <div className="space-y-2">
-              {[
-                { type: 'sale_receivable',       label: 'Client Owes — Sale' },
-                { type: 'renovation_receivable',  label: 'Client Owes — Reno' },
-                { type: 'owner_balance',          label: 'Due to Owners' },
-              ].map(row => {
-                const amt = (data.open ?? [])
-                  .filter((o: any) => o.balance_type === row.type)
-                  .reduce((s: number, o: any) => s + n(o.open_amount), 0)
-                if (amt === 0) return null
-                return (
-                  <div key={row.type} className="flex justify-between text-sm">
-                    <span className="text-gray-500">{row.label}</span>
-                    <span className="font-medium text-orange-600">{EUR(amt)}</span>
-                  </div>
-                )
-              })}
-            </div>
+            <p className="text-sm text-gray-600 mb-3">Open balances are not on this screen. The old source is not in the database.</p>
+            <Link href="/open-balances" className="text-sm text-brand-500 hover:underline">Open the Open Balances screen</Link>
           </div>
         </section>
 

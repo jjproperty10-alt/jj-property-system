@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { readStaffView } from '@/lib/legacy/staffViewActions'
 import { RefreshCw, ArrowRight, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react'
 
 const n = (v: unknown): number => { const f = parseFloat(String(v ?? 0)); return isNaN(f) ? 0 : f }
@@ -45,11 +45,8 @@ export default function SettlementPage() {
 
   async function load() {
     setLoading(true)
-    const [sr, ar] = await Promise.all([
-      supabase.from('v_settlement_verification').select('*').single(),
-      supabase.from('v_anastasia_clearing').select('*').single(),
-    ])
-    if (sr.data) setS(sr.data as SettlementVerification)
+    const ar = await readStaffView({ view: 'v_anastasia_clearing', single: true })
+    setS(null)
     if (ar.data) setA(ar.data as AnastasiaClearing)
     setLoading(false)
   }
@@ -90,7 +87,12 @@ export default function SettlementPage() {
       <div className="card p-6 mb-6">
         <div className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Settlement Recommendation</div>
 
-        {dir === 'balanced' ? (
+        {!loading && s == null ? (
+          <p className="text-sm text-gray-600">
+            The settlement recommendation cannot be shown. Its source is not in the database.
+            Anastasia clearing on this page still loads for an active staff session.
+          </p>
+        ) : dir === 'balanced' ? (
           <div className="flex items-center gap-2 text-green-600">
             <CheckCircle size={18} />
             <span className="font-semibold">Partners are balanced — no transfer needed</span>
@@ -113,6 +115,7 @@ export default function SettlementPage() {
           </div>
         )}
 
+        {s != null && (
         <div className="mt-4 pt-4 border-t border-gray-100">
           <button
             onClick={() => setShowCalc(!showCalc)}
@@ -122,10 +125,11 @@ export default function SettlementPage() {
             {showCalc ? 'Hide calculation' : 'View calculation'}
           </button>
         </div>
+        )}
       </div>
 
       {/* ── CALCULATION BREAKDOWN ── */}
-      {showCalc && (
+      {showCalc && s != null && (
         <div className="card p-6 mb-6 bg-gray-50">
           <div className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">How This Was Calculated</div>
 

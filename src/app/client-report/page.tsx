@@ -28,6 +28,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { readStaffView } from '@/lib/legacy/staffViewActions'
 import Link from 'next/link'
 import {
   RefreshCw, FileText, User, Building2, ArrowLeft,
@@ -1058,12 +1059,12 @@ export default function ClientReportPage() {
     }
     setPropsLoading(true)
     setReportReady(false)
-    supabase
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .from('v_rpt_contact_properties' as any)
-      .select('canonical_name, relationship_role, confirmation_status, link_notes, jj_relationship_type')
-      .eq('contact_id', selectedId)
-      .order('canonical_name')
+    readStaffView({
+      view: 'v_rpt_contact_properties',
+      select: 'canonical_name,relationship_role,confirmation_status,link_notes,jj_relationship_type',
+      eq: { contact_id: selectedId },
+      order: { column: 'canonical_name' },
+    })
       .then(({ data }) => {
         const props = (data ?? []) as ContactProperty[]
         setProperties(props)
@@ -1079,20 +1080,17 @@ export default function ClientReportPage() {
     setReportReady(false)
     setExpandedSections(new Set())
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let q = (supabase as any)
-      .from('v_rpt_client_transactions')
-      .select('*')
-      .in('canonical_property_name', selectedProps)
-      .gte('date', fromDate)
-      .lte('date', toDate)
-      .order('date')
-
-    // Server-side category filter (reduces payload)
-    if (selectedCategories.length > 0)
-      q = q.in('category', selectedCategories)
-
-    const { data } = await q
+    const filters: { canonical_property_name: string[]; category?: string[] } = {
+      canonical_property_name: selectedProps,
+    }
+    if (selectedCategories.length > 0) filters.category = selectedCategories
+    const { data } = await readStaffView({
+      view: 'v_rpt_client_transactions',
+      in: filters,
+      gte: { date: fromDate },
+      lte: { date: toDate },
+      order: { column: 'date', ascending: true },
+    })
 
     let txns: Tx[] = data ?? []
 

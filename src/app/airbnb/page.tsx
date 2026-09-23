@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { readStaffView } from '@/lib/legacy/staffViewActions'
 import { RefreshCw, TrendingUp, TrendingDown } from 'lucide-react'
 
 const EUR = (n: number) =>
@@ -36,7 +36,7 @@ export default function AirbnbPage() {
   const [selected, setSelected]     = useState<string | null>(null)
 
   useEffect(() => {
-    supabase.from('v_airbnb_summary').select('*').order('platform_income', { ascending: false })
+    readStaffView({ view: 'v_airbnb_summary', order: { column: 'platform_income', ascending: false } })
       .then(({ data }) => {
         setProperties((data ?? []) as AirbnbRow[])
         setLoading(false)
@@ -57,7 +57,7 @@ export default function AirbnbPage() {
           <h1 className="text-2xl font-bold text-gray-900">Airbnb Dashboard</h1>
           <p className="text-sm text-gray-500 mt-0.5">{properties.length} Airbnb properties</p>
         </div>
-        <button onClick={() => { setLoading(true); supabase.from('v_airbnb_summary').select('*').order('platform_income', { ascending: false }).then(({ data }) => { setProperties((data ?? []) as AirbnbRow[]); setLoading(false) }) }}
+        <button onClick={() => { setLoading(true); readStaffView({ view: 'v_airbnb_summary', order: { column: 'platform_income', ascending: false } }).then(({ data }) => { setProperties((data ?? []) as AirbnbRow[]); setLoading(false) }) }}
           disabled={loading} className="btn-secondary flex items-center gap-2 text-sm">
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
         </button>

@@ -7,6 +7,7 @@
 // ============================================================
 
 import { supabase } from '@/lib/supabase'
+import { readStaffView } from '@/lib/legacy/staffViewActions'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -194,6 +195,10 @@ export const EUR = (v: number | string | null | undefined): string => {
   }).format(isNaN(n) ? 0 : n)
 }
 
+function asRows(data: unknown): any[] {
+  return Array.isArray(data) ? data : []
+}
+
 const parseNum = (v: unknown): number => {
   const n = parseFloat(String(v ?? 0))
   return isNaN(n) ? 0 : n
@@ -278,7 +283,7 @@ export async function getOwnership(entityId: string): Promise<PartnershipOwnersh
     .eq('entity_id', entityId)
     .order('effective_from')
   if (error) throw error
-  return (data ?? []).map(r => ({ ...r, ownership_pct: parseNum(r.ownership_pct) }))
+  return asRows(data).map((r: any) => ({ ...r, ownership_pct: parseNum(r.ownership_pct) }))
 }
 
 export async function insertOwnershipRow(row: Omit<PartnershipOwnership, 'id' | 'created_at'>): Promise<void> {
@@ -297,13 +302,13 @@ export async function closeOwnershipRow(id: string): Promise<void> {
 // ─── Financial views ──────────────────────────────────────────────────────────
 
 export async function getNetCashPosition(entityId: string): Promise<NetCashPosition[]> {
-  const { data, error } = await supabase
-    .from('v_entity_net_cash_position')
-    .select('*')
-    .eq('entity_id', entityId)
-    .order('party')
+  const { data, error } = await readStaffView({
+    view: 'v_entity_net_cash_position',
+    eq: { entity_id: entityId },
+    order: { column: 'party' },
+  })
   if (error) throw error
-  return (data ?? []).map(r => ({
+  return asRows(data).map((r: any) => ({
     ...r,
     total_paid:     parseNum(r.total_paid),
     total_received: parseNum(r.total_received),
@@ -312,12 +317,12 @@ export async function getNetCashPosition(entityId: string): Promise<NetCashPosit
 }
 
 export async function getOwnershipAllocation(entityId: string): Promise<OwnershipAllocation[]> {
-  const { data, error } = await supabase
-    .from('v_entity_ownership_allocation')
-    .select('*')
-    .eq('entity_id', entityId)
+  const { data, error } = await readStaffView({
+    view: 'v_entity_ownership_allocation',
+    eq: { entity_id: entityId },
+  })
   if (error) throw error
-  return (data ?? []).map(r => ({
+  return asRows(data).map((r: any) => ({
     ...r,
     ownership_pct:        parseNum(r.ownership_pct),
     expected_cost_share:  parseNum(r.expected_cost_share),
@@ -327,13 +332,13 @@ export async function getOwnershipAllocation(entityId: string): Promise<Ownershi
 }
 
 export async function getSettlement(entityId: string): Promise<SettlementResult[]> {
-  const { data, error } = await supabase
-    .from('v_entity_settlement')
-    .select('*')
-    .eq('entity_id', entityId)
-    .order('partner_name')
+  const { data, error } = await readStaffView({
+    view: 'v_entity_settlement',
+    eq: { entity_id: entityId },
+    order: { column: 'partner_name' },
+  })
   if (error) throw error
-  return (data ?? []).map(r => ({
+  return asRows(data).map((r: any) => ({
     ...r,
     ownership_pct:    parseNum(r.ownership_pct),
     actual_paid:      parseNum(r.actual_paid),
@@ -347,11 +352,11 @@ export async function getSettlement(entityId: string): Promise<SettlementResult[
 export async function getAnastasiaReimbursement(
   entityId: string
 ): Promise<AnastasiaReimbursement | null> {
-  const { data, error } = await supabase
-    .from('v_entity_anastasia_reimbursement')
-    .select('*')
-    .eq('entity_id', entityId)
-    .single()
+  const { data, error } = await readStaffView({
+    view: 'v_entity_anastasia_reimbursement',
+    eq: { entity_id: entityId },
+    single: true,
+  })
   if (error) { if (error.code === 'PGRST116') return null; throw error }
   if (!data) return null
   return {
@@ -365,12 +370,12 @@ export async function getAnastasiaReimbursement(
 // ─── Unmapped queue ───────────────────────────────────────────────────────────
 
 export async function getUnmappedQueue(): Promise<UnmappedQueueItem[]> {
-  const { data, error } = await supabase
-    .from('v_unmapped_queue')
-    .select('*')
-    .order('tx_count', { ascending: false })
+  const { data, error } = await readStaffView({
+    view: 'v_unmapped_queue',
+    order: { column: 'tx_count', ascending: false },
+  })
   if (error) throw error
-  return (data ?? []).map(r => ({
+  return asRows(data).map((r: any) => ({
     ...r,
     tx_count:  parseInt(String(r.tx_count), 10),
     total_eur: parseNum(r.total_eur),
@@ -383,21 +388,22 @@ export async function getEntityTransactions(
   entityId: string,
   limit = 50
 ): Promise<EntityTransaction[]> {
-  const { data, error } = await supabase
-    .from('v_entity_resolved')
-    .select('*')
-    .eq('entity_id', entityId)
-    .order('date', { ascending: false })
-    .limit(limit)
+  const { data, error } = await readStaffView({
+    view: 'v_entity_resolved',
+    eq: { entity_id: entityId },
+    order: { column: 'date', ascending: false },
+    limit,
+  })
   if (error) throw error
-  return (data ?? []).map(r => ({ ...r, amount_eur: parseNum(r.amount_eur) }))
+  return asRows(data).map((r: any) => ({ ...r, amount_eur: parseNum(r.amount_eur) }))
 }
 
 export async function getEntityTransactionCount(entityId: string): Promise<number> {
-  const { count, error } = await supabase
-    .from('v_entity_resolved')
-    .select('*', { count: 'exact', head: true })
-    .eq('entity_id', entityId)
+  const { count, error } = await readStaffView({
+    view: 'v_entity_resolved',
+    eq: { entity_id: entityId },
+    head: true,
+  })
   if (error) throw error
   return count ?? 0
 }
@@ -498,13 +504,13 @@ const parseNumOrNull = (v: unknown): number | null => {
 export async function getPartnershipCapital(
   propertyName: string
 ): Promise<PartnershipCapital[]> {
-  const { data, error } = await supabase
-    .from('v_partnership_capital')
-    .select('*')
-    .eq('property_name', propertyName)
-    .order('partner_name')
+  const { data, error } = await readStaffView({
+    view: 'v_partnership_capital',
+    eq: { property_name: propertyName },
+    order: { column: 'partner_name' },
+  })
   if (error) throw error
-  return (data ?? []).map(r => ({
+  return asRows(data).map((r: any) => ({
     ...r,
     ownership_percent:            parseNum(r.ownership_percent),
     jj_original_acquisition_cost: parseNumOrNull(r.jj_original_acquisition_cost),
@@ -541,13 +547,13 @@ export interface PartnerCapitalAllocation {
 export async function getPartnerCapitalAllocation(
   propertyName: string
 ): Promise<PartnerCapitalAllocation[]> {
-  const { data, error } = await supabase
-    .from('v_partnership_partner_capital_allocation')
-    .select('*')
-    .eq('property_name', propertyName)
-    .order('partner_name')
+  const { data, error } = await readStaffView({
+    view: 'v_partnership_partner_capital_allocation',
+    eq: { property_name: propertyName },
+    order: { column: 'partner_name' },
+  })
   if (error) throw error
-  return (data ?? []).map(r => ({
+  return asRows(data).map((r: any) => ({
     ...r,
     ownership_percent:             parseNum(r.ownership_percent),
     jj_original_acquisition_cost:  parseNum(r.jj_original_acquisition_cost),
@@ -588,14 +594,14 @@ export async function getPartnershipExpenseMarkup(
   propertyName: string,
   limit = 50
 ): Promise<PartnershipExpenseMarkup[]> {
-  const { data, error } = await supabase
-    .from('v_partnership_expense_markup_allocation')
-    .select('*')
-    .eq('property_name', propertyName)
-    .order('date', { ascending: false })
-    .limit(limit)
+  const { data, error } = await readStaffView({
+    view: 'v_partnership_expense_markup_allocation',
+    eq: { property_name: propertyName },
+    order: { column: 'date', ascending: false },
+    limit,
+  })
   if (error) throw error
-  return (data ?? []).map(r => ({
+  return asRows(data).map((r: any) => ({
     ...r,
     real_amount:                parseNum(r.real_amount),
     client_charge_market_price: parseNum(r.client_charge_market_price),
@@ -626,11 +632,11 @@ export interface JJInternalSettlement {
 export async function getJJInternalSettlement(
   propertyName: string
 ): Promise<JJInternalSettlement | null> {
-  const { data, error } = await supabase
-    .from('v_jj_internal_partnership_settlement')
-    .select('*')
-    .eq('property_name', propertyName)
-    .single()
+  const { data, error } = await readStaffView({
+    view: 'v_jj_internal_partnership_settlement',
+    eq: { property_name: propertyName },
+    single: true,
+  })
   if (error) {
     if (error.code === 'PGRST116') return null // no rows
     throw error
@@ -671,11 +677,11 @@ export interface JJPropertyNetPosition {
 export async function getJJPropertyNetPosition(
   propertyName: string
 ): Promise<JJPropertyNetPosition | null> {
-  const { data, error } = await supabase
-    .from('v_jj_property_net_position')
-    .select('*')
-    .eq('property_name', propertyName)
-    .single()
+  const { data, error } = await readStaffView({
+    view: 'v_jj_property_net_position',
+    eq: { property_name: propertyName },
+    single: true,
+  })
   if (error) {
     if (error.code === 'PGRST116') return null
     throw error

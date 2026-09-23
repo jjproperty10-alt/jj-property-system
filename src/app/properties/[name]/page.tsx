@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
+import { readStaffView } from '@/lib/legacy/staffViewActions'
 import {
   ArrowLeft, Building2, RefreshCw, TrendingUp, TrendingDown,
   Calendar, User, PieChart, Plus, Trash2, Save, X, Pencil,
@@ -99,7 +100,7 @@ export default function PropertyDetailPage() {
     setLoading(true)
     const supabase = createSupabaseBrowserClient()
     const [sumRes, txRes, ownRes] = await Promise.all([
-      supabase.from('v_property_summary').select('*').eq('name', propertyName).single(),
+      readStaffView({ view: 'v_property_summary', eq: { name: propertyName }, single: true }),
       supabase.from('transactions').select('*')
         .eq('property_name', propertyName)
         .eq('is_deleted', false)
