@@ -50,13 +50,13 @@ export default async function TransactionDraftsPage() {
   const drafts = listed.ok ? listed.drafts : []
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
+    <div className="max-w-full overflow-x-hidden p-4 pt-16 md:p-8 md:pt-8">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-gray-900">Transaction Drafts</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Staff review inbox. Posting requires explicit confirmation.</p>
+          <p className="mt-0.5 text-sm text-gray-500">Staff review inbox. Posting requires explicit confirmation.</p>
         </div>
-        <Link href="/transactions/new" className="btn-primary text-sm">
+        <Link href="/transactions/new" className="btn-primary min-h-11 text-center text-sm">
           New draft
         </Link>
       </div>
@@ -77,7 +77,32 @@ export default async function TransactionDraftsPage() {
       )}
 
       {listed.ok && drafts.length > 0 && (
-        <div className="card overflow-x-auto">
+        <ul className="space-y-3 md:hidden" data-testid="drafts-inbox-cards">
+          {drafts.map((row) => (
+            <li key={row.id || `${row.created_at}-${row.date}`} className="card space-y-2 p-4 text-sm">
+              <div className="flex items-start justify-between gap-2">
+                <p className="min-w-0 break-words font-medium">{row.property || '—'}</p>
+                <p className="shrink-0 text-xs text-gray-500">{row.status || '—'}</p>
+              </div>
+              <p className="break-words text-gray-700">{row.description ?? '—'}</p>
+              <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                <dt className="text-gray-500">Date</dt><dd className="break-words">{row.date || '—'}</dd>
+                <dt className="text-gray-500">Category</dt><dd className="break-words">{row.category || '—'}</dd>
+                <dt className="text-gray-500">Subcategory</dt><dd className="break-words">{row.subcategory || '—'}</dd>
+                <dt className="text-gray-500">Payer</dt><dd className="break-words">{row.payer ?? '—'}</dd>
+                <dt className="text-gray-500">Payee</dt><dd className="break-words">{row.payee ?? '—'}</dd>
+                <dt className="text-gray-500">Amount</dt><dd>{money(row.amount_eur)}</dd>
+                <dt className="text-gray-500">Client charge</dt><dd>{money(row.client_charge)}</dd>
+                <dt className="text-gray-500">Created</dt><dd className="break-words">{stamp(row.created_at)}</dd>
+              </dl>
+              <DraftInboxActions draft={row} />
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {listed.ok && drafts.length > 0 && (
+        <div className="card hidden overflow-x-auto md:block">
           <table className="w-full min-w-[960px] table-fixed text-sm" data-testid="drafts-inbox-table">
             <colgroup>
               <col className="w-[5.5rem]" />

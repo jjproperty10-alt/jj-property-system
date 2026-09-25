@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
 import { readStaffView } from '@/lib/legacy/staffViewActions'
@@ -202,6 +203,12 @@ export default function PropertyDetailPage() {
             {s?.status && <span className={`badge ${STATUS_BADGE[s.status] ?? 'bg-gray-100 text-gray-600'}`}>{s.status}</span>}
           </div>
           <p className="text-sm text-gray-500 mt-0.5 ml-8">{transactions.length} transactions</p>
+          <Link
+            href={`/assistant?property=${encodeURIComponent(propertyName)}`}
+            className="mt-2 ml-8 inline-flex min-h-11 items-center text-sm font-medium text-brand-700"
+          >
+            דבר עם סוכן JJ
+          </Link>
         </div>
         <button onClick={load} disabled={loading}
           className="btn-secondary flex items-center gap-2 text-sm">

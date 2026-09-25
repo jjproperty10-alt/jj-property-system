@@ -15,6 +15,7 @@ import {
   listPartnerFundingActors,
 } from '@/lib/ops/assistant/clientCashSettlementActions'
 import { AssistantChat } from '@/components/ops/AssistantChat'
+import { resolveProperty } from '@/lib/ops/assistant/transactionDraftCollector'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,7 +26,7 @@ export const metadata: Metadata = {
 export default async function AssistantPage({
   searchParams,
 }: {
-  searchParams?: { c?: string }
+  searchParams?: { c?: string; property?: string }
 }) {
   const auth = await authenticateStatementUser()
   if (!auth.ok) {
@@ -42,14 +43,19 @@ export default async function AssistantPage({
   const conversationId = typeof searchParams?.c === 'string' && searchParams.c.trim()
     ? searchParams.c.trim()
     : null
+  const properties = catalog.ok ? catalog.properties : []
+  const propertyQuery = typeof searchParams?.property === 'string' ? searchParams.property.trim() : ''
+  const resolvedProperty = propertyQuery ? resolveProperty(propertyQuery, properties) : null
+  const suggestedPropertyName = resolvedProperty?.kind === 'unique' ? resolvedProperty.entry.name : null
 
   return (
     <AssistantChat
       staffPayerName={frame?.name ?? ''}
-      catalog={catalog.ok ? catalog.properties : []}
+      catalog={properties}
       entities={entities.ok ? entities.entities : []}
       partners={partners.ok ? partners.actors : []}
       initialConversationId={conversationId}
+      suggestedPropertyName={suggestedPropertyName}
     />
   )
 }

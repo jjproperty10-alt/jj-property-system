@@ -150,6 +150,8 @@ export default function PropertiesPage() {
   const router = useRouter()
 
   useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('q')
+    if (q) setSearch(q)
     readStaffView({ view: 'v_property_summary', order: { column: 'name' } }).then(({ data }) => {
       // Filter out rows with null/empty name (transactions with no property_name in DB)
       setProperties(((data ?? []) as P[]).filter(p => p.name != null && p.name !== ''))

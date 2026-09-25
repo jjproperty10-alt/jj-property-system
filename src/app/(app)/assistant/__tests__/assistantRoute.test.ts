@@ -83,7 +83,24 @@ describe('/assistant staff authorization', () => {
       props: {
         entities: [],
         partners: TEST_PARTNER_ACTORS,
+        suggestedPropertyName: null,
       },
     })
+  })
+
+  it('suggests a property only when the catalog match is unique', async () => {
+    authMock.mockResolvedValue({ ok: true, userId: 'staff-1', staffRole: 'operations', isActive: true })
+    frameMock.mockResolvedValue({ id: 'staff-1', name: 'Yossi', email: 'yossi@x', role: 'ceo' })
+    catalogMock.mockResolvedValue({
+      ok: true,
+      properties: [
+        { id: 'p1', name: 'Tamir Dekelia' },
+        { id: 'p2', name: 'Tamir Radisson' },
+      ],
+    })
+    const unique = await Page({ searchParams: { property: 'Tamir Dekelia' } })
+    expect(unique).toMatchObject({ props: { suggestedPropertyName: 'Tamir Dekelia' } })
+    const ambiguous = await Page({ searchParams: { property: 'Tamir' } })
+    expect(ambiguous).toMatchObject({ props: { suggestedPropertyName: null } })
   })
 })
