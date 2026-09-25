@@ -1,3 +1,4 @@
+import { execFileSync } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 
@@ -62,6 +63,59 @@ describe('property operating company backfill', () => {
     expect(migration).toContain('20260925120000')
     expect(migration).toContain('properties_operating_company_fk')
     expect(migration).toContain("confdeltype = 'r'")
+  })
+
+  it('verifies the reviewed foreign keys and non-unique indexes', () => {
+    for (const source of [migration, rollback]) {
+      expect(source).toContain("company_fk.contype = 'f'")
+      expect(source).toContain('company_fk.convalidated')
+      expect(source).toContain("company_fk.confdeltype = 'r'")
+      expect(source).toContain("owning_namespace.nspname = 'public'")
+      expect(source).toContain("owning.relname = 'properties'")
+      expect(source).toContain("owning.relname = 'property_definitions'")
+      expect(source).toContain("local_column.attname = 'operating_company_id'")
+      expect(source).toContain("referenced_namespace.nspname = 'registry'")
+      expect(source).toContain("referenced.relname = 'companies'")
+      expect(source).toContain("referenced_column.attname = 'company_id'")
+      expect(source).toContain("index_namespace.nspname = 'public'")
+      expect(source).toContain("table_namespace.nspname = 'public'")
+      expect(source).toContain("indexed_column.attname = 'operating_company_id'")
+      expect(source).toContain('index_row.indisvalid')
+      expect(source).toContain('index_row.indisready')
+      expect(source).toContain('NOT index_row.indisunique')
+      expect(source).toContain('index_row.indexprs IS NULL')
+      expect(source).toContain('index_row.indpred IS NULL')
+      expect(source).toContain('properties_operating_company_id_idx')
+      expect(source).toContain('property_definitions_operating_company_id_idx')
+    }
+  })
+
+  it('runs failure cases through EXECUTE instead of a nested DO statement', () => {
+    const artifact = execFileSync('node', [path.join(root, 'scripts/run-properties-operating-company-backfill-matrix.cjs')], {
+      cwd: root,
+      encoding: 'utf8',
+    }).trim()
+    const generated = fs.readFileSync(artifact, 'utf8')
+    const { assertNoDirectNestedDo } = require(path.join(
+      root,
+      'scripts/run-properties-operating-company-backfill-matrix.cjs',
+    )) as { assertNoDirectNestedDo: (sql: string) => void }
+    expect(() => assertNoDirectNestedDo(generated)).not.toThrow()
+    expect(generated).toContain('EXECUTE $phase22_run$')
+    expect(generated).toContain('DO $backfill$')
+    expect(generated).not.toMatch(/BEGIN;\s*DO \$backfill\$/)
+    const failureCases = [
+      'row_count_aborts',
+      'preexisting_aborts',
+      'second_company_aborts',
+      'rollback_refuses_mixed',
+    ]
+    for (const step of failureCases) {
+      const at = generated.indexOf(step)
+      const executeAt = generated.lastIndexOf('EXECUTE $phase22_run$', at)
+      expect(executeAt).toBeGreaterThan(-1)
+      expect(generated.slice(executeAt, at)).toMatch(/DO \$(backfill|rollback)\$/)
+    }
   })
 
   it('does not touch the ledger, views, or PMS', () => {

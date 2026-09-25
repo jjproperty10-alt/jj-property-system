@@ -50,7 +50,9 @@ BEGIN
   WHERE id = probe_id;
 
   BEGIN
-    @@ROLLBACK@@
+    EXECUTE $phase22_run$
+@@ROLLBACK@@
+$phase22_run$;
     INSERT INTO phase22_matrix VALUES ('rollback_refuses_mixed', false, 'cleared');
   EXCEPTION WHEN OTHERS THEN
     INSERT INTO phase22_matrix VALUES (
@@ -93,7 +95,9 @@ DECLARE
 BEGIN
   INSERT INTO public.properties (name) VALUES ('phase22-extra-row') RETURNING id INTO probe_id;
   BEGIN
-    @@MIGRATION@@
+    EXECUTE $phase22_run$
+@@MIGRATION@@
+$phase22_run$;
     INSERT INTO phase22_matrix VALUES ('row_count_aborts', false, 'updated');
   EXCEPTION WHEN OTHERS THEN
     INSERT INTO phase22_matrix VALUES (
@@ -121,7 +125,9 @@ BEGIN
   SELECT id INTO probe_id FROM public.properties ORDER BY id LIMIT 1;
   UPDATE public.properties SET operating_company_id = jj_company WHERE id = probe_id;
   BEGIN
-    @@MIGRATION@@
+    EXECUTE $phase22_run$
+@@MIGRATION@@
+$phase22_run$;
     INSERT INTO phase22_matrix VALUES ('preexisting_aborts', false, 'updated');
   EXCEPTION WHEN OTHERS THEN
     INSERT INTO phase22_matrix VALUES (
@@ -147,7 +153,9 @@ BEGIN
   INSERT INTO registry.companies (company_id, canonical_name, status)
   VALUES (foreign_company, 'phase22-second', 'active');
   BEGIN
-    @@MIGRATION@@
+    EXECUTE $phase22_run$
+@@MIGRATION@@
+$phase22_run$;
     INSERT INTO phase22_matrix VALUES ('second_company_aborts', false, 'updated');
   EXCEPTION WHEN OTHERS THEN
     INSERT INTO phase22_matrix VALUES (
