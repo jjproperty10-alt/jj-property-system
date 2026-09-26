@@ -47,7 +47,7 @@ export function buildAssertionRegister(doc: ClientAccountDocument): AccountAsser
     assertions.push({
       property: line.propertyName,
       section: line.section,
-      description: line.description,
+      description: line.clientText,
       monthLabel: line.monthLabel,
       paymentMonthLabel: line.paymentMonthLabel,
       directionText: line.directionText,
@@ -143,7 +143,7 @@ export function clientAccountPlainText(doc: ClientAccountDocument): string {
       if (unit.note) parts.push(unit.title, unit.note)
     }
     for (const line of [...property.lines, ...property.units.flatMap((unit) => unit.lines)]) {
-      parts.push(line.section, line.description, line.monthLabel, line.paymentMonthLabel || '', line.directionText, fmt(line.amount))
+      parts.push(line.section, line.clientText, line.monthLabel, line.paymentMonthLabel || '', line.directionText, fmt(line.amount))
     }
     for (const summary of property.summaries) {
       parts.push(

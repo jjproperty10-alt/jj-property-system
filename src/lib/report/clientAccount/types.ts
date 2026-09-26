@@ -81,7 +81,8 @@ export interface PurchaseSupplement {
 export interface DisplayLine {
   readonly propertyName: string
   readonly section: string
-  readonly description: string
+  /** Client-safe text produced by the presentation layer (never the raw transaction description). */
+  readonly clientText: string
   readonly monthLabel: string
   readonly paymentMonthLabel: string | null
   readonly statusLabel: string | null

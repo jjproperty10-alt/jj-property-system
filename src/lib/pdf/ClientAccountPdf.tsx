@@ -150,7 +150,7 @@ function PropertyPages({
                   previousMonthLabel={lines[index].monthLabel}
                 />
               )
-              const explanation = unit.note && /שימוש של JJ|for JJ use/.test(line.description) ? (
+              const explanation = unit.note && /שימוש של JJ|for JJ use/.test(line.clientText) ? (
                 <View style={s.noteBox}>
                   <RtlLine text={unit.note} pack="start" style={{ color: colors.text, fontSize: 8.5 }} />
                 </View>
@@ -158,7 +158,7 @@ function PropertyPages({
               // The closing row of the unit table never stands alone on a page.
               if (isLastLine) {
                 return (
-                  <View key={`${line.traceSourceId || line.description}-${index}`} wrap={false}>
+                  <View key={`${line.traceSourceId || line.clientText}-${index}`} wrap={false}>
                     {row}
                     {explanation}
                     {unitTail}
@@ -168,7 +168,7 @@ function PropertyPages({
               // wrap={false} on the wrapper: react-pdf keeps a sole nested child on the current page
               // even when it overflows, so the break must be decided at this level.
               return (
-                <View key={`${line.traceSourceId || line.description}-${index}`} wrap={false}>
+                <View key={`${line.traceSourceId || line.clientText}-${index}`} wrap={false}>
                   {row}
                   {explanation}
                 </View>

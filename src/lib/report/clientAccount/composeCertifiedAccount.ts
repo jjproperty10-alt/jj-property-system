@@ -128,7 +128,7 @@ function lineFrom(
   return {
     propertyName,
     section,
-    description: description || described,
+    clientText: description || described,
     monthLabel: monthOverride || (range ? range[0].replace(/\s+/g, '') : monthLabelForRow(sample.date, sample.description, language)),
     paymentMonthLabel: null,
     statusLabel: null,
@@ -200,7 +200,7 @@ function strCreditLines(
     return months.map((month) => ({
       propertyName,
       section: 'הכנסות משכירות קצרה',
-      description: 'נטו לבעלים',
+      clientText: 'נטו לבעלים',
       monthLabel: monthFromIsoDate(`${month.year}-${String(month.month).padStart(2, '0')}-01`, language),
       paymentMonthLabel: null,
       statusLabel: null,
@@ -216,7 +216,7 @@ function strCreditLines(
   return [{
     propertyName,
     section: 'הכנסות משכירות קצרה',
-    description: lumpDescription,
+    clientText: lumpDescription,
     monthLabel: undatedLabel(language),
     paymentMonthLabel: null,
     statusLabel: null,
@@ -321,7 +321,7 @@ function composeProperty(
           lines.push({
             propertyName: cert.propertyName,
             section: 'קניית הנכס',
-            description: item.description,
+            clientText: item.description,
             monthLabel: item.monthLabel,
             paymentMonthLabel: null,
             statusLabel: null,
@@ -349,7 +349,7 @@ function composeProperty(
         lines[index] = {
           ...paymentLines[0],
           amount: price,
-          description: language === 'en' ? 'Payments on the purchase price' : 'תשלומים על מחיר הקנייה',
+          clientText: language === 'en' ? 'Payments on the purchase price' : 'תשלומים על מחיר הקנייה',
         }
       }
     }
@@ -519,7 +519,7 @@ function composeProperty(
   const incomeLines: DisplayLine[] = rentViews.map((view) => ({
     propertyName: cert.propertyName,
     section: 'הכנסות משכירות ארוכה',
-    description: view.description,
+    clientText: view.description,
     monthLabel: view.rentalLabel,
     paymentMonthLabel: view.paymentLabel,
     statusLabel: rentStatusText(view.status, language),
@@ -611,7 +611,7 @@ function composeProperty(
     lines.push({
       propertyName: cert.propertyName,
       section: 'הוצאות הנכס',
-      description: undatedChargeLabel,
+      clientText: undatedChargeLabel,
       monthLabel: undatedLabel(language),
       paymentMonthLabel: null,
       statusLabel: null,
@@ -664,7 +664,7 @@ function withOwnerDescriptions(property: PropertyAccount, descriptions: Composit
   if (!descriptions) return property
   const apply = (line: DisplayLine): DisplayLine => {
     const text = line.traceSourceId ? descriptions[line.traceSourceId] : undefined
-    return text ? { ...line, description: text } : line
+    return text ? { ...line, clientText: text } : line
   }
   return {
     ...property,

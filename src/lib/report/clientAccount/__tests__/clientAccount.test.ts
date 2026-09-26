@@ -95,7 +95,7 @@ describe('client account engine', () => {
       }],
       undatedChargeLabelByPropertyKey: { p1: 'עבודת גינה' },
     }))
-    const extra = doc.properties[0].lines.find((line) => line.description === 'עבודת גינה')
+    const extra = doc.properties[0].lines.find((line) => line.clientText === 'עבודת גינה')
     expect(extra?.monthLabel).toBe(UNDATED_LABEL)
     expect(extra?.evidence).toBe('owner-certified')
     expect(extra?.amount).toBe(10)
@@ -123,7 +123,7 @@ describe('client account engine', () => {
     expect(credits).toHaveLength(1)
     expect(credits[0].monthLabel).toBe(UNDATED_LABEL)
     expect(credits[0].amount).toBe(50)
-    expect(doc.properties[0].lines.some((line) => line.description === 'platform')).toBe(false)
+    expect(doc.properties[0].lines.some((line) => line.clientText === 'platform')).toBe(false)
   })
 
   test('STR months that do not equal the certified credit block the account', () => {
@@ -166,7 +166,7 @@ describe('client account engine', () => {
       }],
     }))
     const text = [
-      doc.properties[0].lines.map((line) => `${line.description} ${line.amount}`).join('\n'),
+      doc.properties[0].lines.map((line) => `${line.clientText} ${line.amount}`).join('\n'),
     ].join('\n')
     expect(text).not.toContain('75000')
     expect(forbiddenHits(text, ['75,000.00', 'RC3'])).toEqual([])
@@ -214,7 +214,7 @@ describe('client account engine', () => {
       ],
     }))
     const payment = doc.properties[0].lines.find((line) => line.countedIn === 'renovation-payment')
-    expect(payment?.description).toBe('תשלום על חשבון השיפוץ')
+    expect(payment?.clientText).toBe('תשלום על חשבון השיפוץ')
     expect(payment?.amount).toBe(25000)
     const summary = doc.properties[0].summaries.find((item) => item.kind === 'renovation')
     expect(summary).toMatchObject({ agreed: 40000, payments: 25000, ancillary: 0, balance: 15000, state: 'open' })
@@ -265,7 +265,7 @@ describe('client account engine', () => {
       ],
     }))
     const transfer = doc.properties[0].lines.find((line) => line.countedIn === 'owner-payment')
-    expect(transfer?.description).toBe('תשלום לבעלים')
+    expect(transfer?.clientText).toBe('תשלום לבעלים')
     expect(transfer?.directionText).toBe('הועבר לבעלים')
     expect(doc.properties[0].bridge.find((step) => step.label === 'תשלומים שהועברו לבעלים')?.directionText).toBe('מפחית את יתרת הנכס')
   })
@@ -357,11 +357,11 @@ describe('client account engine', () => {
     expect(doc.properties.reduce((sum, property) => sum + property.amountDueToJj, 0)).toBe(117901.54)
     expect(doc.credits.map((credit) => credit.amount)).toEqual([55000, 14000])
     const reno = doc.properties[0].lines.find((line) => line.traceSourceId === 'reno')
-    expect(reno?.description).toBe('עבודות צבע ושפכטל, קרמיקה והחלפת ברז במטבח')
+    expect(reno?.clientText).toBe('עבודות צבע ושפכטל, קרמיקה והחלפת ברז במטבח')
     expect(reno?.monthLabel).toBe('נובמבר 2025')
     const key = doc.properties[0].lines.find((line) => line.traceSourceId === 'key')
     expect(key?.section).toBe('תקלות ותיקונים')
-    expect(key?.description).toBe('שכפול מפתח')
+    expect(key?.clientText).toBe('שכפול מפתח')
     const text = clientAccountPlainText(doc)
     expect(text).not.toContain('259.02')
     expect(text).not.toContain('13,900')

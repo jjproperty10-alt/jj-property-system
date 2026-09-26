@@ -289,8 +289,8 @@ export function DetailTable({
             style={monthBreak ? s.rowMonthBreak : undefined}
             date={<DateColumn line={line} language={language} />}
             description={language === 'he'
-              ? <RtlLine text={line.description} pack="start" grow />
-              : <Text style={[s.desc, { textAlign: 'left' }]}>{line.description}</Text>}
+              ? <RtlLine text={line.clientText} pack="start" grow />
+              : <Text style={[s.desc, { textAlign: 'left' }]}>{line.clientText}</Text>}
             direction={(
               <View style={s.direction}>
                 <Phrase text={line.directionText} language={language} color={neutral ? colors.muted : ink(amountDirection)} />
