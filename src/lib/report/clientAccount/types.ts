@@ -10,6 +10,22 @@ export type RentLineStatus = 'paid' | 'paid_late' | 'partial' | 'open'
 
 export type ClosingDirection = 'client_owes_jj' | 'jj_owes_client' | 'settled'
 
+/**
+ * Report scope. A full account covers everything through the cutoff; a period account
+ * shows only activity admitted inside [period.start, period.end] and the cutoff is period.end.
+ */
+export type ReportType = 'full_account' | 'period_account'
+
+export interface ReportPeriod {
+  readonly start: string
+  readonly end: string
+}
+
+export type ReportCurrency = 'EUR'
+
+/** How the report figures were established. Certified is the only admitted status today. */
+export type ReportEvidenceStatus = 'certified'
+
 export interface LedgerRow {
   readonly id: string
   readonly date: string
@@ -50,9 +66,15 @@ export interface StrMonthInput {
 
 export interface CompositionInput {
   readonly asOf: string
+  /** Stable client identifier (entity id). Display only through clientDisplayName. */
+  readonly clientId?: string | null
   readonly clientDisplayName: string
   readonly reportTitle: string
   readonly reportLanguage?: 'he' | 'en'
+  /** Defaults to full_account. A period_account requires `period` and asOf === period.end. */
+  readonly reportType?: ReportType
+  readonly period?: ReportPeriod
+  readonly currency?: ReportCurrency
   readonly openingDueToJj: number
   readonly closingDueToJj: number
   readonly cashAllocationSignedTotal: number
@@ -120,7 +142,10 @@ export interface StatusLine {
   readonly direction: ClosingDirection
 }
 
+export type AccountUnitKind = 'str' | 'ltr'
+
 export interface AccountUnit {
+  readonly kind: AccountUnitKind
   readonly title: string
   readonly lines: readonly DisplayLine[]
   readonly balanceDueToJj: number
@@ -199,9 +224,14 @@ export interface SourceNote {
 }
 
 export interface ClientAccountDocument {
+  readonly clientId: string | null
   readonly clientDisplayName: string
   readonly reportTitle: string
   readonly reportLanguage: 'he' | 'en'
+  readonly reportType: ReportType
+  readonly period: ReportPeriod | null
+  readonly currency: ReportCurrency
+  readonly evidenceStatus: ReportEvidenceStatus
   readonly asOf: string
   readonly openingDueToJj: number
   readonly closingDueToJj: number

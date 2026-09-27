@@ -13,6 +13,7 @@ import {
   tableFlexDirection,
 } from '../../report/clientAccount/presentation'
 import type { ReportLanguage } from '../../report/clientAccount/presentation'
+import { TERMS, term } from '../../report/clientAccount/terminology'
 import type {
   CertifiedStrMonthlySection,
   ClosingDirection,
@@ -88,7 +89,7 @@ export function DateColumn({ line, language }: { line: Pick<DisplayLine, 'monthL
       <DateText label={line.monthLabel} language={language} />
       {line.paymentMonthLabel ? (
         <View style={{ flexDirection: tableFlexDirection(language), marginTop: 1 }}>
-          <Text style={{ fontSize: 7, color: colors.muted }}>{language === 'he' ? 'תשלום' : 'Paid'}</Text>
+          <Text style={{ fontSize: 7, color: colors.muted }}>{term('paid', language)}</Text>
           <View style={{ width: 3 }} />
           <DateText label={line.paymentMonthLabel} language={language} />
         </View>
@@ -129,7 +130,7 @@ export function ReportHeader({ title, clientName, cutoff, language }: { title: s
         <View style={{ alignItems: 'flex-end' }}>
           <Text style={s.title}>{title}</Text>
           <View style={{ flexDirection: tableFlexDirection(language), marginTop: 2 }}>
-            <Text style={s.subtitle}>{language === 'he' ? 'לקוח' : 'Client'}</Text>
+            <Text style={s.subtitle}>{term('client', language)}</Text>
             <Text style={s.subtitle}>:</Text>
             <View style={{ width: 4 }} />
             <Text style={s.subtitle}>{clientName}</Text>
@@ -169,7 +170,7 @@ export function PropertyHeader({ title, subtitle, cutoff, language }: { title: s
  * fixed element on continuation pages would push the last row past the footer-safe zone.
  */
 export function ContinuationTitle({ title, language }: { title: string; language: ReportLanguage }) {
-  const label = language === 'he' ? `${title} — המשך` : `${title} — continued`
+  const label = `${title} — ${term('continued', language)}`
   return (
     <View fixed style={s.continuedSlot}>
       <Text
@@ -212,14 +213,13 @@ export function SectionHeader({ title, language }: { title: string; language: Re
 }
 
 export function ColumnHeader({ language, withDate = true }: { language: ReportLanguage; withDate?: boolean }) {
-  const he = language === 'he'
   return (
     <View style={[s.colHeadRow, { flexDirection: tableFlexDirection(language) }]}>
-      {withDate ? <Text style={[s.colHead, s.month]}>{he ? 'תאריך' : 'Date'}</Text> : null}
-      <Desc text={he ? 'פירוט' : 'Description'} language={language} style={s.colHead} />
-      <Text style={[s.colHead, s.direction]}>{he ? 'סטטוס' : 'Status'}</Text>
+      {withDate ? <Text style={[s.colHead, s.month]}>{term('date', language)}</Text> : null}
+      <Desc text={term('description', language)} language={language} style={s.colHead} />
+      <Text style={[s.colHead, s.direction]}>{term('status', language)}</Text>
       <View style={s.gap} />
-      <Text style={[s.colHead, s.amount]}>{he ? 'סכום' : 'Amount'}</Text>
+      <Text style={[s.colHead, s.amount]}>{term('amount', language)}</Text>
     </View>
   )
 }
@@ -253,7 +253,7 @@ export function TableRow({
 }
 
 export function lineAmountDirection(line: DisplayLine): ClosingDirection {
-  if (line.statusLabel === 'שולם' || line.statusLabel === 'Paid') return 'settled'
+  if (line.statusLabel === TERMS.paidStatus.he || line.statusLabel === TERMS.paidStatus.en) return 'settled'
   if (line.effect === 'credit') return 'jj_owes_client'
   if (line.effect === 'reference') return 'settled'
   return 'client_owes_jj'
@@ -305,16 +305,11 @@ export function DetailTable({
 }
 
 export function SummaryBox({ summary, language }: { summary: ComponentSummary; language: ReportLanguage }) {
-  const he = language === 'he'
   const labels = summary.kind === 'purchase'
-    ? (he
-      ? ['מחיר קניית הנכס', 'תשלומים על מחיר הקנייה', 'הוצאות נלוות לקנייה', 'יתרת מחיר הקנייה']
-      : ['Purchase price', 'Payments on the purchase price', 'Ancillary purchase costs', 'Purchase price balance'])
-    : (he
-      ? ['סכום מוסכם', 'סך תשלומים', 'חיובים נלווים', 'יתרת שיפוץ']
-      : ['Agreed amount', 'Payments', 'Ancillary charges', 'Renovation balance'])
+    ? [term('purchasePrice', language), term('purchasePricePayments', language), term('purchaseAncillary', language), term('purchaseRemaining', language)]
+    : [term('agreedAmount', language), term('paymentsTotal', language), term('ancillaryCharges', language), term('renovationRemaining', language)]
   const amounts = [summary.agreed, summary.payments, summary.ancillary, summary.balance]
-  const state = summary.state === 'closed' ? (he ? 'נסגר' : 'Closed') : (he ? 'פתוח' : 'Open')
+  const state = summary.state === 'closed' ? term('closed', language) : term('open', language)
   const balanceDirection: ClosingDirection = Math.abs(summary.balance) < 0.005 ? 'settled' : 'client_owes_jj'
   return (
     <View style={s.summaryBox}>
@@ -333,7 +328,7 @@ export function SummaryBox({ summary, language }: { summary: ComponentSummary; l
           key="receipts"
           language={language}
           date={<Text style={[s.stateText, { width: columns.date }]}>{' '}</Text>}
-          description={<Desc text={he ? 'סך התקבולים' : 'Total receipts'} language={language} />}
+          description={<Desc text={term('totalReceipts', language)} language={language} />}
           direction={<View style={s.direction} />}
           amount={<Text style={[s.amount, { color: colors.navy }]}>{fmt(summary.receipts)}</Text>}
         />
@@ -384,29 +379,28 @@ export function DetailSection({
 // ---------- Category summary ----------
 
 function layerStateLabel(state: 'closed' | 'open' | 'informational', language: ReportLanguage): string {
-  if (state === 'closed') return language === 'he' ? 'נסגר' : 'Closed'
-  if (state === 'informational') return language === 'he' ? 'מידע' : 'Information'
-  return language === 'he' ? 'פתוח' : 'Open'
+  if (state === 'closed') return term('closed', language)
+  if (state === 'informational') return term('information', language)
+  return term('open', language)
 }
 
 export function CategorySummary({ property, clientName, language }: { property: PropertyAccount; clientName: string; language: ReportLanguage }) {
   const layers = propertyLayerSummaries(property, language)
-  const he = language === 'he'
   const flex = tableFlexDirection(language)
   return (
     <View style={s.card} minPresenceAhead={48}>
       <View style={s.cardHead}>
-        <Text style={s.cardTitle}>{he ? 'סיכום חשבון הנכס' : 'Property account summary'}</Text>
+        <Text style={s.cardTitle}>{term('propertyAccountSummary', language)}</Text>
       </View>
       <View style={s.cardBody}>
         <View style={[s.colHeadRow, { flexDirection: flex }]}>
-          <Text style={[s.colHead, s.stateText]}>{he ? 'סטטוס' : 'Status'}</Text>
-          <Desc text={he ? 'רכיב' : 'Component'} language={language} style={s.colHead} />
-          <Text style={[s.colHead, s.figure]}>{he ? 'חיובים' : 'Charges'}</Text>
-          <Text style={[s.colHead, s.figure]}>{he ? 'זיכויים' : 'Credits'}</Text>
-          <Text style={[s.colHead, s.direction]}>{he ? 'כיוון' : 'Direction'}</Text>
+          <Text style={[s.colHead, s.stateText]}>{term('status', language)}</Text>
+          <Desc text={term('component', language)} language={language} style={s.colHead} />
+          <Text style={[s.colHead, s.figure]}>{term('charges', language)}</Text>
+          <Text style={[s.colHead, s.figure]}>{term('credits', language)}</Text>
+          <Text style={[s.colHead, s.direction]}>{term('direction', language)}</Text>
           <View style={s.gap} />
-          <Text style={[s.colHead, s.amount]}>{he ? 'יתרה' : 'Balance'}</Text>
+          <Text style={[s.colHead, s.amount]}>{term('balance', language)}</Text>
         </View>
         {layers.map((layer) => {
           const closing = layer.key === 'closing'
@@ -425,11 +419,7 @@ export function CategorySummary({ property, clientName, language }: { property: 
             </View>
           )
         })}
-        <Text style={s.note}>
-          {he
-            ? 'יתרת הסגירה היא הסכום המאושר של הנכס ונספרת פעם אחת.'
-            : 'The closing balance is the certified property total and is counted once.'}
-        </Text>
+        <Text style={s.note}>{term('closingCountedOnce', language)}</Text>
       </View>
     </View>
   )
@@ -445,17 +435,17 @@ export function MonthlyStrTable({ section, language, minPresenceAhead }: { secti
     <Text key={`${text}-${index}`} style={{ width: widths[index], fontSize: 8.5, textAlign: index === 0 ? (he ? 'right' : 'left') : 'center', fontWeight: bold ? 'bold' : 'normal', color: colors.text }}>{text}</Text>
   )
   const reservationsTotal = section.months.some((month) => month.reservationCount == null)
-    ? (he ? 'לא זמין' : 'Unavailable')
+    ? term('unavailable', language)
     : String(section.months.reduce((sum, month) => sum + (month.reservationCount || 0), 0))
   const nightsTotal = section.months.some((month) => month.nights == null)
-    ? (he ? 'לא זמין' : 'Unavailable')
+    ? term('unavailable', language)
     : String(section.months.reduce((sum, month) => sum + (month.nights || 0), 0))
   return (
     <View wrap={false} minPresenceAhead={minPresenceAhead}>
-      <SectionHeader title={he ? 'זיכוי הכנסות מהשכרה קצרת טווח' : 'Short-term rental owner net'} language={language} />
-      <Text style={s.note}>{he ? 'סיכום חודשי מאושר — לפי חודש הצ׳ק־אין' : 'Certified monthly summary by check-in month'}</Text>
+      <SectionHeader title={term('strOwnerNet', language)} language={language} />
+      <Text style={s.note}>{term('strMonthlyNote', language)}</Text>
       <View style={[s.colHeadRow, { flexDirection: flex, marginTop: 3 }]}>
-        {(he ? ['חודש ושנה', 'מספר הזמנות', 'מספר לילות', 'נטו לבעלים'] : ['Month', 'Reservations', 'Nights', 'Owner net']).map((text, index) => (
+        {[term('monthYear', language), term('reservations', language), term('nights', language), term('ownerNet', language)].map((text, index) => (
           <Text key={text} style={[s.colHead, { width: widths[index], textAlign: index === 0 ? (he ? 'right' : 'left') : 'center' }]}>{text}</Text>
         ))}
       </View>
@@ -470,16 +460,12 @@ export function MonthlyStrTable({ section, language, minPresenceAhead }: { secti
         </View>
       ))}
       <View style={[s.row, s.rowTotal, { flexDirection: flex }]}>
-        {cell(he ? 'סה״כ' : 'Total', 0, true)}
+        {cell(term('total', language), 0, true)}
         {cell(reservationsTotal, 1, true)}
         {cell(nightsTotal, 2, true)}
         {cell(fmt(section.totalOwnerNet), 3, true)}
       </View>
-      <Text style={s.note}>
-        {he
-          ? 'הפירוט מציג את הנטו המאושר לבעלים לפי חודש הצ׳ק־אין. פירוט ההזמנות המלא זמין כנספח נפרד.'
-          : 'The detail shows the certified owner net by check-in month. Full reservation detail is available as a separate appendix.'}
-      </Text>
+      <Text style={s.note}>{term('strMonthlyFootnote', language)}</Text>
     </View>
   )
 }
@@ -487,7 +473,6 @@ export function MonthlyStrTable({ section, language, minPresenceAhead }: { secti
 // ---------- Closing bridge & status ----------
 
 export function ClosingBridge({ property, clientName, language }: { property: PropertyAccount; clientName: string; language: ReportLanguage }) {
-  const he = language === 'he'
   const flex = tableFlexDirection(language)
   const sum = property.bridge.reduce((total, step) => total + step.signedDueToJj, 0)
   if (Math.abs(sum - property.amountDueToJj) > 0.02) {
@@ -497,7 +482,7 @@ export function ClosingBridge({ property, clientName, language }: { property: Pr
   return (
     <View style={s.card} wrap={false}>
       <View style={s.cardHead}>
-        <Text style={s.cardTitle}>{he ? 'גשר סגירה' : 'Closing bridge'}</Text>
+        <Text style={s.cardTitle}>{term('closingBridge', language)}</Text>
       </View>
       <View style={s.cardBody}>
         {property.bridge.map((step) => {
@@ -518,7 +503,7 @@ export function ClosingBridge({ property, clientName, language }: { property: Pr
         })}
         <View style={[s.row, s.rowTotal, { flexDirection: flex }]}>
           <Text style={[s.sign, { color: resultColor }]}>=</Text>
-          <Desc text={he ? 'יתרת הנכס' : 'Property balance'} language={language} bold />
+          <Desc text={term('propertyBalance', language)} language={language} bold />
           <View style={s.direction}>
             <Phrase text={balanceDirectionText(clientName, property.direction, language)} language={language} color={resultColor} bold />
           </View>
@@ -533,7 +518,7 @@ export function ClosingBridge({ property, clientName, language }: { property: Pr
 export function StateChip({ open, language }: { open: boolean; language: ReportLanguage }) {
   const color = open ? colors.red : colors.muted
   const background = open ? colors.redBg : colors.neutralBg
-  const label = open ? (language === 'he' ? 'פתוח' : 'Open') : (language === 'he' ? 'נסגר' : 'Closed')
+  const label = open ? term('open', language) : term('closed', language)
   return (
     <View style={[s.chip, { backgroundColor: background }]}>
       <Text style={[s.chipText, { color }]}>{label}</Text>
@@ -545,7 +530,7 @@ export function OpenClosedStatus({ property, clientName, language }: { property:
   const he = language === 'he'
   return (
     <View wrap={false}>
-      <SectionHeader title={he ? 'מה נסגר ומה נשאר פתוח' : 'Closed and open items'} language={language} />
+      <SectionHeader title={term('openClosed', language)} language={language} />
       {property.statusLines.map((status) => {
         const open = status.state !== 'closed'
         const color = open ? ink(status.direction) : colors.muted
@@ -590,16 +575,16 @@ export function ReportFooter({ clientName, cutoff, language }: { clientName: str
         <Text style={s.footerBrand}>JJ Property</Text>
       </View>
       <View style={s.footerCenter} fixed>
-        <Text style={s.footerText}>{he ? 'דוח ללקוח' : 'Client report'}</Text>
+        <Text style={s.footerText}>{term('clientReport', language)}</Text>
         <Text style={[s.footerText, { marginHorizontal: 3 }]}>—</Text>
         <Text style={s.footerText}>{clientName}</Text>
         <Text style={[s.footerText, { marginHorizontal: 4 }]}>·</Text>
         <Text style={s.footerText}>{cutoff}</Text>
       </View>
       <View style={[s.footerLeft, { flexDirection: he ? 'row-reverse' : 'row' }]} fixed>
-        <Text style={s.footerText}>{he ? 'עמוד' : 'Page'}</Text>
+        <Text style={s.footerText}>{term('page', language)}</Text>
         <Text style={[s.footerText, { marginHorizontal: 3 }]} render={({ pageNumber }) => `${pageNumber}`} />
-        <Text style={s.footerText}>{he ? 'מתוך' : 'of'}</Text>
+        <Text style={s.footerText}>{term('of', language)}</Text>
         <Text style={[s.footerText, { marginHorizontal: 3 }]} render={({ totalPages }) => `${totalPages}`} />
       </View>
     </>
