@@ -160,6 +160,9 @@ export const TERMS = {
     he: 'יתרת הסגירה היא הסכום המאושר של הנכס ונספרת פעם אחת.',
     en: 'The closing balance is the certified property total and is counted once.',
   },
+  balanceBeforePayments: { he: 'יתרה לפני תשלומים וזיכויים', en: 'Balance before payments and credits' },
+  cashAllocation: { he: 'תשלומים שהוקצו ליתרה', en: 'Payments allocated to the balance' },
+  closingBalance: { he: 'יתרת סגירה', en: 'Closing balance' },
 } as const satisfies Record<string, Bilingual>
 
 export type TermKey = keyof typeof TERMS

@@ -28,13 +28,17 @@ import type {
   AccountUnit,
   BridgeStep,
   CertifiedAccountLine,
+  CertifiedCreditInput,
   ClientAccountDocument,
   ComponentSummary,
   CompositionInput,
+  CreditPresentation,
   DisplayLine,
   LedgerRow,
   PropertyAccount,
   ReportPeriod,
+  SettlementBridge,
+  SettlementBridgeStep,
   StatusLine,
   StrMonthInput,
 } from './types'
@@ -197,6 +201,112 @@ function recurringDate(meta: Readonly<Record<string, unknown>>): string | null {
   return key.replace('recurring_from_', '').replace(/_/g, '-')
 }
 
+function isoDay(meta: Readonly<Record<string, unknown>>, key: string): string | null {
+  const value = text(meta, key)
+  if (value == null) return null
+  const day = value.slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `certified line key ${key} is not an ISO day.`)
+  }
+  return day
+}
+
+function idList(meta: Readonly<Record<string, unknown>>, key: string): string[] {
+  const value = meta[key]
+  if (value == null) return []
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string' || item.trim() === '')) {
+    throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `certified line key ${key} is not a list of transaction ids.`)
+  }
+  return value as string[]
+}
+
+/** A client payment recorded in the ledger outside a purchase or renovation account. */
+function isClientPaymentRow(row: LedgerRow): boolean {
+  return row.subcategory === 'Client Payment' && row.category !== 'Sale' && row.category !== 'Renovation'
+}
+
+const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/
+
+function dayLabel(iso: string): string {
+  const [year, month, day] = iso.slice(0, 10).split('-')
+  return `${day}.${month}.${year}`
+}
+
+interface SettlementEvents {
+  /** Payment events keyed by their source transaction id. */
+  readonly paymentsBySource: ReadonlyMap<string, CertifiedCreditInput>
+  /** Ledger rows consumed at client level; they never enter a property account. */
+  readonly consumedRowIds: ReadonlySet<string>
+}
+
+/**
+ * Fail-closed admission of client-level settlement events. Every event needs a stable identity,
+ * the report currency, certified evidence and an `included` status; a payment additionally must
+ * not be consumed by another mechanism or folded into a certified opening line.
+ */
+function admitSettlementEvents(input: CompositionInput): SettlementEvents {
+  const currency = input.currency || 'EUR'
+  const eventIds = new Set<string>()
+  const paymentsBySource = new Map<string, CertifiedCreditInput>()
+  const consumedElsewhere = new Set(input.consumedSourceTransactionIds || [])
+  const period = input.reportType === 'period_account' ? input.period : undefined
+  for (const event of input.credits) {
+    if (typeof event.id !== 'string' || event.id.trim() === '') {
+      throw new ClientAccountBlock('BLOCKED_ACCOUNTING', 'A settlement event has no identity.')
+    }
+    if (eventIds.has(event.id)) throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `Settlement event ${event.id} appears twice.`)
+    eventIds.add(event.id)
+    if (event.eventType !== 'noncash_settlement_credit' && event.eventType !== 'include_transaction_in_settlement') {
+      throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `Settlement event ${event.id} has an unknown type.`)
+    }
+    if (typeof event.amount !== 'number' || !Number.isFinite(event.amount) || event.amount <= 0) {
+      throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `Settlement event ${event.id} has no positive amount.`)
+    }
+    if (typeof event.effectiveDate !== 'string' || !ISO_DAY_RE.test(event.effectiveDate.slice(0, 10))) {
+      throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `Settlement event ${event.id} has no effective date.`)
+    }
+    if ((event.currency || currency) !== currency) {
+      throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `Settlement event ${event.id} is not in ${currency}.`)
+    }
+    if ((event.evidenceStatus || 'certified') !== 'certified') {
+      throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `Settlement event ${event.id} has evidence status ${event.evidenceStatus}; only certified events are admitted.`)
+    }
+    if ((event.inclusion || 'included') !== 'included') {
+      throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `Settlement event ${event.id} is ${event.inclusion} and cannot be presented as a credit.`)
+    }
+    const day = event.effectiveDate.slice(0, 10)
+    if (day > input.asOf) throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `Settlement event ${event.id} is dated after the cutoff.`)
+    if (event.eventType === 'include_transaction_in_settlement') {
+      if (period && (day < period.start || day > period.end)) {
+        throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `Payment ${event.id} is outside the report period.`)
+      }
+      const source = event.sourceTransactionId
+      if (source != null && source !== '') {
+        if (paymentsBySource.has(source)) throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `Payment transaction ${source} is presented by two events.`)
+        if (consumedElsewhere.has(source)) throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `Payment transaction ${source} is already consumed by another settlement.`)
+        paymentsBySource.set(source, event)
+      }
+    }
+  }
+  const hasPayments = input.credits.some((event) => event.eventType === 'include_transaction_in_settlement')
+  for (const line of input.lines) {
+    const folded = num(line.metadata, 'client_payments')
+    const foldedIds = idList(line.metadata, 'client_payment_row_ids')
+    if (hasPayments && ((folded != null && !sameMoney(folded, 0)) || foldedIds.length > 0)) {
+      throw new ClientAccountBlock(
+        'BLOCKED_ACCOUNTING',
+        `${line.propertyName}: client payments are folded into the certified opening and also presented as settlement events.`,
+      )
+    }
+    for (const id of foldedIds) {
+      if (paymentsBySource.has(id)) {
+        throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `${line.propertyName}: payment transaction ${id} is inside the opening and also a settlement event.`)
+      }
+    }
+  }
+  return { paymentsBySource, consumedRowIds: new Set(paymentsBySource.keys()) }
+}
+
 function strCreditLines(
   language: ReportLanguage,
   clientName: string,
@@ -252,6 +362,7 @@ function composeProperty(
   includeDeleted: ReadonlySet<string>,
   omitted: string[],
   period: ReportPeriod | null,
+  events: SettlementEvents,
 ): PropertyAccount {
   const language = input.reportLanguage || 'he'
   const clientName = input.clientDisplayName
@@ -285,7 +396,24 @@ function composeProperty(
     }
   }
   const internalId = text(meta, 'internal_jj_cost_id')
-  const visible = rows.filter((row) => row.id !== internalId && row.category !== 'Purchase' && row.category !== 'JJ')
+  // Client payments folded into this certified line (legacy shape) are part of its amount and are not
+  // displayed; payments presented as settlement events are consumed at client level. Neither may be
+  // counted again inside the property account.
+  const foldedPaymentIds = new Set(idList(meta, 'client_payment_row_ids'))
+  const visible = rows.filter((row) => (
+    row.id !== internalId
+    && row.category !== 'Purchase'
+    && row.category !== 'JJ'
+    && !events.consumedRowIds.has(row.id)
+    && !foldedPaymentIds.has(row.id)
+  ))
+  const unadmittedPayments = visible.filter(isClientPaymentRow)
+  if (unadmittedPayments.length > 0) {
+    throw new ClientAccountBlock(
+      'BLOCKED_ACCOUNTING',
+      `${cert.propertyName}: client payment ${unadmittedPayments[0].id} is in the ledger but is not a certified settlement event.`,
+    )
+  }
   const saleContract = visible.filter((row) => row.category === 'Sale' && row.subcategory === 'Sale Contract')
   const purchasePayments = visible.filter((row) => (
     row.category === 'Sale'
@@ -443,9 +571,15 @@ function composeProperty(
 
   const setupExpected = num(meta, 'setup_expenses')
   const fireKitId = text(meta, 'fire_kit_id')
+  // `setup_through`: certified end of the preparation period — every operating row dated on or
+  // before it is a setup charge (equipment, design, deep cleaning) and reconciles to `setup_expenses`.
+  const setupThrough = isoDay(meta, 'setup_through')
+  if (setupThrough != null && setupExpected == null) {
+    throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `${cert.propertyName}: setup_through requires a certified setup_expenses total.`)
+  }
   const setupRows = setupExpected == null ? [] : [
     ...linked,
-    ...operatingPool.filter((row) => row.id === fireKitId),
+    ...operatingPool.filter((row) => row.id === fireKitId || (setupThrough != null && row.date.slice(0, 10) <= setupThrough)),
   ]
   if (setupExpected != null) {
     const setupSum = roundEur(setupRows.reduce((sum, row) => sum + face(row), 0))
@@ -479,6 +613,12 @@ function composeProperty(
     }
   }
 
+  // Two certified shapes for Airbnb-category operating rows: cleaning tracked by the STR statement
+  // (excluded here) or cleaning charged to the owner as an ordinary expense (included). Never both.
+  const strOpexInclusiveExpected = num(meta, 'airbnb_opex_including_cleaning')
+  if (strOpexExpected != null && strOpexInclusiveExpected != null) {
+    throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `${cert.propertyName}: Airbnb expenses are certified both with and without cleaning.`)
+  }
   const airbnbExpenses = operatingPool.filter((row) => row.category === 'Airbnb' && !used.has(row.id) && row.subcategory !== 'Cleaning')
   const airbnbCleaning = operatingPool.filter((row) => row.category === 'Airbnb' && row.subcategory === 'Cleaning')
   let strExpenseRows: LedgerRow[] = []
@@ -489,6 +629,15 @@ function composeProperty(
     }
     strExpenseRows = airbnbExpenses
     for (const row of [...airbnbExpenses, ...airbnbCleaning]) used.add(row.id)
+  } else if (strOpexInclusiveExpected != null) {
+    const inclusive = [...airbnbExpenses, ...airbnbCleaning.filter((row) => !used.has(row.id))]
+      .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
+    const opex = roundEur(inclusive.reduce((sum, row) => sum + face(row), 0))
+    if (!sameMoney(opex, strOpexInclusiveExpected)) {
+      throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `${cert.propertyName}: STR expenses ${opex} do not equal certified ${strOpexInclusiveExpected}.`)
+    }
+    strExpenseRows = inclusive
+    for (const row of inclusive) used.add(row.id)
   }
 
   const recurringRows = from
@@ -568,10 +717,13 @@ function composeProperty(
   }
 
   const lumpLabel = input.strLumpDescription || term('strLumpDefault', language)
+  // Cleaning tracked inside the STR statement is evidenced by the lump credit; cleaning already
+  // displayed as a setup or STR expense charge is not.
+  const strTrackedCleaning = airbnbCleaning.filter((row) => !setupRows.includes(row) && !strExpenseRows.includes(row))
   const strLines = strCredit == null ? [] : strCreditLines(language, clientName, cert.propertyName, strCredit, input.strMonthsByPropertyKey?.[cert.propertyKey], lumpLabel)
     .map((line, _index, all) => (
       all.length === 1 && line.monthLabel === undatedLabel(language)
-        ? { ...line, sourceIds: airbnbCleaning.map((row) => row.id) }
+        ? { ...line, sourceIds: strTrackedCleaning.map((row) => row.id) }
         : line
     ))
   const strExpenseLines = strExpenseChunks.map((chunk) => show(SECTION.strExpenses, chunk, 'charge', 'str-expense'))
@@ -674,6 +826,73 @@ function composeProperty(
   }
 }
 
+/**
+ * Client-level bridge: property balance → credits → payments (one step each) → cash allocation → closing.
+ * The steps must add up to the certified closing; otherwise the account blocks.
+ */
+function settlementBridgeOf(
+  propertyBalance: number,
+  credits: readonly CreditPresentation[],
+  cashAllocationSignedTotal: number,
+  closing: number,
+  language: ReportLanguage,
+): SettlementBridge {
+  const steps: SettlementBridgeStep[] = [{
+    kind: 'property-balance',
+    label: term('balanceBeforePayments', language),
+    signedDueToJj: roundEur(propertyBalance),
+    eventId: null,
+    sourceTransactionId: null,
+    dateLabel: null,
+  }]
+  const ordered = [
+    ...credits.filter((credit) => credit.dateRole === 'credit-event'),
+    ...credits.filter((credit) => credit.dateRole === 'cash-receipt'),
+  ]
+  for (const credit of ordered) {
+    steps.push({
+      kind: credit.dateRole === 'cash-receipt' ? 'payment' : 'credit',
+      label: credit.label,
+      signedDueToJj: roundEur(-credit.amount),
+      eventId: credit.eventId,
+      sourceTransactionId: credit.sourceTransactionId,
+      dateLabel: credit.dateLabel || credit.monthLabel,
+    })
+  }
+  if (!sameMoney(cashAllocationSignedTotal, 0)) {
+    steps.push({
+      kind: 'cash-allocation',
+      label: term('cashAllocation', language),
+      signedDueToJj: roundEur(-cashAllocationSignedTotal),
+      eventId: null,
+      sourceTransactionId: null,
+      dateLabel: null,
+    })
+  }
+  const creditsTotal = roundEur(credits.filter((credit) => credit.dateRole === 'credit-event').reduce((sum, credit) => sum + credit.amount, 0))
+  const paymentsTotal = roundEur(credits.filter((credit) => credit.dateRole === 'cash-receipt').reduce((sum, credit) => sum + credit.amount, 0))
+  const composed = roundEur(steps.reduce((sum, step) => sum + step.signedDueToJj, 0))
+  if (!sameMoney(composed, closing)) {
+    throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `Settlement bridge ${composed} does not equal certified closing ${closing}.`)
+  }
+  steps.push({
+    kind: 'closing',
+    label: term('closingBalance', language),
+    signedDueToJj: roundEur(closing),
+    eventId: null,
+    sourceTransactionId: null,
+    dateLabel: null,
+  })
+  return {
+    propertyBalanceDueToJj: roundEur(propertyBalance),
+    creditsTotal,
+    paymentsTotal,
+    cashAllocationSignedTotal: roundEur(cashAllocationSignedTotal),
+    closingDueToJj: roundEur(closing),
+    steps,
+  }
+}
+
 function withOwnerDescriptions(property: PropertyAccount, descriptions: CompositionInput['descriptionByRowId']): PropertyAccount {
   if (!descriptions) return property
   const apply = (line: DisplayLine): DisplayLine => {
@@ -701,29 +920,35 @@ export function composeCertifiedClientAccount(input: CompositionInput): ClientAc
     if (extra) includeDeleted.add(extra)
   }
   const omitted: string[] = []
+  const events = admitSettlementEvents(ordered)
   const properties = [...input.lines]
     .sort((a, b) => a.lineOrder - b.lineOrder)
-    .map((line) => withOwnerDescriptions(composeProperty(ordered, line, includeDeleted, omitted, period), input.descriptionByRowId))
+    .map((line) => withOwnerDescriptions(composeProperty(ordered, line, includeDeleted, omitted, period, events), input.descriptionByRowId))
   const opening = roundEur(properties.reduce((sum, property) => sum + property.amountDueToJj, 0))
   if (!sameMoney(opening, input.openingDueToJj)) {
     throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `Property balances ${opening} do not equal certified opening ${input.openingDueToJj}.`)
   }
   const creditLanguage = input.reportLanguage || 'he'
-  const credits = input.credits.map((credit) => {
+  const credits: CreditPresentation[] = input.credits.map((credit) => {
     const noncash = credit.eventType === 'noncash_settlement_credit'
     return {
       label: noncash
         ? (input.creditLabels?.noncash || term('creditNoncash', creditLanguage))
         : (input.creditLabels?.cash || term('creditCash', creditLanguage)),
       monthLabel: monthFromIsoDate(credit.effectiveDate, creditLanguage),
+      dateLabel: noncash ? null : dayLabel(credit.effectiveDate),
+      effectiveDate: credit.effectiveDate.slice(0, 10),
       dateCaption: noncash ? term('creditEventCaption', creditLanguage) : null,
       note: noncash ? term('creditEventNote', creditLanguage) : null,
       amount: roundEur(credit.amount),
+      currency: 'EUR' as const,
       eventId: credit.id,
       sourceTransactionId: credit.sourceTransactionId || null,
       eventType: credit.eventType,
       dateRole: noncash ? 'credit-event' as const : 'cash-receipt' as const,
       evidence: 'owner-certified' as const,
+      evidenceStatus: 'certified' as const,
+      inclusion: 'included' as const,
     }
   })
   const creditTotal = roundEur(credits.reduce((sum, credit) => sum + credit.amount, 0))
@@ -731,6 +956,7 @@ export function composeCertifiedClientAccount(input: CompositionInput): ClientAc
   if (!sameMoney(closing, input.closingDueToJj)) {
     throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `Closing ${closing} does not equal certified closing ${input.closingDueToJj}.`)
   }
+  const settlementBridge = settlementBridgeOf(opening, credits, input.cashAllocationSignedTotal, closing, creditLanguage)
   const closingBeforeMonthlyStr = closing
   const propertiesWithMonthlyStr = properties.map((property) => {
     const admitted = input.certifiedStrMonthlyByPropertyKey?.[property.propertyKey]
@@ -772,6 +998,12 @@ export function composeCertifiedClientAccount(input: CompositionInput): ClientAc
       }
     }
   }
+  for (const credit of credits) {
+    if (credit.sourceTransactionId && seen.has(credit.sourceTransactionId)) {
+      throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `Payment transaction ${credit.sourceTransactionId} is counted in a property account and as a settlement event.`)
+    }
+    if (credit.sourceTransactionId) seen.add(credit.sourceTransactionId)
+  }
   return {
     clientId: input.clientId || null,
     clientDisplayName: input.clientDisplayName,
@@ -787,6 +1019,7 @@ export function composeCertifiedClientAccount(input: CompositionInput): ClientAc
     closingDirection: directionOf(closing),
     properties: propertiesWithMonthlyStr,
     credits,
+    settlementBridge,
     sourceNotes: properties.flatMap((property) => property.sourceNotes),
     omittedNetZeroSourceIds: omitted,
   }

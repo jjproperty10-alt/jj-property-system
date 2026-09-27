@@ -209,6 +209,7 @@ export const ACCOUNTING_GATE_IDS = [
   'explicit-report-scope',
   'bridge-within-tolerance',
   'display-whitelist',
+  'settlement-events-counted-once',
 ] as const
 
 export type AccountingGateId = (typeof ACCOUNTING_GATE_IDS)[number]
@@ -281,7 +282,9 @@ function clientStrings(doc: ClientAccountDocument): { where: string; text: strin
     out.push({ where: `credit/${credit.eventType}`, text: credit.label }, { where: 'credit/month', text: credit.monthLabel })
     if (credit.note) out.push({ where: 'credit/note', text: credit.note })
     if (credit.dateCaption) out.push({ where: 'credit/caption', text: credit.dateCaption })
+    if (credit.dateLabel) out.push({ where: 'credit/date', text: credit.dateLabel })
   }
+  for (const step of doc.settlementBridge.steps) out.push({ where: `settlement-bridge/${step.kind}`, text: step.label })
   for (const note of doc.sourceNotes) out.push({ where: `${note.propertyName}/source-note`, text: note.text })
   return out
 }
@@ -586,6 +589,68 @@ export function runAccountingGates(doc: ClientAccountDocument, input: Compositio
     checks++
   }
   results.push({ id: 'display-whitelist', checks })
+
+  // 15. Client-level settlement events (credits and payments) are identified, admitted and counted once,
+  //     and the settlement bridge orders them between the pre-payment balance and the closing.
+  checks = 0
+  const eventIds = new Set<string>()
+  const sourceIds = new Set<string>()
+  const consumed = new Set(input.consumedSourceTransactionIds || [])
+  for (const credit of doc.credits) {
+    if (!credit.eventId) block('settlement-events-counted-once', 'a settlement event has no identity.')
+    if (eventIds.has(credit.eventId)) block('settlement-events-counted-once', `event ${credit.eventId} is presented twice.`)
+    eventIds.add(credit.eventId)
+    if (credit.sourceTransactionId) {
+      if (sourceIds.has(credit.sourceTransactionId)) block('settlement-events-counted-once', `payment transaction ${credit.sourceTransactionId} is presented twice.`)
+      if (consumed.has(credit.sourceTransactionId)) block('settlement-events-counted-once', `payment transaction ${credit.sourceTransactionId} is already consumed elsewhere.`)
+      sourceIds.add(credit.sourceTransactionId)
+    }
+    if (credit.currency !== doc.currency) block('settlement-events-counted-once', `event ${credit.eventId} is not in ${doc.currency}.`)
+    if (credit.evidenceStatus !== 'certified') block('settlement-events-counted-once', `event ${credit.eventId} has unknown evidence status.`)
+    if (credit.inclusion !== 'included') block('settlement-events-counted-once', `event ${credit.eventId} is not an included event.`)
+    if (!credit.label.trim()) block('settlement-events-counted-once', `event ${credit.eventId} has no client-facing label.`)
+    if (credit.dateRole === 'cash-receipt' && !credit.dateLabel) block('settlement-events-counted-once', `payment ${credit.eventId} has no date.`)
+    if (credit.effectiveDate > doc.asOf) block('settlement-events-counted-once', `event ${credit.eventId} is dated after the cutoff.`)
+    checks++
+  }
+  const payments = doc.credits.filter((credit) => credit.dateRole === 'cash-receipt')
+  for (const line of input.lines) {
+    const folded = line.metadata.client_payments
+    const foldedIds = Array.isArray(line.metadata.client_payment_row_ids) ? line.metadata.client_payment_row_ids : []
+    const foldsPayments = (typeof folded === 'number' && !sameMoney(folded, 0)) || (typeof folded === 'string' && folded.trim() !== '' && !sameMoney(Number(folded), 0)) || foldedIds.length > 0
+    if (payments.length > 0 && foldsPayments) block('settlement-events-counted-once', `${line.propertyName}: payments are inside the opening and also presented as events.`)
+    checks++
+  }
+  const bridge = doc.settlementBridge
+  const steps = bridge.steps
+  if (steps.length < 2 || steps[0].kind !== 'property-balance' || steps[steps.length - 1].kind !== 'closing') {
+    block('settlement-events-counted-once', 'the settlement bridge must start at the property balance and end at the closing.')
+  }
+  if (!sameMoney(steps[0].signedDueToJj, doc.openingDueToJj) || !sameMoney(bridge.propertyBalanceDueToJj, doc.openingDueToJj)) {
+    block('settlement-events-counted-once', 'the settlement bridge does not start at the property balance.')
+  }
+  if (!sameMoney(steps[steps.length - 1].signedDueToJj, doc.closingDueToJj) || !sameMoney(bridge.closingDueToJj, doc.closingDueToJj)) {
+    block('settlement-events-counted-once', 'the settlement bridge does not end at the certified closing.')
+  }
+  const composedClosing = roundEur(steps.slice(0, -1).reduce((sum, step) => sum + step.signedDueToJj, 0))
+  if (!sameMoney(composedClosing, doc.closingDueToJj)) {
+    block('settlement-events-counted-once', `property balance − credits − payments ${composedClosing} ≠ closing ${doc.closingDueToJj}.`)
+  }
+  if (!sameMoney(roundEur(bridge.creditsTotal + bridge.paymentsTotal), creditTotal)) {
+    block('settlement-events-counted-once', 'bridge credit and payment totals do not equal the presented events.')
+  }
+  const paymentSteps = steps.filter((step) => step.kind === 'payment')
+  if (paymentSteps.length !== payments.length) block('settlement-events-counted-once', 'every payment must appear exactly once in the settlement bridge.')
+  for (const payment of payments) {
+    const matches = paymentSteps.filter((step) => step.eventId === payment.eventId)
+    if (matches.length !== 1 || !sameMoney(matches[0].signedDueToJj, -payment.amount)) {
+      block('settlement-events-counted-once', `payment ${payment.eventId} is not presented exactly once in the settlement bridge.`)
+    }
+    const index = steps.findIndex((step) => step.eventId === payment.eventId)
+    if (index <= 0 || index >= steps.length - 1) block('settlement-events-counted-once', `payment ${payment.eventId} is not between the property balance and the closing.`)
+    checks++
+  }
+  results.push({ id: 'settlement-events-counted-once', checks })
 
   return { status: 'pass', gates: results }
 }

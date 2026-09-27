@@ -146,13 +146,20 @@ export function compositionFromCertifiedSettlement(request: CertifiedComposition
       evidenceRef: line.evidenceRef,
       metadata: line.metadata || {},
     })),
+    // The certified reader returns only events applied by the certification, in EUR.
     credits: settlement.fifoCredits.map((credit) => ({
       id: credit.eventId,
       sourceTransactionId: credit.sourceTransactionId,
       eventType: credit.eventType,
       amount: credit.settlementAmount,
       effectiveDate: credit.effectiveDate,
+      currency: 'EUR' as const,
+      evidenceStatus: 'certified' as const,
+      inclusion: 'included' as const,
     })),
+    // A cash execution already allocated against the obligations consumes its transaction; a FIFO
+    // payment event pointing at the same transaction would count it twice.
+    consumedSourceTransactionIds: settlement.cashExecutions.map((execution) => execution.transactionId),
     rows,
     linkedRowsByPropertyKey: evidence.linkedRowsByPropertyKey,
     strMonthsByPropertyKey: evidence.strMonthsByPropertyKey,
