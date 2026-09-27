@@ -50,12 +50,33 @@ export interface CertifiedAccountLine {
   readonly metadata: Readonly<Record<string, unknown>>
 }
 
+/** Evidence behind a settlement event. Only an applied certification is admitted. */
+export type SettlementEventEvidenceStatus = 'certified'
+
+/**
+ * Whether a settlement event is admitted to this report. Anything other than `included` is
+ * a fail-closed signal: an excluded or already-consumed event must never reach the composer.
+ */
+export type SettlementEventInclusion = 'included' | 'excluded' | 'consumed_elsewhere'
+
+/**
+ * A client-level settlement event. `noncash_settlement_credit` is a certified credit;
+ * `include_transaction_in_settlement` is a client payment backed by a ledger transaction.
+ * Every event carries a stable identity (`id`, plus `sourceTransactionId` for payments) so the
+ * engine can prove it is counted exactly once.
+ */
 export interface CertifiedCreditInput {
   readonly id: string
   readonly sourceTransactionId?: string | null
   readonly eventType: 'noncash_settlement_credit' | 'include_transaction_in_settlement'
   readonly amount: number
   readonly effectiveDate: string
+  /** Defaults to the report currency; a different currency blocks. */
+  readonly currency?: ReportCurrency
+  /** Defaults to `certified` (the certified reader only returns applied events); anything else blocks. */
+  readonly evidenceStatus?: SettlementEventEvidenceStatus | string
+  /** Defaults to `included`; an excluded or consumed event passed as a credit blocks. */
+  readonly inclusion?: SettlementEventInclusion | string
 }
 
 export interface StrMonthInput {
@@ -80,6 +101,12 @@ export interface CompositionInput {
   readonly cashAllocationSignedTotal: number
   readonly lines: readonly CertifiedAccountLine[]
   readonly credits: readonly CertifiedCreditInput[]
+  /**
+   * Ledger transaction ids already consumed by another settlement mechanism (for example a cash
+   * execution allocated against the certified obligations). A payment event pointing at one of
+   * them would be counted twice and blocks.
+   */
+  readonly consumedSourceTransactionIds?: readonly string[]
   readonly rows: readonly LedgerRow[]
   readonly linkedRowsByPropertyKey?: Readonly<Record<string, readonly LedgerRow[]>>
   readonly strMonthsByPropertyKey?: Readonly<Record<string, readonly StrMonthInput[]>>
@@ -207,14 +234,48 @@ export interface PropertyAccount {
 export interface CreditPresentation {
   readonly label: string
   readonly monthLabel: string
+  /** Full day (dd.mm.yyyy) for a cash receipt; null for a credit event, whose day is not a cash date. */
+  readonly dateLabel: string | null
+  readonly effectiveDate: string
   readonly dateCaption: string | null
   readonly note: string | null
   readonly amount: number
+  readonly currency: ReportCurrency
   readonly eventId: string
   readonly sourceTransactionId: string | null
   readonly eventType: 'noncash_settlement_credit' | 'include_transaction_in_settlement'
   readonly dateRole: 'credit-event' | 'cash-receipt'
   readonly evidence: EvidenceStatus
+  readonly evidenceStatus: SettlementEventEvidenceStatus
+  readonly inclusion: 'included'
+}
+
+export type SettlementBridgeStepKind = 'property-balance' | 'credit' | 'payment' | 'cash-allocation' | 'closing'
+
+/**
+ * One step of the client-level bridge. Order is fixed: property balance → credits → payments
+ * (each payment individually) → cash allocation → closing.
+ */
+export interface SettlementBridgeStep {
+  readonly kind: SettlementBridgeStepKind
+  readonly label: string
+  readonly signedDueToJj: number
+  readonly eventId: string | null
+  readonly sourceTransactionId: string | null
+  readonly dateLabel: string | null
+}
+
+/**
+ * property charges − client credits − client payments (− cash allocation) = closing.
+ * Every payment appears once, after the pre-payment balance and before the closing.
+ */
+export interface SettlementBridge {
+  readonly propertyBalanceDueToJj: number
+  readonly creditsTotal: number
+  readonly paymentsTotal: number
+  readonly cashAllocationSignedTotal: number
+  readonly closingDueToJj: number
+  readonly steps: readonly SettlementBridgeStep[]
 }
 
 export interface SourceNote {
@@ -238,6 +299,7 @@ export interface ClientAccountDocument {
   readonly closingDirection: ClosingDirection
   readonly properties: readonly PropertyAccount[]
   readonly credits: readonly CreditPresentation[]
+  readonly settlementBridge: SettlementBridge
   readonly sourceNotes: readonly SourceNote[]
   readonly omittedNetZeroSourceIds: readonly string[]
 }
