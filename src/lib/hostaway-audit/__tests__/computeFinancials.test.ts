@@ -306,6 +306,23 @@ describe('buildReservationFinancials', () => {
     expect(result.payoutExpected).toBe(680); // 800 − 120
     expect(result.channelCommission).toBe(120);
     expect(result.hostServiceFee).toBeNull();
+    expect(result.paymentStatus).toBeNull(); // omitted in raw → no evidence (fail closed downstream)
+  });
+
+  it('carries Hostaway paymentStatus verbatim (Booking payment-fee evidence)', () => {
+    const raw: RawReservationFinancials = {
+      totalPrice: '990',
+      cleaningFee: '60',
+      airbnbListingHostFee: null,
+      airbnbExpectedPayoutAmount: null,
+      channelCommissionAmount: '148.5',
+      taxAmount: '0',
+      airbnbListingBasePrice: null,
+      airbnbListingCleaningFee: null,
+      paymentStatus: 'Unknown',
+    };
+    expect(buildReservationFinancials('booking', raw).paymentStatus).toBe('Unknown');
+    expect(buildReservationFinancials('booking', { ...raw, paymentStatus: 'Paid' }).paymentStatus).toBe('Paid');
   });
 
   it('returns null basePrice when cleaningFee is null', () => {

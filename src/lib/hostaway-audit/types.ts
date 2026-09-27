@@ -181,6 +181,11 @@ export interface ReservationFinancials {
   readonly payout: AuthoritativeAmount;
   /** Base price (totalPrice − cleaningFee). null if inputs missing. */
   readonly basePrice: number | null;
+  /**
+   * Hostaway `paymentStatus` verbatim (e.g. "Paid", "Unknown"). Evidence for the Booking.com
+   * payment-fee gate (report/str/bookingPaymentFeePolicy). null/undefined = no evidence (fail closed).
+   */
+  readonly paymentStatus?: string | null;
 
   // ── Legacy compatibility (Sprint 1) ──
   /** @deprecated Use payout.amount instead */
