@@ -38,7 +38,25 @@ export function hasExpenseVerb(text: string): boolean {
   return EXPENSE_VERB.test(text)
 }
 
+const QUESTION_OPENING =
+  /^(?:מה|האם|למה|מדוע|איך|כיצד|מתי|איפה|היכן|כמה|איזה|איזו|מי)(?:\s|$)/
+const NEGATED_PAYMENT =
+  /(?:^|[\s,])לא\s+(?:שילמתי|שילמנו|קיבלתי|קיבלנו|העברתי|יצא|קניתי|שולם|התקבל|שילם|שילמו|נכנס|העביר(?:ה)?(?:\s+לי)?|שכירות\s+התקבלה)/
+const CURRENCY_AMOUNT =
+  /(?:€\s*\d+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?\s*(?:€|אירו|יורו|euros?|eur))/i
+const CLIENT_CHARGE_SPLIT = /עלה\s*\d+(?:[.,]\d{1,2})?/i
+
+export function isClarifyingQuestion(text: string): boolean {
+  const trimmed = text.trim()
+  return /[?？]/.test(trimmed) || QUESTION_OPENING.test(trimmed)
+}
+
+export function isNegatedTransactionReport(text: string): boolean {
+  return NEGATED_PAYMENT.test(text.trim())
+}
+
 export function isStrongNewTransaction(text: string, hasAmount: boolean, hasDate: boolean, hasPropertyOrSubject: boolean): boolean {
+  if (isClarifyingQuestion(text) || isNegatedTransactionReport(text)) return false
   if (!hasPaymentVerb(text)) return false
   if (!hasAmount) return false
   return hasDate || hasPropertyOrSubject
@@ -82,9 +100,10 @@ export function isAmountOnlyUtterance(text: string): boolean {
 export function opensTransactionCollection(text: string, hasPropertyOrSubject: boolean): boolean {
   const trimmed = text.trim()
   if (!trimmed || isCollectionExit(trimmed) || isAmountOnlyUtterance(trimmed)) return false
+  if (isClarifyingQuestion(trimmed) || isNegatedTransactionReport(trimmed)) return false
   if (hasPaymentVerb(trimmed)) return true
-  if (/עלה\s*\d/i.test(trimmed) && /ללקוח|לחיוב/.test(trimmed)) return true
-  return hasPropertyOrSubject && /\d/.test(trimmed)
+  if (CLIENT_CHARGE_SPLIT.test(trimmed) && /ללקוח|לחיוב/.test(trimmed)) return true
+  return hasPropertyOrSubject && CURRENCY_AMOUNT.test(trimmed)
 }
 
 function looksLikeDirectAnswer(field: string | null, text: string): boolean {

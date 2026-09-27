@@ -441,6 +441,44 @@ describe('assistant intent routing', () => {
     expect(continued.createdDraftId).toBeNull()
   })
 
+  it('does not open collection for a negation, a clarifying question, or a topic with a number', () => {
+    const blocked = ['לא שילמתי חשמל', 'מה שילמתי על חשמל?', 'חשמל 2026']
+    blocked.forEach((text, index) => {
+      const next = applyUserText(start(), text, CTX)
+      expect(next.lastPrompt.kind).toBe('talk')
+      expect(promptBody(next)).not.toContain('מה הסכום')
+      expect(next.slots.amountEur.status).toBe('unknown')
+      expect(next.slots.category.status).toBe('unknown')
+      expect(next.createdDraftId).toBeNull()
+      const replayed = replayUtterances([text], CTX, `replay-not-a-report-${index}`)
+      expect(replayed.lastPrompt.kind).toBe('talk')
+      expect(replayed.slots.amountEur.status).toBe('unknown')
+      expect(replayed.createdDraftId).toBeNull()
+    })
+  })
+
+  it('opens and replays an explicit expense and an explicit rent receipt', () => {
+    const expense = applyUserText(start(), 'שילמתי 500 חשמל', CTX)
+    expect(expense.slots.amountEur.value).toBe('500')
+    expect(expense.slots.subcategory.value).toBe('Electricity')
+    expect(expense.lastPrompt.kind).toBe('question')
+    expect(expense.createdDraftId).toBeNull()
+    const replayedExpense = replayUtterances(['שילמתי 500 חשמל'], CTX, 'replay-explicit-expense')
+    expect(replayedExpense.slots.amountEur.value).toBe('500')
+    expect(replayedExpense.slots.subcategory.value).toBe('Electricity')
+    expect(replayedExpense.createdDraftId).toBeNull()
+
+    const income = applyUserText(start(), 'קיבלתי 850 שכירות', CTX)
+    expect(income.slots.amountEur.value).toBe('850')
+    expect(income.slots.subcategory.value).toBe('Tenant Payment')
+    expect(income.lastPrompt.kind).toBe('question')
+    expect(income.createdDraftId).toBeNull()
+    const replayedIncome = replayUtterances(['קיבלתי 850 שכירות'], CTX, 'replay-explicit-income')
+    expect(replayedIncome.slots.amountEur.value).toBe('850')
+    expect(replayedIncome.slots.subcategory.value).toBe('Tenant Payment')
+    expect(replayedIncome.createdDraftId).toBeNull()
+  })
+
   it('leaves collection on cancel, stop, or a topic change without creating a draft', () => {
     for (const text of ['ביטול', 'תפסיק', 'שנה נושא']) {
       const opened = applyUserText(start(), 'שילמתי 40 אירו חשמל', CTX)
