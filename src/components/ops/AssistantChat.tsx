@@ -7,11 +7,12 @@ import {
   ASSISTANT_CAPABILITY_LABEL,
   applyUserText,
   cancelCollector,
+  applyPropertyPick,
+  exactUniqueCatalogName,
   createCollectorState,
   markDraftCreated,
   numberedDirectChoices,
   replayUtterances,
-  resetForChangeDetails,
   resetForNewProposal,
   type AssistantPrompt,
   type CollectorContext,
@@ -103,6 +104,7 @@ export function AssistantChat(props: {
   readonly entities?: readonly EntityChoice[]
   readonly partners?: readonly EntityChoice[]
   readonly initialConversationId: string | null
+  readonly suggestedPropertyName?: string | null
 }) {
   const ctx: CollectorContext = useMemo(
     () => ({ catalog: props.catalog, staffPayerName: props.staffPayerName || null }),
@@ -155,13 +157,16 @@ export function AssistantChat(props: {
     readonly needsDate: boolean
   } | null>(null)
   const [conversationId, setConversationId] = useState<string | null>(props.initialConversationId)
-  const [draft, setDraft] = useState<CollectorState>(() => createCollectorState(draftKeyRef.current))
-  const [items, setItems] = useState<ChatItem[]>(() => [{
-    id: 'intro',
-    role: 'assistant',
-    text: 'אפשר להתחיל. לדוגמה: שילמתי 120 אירו חשמל בדירה של תמיר',
-    prompt: createCollectorState(draftKeyRef.current).lastPrompt,
-  }])
+  const bootRef = useRef<CollectorState | null>(null)
+  if (bootRef.current == null) {
+    bootRef.current = bootCollector(
+      draftKeyRef.current,
+      props.initialConversationId ? null : (props.suggestedPropertyName ?? null),
+      { catalog: props.catalog, staffPayerName: props.staffPayerName || null },
+    )
+  }
+  const [draft, setDraft] = useState<CollectorState>(bootRef.current)
+  const [items, setItems] = useState<ChatItem[]>(() => introItems(bootRef.current as CollectorState))
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -179,15 +184,20 @@ export function AssistantChat(props: {
     void listOpsConversation(props.initialConversationId).then((listed) => {
       if (cancelled || !listed.ok) return
       const bodies = listed.messages.filter((m) => m.direction === 'inbound').map((m) => m.body)
-      const replayed = replayUtterances(bodies, ctx, draftKeyRef.current)
+      const suggestion = exactUniqueCatalogName(listed.suggestedPropertyName, ctx.catalog)
+      const replayed = replayUtterances(bodies, ctx, draftKeyRef.current, suggestion)
       const history: ChatItem[] = []
       bodies.forEach((body, i) => {
         history.push({ id: `u-${i}`, role: 'user', text: body })
       })
+      const keptSuggestion = Boolean(suggestion) && replayed.slots.propertyName.value === suggestion
+      const replayPrompt = promptText(replayed.lastPrompt, replayed.preface)
       history.push({
         id: 'assistant-replay',
         role: 'assistant',
-        text: promptText(replayed.lastPrompt, replayed.preface),
+        text: keptSuggestion
+          ? `הנכס ${suggestion} הוצע כהקשר. אפשר לשנות אותו לפני יצירת הטיוטה.\n${replayPrompt}`
+          : replayPrompt,
         prompt: replayed.lastPrompt,
       })
       setConversationId(listed.conversationId)
@@ -208,6 +218,7 @@ export function AssistantChat(props: {
       conversationIdempotencyKey: convKeyRef.current,
       body: trimmed,
       messageIdempotencyKey: messageKey,
+      suggestedPropertyName: conversationId ? null : props.suggestedPropertyName ?? null,
     })
     if (!persisted.ok) {
       setLoading(false)
@@ -711,7 +722,7 @@ export function AssistantChat(props: {
     : []
 
   return (
-    <div className="flex h-screen min-h-0 flex-col overflow-hidden">
+    <div className="flex h-screen min-h-0 w-full max-w-full flex-col overflow-hidden overflow-x-hidden">
       <header className="flex-shrink-0 border-b border-gray-200 bg-white px-4 pb-3 pt-16 md:px-6 md:pt-3">
         <div className="flex items-center gap-2">
           <Sparkles className="h-5 w-5 text-brand-500" aria-hidden />
@@ -728,13 +739,13 @@ export function AssistantChat(props: {
       <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50 px-3 py-4 md:px-6" data-testid="assistant-thread">
         <ol className="mx-auto flex max-w-3xl flex-col gap-3">
           {items.map((item) => (
-            <li key={item.id} className={item.role === 'user' ? 'self-end max-w-[85%]' : 'self-start max-w-[92%]'}>
+            <li key={item.id} className={item.role === 'user' ? 'max-w-[85%] self-end' : 'max-w-[92%] self-start'}>
               <div
                 dir="auto"
                 className={
                   item.role === 'user'
-                    ? 'rounded-2xl bg-slate-800 px-4 py-2 text-sm text-white'
-                    : 'rounded-2xl bg-white px-4 py-3 text-sm text-gray-900 shadow-sm ring-1 ring-gray-200'
+                    ? 'break-words rounded-2xl bg-slate-800 px-4 py-2 text-sm text-white'
+                    : 'break-words rounded-2xl bg-white px-4 py-3 text-sm text-gray-900 shadow-sm ring-1 ring-gray-200'
                 }
               >
                 {item.text}
@@ -810,11 +821,11 @@ export function AssistantChat(props: {
               <ReviewRow label="חיוב לקוח" value={prompt.summary.clientCharge} ltr />
               <ReviewRow label="הערות" value={prompt.summary.notes} />
             </dl>
-            <div className="mt-4 flex flex-wrap gap-2" dir="rtl">
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap" dir="rtl">
               <button
                 type="button"
                 data-testid="assistant-create-draft"
-                className="btn-primary"
+                className="btn-primary min-h-11 w-full sm:w-auto"
                 disabled={loading || Boolean(draft.createdDraftId)}
                 onClick={() => void onCreateDraft()}
               >
@@ -822,19 +833,15 @@ export function AssistantChat(props: {
               </button>
               <button
                 type="button"
-                className="btn-secondary"
+                className="btn-secondary min-h-11 w-full sm:w-auto"
                 disabled={loading || Boolean(draft.createdDraftId)}
-                onClick={() => {
-                  const next = resetForChangeDetails(draft, ctx)
-                  setDraft(next)
-                  setItems((prev) => [...prev, { id: `change-${Date.now()}`, role: 'assistant', text: promptText(next.lastPrompt, next.preface), prompt: next.lastPrompt }])
-                }}
+                onClick={() => void sendBody('שנה פרטים')}
               >
                 2. שנה פרטים
               </button>
               <button
                 type="button"
-                className="btn-secondary"
+                className="btn-secondary min-h-11 w-full sm:w-auto"
                 disabled={loading || Boolean(draft.createdDraftId)}
                 onClick={() => {
                   draftKeyRef.current = crypto.randomUUID()
@@ -971,12 +978,12 @@ export function AssistantChat(props: {
         {!speech.supported && (
           <p className="mb-2 text-xs text-gray-500">{speech.unsupportedMessage}</p>
         )}
-        <div className="mx-auto flex max-w-3xl items-end gap-2">
+        <div className="mx-auto flex w-full min-w-0 max-w-3xl flex-col gap-2">
           <label htmlFor="assistant-input" className="sr-only">הודעה</label>
           <textarea
             id="assistant-input"
             data-testid="assistant-input"
-            className="input min-h-[48px] flex-1 resize-none"
+            className="input min-h-12 w-full min-w-0 resize-none"
             rows={2}
             dir="auto"
             value={text}
@@ -990,11 +997,11 @@ export function AssistantChat(props: {
             }}
             placeholder="כתבו או דיברו בעברית…"
           />
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-wrap items-center gap-2">
             <label htmlFor="assistant-lang" className="sr-only">שפת הכתבה</label>
             <select
               id="assistant-lang"
-              className="input py-1 text-xs"
+              className="input min-w-0 max-w-full py-2 text-xs"
               value={speech.lang}
               onChange={(e) => speech.setLang(e.target.value as typeof speech.lang)}
               disabled={speech.listening}
@@ -1004,13 +1011,13 @@ export function AssistantChat(props: {
               ))}
             </select>
             {speech.listening ? (
-              <button type="button" className="btn-secondary" aria-label="Stop listening" onClick={speech.stop}>
+              <button type="button" className="btn-secondary min-h-11 min-w-11" aria-label="Stop listening" onClick={speech.stop}>
                 <Square className="mx-auto h-4 w-4" />
               </button>
             ) : (
               <button
                 type="button"
-                className="btn-secondary"
+                className="btn-secondary min-h-11 min-w-11"
                 aria-label="Start microphone"
                 onClick={speech.start}
                 disabled={!speech.supported || loading}
@@ -1018,40 +1025,40 @@ export function AssistantChat(props: {
                 {speech.supported ? <Mic className="mx-auto h-4 w-4" /> : <MicOff className="mx-auto h-4 w-4" />}
               </button>
             )}
+            <button
+              type="button"
+              className="btn-secondary min-h-11 px-3 text-sm"
+              aria-label="עסקה חדשה"
+              data-testid="assistant-new-transaction"
+              disabled={loading || Boolean(draft.createdDraftId)}
+              onClick={() => {
+                draftKeyRef.current = crypto.randomUUID()
+                const next = resetForNewProposal(draft, draftKeyRef.current)
+                setDraft(next)
+                setItems((prev) => [...prev, {
+                  id: `new-${Date.now()}`,
+                  role: 'assistant',
+                  text: promptText(next.lastPrompt, next.preface),
+                  prompt: next.lastPrompt,
+                }])
+              }}
+            >
+              עסקה חדשה
+            </button>
+            <button type="button" className="btn-secondary min-h-11 min-w-11" aria-label="Clear typed text" onClick={() => setText('')} disabled={!text}>
+              <Trash2 className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              data-testid="assistant-send"
+              className="btn-primary min-h-11 min-w-11"
+              aria-label="Send"
+              disabled={loading || !text.trim()}
+              onClick={() => void sendBody(text)}
+            >
+              <Send className="h-4 w-4" />
+            </button>
           </div>
-          <button
-            type="button"
-            className="btn-secondary whitespace-nowrap px-2 text-xs"
-            aria-label="עסקה חדשה"
-            data-testid="assistant-new-transaction"
-            disabled={loading || Boolean(draft.createdDraftId)}
-            onClick={() => {
-              draftKeyRef.current = crypto.randomUUID()
-              const next = resetForNewProposal(draft, draftKeyRef.current)
-              setDraft(next)
-              setItems((prev) => [...prev, {
-                id: `new-${Date.now()}`,
-                role: 'assistant',
-                text: promptText(next.lastPrompt, next.preface),
-                prompt: next.lastPrompt,
-              }])
-            }}
-          >
-            עסקה חדשה
-          </button>
-          <button type="button" className="btn-secondary" aria-label="Clear typed text" onClick={() => setText('')} disabled={!text}>
-            <Trash2 className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            data-testid="assistant-send"
-            className="btn-primary"
-            aria-label="Send"
-            disabled={loading || !text.trim()}
-            onClick={() => void sendBody(text)}
-          >
-            <Send className="h-4 w-4" />
-          </button>
         </div>
         {speech.listening && (
           <p className="mt-2 text-center text-xs font-medium text-red-600" data-testid="assistant-listening">מאזין…</p>
@@ -1060,6 +1067,32 @@ export function AssistantChat(props: {
       </footer>
     </div>
   )
+}
+
+function bootCollector(
+  key: string,
+  suggestedPropertyName: string | null,
+  ctx: CollectorContext,
+): CollectorState {
+  const base = createCollectorState(key)
+  const suggestion = exactUniqueCatalogName(suggestedPropertyName, ctx.catalog)
+  if (!suggestion) return base
+  const picked = applyPropertyPick(base, suggestion, ctx)
+  if (picked.slots.propertyName.value !== suggestion) return base
+  return picked
+}
+
+function introItems(state: CollectorState): ChatItem[] {
+  const property = state.slots.propertyName.value
+  const opening = property
+    ? `הנכס ${property} הוצע כהקשר. אפשר לשנות אותו לפני יצירת הטיוטה.\n${promptText(state.lastPrompt)}`
+    : 'אפשר להתחיל. לדוגמה: שילמתי 120 אירו חשמל בדירה של תמיר'
+  return [{
+    id: 'intro',
+    role: 'assistant',
+    text: opening,
+    prompt: state.lastPrompt,
+  }]
 }
 
 function promptText(prompt: AssistantPrompt, preface?: string): string {

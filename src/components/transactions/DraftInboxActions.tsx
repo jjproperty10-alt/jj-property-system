@@ -63,10 +63,10 @@ export function DraftInboxActions({ draft }: { readonly draft: AgentDraftInboxRo
 
   return (
     <div className="space-y-1" data-testid={`draft-actions-${draft.id}`}>
-      <div className="flex flex-wrap gap-1">
+      <div className="flex flex-wrap gap-2">
         <Link
           href={`/transactions/drafts/${draft.id}/edit`}
-          className={`text-xs font-medium ${disabled ? 'pointer-events-none text-gray-300' : 'text-brand-600'}`}
+          className={`inline-flex min-h-11 items-center text-sm font-medium ${disabled ? 'pointer-events-none text-gray-300' : 'text-brand-600'}`}
         >
           Edit / עריכה
         </Link>
@@ -74,7 +74,7 @@ export function DraftInboxActions({ draft }: { readonly draft: AgentDraftInboxRo
           type="button"
           disabled={disabled}
           onClick={runReject}
-          className="text-xs font-medium text-red-700 disabled:text-gray-300"
+          className="inline-flex min-h-11 items-center text-sm font-medium text-red-700 disabled:text-gray-300"
         >
           Reject / דחייה
         </button>
@@ -82,7 +82,7 @@ export function DraftInboxActions({ draft }: { readonly draft: AgentDraftInboxRo
           type="button"
           disabled={disabled}
           onClick={() => setConfirmOpen(true)}
-          className="text-xs font-medium text-brand-700 disabled:text-gray-300"
+          className="inline-flex min-h-11 items-center text-sm font-medium text-brand-700 disabled:text-gray-300"
           data-testid={`approve-draft-${draft.id}`}
         >
           Approve / אשר

@@ -1010,6 +1010,7 @@ export function applyUserText(
   const trimmed = text.trim()
   if (!trimmed) return state
   if (state.createdDraftId) return state
+  if (trimmed === 'שנה פרטים') return resetForChangeDetails(state, ctx)
 
   if (isUnsupportedCapability(trimmed) && !PAYMENT_HINT.test(trimmed)) {
     return {
@@ -1359,14 +1360,25 @@ function applyTypedField(
   return { ...state, slots, lastPrompt: nextPrompt(slots, ctx, `${state.hintText} ${raw}`.trim(), false), preface: '' }
 }
 
+export function exactUniqueCatalogName(
+  name: string | null | undefined,
+  catalog: readonly { readonly name: string }[],
+): string | null {
+  const raw = name?.trim() ?? ''
+  if (!raw || raw.length > 200) return null
+  const hits = catalog.filter((p) => p.name === raw)
+  if (hits.length !== 1) return null
+  return hits[0].name
+}
+
 export function applyPropertyPick(
   state: CollectorState,
   propertyName: string,
   ctx: CollectorContext,
 ): CollectorState {
-  const exact = ctx.catalog.find((p) => p.name === propertyName)
-  if (!exact) return { ...state, lastPrompt: propertyQuestion([]) }
-  const slots = { ...state.slots, propertyName: confirm(exact.name) }
+  const exactName = exactUniqueCatalogName(propertyName, ctx.catalog)
+  if (!exactName) return { ...state, lastPrompt: propertyQuestion([]) }
+  const slots = { ...state.slots, propertyName: confirm(exactName) }
   return { ...state, slots, lastPrompt: nextPrompt(slots, ctx, state.hintText, false) }
 }
 
@@ -1428,8 +1440,14 @@ export function replayUtterances(
   texts: readonly string[],
   ctx: CollectorContext,
   idempotencyKey: string,
+  suggestedPropertyName?: string | null,
 ): CollectorState {
   let state = createCollectorState(idempotencyKey)
+  const suggestion = exactUniqueCatalogName(suggestedPropertyName, ctx.catalog)
+  if (suggestion) {
+    const picked = applyPropertyPick(state, suggestion, ctx)
+    if (picked.slots.propertyName.value === suggestion) state = picked
+  }
   for (let i = 0; i < texts.length; i += 1) {
     state = applyUserText(state, texts[i], {
       ...ctx,

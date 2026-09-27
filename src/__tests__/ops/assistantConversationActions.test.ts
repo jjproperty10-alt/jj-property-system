@@ -31,6 +31,7 @@ import {
   appendOpsInboundMessage,
   createAssistantTransactionDraft,
   createWebOpsConversation,
+  listOpsConversation,
   submitAssistantInbound,
 } from '@/lib/ops/assistant/opsConversationActions'
 import fs from 'fs'
@@ -59,7 +60,10 @@ describe('ops conversation wrappers', () => {
     expect(mockRpc).toHaveBeenCalledWith('create_ops_conversation', expect.objectContaining({
       p_channel: 'web',
       p_idempotency_key: 'conv-key',
+      p_external_thread_id: null,
+      p_suggested_property_name: null,
     }))
+    expect(mockFrom).not.toHaveBeenCalled()
     mockRpc.mockResolvedValue({ data: [{ id: 'msg-1', reused_existing: false }], error: null })
     const appended = await appendOpsInboundMessage({
       conversationId: 'conv-1',
@@ -92,6 +96,63 @@ describe('ops conversation wrappers', () => {
     expect(src).not.toMatch(/from\(\s*['"]transactions['"]\s*\)/)
     expect(src).toContain('createAgentTransactionDraft')
     expect(src).not.toContain(['approveAndPost', 'AgentTransactionDraft'].join(''))
+  })
+
+  function catalog(rows: { id: string; name: string }[]) {
+    mockFrom.mockImplementation((table: string) => {
+      if (table !== 'properties') throw new Error(`unexpected table ${table}`)
+      return {
+        select: () => ({
+          order: async () => ({ data: rows, error: null }),
+        }),
+      }
+    })
+  }
+
+  it('stores a suggestion only when the staff catalog has one exact name', async () => {
+    mockAuth.mockResolvedValue(staffAuth())
+    mockRpc.mockResolvedValue({
+      data: [{ id: 'conv-1', status: 'open', reused_existing: false }],
+      error: null,
+    })
+    catalog([
+      { id: '1', name: 'Mobile Test House' },
+      { id: '2', name: 'Tamir Kiti' },
+      { id: '3', name: 'Tamir Dekelia' },
+    ])
+    await createWebOpsConversation('unique-key', 'Mobile Test House')
+    expect(mockRpc).toHaveBeenLastCalledWith('create_ops_conversation', expect.objectContaining({
+      p_suggested_property_name: 'Mobile Test House',
+    }))
+    await createWebOpsConversation('partial-key', 'Tamir')
+    expect(mockRpc).toHaveBeenLastCalledWith('create_ops_conversation', expect.objectContaining({
+      p_suggested_property_name: null,
+    }))
+    await createWebOpsConversation('unknown-key', 'Not A Real House')
+    expect(mockRpc).toHaveBeenLastCalledWith('create_ops_conversation', expect.objectContaining({
+      p_suggested_property_name: null,
+    }))
+  })
+
+  it('returns the stored suggestion and treats a missing column as empty', async () => {
+    mockAuth.mockResolvedValue(staffAuth())
+    mockRpc.mockResolvedValueOnce({
+      data: [{
+        conversation_id: 'conv-1',
+        status: 'open',
+        suggested_property_name: 'Mobile Test House',
+        messages: [],
+      }],
+      error: null,
+    })
+    const listed = await listOpsConversation('conv-1')
+    expect(listed.ok && listed.suggestedPropertyName).toBe('Mobile Test House')
+    mockRpc.mockResolvedValueOnce({
+      data: [{ conversation_id: 'conv-2', status: 'open', messages: [] }],
+      error: null,
+    })
+    const older = await listOpsConversation('conv-2')
+    expect(older.ok && older.suggestedPropertyName).toBeNull()
   })
 
   it('create draft delegates to createAgentTransactionDraft and is idempotent per key', async () => {

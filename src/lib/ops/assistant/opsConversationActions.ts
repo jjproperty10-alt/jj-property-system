@@ -9,6 +9,7 @@
 import { authenticateStatementUser } from '@/lib/statements/statementAuthService'
 import { createSupabaseServerClient } from '@/lib/supabaseServer'
 import { OPS_MESSAGE_BODY_MAX } from '@/lib/ops/types'
+import { exactUniqueCatalogName } from '@/lib/ops/assistant/transactionDraftCollector'
 import { createAgentTransactionDraft } from '@/lib/transactions/agentDraftActions'
 import type { CreateAgentDraftInput, CreateAgentDraftResult } from '@/lib/transactions/agentDraftActions'
 
@@ -39,6 +40,7 @@ export type ListOpsConversationResult =
       readonly ok: true
       readonly conversationId: string
       readonly status: string
+      readonly suggestedPropertyName: string | null
       readonly messages: readonly OpsListedMessage[]
     }
   | OpsActionFailure
@@ -53,6 +55,7 @@ function authError(error: 'NO_SESSION' | 'NOT_STAFF' | 'STAFF_INACTIVE' | 'AUTH_
 
 export async function createWebOpsConversation(
   idempotencyKey: string,
+  suggestedPropertyName?: string | null,
 ): Promise<CreateOpsConversationResult> {
   const auth = await authenticateStatementUser()
   if (!auth.ok) return authError(auth.error)
@@ -60,10 +63,17 @@ export async function createWebOpsConversation(
   if (!key) return { ok: false, error: 'Missing idempotency key.' }
 
   const session = createSupabaseServerClient()
+  let canonicalName: string | null = null
+  const rawSuggestion = suggestedPropertyName?.trim() ?? ''
+  if (rawSuggestion) {
+    const catalog = await listAssistantProperties()
+    canonicalName = catalog.ok ? exactUniqueCatalogName(rawSuggestion, catalog.properties) : null
+  }
   const { data, error } = await session.rpc('create_ops_conversation', {
     p_channel: 'web',
     p_idempotency_key: key,
     p_external_thread_id: null,
+    p_suggested_property_name: canonicalName,
   })
   const row = firstRpcRow(data as { id: string; status: string; reused_existing: boolean }[] | { id: string; status: string; reused_existing: boolean } | null)
   if (error || !row) return { ok: false, error: error?.message ?? 'Conversation was not created.' }
@@ -122,10 +132,12 @@ export async function listOpsConversation(
     body: String(m.body ?? ''),
     created_at: String(m.created_at ?? ''),
   }))
+  const storedName = typeof row.suggested_property_name === 'string' ? row.suggested_property_name : null
   return {
     ok: true,
     conversationId: String(row.conversation_id ?? id),
     status: String(row.status ?? ''),
+    suggestedPropertyName: storedName && storedName.trim() ? storedName.trim() : null,
     messages,
   }
 }
@@ -153,6 +165,7 @@ export async function submitAssistantInbound(input: {
   readonly conversationIdempotencyKey: string
   readonly body: string
   readonly messageIdempotencyKey: string
+  readonly suggestedPropertyName?: string | null
 }): Promise<
   | { readonly ok: true; readonly conversationId: string; readonly messageId: string }
   | OpsActionFailure
@@ -162,7 +175,10 @@ export async function submitAssistantInbound(input: {
 
   let conversationId = input.conversationId
   if (!conversationId) {
-    const created = await createWebOpsConversation(input.conversationIdempotencyKey)
+    const created = await createWebOpsConversation(
+      input.conversationIdempotencyKey,
+      input.suggestedPropertyName,
+    )
     if (!created.ok) return created
     conversationId = created.conversationId
   }

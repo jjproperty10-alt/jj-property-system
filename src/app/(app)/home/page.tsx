@@ -5,6 +5,7 @@ import { getAuthorizedExecutiveBrief } from '@/lib/executive/executiveBriefServi
 import { ExecutiveBrief } from '@/components/executive'
 import { NeedsAttentionSection } from '@/components/home/NeedsAttentionSection'
 import { HomeUnavailable } from '@/components/home/HomeUnavailable'
+import { HomePhoneActions } from '@/components/home/HomePhoneActions'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,8 +62,9 @@ export default async function HomePage() {
 
   return (
     <PageShell>
-      <main className="mx-auto max-w-2xl space-y-6 px-4 py-6">
+      <main className="mx-auto max-w-2xl space-y-6 overflow-x-hidden px-4 pb-6 pt-16 md:pt-6">
         <WorkspaceHeader title="Home" />
+        <HomePhoneActions />
 
         {/* Position 1 — Am I okay?
          * greetingMessage is null when indeterminate → DailyGreeting returns null (silence).

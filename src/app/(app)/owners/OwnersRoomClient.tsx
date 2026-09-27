@@ -56,8 +56,14 @@ const HEALTH_FILTER_OPTIONS: { value: ConfigHealthState | 'all'; label: string }
 // Main component
 // ─────────────────────────────────────────────────────────────
 
-export function OwnersRoomClient({ room }: { room: OwnersRoomDTO }) {
-  const [search, setSearch] = useState('')
+export function OwnersRoomClient({
+  room,
+  initialQuery = '',
+}: {
+  room: OwnersRoomDTO
+  initialQuery?: string
+}) {
+  const [search, setSearch] = useState(initialQuery)
   const [healthFilter, setHealthFilter] = useState<ConfigHealthState | 'all'>('all')
 
   const filtered = useMemo(() => {

@@ -24,8 +24,13 @@ export const metadata: Metadata = {
   title: 'JJ — Owners Room',
 }
 
-export default async function OwnersRoomPage() {
+export default async function OwnersRoomPage({
+  searchParams,
+}: {
+  searchParams?: { q?: string }
+}) {
   const room = await getOwnersRoom()
+  const initialQuery = typeof searchParams?.q === 'string' ? searchParams.q : ''
 
   return (
     <PageShell>
@@ -40,7 +45,7 @@ export default async function OwnersRoomPage() {
           </Link>
         }
       />
-      <OwnersRoomClient room={room} />
+      <OwnersRoomClient room={room} initialQuery={initialQuery} />
     </PageShell>
   )
 }

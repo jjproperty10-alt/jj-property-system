@@ -1,11 +1,13 @@
 import {
   applyUserText,
   createCollectorState,
+  exactUniqueCatalogName,
   extractAmountEur,
   isUnsupportedCapability,
   matchProperties,
   nicosiaToday,
   numberedDirectChoices,
+  replayUtterances,
   cancelCollector,
   resetForChangeDetails,
   resetForNewProposal,
@@ -281,6 +283,73 @@ describe('natural Hebrew intake and new-intent reset', () => {
     if (next.lastPrompt.kind === 'question') {
       expect(next.lastPrompt.field).toBe('propertyName')
     }
+  })
+})
+
+describe('property suggestion replay', () => {
+  it('keeps a unique property through replay so a later date is not treated as a property', () => {
+    const replayed = replayUtterances(['25', 'היום (2026-09-17)'], CTX, 'replay-key', 'Villa Mazotos')
+    expect(replayed.slots.propertyName.value).toBe('Villa Mazotos')
+    expect(replayed.slots.amountEur.value).toBe('25')
+    expect(replayed.slots.date.value).toBe('2026-09-17')
+    expect(replayed.lastPrompt.kind === 'question' ? replayed.lastPrompt.field : '').not.toBe('propertyName')
+  })
+
+  it('does not auto-select an ambiguous or unknown property name', () => {
+    const ambiguous = replayUtterances(['25'], CTX, 'replay-ambiguous', 'Tamir')
+    expect(ambiguous.slots.propertyName.status).toBe('unknown')
+    const unknown = replayUtterances(['25'], CTX, 'replay-unknown', 'Not A Real House')
+    expect(unknown.slots.propertyName.value).toBeUndefined()
+  })
+
+  it('still lets the user replace or clear the suggested property', () => {
+    const replayed = replayUtterances(['25', 'היום (2026-09-17)'], CTX, 'replay-change', 'Villa Mazotos')
+    const change = resetForChangeDetails(replayed, CTX)
+    const clearedPrompt = applyUserText(change, 'נכס', CTX)
+    expect(clearedPrompt.slots.propertyName.status).toBe('unknown')
+    const replaced = applyUserText(clearedPrompt, 'Tamir Kiti', CTX)
+    expect(replaced.slots.propertyName.value).toBe('Tamir Kiti')
+    const cleared = applyUserText(clearedPrompt, 'בלי נכס', CTX)
+    expect(cleared.slots.propertyName.value).toBeNull()
+  })
+
+  it('restores a stored unique name when the conversation is reopened without a URL property', () => {
+    const stored = exactUniqueCatalogName('Villa Mazotos', CATALOG)
+    const replayed = replayUtterances(['25', 'היום (2026-09-17)'], CTX, 'reopen-c-only', stored)
+    expect(stored).toBe('Villa Mazotos')
+    expect(replayed.slots.propertyName.value).toBe('Villa Mazotos')
+    expect(replayed.slots.date.value).toBe('2026-09-17')
+    expect(replayed.lastPrompt.kind === 'question' ? replayed.lastPrompt.field : '').not.toBe('propertyName')
+  })
+
+  it('does not restore a partial, ambiguous, unknown, or duplicate stored name', () => {
+    expect(exactUniqueCatalogName('Tamir', CATALOG)).toBeNull()
+    expect(exactUniqueCatalogName('Not A Real House', CATALOG)).toBeNull()
+    expect(exactUniqueCatalogName('villa mazotos', CATALOG)).toBeNull()
+    expect(exactUniqueCatalogName(null, CATALOG)).toBeNull()
+    const duplicated = [...CATALOG, { id: '7', name: 'Villa Mazotos' }]
+    expect(exactUniqueCatalogName('Villa Mazotos', duplicated)).toBeNull()
+    const replayed = replayUtterances(['25'], CTX, 'reopen-ambiguous', exactUniqueCatalogName('Tamir', CATALOG))
+    expect(replayed.slots.propertyName.status).toBe('unknown')
+  })
+
+  it('lets a saved property change or clear override the stored suggestion', () => {
+    const replaced = replayUtterances(
+      ['25', 'היום (2026-09-17)', 'שנה פרטים', 'נכס', 'Tamir Kiti'],
+      CTX,
+      'reopen-replace',
+      'Villa Mazotos',
+    )
+    expect(replaced.slots.propertyName.value).toBe('Tamir Kiti')
+    const cleared = replayUtterances(
+      ['25', 'היום (2026-09-17)', 'שנה פרטים', 'נכס', 'בלי נכס'],
+      CTX,
+      'reopen-clear',
+      'Villa Mazotos',
+    )
+    expect(cleared.slots.propertyName.value).toBeNull()
+    const untouched = replayUtterances(['25'], CTX, 'reopen-no-stored', null)
+    expect(untouched.slots.propertyName.status).toBe('unknown')
   })
 })
 
