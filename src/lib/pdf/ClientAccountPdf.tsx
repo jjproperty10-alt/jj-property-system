@@ -8,6 +8,7 @@ import { Document, Page, Text, View, Font } from '@react-pdf/renderer'
 import { fmt } from './formatters'
 import { balanceDirectionText, heroDirectionText } from '../report/clientAccount/presentation'
 import type { ReportLanguage } from '../report/clientAccount/presentation'
+import { SECTION, term } from '../report/clientAccount/terminology'
 import type { ClientAccountDocument, ClosingDirection, PropertyAccount } from '../report/clientAccount/types'
 import { colors, ink, styles as s } from './clientAccount/theme'
 import {
@@ -39,7 +40,7 @@ Font.register({
 })
 
 export function clientReportOutline(doc: ClientAccountDocument): string[] {
-  return ['סיכום התחשבנות', ...doc.properties.map((property) => property.propertyName)]
+  return [term('settlementSummary', doc.reportLanguage), ...doc.properties.map((property) => property.propertyName)]
 }
 
 function cutoffLabel(asOf: string): string {
@@ -64,7 +65,6 @@ function PropertyPages({
   language: ReportLanguage
   isLast: boolean
 }) {
-  const he = language === 'he'
   const by = (section: string) => property.lines.filter((line) => line.section === section)
   const purchase = property.summaries.find((item) => item.kind === 'purchase')
   const renovation = property.summaries.find((item) => item.kind === 'renovation')
@@ -73,7 +73,7 @@ function PropertyPages({
     <>
       <Page size="A4" style={s.page}>
         <ContinuationTitle title={property.propertyName} language={language} />
-        <PropertyHeader title={property.propertyName} subtitle={he ? 'חשבון נכס' : 'Property account'} cutoff={cutoff} language={language} />
+        <PropertyHeader title={property.propertyName} subtitle={term('propertyAccount', language)} cutoff={cutoff} language={language} />
         <BalanceCard
           direction={property.direction}
           amount={property.amountDueToJj}
@@ -81,23 +81,23 @@ function PropertyPages({
           language={language}
         />
         <CategorySummary property={property} clientName={clientName} language={language} />
-        <DetailSection title={he ? 'קניית הנכס' : 'Purchase'} lines={by('קניית הנכס')} language={language} summary={purchase} />
-        <DetailSection title={he ? 'שיפוץ' : 'Renovation'} lines={by('שיפוץ')} language={language} summary={renovation} />
-        <DetailSection title={he ? 'הכנת הנכס' : 'Property setup'} lines={by('ציוד והכנת הנכס להשכרה קצרה')} language={language} />
-        <DetailSection title={he ? 'הכנסות' : 'Income'} lines={[...by('הכנסות משכירות ארוכה'), ...by('הכנסות משכירות קצרה')]} language={language} />
+        <DetailSection title={term('purchase', language)} lines={by(SECTION.purchase)} language={language} summary={purchase} />
+        <DetailSection title={term('renovation', language)} lines={by(SECTION.renovation)} language={language} summary={renovation} />
+        <DetailSection title={term('setup', language)} lines={by(SECTION.setup)} language={language} />
+        <DetailSection title={term('income', language)} lines={[...by(SECTION.ltrIncome), ...by(SECTION.strIncome)]} language={language} />
         {/* The monthly summary stays with the property's closing area (remaining sections + bridge + status)
             instead of leaving the bridge alone on a trailing page. */}
         {property.certifiedMonthlyStr ? <MonthlyStrTable section={property.certifiedMonthlyStr} language={language} minPresenceAhead={310} /> : null}
-        <DetailSection title={he ? 'תשלומים שהועברו לבעלים' : 'Payments transferred to the owner'} lines={by('תשלומים שהועברו לבעלים')} language={language} />
-        <DetailSection title={he ? 'הוצאות תפעול' : 'Operating expenses'} lines={[...by('הוצאות הנכס'), ...by('הוצאות שוטפות')]} language={language} />
-        <DetailSection title={he ? 'תקלות ותיקונים' : 'Repairs and maintenance'} lines={by('תקלות ותיקונים')} language={language} />
+        <DetailSection title={term('ownerTransfers', language)} lines={by(SECTION.ownerTransfers)} language={language} />
+        <DetailSection title={term('operatingExpenses', language)} lines={[...by(SECTION.propertyExpenses), ...by(SECTION.recurring)]} language={language} />
+        <DetailSection title={term('repairs', language)} lines={by(SECTION.repairs)} language={language} />
         {property.units.length === 0 ? (
           <ClosingBlock property={property} clientName={clientName} language={language} documentNoteCutoff={isLast ? cutoff : undefined} />
         ) : null}
         {footer}
       </Page>
       {property.units.map((unit, unitIndex) => {
-        const longTerm = unit.title.includes('Long-Term Rental')
+        const longTerm = unit.kind === 'ltr'
         const unitDirection = directionOf(unit.balanceDueToJj)
         const lines = unit.lines.filter((line) => longTerm || line.countedIn !== 'str-credit')
         const zebra = lines.length > 8
@@ -118,22 +118,22 @@ function PropertyPages({
         )
         const unitTail = longTerm ? (
           <>
-            <Text style={s.note}>{he ? 'אין הוצאות משותפות שלא ניתן לשייך ליחידה.' : 'There are no shared expenses that cannot be assigned to a unit.'}</Text>
-            <SectionHeader title={he ? 'סה״כ זיכויי שכירות ארוכה' : 'Long-term rent credits'} language={language} />
-            {totalRow(he ? 'סה״כ מוצג לצורך פירוט — נכלל פעם אחת בגשר הסגירה' : 'Shown for detail — included once in the closing bridge')}
+            <Text style={s.note}>{term('noSharedExpenses', language)}</Text>
+            <SectionHeader title={term('ltrCreditsTotal', language)} language={language} />
+            {totalRow(term('ltrCreditsTotalNote', language))}
           </>
-        ) : totalRow(he ? 'יתרת היחידה' : 'Unit balance')
+        ) : totalRow(term('unitBalance', language))
         return (
           <Page key={unit.title} size="A4" style={s.page}>
             <ContinuationTitle title={unit.title} language={language} />
-            <PropertyHeader title={unit.title} subtitle={he ? 'פירוט יחידה' : 'Unit detail'} cutoff={cutoff} language={language} />
+            <PropertyHeader title={unit.title} subtitle={term('unitDetail', language)} cutoff={cutoff} language={language} />
             {!longTerm && unit.note ? (
               <View style={s.noteBox}>
                 <RtlLine text={unit.note} pack="start" style={{ color: colors.text, fontSize: 9 }} />
               </View>
             ) : null}
             <View wrap={false}>
-              <SectionHeader title={he ? 'פירוט תנועות' : 'Transactions'} language={language} />
+              <SectionHeader title={term('transactions', language)} language={language} />
               <ColumnHeader language={language} />
               {lines.length > 0 ? <DetailTable lines={lines.slice(0, 1)} language={language} zebra={zebra} /> : null}
               {lines.length < 2 ? unitTail : null}
@@ -195,7 +195,7 @@ export function ClientAccountPdf({ doc }: { doc: ClientAccountDocument }) {
     <Document title={doc.reportTitle} author="JJ Property">
       <Page size="A4" style={s.page}>
         <View style={s.continuedSlot} />
-        <ReportHeader title={he ? 'סיכום התחשבנות' : 'Settlement summary'} clientName={name} cutoff={cutoff} language={language} />
+        <ReportHeader title={term('settlementSummary', language)} clientName={name} cutoff={cutoff} language={language} />
 
         <BalanceCard
           hero
@@ -205,7 +205,7 @@ export function ClientAccountPdf({ doc }: { doc: ClientAccountDocument }) {
           language={language}
         />
 
-        <SectionHeader title={he ? 'יתרות לפי נכס' : 'Balances by property'} language={language} />
+        <SectionHeader title={term('balancesByProperty', language)} language={language} />
         <ColumnHeader language={language} withDate={false} />
         {doc.properties.map((property, index) => (
           <TableRow
@@ -227,7 +227,7 @@ export function ClientAccountPdf({ doc }: { doc: ClientAccountDocument }) {
           language={language}
           style={s.rowTotal}
           date={null}
-          description={<Desc text={he ? 'סך יתרות הנכסים' : 'Property balances'} language={language} bold style={{ color: colors.navy }} />}
+          description={<Desc text={term('propertyBalances', language)} language={language} bold style={{ color: colors.navy }} />}
           direction={(
             <View style={s.direction}>
               <Phrase text={balanceDirectionText(name, totalDirection, language)} language={language} color={colors.navy} bold />
@@ -239,7 +239,7 @@ export function ClientAccountPdf({ doc }: { doc: ClientAccountDocument }) {
         {doc.credits.length > 0 ? (
           <View style={s.card} wrap={false}>
             <View style={s.cardHead}>
-              <Text style={s.cardTitle}>{he ? 'זיכויים ברמת ההתחשבנות הכוללת' : 'Client-level settlement credits'}</Text>
+              <Text style={s.cardTitle}>{term('clientLevelCredits', language)}</Text>
             </View>
             <View style={s.cardBody}>
               <Text style={s.note}>
@@ -263,7 +263,7 @@ export function ClientAccountPdf({ doc }: { doc: ClientAccountDocument }) {
                       <View style={s.direction}>
                         <Phrase
                           text={credit.dateRole === 'credit-event'
-                            ? (he ? 'ללא מזומן' : 'Non-cash')
+                            ? term('nonCash', language)
                             : balanceDirectionText(name, 'jj_owes_client', language)}
                           language={language}
                           color={credit.dateRole === 'credit-event' ? colors.muted : colors.green}

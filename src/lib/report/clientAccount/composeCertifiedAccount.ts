@@ -23,6 +23,7 @@ import {
   type DescriptionRole,
   type ReportLanguage,
 } from './presentation'
+import { BRIDGE, REPAIR_SUBCATEGORIES, SECTION, STATUS_LABEL, TERMS, UNIT_TITLE_SUFFIX, term } from './terminology'
 import type {
   AccountUnit,
   BridgeStep,
@@ -33,6 +34,7 @@ import type {
   DisplayLine,
   LedgerRow,
   PropertyAccount,
+  ReportPeriod,
   StatusLine,
   StrMonthInput,
 } from './types'
@@ -65,11 +67,25 @@ function payerIs(row: LedgerRow, name: string): boolean {
   return (row.payer || '').trim().toLowerCase() === name
 }
 
-function inForce(row: LedgerRow, asOf: string, includeDeletedIds: ReadonlySet<string>): boolean {
+function inForce(row: LedgerRow, asOf: string, includeDeletedIds: ReadonlySet<string>, period?: ReportPeriod): boolean {
   if (row.date.slice(0, 10) > asOf) return false
+  if (period && row.date.slice(0, 10) < period.start) return false
   if (row.reviewStatus != null && row.reviewStatus !== 'active') return false
   if (row.isDeleted && !includeDeletedIds.has(row.id)) return false
   return true
+}
+
+/** Period scope must be explicit and consistent with the cutoff; a full account carries none. */
+function reportScope(input: CompositionInput): { reportType: 'full_account' | 'period_account'; period: ReportPeriod | null } {
+  const reportType = input.reportType || 'full_account'
+  if (reportType === 'period_account') {
+    if (!input.period) throw new ClientAccountBlock('BLOCKED_ACCOUNTING', 'A period account requires an explicit period.')
+    if (input.period.start > input.period.end) throw new ClientAccountBlock('BLOCKED_ACCOUNTING', 'Report period start is after its end.')
+    if (input.period.end !== input.asOf) throw new ClientAccountBlock('BLOCKED_ACCOUNTING', 'A period account cutoff must equal the period end.')
+    return { reportType, period: input.period }
+  }
+  if (input.period) throw new ClientAccountBlock('BLOCKED_ACCOUNTING', 'A full account does not take a period; use period_account.')
+  return { reportType, period: null }
 }
 
 interface Chunk {
@@ -123,7 +139,7 @@ function lineFrom(
     : effect === 'credit'
       ? balanceDirectionText(clientName, 'jj_owes_client', language)
       : effect === 'reference'
-        ? (language === 'en' ? 'Recorded.' : 'רשום.')
+        ? term('recorded', language)
         : balanceDirectionText(clientName, 'client_owes_jj', language)
   return {
     propertyName,
@@ -199,8 +215,8 @@ function strCreditLines(
     }
     return months.map((month) => ({
       propertyName,
-      section: 'הכנסות משכירות קצרה',
-      clientText: 'נטו לבעלים',
+      section: SECTION.strIncome,
+      clientText: term('ownerNet', language),
       monthLabel: monthFromIsoDate(`${month.year}-${String(month.month).padStart(2, '0')}-01`, language),
       paymentMonthLabel: null,
       statusLabel: null,
@@ -215,7 +231,7 @@ function strCreditLines(
   }
   return [{
     propertyName,
-    section: 'הכנסות משכירות קצרה',
+    section: SECTION.strIncome,
     clientText: lumpDescription,
     monthLabel: undatedLabel(language),
     paymentMonthLabel: null,
@@ -235,9 +251,11 @@ function composeProperty(
   cert: CertifiedAccountLine,
   includeDeleted: ReadonlySet<string>,
   omitted: string[],
+  period: ReportPeriod | null,
 ): PropertyAccount {
   const language = input.reportLanguage || 'he'
   const clientName = input.clientDisplayName
+  const scope = period || undefined
   const show = (
     section: string,
     chunk: Chunk,
@@ -248,8 +266,8 @@ function composeProperty(
     role: DescriptionRole = 'general',
   ) => lineFrom(cert.propertyName, section, chunk, effect, countedIn, language, clientName, evidence, monthOverride, role)
   const meta = cert.metadata
-  const rows = input.rows.filter((row) => row.propertyName === cert.propertyName && inForce(row, input.asOf, includeDeleted))
-  const linked = (input.linkedRowsByPropertyKey?.[cert.propertyKey] || []).filter((row) => inForce(row, input.asOf, includeDeleted))
+  const rows = input.rows.filter((row) => row.propertyName === cert.propertyName && inForce(row, input.asOf, includeDeleted, scope))
+  const linked = (input.linkedRowsByPropertyKey?.[cert.propertyKey] || []).filter((row) => inForce(row, input.asOf, includeDeleted, scope))
   const allowedSources = input.historicalSourceNamesByPropertyKey?.[cert.propertyKey]
   if (linked.length > 0) {
     if (!allowedSources || allowedSources.length === 0) {
@@ -295,11 +313,11 @@ function composeProperty(
 
   if (saleContract.length === 1) {
     const price = roundEur(saleContract[0].amountEur)
-    lines.push(show( 'קניית הנכס', { rows: saleContract, amount: price }, 'reference', 'purchase-price'))
+    lines.push(show(SECTION.purchase, { rows: saleContract, amount: price }, 'reference', 'purchase-price'))
     const payments = collapse(purchasePayments, omitted)
-    for (const chunk of payments) lines.push(show('קניית הנכס', chunk, 'credit', 'purchase-payment', 'proven', undefined, 'purchase-payment'))
+    for (const chunk of payments) lines.push(show(SECTION.purchase, chunk, 'credit', 'purchase-payment', 'proven', undefined, 'purchase-payment'))
     const costs = collapse(closingCosts, omitted)
-    for (const chunk of costs) lines.push(show( 'קניית הנכס', chunk, 'charge', 'purchase-cost'))
+    for (const chunk of costs) lines.push(show(SECTION.purchase, chunk, 'charge', 'purchase-cost'))
     const accepted = num(meta, 'accepted_purchase_payments')
     const paidRows = roundEur(purchasePayments.reduce((sum, row) => sum + face(row), 0))
     let paid = paidRows
@@ -320,7 +338,7 @@ function composeProperty(
         for (const item of supplements) {
           lines.push({
             propertyName: cert.propertyName,
-            section: 'קניית הנכס',
+            section: SECTION.purchase,
             clientText: item.description,
             monthLabel: item.monthLabel,
             paymentMonthLabel: null,
@@ -349,7 +367,7 @@ function composeProperty(
         lines[index] = {
           ...paymentLines[0],
           amount: price,
-          clientText: language === 'en' ? 'Payments on the purchase price' : 'תשלומים על מחיר הקנייה',
+          clientText: term('purchasePricePayments', language),
         }
       }
     }
@@ -358,14 +376,14 @@ function composeProperty(
         if (line.countedIn !== 'purchase-cost') return
         lines[index] = {
           ...line,
-          directionText: language === 'en' ? 'Paid from the purchase receipts.' : 'שולם מתוך סך התקבולים.',
-          statusLabel: language === 'en' ? 'Paid' : 'שולם',
+          directionText: term('paidFromReceipts', language),
+          statusLabel: term('paidStatus', language),
         }
       })
     }
     due = roundEur(due + remaining)
-    pushStep(steps, 'יתרת קניית הנכס', remaining, language, clientName)
-    status.push(statusFor('קניית הנכס', remaining))
+    pushStep(steps, BRIDGE.purchaseBalance, remaining, language, clientName)
+    status.push(statusFor(STATUS_LABEL.purchase, remaining))
     summaries.push({
       kind: 'purchase',
       agreed: price,
@@ -383,15 +401,15 @@ function composeProperty(
 
   if (renoContract.length === 1) {
     const agreed = roundEur(renoContract[0].amountEur)
-    lines.push(show( 'שיפוץ', { rows: renoContract, amount: agreed }, 'reference', 'renovation-contract'))
-    for (const chunk of collapse(renoPayments, omitted)) lines.push(show('שיפוץ', chunk, 'credit', 'renovation-payment', 'proven', undefined, 'renovation-payment'))
-    for (const chunk of collapse(renoExtras, omitted)) lines.push(show( 'שיפוץ', chunk, 'charge', 'renovation-extra'))
+    lines.push(show(SECTION.renovation, { rows: renoContract, amount: agreed }, 'reference', 'renovation-contract'))
+    for (const chunk of collapse(renoPayments, omitted)) lines.push(show(SECTION.renovation, chunk, 'credit', 'renovation-payment', 'proven', undefined, 'renovation-payment'))
+    for (const chunk of collapse(renoExtras, omitted)) lines.push(show(SECTION.renovation, chunk, 'charge', 'renovation-extra'))
     const paid = roundEur(renoPayments.reduce((sum, row) => sum + face(row), 0))
     const extras = roundEur(renoExtras.reduce((sum, row) => sum + face(row), 0))
     const remaining = roundEur(agreed - paid + extras)
     due = roundEur(due + remaining)
-    pushStep(steps, 'יתרת שיפוץ', remaining, language, clientName)
-    status.push(statusFor('שיפוץ', remaining))
+    pushStep(steps, BRIDGE.renovationBalance, remaining, language, clientName)
+    status.push(statusFor(STATUS_LABEL.renovation, remaining))
     summaries.push({
       kind: 'renovation',
       agreed,
@@ -435,10 +453,10 @@ function composeProperty(
       throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `${cert.propertyName}: setup lines ${setupSum} do not equal certified ${setupExpected}.`)
     }
     for (const chunk of collapse(setupRows, omitted)) {
-      lines.push(show( 'ציוד והכנת הנכס להשכרה קצרה', chunk, 'charge', 'setup'))
+      lines.push(show(SECTION.setup, chunk, 'charge', 'setup'))
     }
     due = roundEur(due + setupSum)
-    pushStep(steps, 'ציוד והכנת הנכס להשכרה קצרה', setupSum, language, clientName)
+    pushStep(steps, BRIDGE.setup, setupSum, language, clientName)
     for (const row of setupRows) used.add(row.id)
   }
 
@@ -518,7 +536,7 @@ function composeProperty(
   }
   const incomeLines: DisplayLine[] = rentViews.map((view) => ({
     propertyName: cert.propertyName,
-    section: 'הכנסות משכירות ארוכה',
+    section: SECTION.ltrIncome,
     clientText: view.description,
     monthLabel: view.rentalLabel,
     paymentMonthLabel: view.paymentLabel,
@@ -532,15 +550,15 @@ function composeProperty(
     countedIn: 'rent-income',
     allocationRule: view.allocationRule,
   }))
-  const ownerLines = ownerChunks.map((chunk) => show('תשלומים שהועברו לבעלים', chunk, 'charge', 'owner-payment', 'proven', undefined, 'owner-transfer'))
+  const ownerLines = ownerChunks.map((chunk) => show(SECTION.ownerTransfers, chunk, 'charge', 'owner-payment', 'proven', undefined, 'owner-transfer'))
   const expenseLines = [
     ...expenseChunks.map((chunk) => show(
-      chunk.rows[0] && (chunk.rows[0].subcategory === 'Key Duplication' || chunk.rows[0].subcategory === 'Plumber' || chunk.rows[0].subcategory === 'Electrical Work') ? 'תקלות ותיקונים' : 'הוצאות הנכס',
+      chunk.rows[0] && REPAIR_SUBCATEGORIES.has(chunk.rows[0].subcategory || '') ? SECTION.repairs : SECTION.propertyExpenses,
       chunk,
       'charge',
       'operating-charge',
     )),
-    ...recurringChunks.map((chunk) => show( 'הוצאות שוטפות', chunk, 'charge', 'recurring-charge')),
+    ...recurringChunks.map((chunk) => show(SECTION.recurring, chunk, 'charge', 'recurring-charge')),
   ]
   if (rentExpected != null && !sameMoney(sumAmount(incomeLines, 'credit'), rentExpected)) {
     throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `${cert.propertyName}: rent income does not equal certified rent.`)
@@ -549,14 +567,14 @@ function composeProperty(
     throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `${cert.propertyName}: owner transfers do not equal the certified amount.`)
   }
 
-  const lumpLabel = input.strLumpDescription || (language === 'en' ? 'Approved Airbnb credit' : 'זיכוי Airbnb מאושר')
+  const lumpLabel = input.strLumpDescription || term('strLumpDefault', language)
   const strLines = strCredit == null ? [] : strCreditLines(language, clientName, cert.propertyName, strCredit, input.strMonthsByPropertyKey?.[cert.propertyKey], lumpLabel)
     .map((line, _index, all) => (
       all.length === 1 && line.monthLabel === undatedLabel(language)
         ? { ...line, sourceIds: airbnbCleaning.map((row) => row.id) }
         : line
     ))
-  const strExpenseLines = strExpenseChunks.map((chunk) => show( 'הוצאות השכרה קצרה', chunk, 'charge', 'str-expense'))
+  const strExpenseLines = strExpenseChunks.map((chunk) => show(SECTION.strExpenses, chunk, 'charge', 'str-expense'))
 
   const useUnits = strCredit != null && rentalCredit != null
   const units: AccountUnit[] = []
@@ -564,40 +582,36 @@ function composeProperty(
     const strBalance = roundEur(sumAmount(strExpenseLines, 'charge') - (strCredit || 0))
     const ltrBalance = roundEur(-sumAmount(incomeLines, 'credit'))
     units.push({
-      title: `${cert.propertyName} — Short-Term Rental`,
+      kind: 'str',
+      title: `${cert.propertyName} — ${UNIT_TITLE_SUFFIX.str}`,
       lines: [...strLines, ...strExpenseLines],
       balanceDueToJj: strBalance,
-      note: language === 'en'
-        ? 'The short-term rental credit is the approved amount for the period. A monthly split has not been approved, so no monthly detail is shown.'
-        : 'זיכוי מאושר בגין הכנסות מהשכרה קצרה. הזיכוי מוצג כסכום כולל, מאחר שלא נשמר עבורו פירוט חודשי מאושר.',
+      note: term('strLumpNote', language),
     })
     const separateSources = incomeLines.some((line) => line.allocationRule === 'stated-period')
       && incomeLines.some((line) => line.allocationRule === 'oldest-open-month')
     units.push({
-      title: `${cert.propertyName} — Long-Term Rental`,
+      kind: 'ltr',
+      title: `${cert.propertyName} — ${UNIT_TITLE_SUFFIX.ltr}`,
       lines: incomeLines,
       balanceDueToJj: ltrBalance,
-      note: separateSources
-        ? (language === 'en'
-          ? 'The rent adjustment and the tenant receipt are two separate sources.'
-          : 'הזיכוי בגין שימוש של JJ בדירה ותקבולי השוכר הם מקורות הכנסה נפרדים.')
-        : null,
+      note: separateSources ? term('ltrSeparateSourcesNote', language) : null,
     })
     due = roundEur(due - sumAmount(incomeLines, 'credit') + sumAmount(strExpenseLines, 'charge') - (strCredit || 0))
-    pushStep(steps, 'זיכוי שכירות ארוכה', roundEur(-sumAmount(incomeLines, 'credit')), language, clientName)
-    pushStep(steps, 'הוצאות שכירות קצרה', sumAmount(strExpenseLines, 'charge'), language, clientName)
-    pushStep(steps, 'זיכוי שכירות קצרה', roundEur(-(strCredit || 0)), language, clientName)
+    pushStep(steps, BRIDGE.ltrCredit, roundEur(-sumAmount(incomeLines, 'credit')), language, clientName)
+    pushStep(steps, BRIDGE.strExpenses, sumAmount(strExpenseLines, 'charge'), language, clientName)
+    pushStep(steps, BRIDGE.strCredit, roundEur(-(strCredit || 0)), language, clientName)
   } else {
     lines.push(...incomeLines, ...strLines, ...strExpenseLines)
     due = roundEur(due - sumAmount(incomeLines, 'credit') - sumAmount(strLines, 'credit') + sumAmount(strExpenseLines, 'charge'))
-    pushStep(steps, 'הכנסות', roundEur(-sumAmount(incomeLines, 'credit') - sumAmount(strLines, 'credit')), language, clientName)
-    pushStep(steps, 'הוצאות שכירות קצרה', sumAmount(strExpenseLines, 'charge'), language, clientName)
+    pushStep(steps, BRIDGE.income, roundEur(-sumAmount(incomeLines, 'credit') - sumAmount(strLines, 'credit')), language, clientName)
+    pushStep(steps, BRIDGE.strExpenses, sumAmount(strExpenseLines, 'charge'), language, clientName)
   }
 
   lines.push(...ownerLines, ...expenseLines)
   due = roundEur(due + sumAmount(ownerLines, 'charge') + sumAmount(expenseLines, 'charge'))
-  pushStep(steps, 'תשלומים שהועברו לבעלים', sumAmount(ownerLines, 'charge'), language, clientName, 'transfer')
-  pushStep(steps, 'הוצאות הנכס', sumAmount(expenseLines, 'charge'), language, clientName)
+  pushStep(steps, BRIDGE.ownerTransfers, sumAmount(ownerLines, 'charge'), language, clientName, 'transfer')
+  pushStep(steps, BRIDGE.propertyExpenses, sumAmount(expenseLines, 'charge'), language, clientName)
 
   const undatedChargeLabel = input.undatedChargeLabelByPropertyKey?.[cert.propertyKey]
   if (!sameMoney(due, cert.amountDueToJj)) {
@@ -610,7 +624,7 @@ function composeProperty(
     }
     lines.push({
       propertyName: cert.propertyName,
-      section: 'הוצאות הנכס',
+      section: SECTION.propertyExpenses,
       clientText: undatedChargeLabel,
       monthLabel: undatedLabel(language),
       paymentMonthLabel: null,
@@ -633,7 +647,7 @@ function composeProperty(
   if (!sameMoney(stepSum, due)) {
     throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `${cert.propertyName}: bridge steps ${stepSum} do not equal ${due}.`)
   }
-  status.push(statusFor('יתרת הנכס', due))
+  status.push(statusFor(STATUS_LABEL.propertyBalance, due))
   const unresolved = monthsAfterAllocatedSeries(rentViews, input.asOf)
   const unresolvedLabels = unresolved.map((month) => monthYearLabel(month.year, month.month - 1, language))
   const unresolvedText = unresolvedLabels.map((label) => `ל${label}`).join(' ו')
@@ -675,6 +689,10 @@ function withOwnerDescriptions(property: PropertyAccount, descriptions: Composit
 
 export function composeCertifiedClientAccount(input: CompositionInput): ClientAccountDocument {
   takePresentationGaps()
+  const { reportType, period } = reportScope(input)
+  if (input.currency && input.currency !== 'EUR') {
+    throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `Unsupported report currency ${input.currency}.`)
+  }
   const rows = [...input.rows].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
   const ordered: CompositionInput = { ...input, rows }
   const includeDeleted = new Set<string>()
@@ -685,7 +703,7 @@ export function composeCertifiedClientAccount(input: CompositionInput): ClientAc
   const omitted: string[] = []
   const properties = [...input.lines]
     .sort((a, b) => a.lineOrder - b.lineOrder)
-    .map((line) => withOwnerDescriptions(composeProperty(ordered, line, includeDeleted, omitted), input.descriptionByRowId))
+    .map((line) => withOwnerDescriptions(composeProperty(ordered, line, includeDeleted, omitted, period), input.descriptionByRowId))
   const opening = roundEur(properties.reduce((sum, property) => sum + property.amountDueToJj, 0))
   if (!sameMoney(opening, input.openingDueToJj)) {
     throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `Property balances ${opening} do not equal certified opening ${input.openingDueToJj}.`)
@@ -695,15 +713,11 @@ export function composeCertifiedClientAccount(input: CompositionInput): ClientAc
     const noncash = credit.eventType === 'noncash_settlement_credit'
     return {
       label: noncash
-        ? (input.creditLabels?.noncash || 'זיכוי ללא מזומן')
-        : (input.creditLabels?.cash || 'תשלום כללי'),
+        ? (input.creditLabels?.noncash || term('creditNoncash', creditLanguage))
+        : (input.creditLabels?.cash || term('creditCash', creditLanguage)),
       monthLabel: monthFromIsoDate(credit.effectiveDate, creditLanguage),
-      dateCaption: noncash ? (creditLanguage === 'en' ? 'Credit event' : 'מועד הזיכוי') : null,
-      note: noncash
-        ? (creditLanguage === 'en'
-          ? 'Certified credit-event date, not a date cash was received.'
-          : 'מועד אירוע הזיכוי המאושר, לא מועד קבלת כסף.')
-        : null,
+      dateCaption: noncash ? term('creditEventCaption', creditLanguage) : null,
+      note: noncash ? term('creditEventNote', creditLanguage) : null,
       amount: roundEur(credit.amount),
       eventId: credit.id,
       sourceTransactionId: credit.sourceTransactionId || null,
@@ -759,9 +773,14 @@ export function composeCertifiedClientAccount(input: CompositionInput): ClientAc
     }
   }
   return {
+    clientId: input.clientId || null,
     clientDisplayName: input.clientDisplayName,
     reportTitle: input.reportTitle,
     reportLanguage: input.reportLanguage || 'he',
+    reportType,
+    period,
+    currency: 'EUR',
+    evidenceStatus: 'certified',
     asOf: input.asOf,
     openingDueToJj: opening,
     closingDueToJj: closing,
@@ -776,14 +795,14 @@ export function composeCertifiedClientAccount(input: CompositionInput): ClientAc
 export function applicableSectionNames(property: PropertyAccount): string[] {
   const names: string[] = []
   const has = (section: string) => property.lines.some((line) => line.section === section)
-  if (has('קניית הנכס')) names.push('קניית הנכס')
-  if (has('שיפוץ')) names.push('שיפוץ')
-  if (has('ציוד והכנת הנכס להשכרה קצרה')) names.push('ציוד והכנת הנכס להשכרה קצרה')
-  if (has('הכנסות משכירות ארוכה') || has('הכנסות משכירות קצרה')) names.push('הכנסות מהנכס')
-  if (has('תשלומים שהועברו לבעלים')) names.push('תשלומים שהועברו לבעלים')
-  if (has('הוצאות הנכס') || has('הוצאות שוטפות')) names.push('הוצאות הנכס')
-  if (has('תקלות ותיקונים')) names.push('תקלות ותיקונים')
-  if (property.units.length > 0) names.push('יחידות')
-  names.push('גשר סגירה', 'מה נסגר ומה נשאר פתוח')
+  if (has(SECTION.purchase)) names.push(SECTION.purchase)
+  if (has(SECTION.renovation)) names.push(SECTION.renovation)
+  if (has(SECTION.setup)) names.push(SECTION.setup)
+  if (has(SECTION.ltrIncome) || has(SECTION.strIncome)) names.push(TERMS.propertyIncome.he)
+  if (has(SECTION.ownerTransfers)) names.push(SECTION.ownerTransfers)
+  if (has(SECTION.propertyExpenses) || has(SECTION.recurring)) names.push(SECTION.propertyExpenses)
+  if (has(SECTION.repairs)) names.push(SECTION.repairs)
+  if (property.units.length > 0) names.push(TERMS.units.he)
+  names.push(TERMS.closingBridge.he, TERMS.openClosed.he)
   return names
 }

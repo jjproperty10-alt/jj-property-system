@@ -3,6 +3,7 @@
  * The client display name and report language are inputs. Amounts are not stored here.
  */
 
+import { BRIDGE, SECTION, UNIT_TITLE_SUFFIX, term } from './terminology'
 import type { ClosingDirection, DisplayLine, PropertyAccount } from './types'
 
 export type ReportLanguage = 'he' | 'en'
@@ -327,14 +328,13 @@ function bridgeAmount(property: PropertyAccount, label: string): number {
 }
 
 export function propertyLayerSummaries(property: PropertyAccount, language: ReportLanguage = 'he'): PropertyLayerSummary[] {
-  const he = language === 'he'
   const layers: PropertyLayerSummary[] = []
   const purchase = property.summaries.find((item) => item.kind === 'purchase')
   if (purchase) {
     const charges = roundLayer(purchase.agreed + purchase.ancillary)
     layers.push({
       key: 'purchase',
-      title: he ? 'קניית הנכס' : 'Purchase',
+      title: term('purchase', language),
       charges,
       credits: roundLayer(charges - purchase.balance),
       balance: purchase.balance,
@@ -347,7 +347,7 @@ export function propertyLayerSummaries(property: PropertyAccount, language: Repo
     const charges = roundLayer(renovation.agreed + renovation.ancillary)
     layers.push({
       key: 'renovation',
-      title: he ? 'שיפוץ' : 'Renovation',
+      title: term('renovation', language),
       charges,
       credits: renovation.payments,
       balance: renovation.balance,
@@ -355,37 +355,33 @@ export function propertyLayerSummaries(property: PropertyAccount, language: Repo
       direction: layerDirection(renovation.balance),
     })
   }
-  const setup = partsOf(property.lines.filter((line) => line.section === 'ציוד והכנת הנכס להשכרה קצרה'))
+  const setup = partsOf(property.lines.filter((line) => line.section === SECTION.setup))
   if (setup.charges !== 0 || setup.credits !== 0) {
     layers.push({
       key: 'setup',
-      title: he ? 'הכנת הנכס' : 'Property setup',
+      title: term('setup', language),
       ...setup,
       state: Math.abs(setup.balance) < 0.005 ? 'closed' : 'open',
       direction: layerDirection(setup.balance),
     })
   }
-  const repairLines = property.lines.filter((line) => line.section === 'תקלות ותיקונים')
+  const repairLines = property.lines.filter((line) => line.section === SECTION.repairs)
   const repairs = partsOf(repairLines)
-  const expenseStep = bridgeAmount(property, 'הוצאות הנכס')
-  const transferStep = bridgeAmount(property, 'תשלומים שהועברו לבעלים')
-  const knownBridge = new Set([
-    'יתרת קניית הנכס', 'יתרת שיפוץ', 'ציוד והכנת הנכס להשכרה קצרה',
-    'זיכוי שכירות ארוכה', 'הוצאות שכירות קצרה', 'זיכוי שכירות קצרה',
-    'תשלומים שהועברו לבעלים', 'הוצאות הנכס', 'הכנסות',
-  ])
+  const expenseStep = bridgeAmount(property, BRIDGE.propertyExpenses)
+  const transferStep = bridgeAmount(property, BRIDGE.ownerTransfers)
+  const knownBridge = new Set<string>(Object.values(BRIDGE))
   const otherSteps = roundLayer(property.bridge
     .filter((step) => !knownBridge.has(step.label))
     .reduce((sum, step) => sum + step.signedDueToJj, 0))
   const operatingBalance = roundLayer(expenseStep - repairs.balance + transferStep + otherSteps)
   const operatingLines = property.lines.filter((line) => (
-    line.section === 'הוצאות הנכס' || line.section === 'הוצאות שוטפות' || line.section === 'תשלומים שהועברו לבעלים'
+    line.section === SECTION.propertyExpenses || line.section === SECTION.recurring || line.section === SECTION.ownerTransfers
   ))
   if (operatingLines.length > 0 || Math.abs(operatingBalance) >= 0.005) {
     const operatingParts = partsOf(operatingLines)
     layers.push({
       key: 'operating',
-      title: he ? 'חשבון תפעול וניהול' : 'Operating account',
+      title: term('operatingAccount', language),
       charges: operatingParts.charges,
       credits: operatingParts.credits,
       balance: operatingBalance,
@@ -396,26 +392,26 @@ export function propertyLayerSummaries(property: PropertyAccount, language: Repo
   if (repairLines.length > 0) {
     layers.push({
       key: 'repairs',
-      title: he ? 'תקלות ותיקונים' : 'Repairs and maintenance',
+      title: term('repairs', language),
       ...repairs,
       state: Math.abs(repairs.balance) < 0.005 ? 'closed' : 'open',
       direction: layerDirection(repairs.balance),
     })
   }
-  const strUnit = property.units.find((unit) => unit.title.includes('Short-Term Rental'))
+  const strUnit = property.units.find((unit) => unit.kind === 'str' || unit.title.includes(UNIT_TITLE_SUFFIX.str))
   const strLines = strUnit
     ? strUnit.lines
-    : property.lines.filter((line) => line.section === 'הכנסות משכירות קצרה' || line.section === 'הוצאות השכרה קצרה')
+    : property.lines.filter((line) => line.section === SECTION.strIncome || line.section === SECTION.strExpenses)
   const strParts = partsOf(strLines)
-  const strCharges = bridgeAmount(property, 'הוצאות שכירות קצרה') || strParts.charges
+  const strCharges = bridgeAmount(property, BRIDGE.strExpenses) || strParts.charges
   const monthlyCredit = property.certifiedMonthlyStr ? property.certifiedMonthlyStr.totalOwnerNet : 0
-  const strCreditStep = Math.abs(bridgeAmount(property, 'זיכוי שכירות קצרה'))
+  const strCreditStep = Math.abs(bridgeAmount(property, BRIDGE.strCredit))
   const strCredits = roundLayer(strCreditStep || strParts.credits || monthlyCredit)
   const strBalance = roundLayer(strCharges - strCredits)
   if (strCharges !== 0 || strCredits !== 0) {
     layers.push({
       key: 'str',
-      title: he ? 'השכרה קצרה' : 'Short-term rental',
+      title: term('str', language),
       charges: strCharges,
       credits: strCredits,
       balance: strBalance,
@@ -423,19 +419,19 @@ export function propertyLayerSummaries(property: PropertyAccount, language: Repo
       direction: layerDirection(strBalance),
     })
   }
-  const ltrUnit = property.units.find((unit) => unit.title.includes('Long-Term Rental'))
+  const ltrUnit = property.units.find((unit) => unit.kind === 'ltr' || unit.title.includes(UNIT_TITLE_SUFFIX.ltr))
   const ltrLines = ltrUnit
     ? ltrUnit.lines
-    : property.lines.filter((line) => line.section === 'הכנסות משכירות ארוכה')
+    : property.lines.filter((line) => line.section === SECTION.ltrIncome)
   const ltrParts = partsOf(ltrLines)
-  const ltrStep = bridgeAmount(property, 'זיכוי שכירות ארוכה')
-  const incomeStep = bridgeAmount(property, 'הכנסות')
+  const ltrStep = bridgeAmount(property, BRIDGE.ltrCredit)
+  const incomeStep = bridgeAmount(property, BRIDGE.income)
   const ltrBalance = ltrStep !== 0 ? ltrStep : (ltrParts.balance !== 0 ? ltrParts.balance : incomeStep && strCredits === 0 ? incomeStep : ltrParts.balance)
   const ltrCredits = roundLayer(Math.abs(Math.min(ltrBalance, 0)) || ltrParts.credits)
   if (ltrLines.length > 0 || ltrBalance !== 0) {
     layers.push({
       key: 'ltr',
-      title: he ? 'השכרה ארוכה' : 'Long-term rental',
+      title: term('ltr', language),
       charges: ltrParts.charges,
       credits: ltrCredits,
       balance: ltrBalance,
@@ -449,7 +445,7 @@ export function propertyLayerSummaries(property: PropertyAccount, language: Repo
   }
   layers.push({
     key: 'closing',
-    title: he ? 'יתרת סגירת הנכס' : 'Property closing balance',
+    title: term('propertyClosingBalance', language),
     charges: 0,
     credits: 0,
     balance: property.amountDueToJj,
