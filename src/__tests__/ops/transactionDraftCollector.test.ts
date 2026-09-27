@@ -11,6 +11,8 @@ import {
   cancelCollector,
   resetForChangeDetails,
   resetForNewProposal,
+  AMOUNT_ONLY_CLARIFICATION,
+  ASSISTANT_TALK_MESSAGE,
   INTENT_PROMPT,
   NEW_TRANSACTION_NOTICE,
   UNSUPPORTED_CAPABILITY_MESSAGE,
@@ -288,11 +290,17 @@ describe('natural Hebrew intake and new-intent reset', () => {
 
 describe('property suggestion replay', () => {
   it('keeps a unique property through replay so a later date is not treated as a property', () => {
-    const replayed = replayUtterances(['25', 'היום (2026-09-17)'], CTX, 'replay-key', 'Villa Mazotos')
+    const replayed = replayUtterances(
+      ['שילמתי חשמל', '500', 'היום (2026-09-17)'],
+      CTX,
+      'replay-key',
+      'Villa Mazotos',
+    )
     expect(replayed.slots.propertyName.value).toBe('Villa Mazotos')
-    expect(replayed.slots.amountEur.value).toBe('25')
+    expect(replayed.slots.amountEur.value).toBe('500')
     expect(replayed.slots.date.value).toBe('2026-09-17')
     expect(replayed.lastPrompt.kind === 'question' ? replayed.lastPrompt.field : '').not.toBe('propertyName')
+    expect(replayed.createdDraftId).toBeNull()
   })
 
   it('does not auto-select an ambiguous or unknown property name', () => {
@@ -303,7 +311,12 @@ describe('property suggestion replay', () => {
   })
 
   it('still lets the user replace or clear the suggested property', () => {
-    const replayed = replayUtterances(['25', 'היום (2026-09-17)'], CTX, 'replay-change', 'Villa Mazotos')
+    const replayed = replayUtterances(
+      ['שילמתי חשמל', '500', 'היום (2026-09-17)'],
+      CTX,
+      'replay-change',
+      'Villa Mazotos',
+    )
     const change = resetForChangeDetails(replayed, CTX)
     const clearedPrompt = applyUserText(change, 'נכס', CTX)
     expect(clearedPrompt.slots.propertyName.status).toBe('unknown')
@@ -315,7 +328,12 @@ describe('property suggestion replay', () => {
 
   it('restores a stored unique name when the conversation is reopened without a URL property', () => {
     const stored = exactUniqueCatalogName('Villa Mazotos', CATALOG)
-    const replayed = replayUtterances(['25', 'היום (2026-09-17)'], CTX, 'reopen-c-only', stored)
+    const replayed = replayUtterances(
+      ['שילמתי חשמל', '500', 'היום (2026-09-17)'],
+      CTX,
+      'reopen-c-only',
+      stored,
+    )
     expect(stored).toBe('Villa Mazotos')
     expect(replayed.slots.propertyName.value).toBe('Villa Mazotos')
     expect(replayed.slots.date.value).toBe('2026-09-17')
@@ -335,14 +353,14 @@ describe('property suggestion replay', () => {
 
   it('lets a saved property change or clear override the stored suggestion', () => {
     const replaced = replayUtterances(
-      ['25', 'היום (2026-09-17)', 'שנה פרטים', 'נכס', 'Tamir Kiti'],
+      ['שילמתי חשמל', '500', 'היום (2026-09-17)', 'שנה פרטים', 'נכס', 'Tamir Kiti'],
       CTX,
       'reopen-replace',
       'Villa Mazotos',
     )
     expect(replaced.slots.propertyName.value).toBe('Tamir Kiti')
     const cleared = replayUtterances(
-      ['25', 'היום (2026-09-17)', 'שנה פרטים', 'נכס', 'בלי נכס'],
+      ['שילמתי חשמל', '500', 'היום (2026-09-17)', 'שנה פרטים', 'נכס', 'בלי נכס'],
       CTX,
       'reopen-clear',
       'Villa Mazotos',
@@ -350,6 +368,89 @@ describe('property suggestion replay', () => {
     expect(cleared.slots.propertyName.value).toBeNull()
     const untouched = replayUtterances(['25'], CTX, 'reopen-no-stored', null)
     expect(untouched.slots.propertyName.status).toBe('unknown')
+    expect(untouched.slots.amountEur.status).toBe('unknown')
+  })
+})
+
+describe('assistant intent routing', () => {
+  function promptBody(state: ReturnType<typeof start>): string {
+    return state.lastPrompt.kind === 'talk' || state.lastPrompt.kind === 'unsupported'
+      ? state.lastPrompt.message
+      : state.lastPrompt.kind === 'question'
+        ? state.lastPrompt.prompt
+        : ''
+  }
+
+  it('answers a greeting without asking for an amount or opening a draft', () => {
+    const greeted = applyUserText(start(), 'היי', CTX)
+    expect(greeted.lastPrompt.kind).toBe('talk')
+    expect(promptBody(greeted)).toBe(ASSISTANT_TALK_MESSAGE)
+    expect(promptBody(greeted)).not.toContain('מה הסכום')
+    expect(greeted.slots.amountEur.status).toBe('unknown')
+    expect(greeted.createdDraftId).toBeNull()
+
+    const amount = applyUserText(greeted, '500', CTX)
+    expect(amount.lastPrompt.kind).toBe('talk')
+    expect(promptBody(amount)).toBe(AMOUNT_ONLY_CLARIFICATION)
+    expect(amount.slots.amountEur.status).toBe('unknown')
+    expect(amount.createdDraftId).toBeNull()
+  })
+
+  it('treats other general and ambiguous messages the same way, not only one greeting', () => {
+    for (const text of ['שלום', 'מה אתה יכול לעשות?', 'היי ערב טוב']) {
+      const next = applyUserText(start(), text, CTX)
+      expect(next.lastPrompt.kind).toBe('talk')
+      expect(promptBody(next)).not.toContain('מה הסכום')
+      expect(next.slots.amountEur.status).toBe('unknown')
+      expect(next.createdDraftId).toBeNull()
+    }
+  })
+
+  it('asks for clarification on a bare number when collection is not active', () => {
+    const next = applyUserText(start(), '500', CTX)
+    expect(promptBody(next)).toBe(AMOUNT_ONLY_CLARIFICATION)
+    expect(next.slots.amountEur.status).toBe('unknown')
+    expect(next.createdDraftId).toBeNull()
+  })
+
+  it('starts collection from an explicit expense and then accepts 500', () => {
+    const opened = applyUserText(start(), 'שילמתי חשמל', CTX)
+    expect(opened.lastPrompt.kind).toBe('question')
+    if (opened.lastPrompt.kind !== 'question') return
+    expect(opened.lastPrompt.field).toBe('amountEur')
+    expect(opened.slots.amountEur.status).toBe('unknown')
+
+    const amount = applyUserText(opened, '500', CTX)
+    expect(amount.slots.amountEur.value).toBe('500')
+    expect(amount.createdDraftId).toBeNull()
+    expect(amount.lastPrompt.kind === 'question' ? amount.lastPrompt.prompt : '').not.toContain('מה הסכום')
+  })
+
+  it('restores an in-progress collection after the conversation is replayed', () => {
+    const replayed = replayUtterances(
+      ['שילמתי חשמל בדירה של תמיר', '500'],
+      CTX,
+      'replay-mid-collection',
+    )
+    expect(replayed.slots.amountEur.value).toBe('500')
+    expect(replayed.createdDraftId).toBeNull()
+    expect(replayed.lastPrompt.kind).toBe('question')
+    const continued = applyUserText(replayed, 'היום', CTX)
+    expect(continued.slots.amountEur.value).toBe('500')
+    expect(continued.slots.date.value).toBe('2026-09-17')
+    expect(continued.createdDraftId).toBeNull()
+  })
+
+  it('leaves collection on cancel, stop, or a topic change without creating a draft', () => {
+    for (const text of ['ביטול', 'תפסיק', 'שנה נושא']) {
+      const opened = applyUserText(start(), 'שילמתי 40 אירו חשמל', CTX)
+      expect(opened.slots.amountEur.value).toBe('40')
+      const left = applyUserText(opened, text, CTX)
+      expect(left.slots.amountEur.status).toBe('unknown')
+      expect(left.createdDraftId).toBeNull()
+      expect(left.lastPrompt.kind).toBe('talk')
+      expect(left.preface).toContain('בוטל. לא נוצרה טיוטה.')
+    }
   })
 })
 

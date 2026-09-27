@@ -12,12 +12,14 @@ import {
   stripDateSpans,
 } from '@/lib/ops/assistant/cyprusDate'
 import {
-  CANCEL_HINT,
   classifyTransactionTurn,
   CORRECTION_HINT,
   EXPENSE_VERB,
   hasExpenseVerb,
   hasReceiptVerb,
+  isAmountOnlyUtterance,
+  isCollectionExit,
+  opensTransactionCollection,
   PAYMENT_VERB,
   SUBJECT_HINT,
 } from '@/lib/ops/assistant/transactionTurn'
@@ -31,6 +33,10 @@ export const UNSUPPORTED_CAPABILITY_MESSAGE =
 export const NEW_TRANSACTION_NOTICE = 'הבנתי, מתחילים עסקה חדשה.'
 export const UNSAVED_PREVIOUS_NOTICE = 'העסקה הקודמת לא נשמרה.'
 export const INTENT_PROMPT = 'זו עסקה חדשה או תיקון לפרטים הקודמים?'
+export const ASSISTANT_TALK_MESSAGE =
+  'אפשר להכין טיוטת עסקה להכנסה או להוצאה. לדוגמה: שילמתי 120 אירו חשמל בדירה של תמיר. הטיוטה נוצרת רק אחרי אישור מפורש.'
+export const AMOUNT_ONLY_CLARIFICATION =
+  'מספר לבד אינו עסקה. אם זו הכנסה או הוצאה, תאר אותה, למשל: שילמתי 500 אירו חשמל.'
 
 export interface PropertyCatalogEntry {
   readonly id: string
@@ -63,6 +69,10 @@ export interface NumberedChoice {
 }
 
 export type AssistantPrompt =
+  | {
+      readonly kind: 'talk'
+      readonly message: string
+    }
   | {
       readonly kind: 'unsupported'
       readonly message: string
@@ -875,19 +885,19 @@ function nextPrompt(
   }
 }
 
+function talkPrompt(message: string): AssistantPrompt {
+  return { kind: 'talk', message }
+}
+
+export function isCollecting(state: CollectorState): boolean {
+  return state.lastPrompt.kind === 'question' || state.lastPrompt.kind === 'ready'
+}
+
 export function createCollectorState(idempotencyKey: string): CollectorState {
   const slots = emptySlots()
   return {
     slots,
-    lastPrompt: {
-      kind: 'question',
-      field: 'amountEur',
-      prompt: 'אפשר להתחיל. לדוגמה: שילמתי 120 אירו חשמל בדירה של תמיר',
-      choices: [],
-      searchProperties: false,
-      allowOther: false,
-      allowUnknown: false,
-    },
+    lastPrompt: talkPrompt(ASSISTANT_TALK_MESSAGE),
     draftIdempotencyKey: idempotencyKey,
     createdDraftId: null,
     reviewDismissed: false,
@@ -903,15 +913,20 @@ function nextIdempotencyKey(state: CollectorState, ctx: CollectorContext): strin
     : `${state.draftIdempotencyKey}:new`
 }
 
+function messageHasPropertyOrSubject(text: string, ctx: CollectorContext): boolean {
+  const resolved = resolveProperty(text, ctx.catalog)
+  return (
+    SUBJECT_HINT.test(text)
+    || resolved.kind !== 'none'
+    || matchProperties(text, ctx.catalog).length > 0
+  )
+}
+
 function classifyMessage(state: CollectorState, text: string, ctx: CollectorContext) {
   const now = ctx.now ?? new Date()
   const amount = extractAmountEur(text)
   const parsed = parseCyprusDate(text, now)
-  const resolved = resolveProperty(text, ctx.catalog)
-  const hasPropertyOrSubject =
-    SUBJECT_HINT.test(text)
-    || resolved.kind !== 'none'
-    || matchProperties(text, ctx.catalog).length > 0
+  const hasPropertyOrSubject = messageHasPropertyOrSubject(text, ctx)
   return classifyTransactionTurn({
     hasExistingProposal: hasProposal(state.slots),
     awaitingField: state.lastPrompt.kind === 'question' ? state.lastPrompt.field : null,
@@ -920,6 +935,34 @@ function classifyMessage(state: CollectorState, text: string, ctx: CollectorCont
     hasDate: parsed.ok,
     hasPropertyOrSubject,
   })
+}
+
+function beginCollection(
+  state: CollectorState,
+  text: string,
+  ctx: CollectorContext,
+): CollectorState {
+  const slots = applyUtterance(state.slots, text, ctx, true)
+  return {
+    ...state,
+    slots,
+    hintText: text,
+    preface: '',
+    pendingMessage: '',
+    createdDraftId: null,
+    reviewDismissed: false,
+    lastPrompt: nextPrompt(slots, ctx, text, false),
+  }
+}
+
+function replyWithoutCollection(state: CollectorState, message: string, preface = ''): CollectorState {
+  return {
+    ...state,
+    preface,
+    pendingMessage: '',
+    createdDraftId: null,
+    lastPrompt: talkPrompt(message),
+  }
 }
 
 function fillFromText(
@@ -1010,7 +1053,10 @@ export function applyUserText(
   const trimmed = text.trim()
   if (!trimmed) return state
   if (state.createdDraftId) return state
-  if (trimmed === 'שנה פרטים') return resetForChangeDetails(state, ctx)
+  if (trimmed === 'שנה פרטים') {
+    if (!isCollecting(state)) return replyWithoutCollection(state, ASSISTANT_TALK_MESSAGE)
+    return resetForChangeDetails(state, ctx)
+  }
 
   if (isUnsupportedCapability(trimmed) && !PAYMENT_HINT.test(trimmed)) {
     return {
@@ -1039,12 +1085,26 @@ export function applyUserText(
     }
   }
 
-  const kind = classifyMessage(state, trimmed, ctx)
-  if (kind === 'cancel' || CANCEL_HINT.test(trimmed)) {
-    return {
-      ...cancelCollector(nextIdempotencyKey(state, ctx)),
-      preface: 'בוטל. לא נוצרה טיוטה.',
+  if (!isCollecting(state)) {
+    if (isCollectionExit(trimmed)) {
+      return replyWithoutCollection(createCollectorState(state.draftIdempotencyKey), ASSISTANT_TALK_MESSAGE, 'בוטל. לא נוצרה טיוטה.')
     }
+    if (opensTransactionCollection(trimmed, messageHasPropertyOrSubject(trimmed, ctx))) {
+      return beginCollection(state, trimmed, ctx)
+    }
+    if (isAmountOnlyUtterance(trimmed)) {
+      return replyWithoutCollection(state, AMOUNT_ONLY_CLARIFICATION)
+    }
+    return replyWithoutCollection(state, ASSISTANT_TALK_MESSAGE)
+  }
+
+  const kind = classifyMessage(state, trimmed, ctx)
+  if (kind === 'cancel' || isCollectionExit(trimmed)) {
+    return replyWithoutCollection(
+      createCollectorState(nextIdempotencyKey(state, ctx)),
+      ASSISTANT_TALK_MESSAGE,
+      'בוטל. לא נוצרה טיוטה.',
+    )
   }
   if (kind === 'new_transaction') {
     const discarded = hasProposal(state.slots)
@@ -1377,8 +1437,14 @@ export function applyPropertyPick(
   ctx: CollectorContext,
 ): CollectorState {
   const exactName = exactUniqueCatalogName(propertyName, ctx.catalog)
-  if (!exactName) return { ...state, lastPrompt: propertyQuestion([]) }
+  if (!exactName) {
+    if (!isCollecting(state)) return state
+    return { ...state, lastPrompt: propertyQuestion([]) }
+  }
   const slots = { ...state.slots, propertyName: confirm(exactName) }
+  if (!isCollecting(state)) {
+    return { ...state, slots, lastPrompt: talkPrompt(ASSISTANT_TALK_MESSAGE) }
+  }
   return { ...state, slots, lastPrompt: nextPrompt(slots, ctx, state.hintText, false) }
 }
 

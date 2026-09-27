@@ -21,6 +21,8 @@ export const PAYMENT_VERB = new RegExp(
 export const SUBJECT_HINT =
   /שכירות|שכר\s*דירה|חשמל|מים|אינטרנט|ניקיון|נקיון|שכר/i
 export const CANCEL_HINT = /^(תבטל|בטל|ביטול|נתחיל מחדש|תתחיל מחדש)$/i
+export const COLLECTION_EXIT =
+  /^(תבטל|בטל|ביטול|נתחיל מחדש|תתחיל מחדש|עצור|תפסיק|די|מספיק|שנה נושא|נושא אחר)$/i
 export const CORRECTION_HINT =
   /^(לא[,.]?\s*)?(התאריך|הסכום|זה\s+|מי שקיבל|בעצם|תבטל|נתחיל)|ולא\s+\d|לא\s+קיבלתי|לא\s+שילמתי/i
 
@@ -62,6 +64,27 @@ export function classifyTransactionTurn(input: {
   if (looksLikeDirectAnswer(input.awaitingField, trimmed)) return 'continuation'
   if (hasPaymentVerb(trimmed) && input.hasExistingProposal) return 'unknown'
   return 'continuation'
+}
+
+export function isCollectionExit(text: string): boolean {
+  return COLLECTION_EXIT.test(text.trim())
+}
+
+export function isAmountOnlyUtterance(text: string): boolean {
+  const stripped = text
+    .trim()
+    .replace(/€/g, '')
+    .replace(/euro|euros|eur|אירו|יורו/gi, '')
+    .replace(/\s+/g, '')
+  return /^\d+(?:[.,]\d{1,2})?$/.test(stripped)
+}
+
+export function opensTransactionCollection(text: string, hasPropertyOrSubject: boolean): boolean {
+  const trimmed = text.trim()
+  if (!trimmed || isCollectionExit(trimmed) || isAmountOnlyUtterance(trimmed)) return false
+  if (hasPaymentVerb(trimmed)) return true
+  if (/עלה\s*\d/i.test(trimmed) && /ללקוח|לחיוב/.test(trimmed)) return true
+  return hasPropertyOrSubject && /\d/.test(trimmed)
 }
 
 function looksLikeDirectAnswer(field: string | null, text: string): boolean {
