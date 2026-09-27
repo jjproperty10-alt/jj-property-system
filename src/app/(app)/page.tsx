@@ -21,6 +21,7 @@
 // ============================================================
 
 import { createClient } from '@supabase/supabase-js'
+import { UNAVAILABLE_METRIC } from '@/lib/legacy/staffMetricLabel'
 
 export const dynamic = 'force-dynamic'
 
@@ -106,6 +107,11 @@ interface CompanyPL {
 // ---- Helpers ----
 
 // eur() accepts unknown since Supabase numeric fields arrive as strings at runtime
+function presentMetric(val: unknown, showSign = false): string {
+  if (val == null || val === '') return UNAVAILABLE_METRIC
+  return eur(val, showSign)
+}
+
 function eur(val: unknown, showSign = false): string {
   const num = parseFloat(String(val ?? 0))
   if (isNaN(num)) return '—'
@@ -148,25 +154,23 @@ function getSupabase() {
 async function fetchAll() {
   const sb = getSupabase()
 
-  const [cashboxRes, settlementRes, anastasiaRes, summaryRes, plRes] = await Promise.all([
+  // Production exposes v_ceo_summary, but not total_cash_position_profit and not
+  // public.v_settlement_verification. select('*') keeps every column the view
+  // actually returns. Missing keys stay unavailable; they are not replaced.
+  const [cashboxRes, anastasiaRes, summaryRes, plRes] = await Promise.all([
     sb.from('v_cashbox_audit').select('*').order('cash_box_name'),
-    sb.from('v_settlement_verification').select('*').single(),
     sb.from('v_anastasia_clearing').select('*').single(),
-    sb.from('v_ceo_summary').select(
-      'total_cash_position_profit,total_contract_profit,cash_contract_gap,' +
-      'client_cash_position_profit,jj_own_cash_profit,partnership_jj_cash_profit,company_cash_profit,' +
-      'due_to_owners,reno_receivables,sale_receivables,total_receivables'
-    ).single(),
+    sb.from('v_ceo_summary').select('*').single(),
     sb.from('v_jj_company_pl').select('*').single(),
   ])
 
   return {
     cashboxes: (cashboxRes.data ?? []) as CashboxRow[],
-    settlement: settlementRes.data as Settlement | null,
+    settlement: null as Settlement | null,
     anastasia: anastasiaRes.data as AnastasiaClearing | null,
     summary: summaryRes.data as CeoSummary | null,
     pl: plRes.data as CompanyPL | null,
-    errors: [cashboxRes.error, settlementRes.error, anastasiaRes.error, summaryRes.error, plRes.error]
+    errors: [cashboxRes.error, anastasiaRes.error, summaryRes.error, plRes.error]
       .filter(Boolean)
       .map(e => e?.message),
   }
@@ -191,11 +195,11 @@ export default async function CEODashboard() {
   const anastasiaOut = n(anastasia?.cash_transferred_out) + n(anastasia?.expenses_paid)
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen min-w-0 bg-gray-50">
 
       {/* ── Header ── */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-        <div>
+      <header className="sticky top-0 z-10 flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 bg-white px-4 py-4 sm:px-6">
+        <div className="min-w-0">
           <h1 className="text-xl font-semibold text-gray-900">
             JJ Property 10 · CEO Dashboard
           </h1>
@@ -215,12 +219,12 @@ export default async function CEODashboard() {
         </div>
       )}
 
-      <main className="max-w-7xl mx-auto px-6 py-6 space-y-8">
+      <main className="mx-auto min-w-0 max-w-7xl space-y-8 px-4 py-6 sm:px-6">
 
         {/* ══ SECTION A — Cashboxes ══ */}
         <section id="cashboxes">
           <SectionHeader letter="A" en="Cashboxes" he="קופות מזומן" source="v_cashbox_audit" />
-          <div className="grid grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
 
             <CashCard
               label="Yossi"
@@ -249,7 +253,7 @@ export default async function CEODashboard() {
               <div className="text-xs text-gray-500">
                 Anastasia · <span className="text-gray-400">cash on hand</span>
               </div>
-              <div className="text-2xl font-semibold text-yellow-600 mt-1">
+              <div className="mt-1 min-w-0 break-words text-2xl font-semibold text-yellow-600">
                 {eur(anastasia?.cash_on_hand)}
               </div>
               <div className="text-xs text-yellow-600 mt-1">Anastasia owes JJ · חייבת</div>
@@ -259,7 +263,7 @@ export default async function CEODashboard() {
             {/* Total */}
             <div className="bg-gray-900 rounded-xl border border-gray-700 p-4 flex flex-col">
               <div className="text-xs text-gray-400">Total Internal Cash</div>
-              <div className={`text-2xl font-semibold mt-1 ${totalInternal >= 0 ? 'text-white' : 'text-red-400'}`}>
+              <div className={`mt-1 min-w-0 break-words text-2xl font-semibold ${totalInternal >= 0 ? 'text-white' : 'text-red-400'}`}>
                 {eur(totalInternal, true)}
               </div>
               <div className="text-xs text-gray-500 mt-1">Yossi + Jacob + JJ + Anastasia</div>
@@ -272,27 +276,26 @@ export default async function CEODashboard() {
         <section id="settlement">
           <SectionHeader letter="B" en="Partner Settlement" he="סילוק בין שותפים" source="v_settlement_verification" />
           <div className="bg-white rounded-xl border border-blue-200 p-6">
-            <div className="flex gap-8 items-start">
+            <div className="flex flex-col items-start gap-6 md:flex-row md:gap-8">
 
               {/* Main result */}
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <div className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-2">
                   Official Result · v_settlement_verification ✓ authoritative
                 </div>
-                <div className="flex items-baseline gap-3 mb-3">
-                  <span className="text-4xl font-bold text-blue-700">
-                    {eur(settlement?.settlement_amount)}
+                <div className="mb-3 flex flex-wrap items-baseline gap-3">
+                  <span className="min-w-0 break-words text-3xl font-bold text-blue-700 sm:text-4xl">
+                    {presentMetric(settlement?.settlement_amount)}
                   </span>
-                  <span className="text-xl text-blue-600">
-                    {settlement?.transfer_direction ?? 'Jacob pays Yossi'}
+                  <span className="min-w-0 break-words text-xl text-blue-600">
+                    {settlement?.transfer_direction ?? UNAVAILABLE_METRIC}
                   </span>
-                  <span className="text-base text-blue-500">ג׳ייקוב משלם ליוסי</span>
                 </div>
                 <p className="text-sm text-gray-500">
                   Formula: ABS(Yossi − Jacob) ÷ 2
                 </p>
-                <p className="text-sm text-gray-500 mt-0.5">
-                  = ABS({eur(settlement?.yossi_cashbox_balance, true)} − {eur(settlement?.jacob_cashbox_balance, true)}) ÷ 2
+                <p className="mt-0.5 break-words text-sm text-gray-500">
+                  = ABS({presentMetric(settlement?.yossi_cashbox_balance, true)} − {presentMetric(settlement?.jacob_cashbox_balance, true)}) ÷ 2
                 </p>
                 <div className="mt-3 flex items-center gap-4 text-sm">
                   <span className={color(yossi?.balance)}>Yossi: {eur(yossi?.balance, true)}</span>
@@ -304,10 +307,10 @@ export default async function CEODashboard() {
               </div>
 
               {/* Context divider */}
-              <div className="w-px bg-gray-200 self-stretch" />
+              <div className="hidden w-px self-stretch bg-gray-200 md:block" />
 
               {/* Context only */}
-              <div className="w-60">
+              <div className="w-full min-w-0 md:w-60">
                 <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
                   Context only · הקשר
                 </div>
@@ -319,7 +322,7 @@ export default async function CEODashboard() {
                 ].map(([label, val]) => (
                   <div key={String(label)} className="flex justify-between text-sm py-1.5 border-b border-gray-100 last:border-0">
                     <span className="text-gray-500">{String(label)}</span>
-                    <span className="text-gray-400">{eur(val as number)}</span>
+                    <span className="text-gray-400">{presentMetric(val)}</span>
                   </div>
                 ))}
                 <p className="text-[10px] text-gray-300 mt-2">
@@ -334,7 +337,7 @@ export default async function CEODashboard() {
         <section id="anastasia">
           <SectionHeader letter="C" en="Anastasia Clearing" he="סליקת אנסטסיה" source="v_anastasia_clearing" />
           <div className="bg-white rounded-xl border p-6">
-            <div className="flex items-center justify-between mb-5">
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
               <div className="font-semibold text-gray-900">Anastasia Kravchenko</div>
               <div className="flex items-center gap-3">
                 <span className="text-xs text-gray-400">
@@ -352,7 +355,7 @@ export default async function CEODashboard() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
               {/* Money In */}
               <div>
                 <h4 className="text-xs font-semibold text-green-700 uppercase tracking-wider mb-3">
@@ -385,7 +388,7 @@ export default async function CEODashboard() {
             </div>
 
             {/* Result metrics */}
-            <div className="grid grid-cols-5 gap-3 mt-6 border-t pt-5">
+            <div className="mt-6 grid grid-cols-1 gap-3 border-t pt-5 sm:grid-cols-2 xl:grid-cols-5">
               <Metric
                 label="Cash on hand"
                 labelHe="מזומן בקופה"
@@ -428,7 +431,7 @@ export default async function CEODashboard() {
         {/* ══ SECTION D — Owner / Client Balances ══ */}
         <section id="balances">
           <SectionHeader letter="D" en="Owner / Client Balances" he="יתרות בעלים / לקוחות" source="v_ceo_summary" />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 
             {/* Due to Owners */}
             <div className="bg-white rounded-xl border p-5">
@@ -441,8 +444,8 @@ export default async function CEODashboard() {
                   JJ owes · JJ חייב
                 </span>
               </div>
-              <div className="text-4xl font-bold text-red-600 mb-3">
-                {eur(summary?.due_to_owners)}
+              <div className="mb-3 min-w-0 break-words text-3xl font-bold text-red-600 sm:text-4xl">
+                {presentMetric(summary?.due_to_owners)}
               </div>
               <p className="text-xs text-gray-400 mb-4">שכ״ד שנגבה ועדיין לא הועבר לבעלים</p>
               <a
@@ -468,15 +471,15 @@ export default async function CEODashboard() {
               <div className="space-y-3 mb-4">
                 <div className="flex justify-between items-baseline">
                   <span className="text-sm text-gray-600">Renovation receivables</span>
-                  <span className="font-semibold text-green-600">{eur(summary?.reno_receivables)}</span>
+                  <span className="min-w-0 break-words font-semibold text-green-600">{presentMetric(summary?.reno_receivables)}</span>
                 </div>
                 <div className="flex justify-between items-baseline">
                   <span className="text-sm text-gray-600">Sale receivables</span>
-                  <span className="font-semibold text-green-600">{eur(summary?.sale_receivables)}</span>
+                  <span className="min-w-0 break-words font-semibold text-green-600">{presentMetric(summary?.sale_receivables)}</span>
                 </div>
                 <div className="flex justify-between items-baseline border-t pt-2.5">
                   <span className="font-semibold text-gray-800">Total receivables</span>
-                  <span className="text-2xl font-bold text-green-700">{eur(summary?.total_receivables)}</span>
+                  <span className="min-w-0 break-words text-2xl font-bold text-green-700">{presentMetric(summary?.total_receivables)}</span>
                 </div>
               </div>
               <p className="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2 mb-3">
@@ -501,28 +504,28 @@ export default async function CEODashboard() {
           <div className="bg-white rounded-xl border p-6">
 
             {/* Top 3 KPIs */}
-            <div className="grid grid-cols-3 gap-6 pb-5 mb-5 border-b">
+            <div className="mb-5 grid grid-cols-1 gap-6 border-b pb-5 sm:grid-cols-3">
               <div>
                 <div className="text-xs text-gray-500">Total Cash Position Profit</div>
                 <div className="text-xs text-gray-400 mt-0.5">רווח מצב מזומן כולל</div>
-                <div className={`text-4xl font-bold mt-2 ${color(summary?.total_cash_position_profit)}`}>
-                  {eur(summary?.total_cash_position_profit, true)}
+                <div className={`mt-2 min-w-0 break-words text-3xl font-bold sm:text-4xl ${color(summary?.total_cash_position_profit)}`}>
+                  {presentMetric(summary?.total_cash_position_profit, true)}
                 </div>
                 <div className="text-xs text-gray-400 mt-1">Cash basis · all 4 segments</div>
               </div>
               <div>
                 <div className="text-xs text-gray-500">Total Contract Profit</div>
                 <div className="text-xs text-gray-400 mt-0.5">רווח חוזי כולל</div>
-                <div className={`text-4xl font-bold mt-2 ${color(summary?.total_contract_profit)}`}>
-                  {eur(summary?.total_contract_profit, true)}
+                <div className={`mt-2 min-w-0 break-words text-3xl font-bold sm:text-4xl ${color(summary?.total_contract_profit)}`}>
+                  {presentMetric(summary?.total_contract_profit, true)}
                 </div>
                 <div className="text-xs text-gray-400 mt-1">Accrual basis · all 4 segments</div>
               </div>
               <div>
                 <div className="text-xs text-gray-500">Cash–Contract Gap</div>
                 <div className="text-xs text-gray-400 mt-0.5">פער מזומן / חוזה</div>
-                <div className={`text-4xl font-bold mt-2 ${color(summary?.cash_contract_gap)}`}>
-                  {eur(summary?.cash_contract_gap)}
+                <div className={`mt-2 min-w-0 break-words text-3xl font-bold sm:text-4xl ${color(summary?.cash_contract_gap)}`}>
+                  {presentMetric(summary?.cash_contract_gap)}
                 </div>
                 <div className="text-xs text-gray-400 mt-1">Cash received vs. accrual value</div>
               </div>
@@ -532,7 +535,7 @@ export default async function CEODashboard() {
             <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
               By segment · לפי מגזר
             </div>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {[
                 { label: 'Client-managed', labelHe: 'נכסי לקוחות', val: summary?.client_cash_position_profit, sub: 'Mgmt + deals realized' },
                 { label: 'JJ-owned', labelHe: 'נכסי JJ', val: summary?.jj_own_cash_profit, sub: 'After capital invested' },
@@ -542,8 +545,8 @@ export default async function CEODashboard() {
                 <div key={s.label} className="bg-gray-50 rounded-lg p-4">
                   <div className="text-xs text-gray-500">{s.label}</div>
                   <div className="text-xs text-gray-400 mb-2">{s.labelHe}</div>
-                  <div className={`text-2xl font-semibold ${color(s.val)}`}>
-                    {eur(s.val, true)}
+                  <div className={`min-w-0 break-words text-2xl font-semibold ${color(s.val)}`}>
+                    {presentMetric(s.val, true)}
                   </div>
                   <div className="text-[10px] text-gray-400 mt-1">{s.sub}</div>
                 </div>
@@ -556,7 +559,7 @@ export default async function CEODashboard() {
         <section id="company-pl">
           <SectionHeader letter="F" en="Company P&L — JJ Ltd" he="דוח רווח והפסד" source="v_jj_company_pl" />
           <div className="bg-white rounded-xl border p-6">
-            <div className="grid grid-cols-2 gap-10">
+            <div className="grid grid-cols-1 gap-8 md:grid-cols-2 md:gap-10">
 
               {/* Income + Payroll */}
               <div>
@@ -592,7 +595,7 @@ export default async function CEODashboard() {
             </div>
 
             {/* Net P&L */}
-            <div className={`mt-6 rounded-xl border p-5 flex items-center justify-between ${bgColor(pl?.net_company_pl)}`}>
+            <div className={`mt-6 flex flex-col gap-3 rounded-xl border p-5 sm:flex-row sm:items-center sm:justify-between ${bgColor(pl?.net_company_pl)}`}>
               <div>
                 <div className={`font-semibold text-base ${color(pl?.net_company_pl)}`}>
                   Net Company P&L · רווח נקי חברה
@@ -601,7 +604,7 @@ export default async function CEODashboard() {
                   Income {eur(pl?.jj_income)} − Expenses {eur(pl?.total_expenses)}
                 </div>
               </div>
-              <div className={`text-4xl font-bold ${color(pl?.net_company_pl)}`}>
+              <div className={`min-w-0 break-words text-3xl font-bold sm:text-4xl ${color(pl?.net_company_pl)}`}>
                 {eur(pl?.net_company_pl, true)}
               </div>
             </div>
@@ -623,7 +626,7 @@ function SectionHeader({
   letter: string; en: string; he: string; source: string
 }) {
   return (
-    <div className="flex items-center gap-3 mb-3">
+    <div className="mb-3 flex flex-wrap items-center gap-3">
       <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs font-semibold text-gray-600 shrink-0">
         {letter}
       </div>
@@ -631,7 +634,7 @@ function SectionHeader({
         <span className="text-sm font-semibold text-gray-700">{en}</span>
         <span className="text-xs text-gray-400 ml-2">{he}</span>
       </div>
-      <span className="ml-auto text-[10px] text-gray-300 font-mono">{source}</span>
+      <span className="min-w-0 break-all text-[10px] font-mono text-gray-300 sm:ml-auto">{source}</span>
     </div>
   )
 }
@@ -646,7 +649,7 @@ function CashCard({
       <div className="text-xs text-gray-500">
         {label} <span className="text-gray-400">· {labelHe}</span>
       </div>
-      <div className={`text-2xl font-semibold mt-1 ${color(balance)}`}>
+      <div className={`mt-1 min-w-0 break-words text-2xl font-semibold ${color(balance)}`}>
         {eur(balance, true)}
       </div>
       <div className="text-xs text-gray-400 mt-2 space-y-0.5">
@@ -705,7 +708,7 @@ function Metric({
     <div className={`rounded-lg border p-3 ${bg}`}>
       <div className={`text-xs mb-0.5 ${textMain}`}>{label}</div>
       <div className={`text-[10px] mb-2 ${textSub}`}>{labelHe}</div>
-      <div className={`text-xl font-bold ${textMain}`}>{value}</div>
+      <div className={`min-w-0 break-words text-xl font-bold ${textMain}`}>{value}</div>
       <div className={`text-[10px] mt-1 ${textSub}`}>{sub}</div>
     </div>
   )
