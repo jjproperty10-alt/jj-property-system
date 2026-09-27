@@ -7,7 +7,8 @@
  * Never labelled Hostaway. No ledger writes.
  *
  * Channel mapping: recovered Booking already carries the ACTUAL platform fee. The line builder
- * would add +1.6% when channel === 'booking', so this provider maps 'booking' → 'booking_direct'.
+ * applies the evidence-gated Booking payment fee when channel === 'booking' (and fails closed without
+ * evidence), so this provider maps 'booking' → 'booking_direct' to use the recorded fee verbatim.
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { StatementReservationEvidence } from './ownerStrStatement'

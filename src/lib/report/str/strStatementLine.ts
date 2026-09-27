@@ -16,6 +16,8 @@
  * Pure + deterministic. No DB, no writes, no financial authority.
  */
 
+import type { BookingPaymentFeeEvidence } from './bookingPaymentFeePolicy'
+
 export type AmountProvenance = 'hostaway' | 'jj_derived' | 'unknown'
 
 export interface StatementAmount {
@@ -55,6 +57,13 @@ export interface StrLineEvidence {
    * the JJ chain). Narrow + explicit + source-attributed. Never a silent generic override.
    */
   readonly authoritativeLine?: AuthoritativeStatementLine
+  /**
+   * Booking.com payment-fee evidence (approved 2026-09-27, `bookingPaymentFeePolicy.ts`). Relevant for
+   * `channel === 'booking'` only. The 1.6 % payment fee is NEVER assumed: it is added only when this
+   * evidence says Booking.com processed the payment (Hostaway paymentStatus "Paid") or states the
+   * amount explicitly; "Unknown" status means no fee; missing evidence fails closed (Needs Review).
+   */
+  readonly bookingPaymentFee?: BookingPaymentFeeEvidence
 }
 
 /** Verbatim owner-facing line as stated by an authoritative Hostaway Owner Statement. */
@@ -93,9 +102,12 @@ export const JJ_STR_MANAGEMENT_FEE_RATE = 0.20
 /**
  * Booking.com payment/facilitation fee ("Payments by Booking.com"), 1.6% of gross.
  * PROVEN cent-exact per-reservation against Hostaway's own Owner Statements (Tamir July + August 2026):
- * Hostaway Platform Fees = channelCommissionAmount (15%) + round(gross x 1.6%). This is a REAL platform
- * fee charged by Booking.com — evidenced by Hostaway, applied only to the `booking` channel. Airbnb and
- * direct channels are unaffected. Report calculation only — never creates/mutates transactions.
+ * Hostaway Platform Fees = channelCommissionAmount (15%) + round(gross x 1.6%) — for reservations whose
+ * payment Booking.com processed. It is NOT charged on every Booking reservation: the 2026-09-27 portfolio
+ * scan found 13 reservations (Orit, Ofri, Oren, Tamir) with Hostaway paymentFees = 0 and
+ * paymentStatus "Unknown". The rate is therefore applied ONLY behind the per-reservation evidence gate in
+ * `bookingPaymentFeePolicy.ts` (`StrLineEvidence.bookingPaymentFee`). Airbnb and direct channels are
+ * unaffected. Report calculation only — never creates/mutates transactions.
  */
 export const JJ_BOOKING_PAYMENT_FEE_RATE = 0.016
 
@@ -135,18 +147,44 @@ export function buildStrStatementLine(
 
   const gross: StatementAmount = { value: ev.grossEur, provenance: ev.grossEur == null ? 'unknown' : 'hostaway', source: 'hostaway:totalPrice' }
 
-  // Platform Fees: channel commission (Hostaway evidence) PLUS, for Booking.com only, the proven 1.6%
-  // Booking payment fee. Verified cent-exact against Hostaway Owner Statements. Airbnb/direct untouched.
+  // Platform Fees: channel commission (Hostaway evidence) PLUS, for Booking.com only, the 1.6% Booking
+  // payment fee — gated on per-reservation evidence (bookingPaymentFeePolicy). Never assumed:
+  //   explicit amount        -> used verbatim
+  //   processed_by_channel   -> round(gross x 1.6%) (proven cent-exact vs Hostaway Owner Statements)
+  //   not_processed          -> no payment fee (Hostaway paymentFees = 0)
+  //   missing / no evidence  -> Platform Fees Unknown -> Needs Review (fail closed)
+  // Airbnb/direct/booking_direct untouched.
   const isBooking = ev.channel === 'booking'
-  const bookingPaymentFee =
-    isBooking && ev.grossEur != null ? roundEur(ev.grossEur * JJ_BOOKING_PAYMENT_FEE_RATE) : null
-  const platformFeesValue =
-    ev.platformFeesEur != null && bookingPaymentFee != null
+  let bookingPaymentFee: number | null = null
+  let bookingPaymentFeeTag: string | null = null
+  let bookingPaymentFeeBlocked = false
+  if (isBooking) {
+    const fe = ev.bookingPaymentFee
+    if (fe == null || fe.kind === 'missing') {
+      bookingPaymentFeeBlocked = true
+      reasons.push('booking_payment_fee_evidence_missing')
+    } else if (fe.kind === 'explicit_amount') {
+      bookingPaymentFee = roundEur(fe.amountEur)
+      bookingPaymentFeeTag = `${fe.source}:booking_payment_fee`
+    } else if (fe.kind === 'processed_by_channel') {
+      bookingPaymentFee = ev.grossEur != null ? roundEur(ev.grossEur * JJ_BOOKING_PAYMENT_FEE_RATE) : null
+      bookingPaymentFeeTag = `jj_derived:booking_payment_fee_1_6pct[${fe.source}]`
+    } else {
+      bookingPaymentFee = 0
+      bookingPaymentFeeTag = `booking_payment_fee_none[${fe.source}]`
+    }
+  }
+  const platformFeesValue = bookingPaymentFeeBlocked
+    ? null
+    : ev.platformFeesEur != null && bookingPaymentFee != null
       ? roundEur(ev.platformFeesEur + bookingPaymentFee)
-      : ev.platformFeesEur
-  const platformFeesSource =
-    bookingPaymentFee != null && ev.platformFeesEur != null
-      ? `${ev.platformFeesSource}+jj_derived:booking_payment_fee_1_6pct`
+      : isBooking
+        ? null
+        : ev.platformFeesEur
+  const platformFeesSource = bookingPaymentFeeBlocked
+    ? `${ev.platformFeesSource}+booking_payment_fee_evidence_missing`
+    : bookingPaymentFeeTag != null && platformFeesValue != null
+      ? `${ev.platformFeesSource}+${bookingPaymentFeeTag}`
       : ev.platformFeesSource
   const platformFees: StatementAmount = { value: platformFeesValue, provenance: platformFeesValue == null ? 'unknown' : 'hostaway', source: platformFeesSource }
   const cleaning: StatementAmount = { value: ev.cleaningEur, provenance: ev.cleaningEur == null ? 'unknown' : 'hostaway', source: 'hostaway:cleaningFee' }

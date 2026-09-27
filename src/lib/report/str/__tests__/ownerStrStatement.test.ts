@@ -1,4 +1,5 @@
 import { composeOwnerStrStatement, isOwnerStatementExtra, isOwnerStatementExtraCategory, isOwnerStatementPayment, OWNER_STATEMENT_EXTRA_CATEGORIES, RESERVATION_CHAIN_SUBCATEGORIES, NON_EXTRA_SUBCATEGORIES, type StatementReservationEvidence, type StatementExtra, type ComposeInput } from '../ownerStrStatement'
+import { bookingPaymentFeeEvidence } from '../bookingPaymentFeePolicy'
 
 const base = (over: Partial<ComposeInput> = {}): ComposeInput => ({
   ownerName: 'Orit Rob', properties: ['Orit Rob Pingodes'],
@@ -15,7 +16,8 @@ const bookingRes = (o: Partial<StatementReservationEvidence> = {}): StatementRes
   reservationId: 'b1', channel: 'booking', propertyName: 'Tamir Dekelia', guestName: 'Guest B',
   checkIn: '2026-07-13', checkOut: '2026-07-22', nights: 9,
   grossEur: 906.17, platformFeesEur: 135.93, platformFeesSource: 'hostaway:channelCommissionAmount',
-  cleaningEur: 50, taxesEur: null, platformPayoutEvidenceEur: 770.24, ...o,
+  cleaningEur: 50, taxesEur: null, platformPayoutEvidenceEur: 770.24,
+  bookingPaymentFee: bookingPaymentFeeEvidence({ paymentStatus: 'Paid' }), ...o,
 })
 
 describe('composeOwnerStrStatement', () => {
@@ -123,8 +125,8 @@ describe('Decision B — Expenses & Extras exclusion (no double-count)', () => {
     expect(s.ownerPaymentsTotalEur).toBe(1770)
     expect(s.statementTotalEur).toBe(915.58) // 645.58 - 1500 + 1770
   })
-  it('Orit certified Final = STR Net − Expenses + Payments', () => {
-    expect(Math.round((3374.87 - 6713.52 + 2770) * 100) / 100).toBe(-568.65)
+  it('Orit Final = STR Net − Expenses + Payments (approved STR net €3,391.00 after the payment-fee gate; formerly 3,374.87 → −568.65)', () => {
+    expect(Math.round((3391.0 - 6713.52 + 2770) * 100) / 100).toBe(-552.52)
   })
 })
 

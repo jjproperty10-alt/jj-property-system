@@ -231,6 +231,7 @@ export class PropertyAuditService implements IPropertyAuditService {
               payout: nullPayout,
               payoutExpected: null,
               basePrice: null,
+              paymentStatus: null,
             };
 
         return {
@@ -415,6 +416,7 @@ export class PropertyAuditService implements IPropertyAuditService {
         taxAmount: (raw.taxAmount as string) ?? null,
         airbnbListingBasePrice: (raw.airbnbListingBasePrice as string) ?? null,
         airbnbListingCleaningFee: (raw.airbnbListingCleaningFee as string) ?? null,
+        paymentStatus: (raw.paymentStatus as string) ?? null,
       });
     }
 
