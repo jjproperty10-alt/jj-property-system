@@ -15,6 +15,7 @@ import {
   ASSISTANT_TALK_MESSAGE,
   INTENT_PROMPT,
   NEW_TRANSACTION_NOTICE,
+  UNSAVED_PREVIOUS_NOTICE,
   UNSUPPORTED_CAPABILITY_MESSAGE,
   type CollectorContext,
   type PropertyCatalogEntry,
@@ -214,7 +215,7 @@ describe('natural Hebrew intake and new-intent reset', () => {
     expect(electric.slots.amountEur.value).toBe('120')
     expect(electric.slots.category.value).toBe('Management')
     expect(electric.slots.subcategory.value).toBe('Electricity')
-    expect(electric.slots.payer.value).toBe('Yossi')
+    expect(electric.slots.payer.status).toBe('unknown')
     expect(electric.slots.propertyName.status).toBe('unknown')
     expect(numberedDirectChoices(electric.lastPrompt).map((c) => c.label)).toEqual([
       'Tamir Dekelia', 'Tamir Kiti', 'Tamir Radisson',
@@ -477,6 +478,136 @@ describe('assistant intent routing', () => {
     expect(replayedIncome.slots.amountEur.value).toBe('850')
     expect(replayedIncome.slots.subcategory.value).toBe('Tenant Payment')
     expect(replayedIncome.createdDraftId).toBeNull()
+  })
+
+  it('asks who paid and who was paid separately, and does not infer either from the expense verb', () => {
+    const opened = applyUserText(start(), 'שילמתי 500 אירו על חשמל', CTX)
+    expect(opened.slots.amountEur.value).toBe('500')
+    expect(opened.slots.payer.status).toBe('unknown')
+    expect(opened.slots.payee.status).toBe('unknown')
+
+    const dated = applyUserText(applyUserText(opened, 'בלי נכס', CTX), 'היום', CTX)
+    expect(dated.lastPrompt.kind).toBe('question')
+    if (dated.lastPrompt.kind !== 'question') return
+    expect(dated.lastPrompt.field).toBe('payer')
+    expect(dated.lastPrompt.prompt).toContain('מי שילם בפועל')
+    expect(dated.slots.payer.value).not.toBe('Company')
+    expect(dated.slots.payer.value).not.toBe('Yossi')
+
+    const paid = applyUserText(dated, 'Jacob', CTX)
+    expect(paid.slots.payer.value).toBe('Jacob')
+    expect(paid.lastPrompt.kind).toBe('question')
+    if (paid.lastPrompt.kind !== 'question') return
+    expect(paid.lastPrompt.field).toBe('payee')
+    expect(paid.lastPrompt.prompt).toContain('למי שולם')
+
+    const received = applyUserText(paid, 'Company', CTX)
+    expect(received.slots.payer.value).toBe('Jacob')
+    expect(received.slots.payee.value).toBe('Company')
+    expect(received.slots.amountEur.value).toBe('500')
+    expect(received.createdDraftId).toBeNull()
+  })
+
+  function expenseReadyForCharge() {
+    return replayUtterances(
+      ['שילמתי 500 אירו על חשמל', 'בלי נכס', 'היום', 'Jacob', 'Company'],
+      CTX,
+      'charge-ready',
+    )
+  }
+
+  it('treats בעלים and לקוח as charge intent and asks for an explicit amount', () => {
+    for (const word of ['בעלים', 'לקוח']) {
+      const asked = expenseReadyForCharge()
+      expect(asked.lastPrompt.kind).toBe('question')
+      if (asked.lastPrompt.kind !== 'question') return
+      expect(asked.lastPrompt.field).toBe('clientCharge')
+      expect(asked.lastPrompt.prompt).toContain('לא לחייב')
+      expect(asked.lastPrompt.prompt).toContain('לחייב')
+      const intent = applyUserText(asked, word, CTX)
+      expect(intent.slots.clientCharge.status).toBe('unknown')
+      expect(intent.slots.clientCharge.value).not.toBe('500')
+      expect(intent.slots.amountEur.value).toBe('500')
+      expect(intent.lastPrompt.kind).toBe('question')
+      if (intent.lastPrompt.kind !== 'question') return
+      expect(intent.lastPrompt.prompt).toContain('כמה לחייב באירו')
+      expect(intent.lastPrompt.prompt).not.toBe(asked.lastPrompt.prompt)
+      const repeated = applyUserText(intent, word, CTX)
+      expect(repeated.slots.clientCharge.status).toBe('unknown')
+      expect(repeated.slots.clientCharge.value).not.toBe('500')
+      expect(repeated.lastPrompt.kind).toBe('question')
+      if (repeated.lastPrompt.kind !== 'question') return
+      expect(repeated.lastPrompt.prompt).not.toBe(intent.lastPrompt.prompt)
+      expect(repeated.lastPrompt.prompt).not.toBe(asked.lastPrompt.prompt)
+    }
+  })
+
+  it('stores NULL for לא לחייב and only an explicit positive client charge', () => {
+    const none = applyUserText(expenseReadyForCharge(), 'לא לחייב', CTX)
+    expect(none.slots.clientCharge.status).toBe('confirmed')
+    expect(none.slots.clientCharge.value).toBeNull()
+    expect(none.slots.clientCharge.value).not.toBe('0')
+    expect(none.slots.amountEur.value).toBe('500')
+
+    const asked = applyUserText(expenseReadyForCharge(), 'בעלים', CTX)
+    const invalid = applyUserText(asked, '0', CTX)
+    expect(invalid.slots.clientCharge.status).toBe('unknown')
+    expect(invalid.slots.amountEur.value).toBe('500')
+    expect(invalid.lastPrompt.kind).toBe('question')
+    if (invalid.lastPrompt.kind === 'question' && asked.lastPrompt.kind === 'question') {
+      expect(invalid.lastPrompt.prompt).not.toBe(asked.lastPrompt.prompt)
+    }
+    const charged = applyUserText(invalid, '80', CTX)
+    expect(charged.slots.clientCharge.value).toBe('80')
+    expect(charged.slots.amountEur.value).toBe('500')
+    const overridden = applyUserText(charged, 'לא לחייב', CTX)
+    expect(overridden.slots.clientCharge.value).toBeNull()
+    expect(overridden.createdDraftId).toBeNull()
+  })
+
+  it('restores each expense step from the saved utterances, and a later answer wins', () => {
+    const payer = replayUtterances(
+      ['שילמתי 500 אירו על חשמל', 'בלי נכס', 'היום'],
+      CTX,
+      'replay-payer',
+    )
+    expect(payer.lastPrompt.kind === 'question' ? payer.lastPrompt.field : '').toBe('payer')
+    expect(payer.slots.payer.status).toBe('unknown')
+
+    const payee = replayUtterances(
+      ['שילמתי 500 אירו על חשמל', 'בלי נכס', 'היום', 'Jacob'],
+      CTX,
+      'replay-payee',
+    )
+    expect(payee.slots.payer.value).toBe('Jacob')
+    expect(payee.lastPrompt.kind === 'question' ? payee.lastPrompt.field : '').toBe('payee')
+
+    const charge = replayUtterances(
+      ['שילמתי 500 אירו על חשמל', 'בלי נכס', 'היום', 'Jacob', 'Company', 'לקוח', '40'],
+      CTX,
+      'replay-charge',
+    )
+    expect(charge.slots.payee.value).toBe('Company')
+    expect(charge.slots.payer.value).toBe('Jacob')
+    expect(charge.slots.clientCharge.value).toBe('40')
+    expect(charge.slots.amountEur.value).toBe('500')
+
+    const replaced = replayUtterances(
+      ['שילמתי 500 אירו על חשמל', 'בלי נכס', 'היום', 'Jacob', 'Company', 'לקוח', '40', 'לא לחייב'],
+      CTX,
+      'replay-charge-override',
+    )
+    expect(replaced.slots.clientCharge.value).toBeNull()
+    expect(replaced.createdDraftId).toBeNull()
+
+    const cancelled = applyUserText(expenseReadyForCharge(), 'ביטול', CTX)
+    expect(cancelled.createdDraftId).toBeNull()
+    expect(cancelled.slots.amountEur.status).toBe('unknown')
+    const restarted = resetForNewProposal(expenseReadyForCharge(), 'new-expense-key')
+    expect(restarted.preface).toContain(NEW_TRANSACTION_NOTICE)
+    expect(restarted.preface).toContain(UNSAVED_PREVIOUS_NOTICE)
+    expect(restarted.slots.amountEur.status).toBe('unknown')
+    expect(restarted.createdDraftId).toBeNull()
   })
 
   it('leaves collection on cancel, stop, or a topic change without creating a draft', () => {

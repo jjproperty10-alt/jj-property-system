@@ -14,7 +14,6 @@ import {
 import {
   classifyTransactionTurn,
   CORRECTION_HINT,
-  EXPENSE_VERB,
   hasExpenseVerb,
   hasReceiptVerb,
   isAmountOnlyUtterance,
@@ -33,6 +32,12 @@ export const UNSUPPORTED_CAPABILITY_MESSAGE =
 export const NEW_TRANSACTION_NOTICE = 'הבנתי, מתחילים עסקה חדשה.'
 export const UNSAVED_PREVIOUS_NOTICE = 'העסקה הקודמת לא נשמרה.'
 export const INTENT_PROMPT = 'זו עסקה חדשה או תיקון לפרטים הקודמים?'
+export const PAYER_QUESTION = 'מי שילם בפועל?'
+export const PAYEE_QUESTION = 'למי שולם?'
+export const CLIENT_CHARGE_DECISION = 'האם לחייב את הלקוח/הבעלים? בחרו לא לחייב, או לחייב לקוח/בעלים.'
+export const CLIENT_CHARGE_AMOUNT = 'כמה לחייב באירו?'
+export const CLIENT_CHARGE_UNCLEAR = 'לא הבנתי אם לחייב. בחרו לא לחייב, או כתבו לקוח או בעלים.'
+export const CLIENT_CHARGE_AMOUNT_UNCLEAR = 'צריך סכום חיובי באירו, או בחרו לא לחייב.'
 export const ASSISTANT_TALK_MESSAGE =
   'אפשר להכין טיוטת עסקה להכנסה או להוצאה. לדוגמה: שילמתי 120 אירו חשמל בדירה של תמיר. הטיוטה נוצרת רק אחרי אישור מפורש.'
 export const AMOUNT_ONLY_CLARIFICATION =
@@ -85,6 +90,7 @@ export type AssistantPrompt =
       readonly searchProperties: boolean
       readonly allowOther: boolean
       readonly allowUnknown: boolean
+      readonly chargeStep?: 'decision' | 'amount'
     }
   | {
       readonly kind: 'ready'
@@ -393,6 +399,77 @@ function extractExplicitNoneClientCharge(text: string): boolean {
   return /אין חיוב|בלי חיוב|לא לחייב|client charge\s*(none|null|0)\b|no client charge/i.test(text)
 }
 
+function isExplicitNoCharge(text: string): boolean {
+  return /^(אין חיוב(?:\s*\(NULL\))?|בלי חיוב|לא לחייב|null|no client charge)$/i.test(text.trim())
+}
+
+function isChargeIntent(text: string): boolean {
+  return /^(בעלים|לקוח|לחייב|לחייב לקוח\/בעלים)$/.test(text.trim())
+}
+
+function explicitPositiveEur(raw: string): string | null {
+  const amount = extractAmountEur(raw) ?? (/^\d+(?:[.,]\d{1,2})?$/.test(raw.trim()) ? normalizeAmount(raw.trim()) : null)
+  if (!amount || amount === 'other_currency') return null
+  const value = Number(amount)
+  if (!Number.isFinite(value) || value <= 0) return null
+  return String(value)
+}
+
+function clientChargeDecisionPrompt(explanation?: string): AssistantPrompt {
+  return {
+    kind: 'question',
+    field: 'clientCharge',
+    chargeStep: 'decision',
+    prompt: explanation ? `${explanation}\n${CLIENT_CHARGE_DECISION}` : CLIENT_CHARGE_DECISION,
+    choices: [
+      { id: 'charge:none', label: 'לא לחייב' },
+      { id: 'charge:yes', label: 'לחייב לקוח/בעלים' },
+    ],
+    searchProperties: false,
+    allowOther: false,
+    allowUnknown: false,
+  }
+}
+
+function clientChargeAmountPrompt(explanation?: string): AssistantPrompt {
+  return {
+    kind: 'question',
+    field: 'clientCharge',
+    chargeStep: 'amount',
+    prompt: explanation ? `${explanation}\n${CLIENT_CHARGE_AMOUNT}` : CLIENT_CHARGE_AMOUNT,
+    choices: [{ id: 'charge:none', label: 'לא לחייב' }],
+    searchProperties: false,
+    allowOther: false,
+    allowUnknown: false,
+  }
+}
+
+function applyClientChargeAnswer(
+  state: CollectorState,
+  raw: string,
+  ctx: CollectorContext,
+): CollectorState {
+  const step = state.lastPrompt.kind === 'question' && state.lastPrompt.chargeStep === 'amount'
+    ? 'amount'
+    : 'decision'
+  if (isExplicitNoCharge(raw)) {
+    const slots = { ...state.slots, clientCharge: confirm<string | null>(null) }
+    return { ...state, slots, preface: '', lastPrompt: nextPrompt(slots, ctx, state.hintText, false) }
+  }
+  if (step === 'decision' && isChargeIntent(raw)) {
+    return { ...state, preface: '', lastPrompt: clientChargeAmountPrompt() }
+  }
+  if (step === 'amount') {
+    const amount = explicitPositiveEur(raw)
+    if (!amount) {
+      return { ...state, preface: '', lastPrompt: clientChargeAmountPrompt(CLIENT_CHARGE_AMOUNT_UNCLEAR) }
+    }
+    const slots = { ...state.slots, clientCharge: confirm(amount) }
+    return { ...state, slots, preface: '', lastPrompt: nextPrompt(slots, ctx, state.hintText, false) }
+  }
+  return { ...state, preface: '', lastPrompt: clientChargeDecisionPrompt(CLIENT_CHARGE_UNCLEAR) }
+}
+
 function extractKnownPayee(text: string): string | null {
   if (/ל(?:-)?פאבי|ל(?:-)?פבי|\bfabi\b|פאבי|פבי/i.test(text)) return 'Fabi'
   const known = KNOWN_PAYEES
@@ -405,10 +482,6 @@ function extractKnownPayee(text: string): string | null {
   if (/ליוסי|זה יוסי|המקבל(?:\s+זה)?\s+יוסי/.test(text)) return 'Yossi'
   if (/ליעקב|זה יעקב/.test(text)) return 'Jacob'
   return null
-}
-
-function paidByStaff(text: string): boolean {
-  return EXPENSE_VERB.test(text) || /\bi paid\b/i.test(text)
 }
 
 function tenantPaid(text: string): boolean {
@@ -522,17 +595,11 @@ function applyClosedSemantics(slots: DraftSlots, text: string, ctx: CollectorCon
       category: assign(next.category, 'Management'),
       subcategory: assign(next.subcategory, sub),
     }
-    if (paidByStaff(text) && ctx.staffPayerName) {
-      next = { ...next, payer: assign(next.payer, ctx.staffPayerName) }
-    }
   } else if (hasExpenseVerb(text) && isCleaning(text)) {
     next = {
       ...next,
       category: assign(next.category, 'Management'),
       subcategory: assign(next.subcategory, 'Cleaning'),
-    }
-    if (paidByStaff(text) && ctx.staffPayerName) {
-      next = { ...next, payer: assign(next.payer, ctx.staffPayerName) }
     }
   } else if (tenantPaid(text) && hasReceiptVerb(text)) {
     next = { ...next, payer: assign(next.payer, 'Tenant') }
@@ -566,10 +633,6 @@ function applyUtterance(slots: DraftSlots, text: string, ctx: CollectorContext, 
   const payee = extractKnownPayee(text)
   if (payee && (hasExpenseVerb(text) || /מקבל|קיבל|לפאבי|לפבי|ליוסי|ליעקב/.test(text))) {
     next = { ...next, payee: assign(next.payee, payee) }
-  }
-
-  if (paidByStaff(text) && ctx.staffPayerName) {
-    next = { ...next, payer: assign(next.payer, ctx.staffPayerName) }
   }
 
   const resolved = resolveProperty(text, ctx.catalog)
@@ -810,7 +873,7 @@ function nextPrompt(
     return {
       kind: 'question',
       field: 'payer',
-      prompt: 'מי שילם?',
+      prompt: PAYER_QUESTION,
       choices: staff ? [{ id: `payer:${staff}`, label: staff }] : [],
       searchProperties: false,
       allowOther: true,
@@ -838,7 +901,7 @@ function nextPrompt(
     return {
       kind: 'question',
       field: 'payee',
-      prompt: receipt ? 'מי קיבל את הכסף?' : 'למי שולם? אני לא מניח מקבל.',
+      prompt: receipt ? 'מי קיבל את הכסף?' : PAYEE_QUESTION,
       choices,
       searchProperties: false,
       allowOther: true,
@@ -847,15 +910,7 @@ function nextPrompt(
   }
 
   if (!slotReady(slots.clientCharge)) {
-    return {
-      kind: 'question',
-      field: 'clientCharge',
-      prompt: 'האם לחייב את הלקוח/הבעלים? אני לא מעתיק את הסכום אוטומטית.',
-      choices: [{ id: CHOICE_NONE, label: 'אין חיוב (NULL)' }],
-      searchProperties: false,
-      allowOther: true,
-      allowUnknown: true,
-    }
+    return clientChargeDecisionPrompt()
   }
 
   if (!slotReady(slots.description)) {
@@ -1083,6 +1138,19 @@ export function applyUserText(
     if (trimmed === 'אני לא יודע' || trimmed.toLowerCase() === "i don't know") {
       return applyChoiceId(state, CHOICE_UNKNOWN, trimmed, ctx)
     }
+    if (!isCollectionExit(trimmed) && !CORRECTION_HINT.test(trimmed)) {
+      if (prompt.field === 'clientCharge') {
+        return applyClientChargeAnswer(state, trimmed, ctx)
+      }
+      if (prompt.field === 'payer' || prompt.field === 'payee') {
+        return applyTypedField(state, prompt.field, trimmed, ctx)
+      }
+    }
+  }
+
+  if (isCollecting(state) && isExplicitNoCharge(trimmed)) {
+    const slots = { ...state.slots, clientCharge: confirm<string | null>(null) }
+    return { ...state, slots, preface: '', lastPrompt: nextPrompt(slots, ctx, state.hintText, false) }
   }
 
   if (!isCollecting(state)) {
@@ -1262,6 +1330,13 @@ export function applyChoiceId(
       return { ...state, slots, lastPrompt: nextPrompt(slots, ctx, state.hintText, false) }
     }
     return state
+  }
+  if (id === 'charge:none') {
+    const slots = { ...state.slots, clientCharge: confirm<string | null>(null) }
+    return { ...state, slots, preface: '', lastPrompt: nextPrompt(slots, ctx, state.hintText, false) }
+  }
+  if (id === 'charge:yes') {
+    return { ...state, preface: '', lastPrompt: clientChargeAmountPrompt() }
   }
   if (id === CHOICE_NONE) {
     if (field === 'clientCharge') {
