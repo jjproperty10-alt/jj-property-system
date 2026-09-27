@@ -22,6 +22,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { UNAVAILABLE_METRIC } from '@/lib/legacy/staffMetricLabel'
+import { SettlementSection, type Settlement } from '@/components/ceo/SettlementSection'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,20 +46,6 @@ interface CashboxRow {
   balance: number | string
   transaction_count_received: number | string
   transaction_count_paid: number | string
-}
-
-interface Settlement {
-  yossi_cashbox_balance: number | string
-  jacob_cashbox_balance: number | string
-  jj_cashbox_total: number | string
-  jj_cashbox_per_partner: number | string
-  anastasia_pending_jj_asset: number | string
-  anastasia_asset_per_partner: number | string
-  due_to_owners_total: number | string
-  due_to_owners_per_partner: number | string
-  settlement_delta: number | string
-  settlement_amount: number | string
-  transfer_direction: string
 }
 
 interface AnastasiaClearing {
@@ -272,66 +259,11 @@ export default async function CEODashboard() {
           </div>
         </section>
 
-        {/* ══ SECTION B — Settlement ══ */}
-        <section id="settlement">
-          <SectionHeader letter="B" en="Partner Settlement" he="סילוק בין שותפים" source="v_settlement_verification" />
-          <div className="bg-white rounded-xl border border-blue-200 p-6">
-            <div className="flex flex-col items-start gap-6 md:flex-row md:gap-8">
-
-              {/* Main result */}
-              <div className="min-w-0 flex-1">
-                <div className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-2">
-                  Official Result · v_settlement_verification ✓ authoritative
-                </div>
-                <div className="mb-3 flex flex-wrap items-baseline gap-3">
-                  <span className="min-w-0 break-words text-3xl font-bold text-blue-700 sm:text-4xl">
-                    {presentMetric(settlement?.settlement_amount)}
-                  </span>
-                  <span className="min-w-0 break-words text-xl text-blue-600">
-                    {settlement?.transfer_direction ?? UNAVAILABLE_METRIC}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-500">
-                  Formula: ABS(Yossi − Jacob) ÷ 2
-                </p>
-                <p className="mt-0.5 break-words text-sm text-gray-500">
-                  = ABS({presentMetric(settlement?.yossi_cashbox_balance, true)} − {presentMetric(settlement?.jacob_cashbox_balance, true)}) ÷ 2
-                </p>
-                <div className="mt-3 flex items-center gap-4 text-sm">
-                  <span className={color(yossi?.balance)}>Yossi: {eur(yossi?.balance, true)}</span>
-                  <span className="text-gray-300">·</span>
-                  <span className={color(jacob?.balance)}>Jacob: {eur(jacob?.balance, true)}</span>
-                  <span className="text-gray-300">·</span>
-                  <span className="text-gray-500">Delta: {eur(Math.abs(n(settlement?.settlement_delta)))} ÷ 2</span>
-                </div>
-              </div>
-
-              {/* Context divider */}
-              <div className="hidden w-px self-stretch bg-gray-200 md:block" />
-
-              {/* Context only */}
-              <div className="w-full min-w-0 md:w-60">
-                <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
-                  Context only · הקשר
-                </div>
-                {[
-                  ['JJ cashbox total', settlement?.jj_cashbox_total],
-                  ['JJ ÷ 2 per partner', settlement?.jj_cashbox_per_partner],
-                  ['Anastasia asset ÷ 2', settlement?.anastasia_asset_per_partner],
-                  ['Due to owners ÷ 2', settlement?.due_to_owners_per_partner],
-                ].map(([label, val]) => (
-                  <div key={String(label)} className="flex justify-between text-sm py-1.5 border-b border-gray-100 last:border-0">
-                    <span className="text-gray-500">{String(label)}</span>
-                    <span className="text-gray-400">{presentMetric(val)}</span>
-                  </div>
-                ))}
-                <p className="text-[10px] text-gray-300 mt-2">
-                  Identical for both partners → cancel in delta
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
+        <SettlementSection
+          settlement={settlement}
+          yossiBalance={yossi?.balance}
+          jacobBalance={jacob?.balance}
+        />
 
         {/* ══ SECTION C — Anastasia Clearing ══ */}
         <section id="anastasia">

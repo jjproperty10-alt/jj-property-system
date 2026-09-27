@@ -9,6 +9,10 @@ describe('CEO dashboard schema and phone layout', () => {
     expect(page).not.toContain('total_cash_position_profit,total_contract_profit')
     expect(page).toContain("from('v_ceo_summary').select('*')")
     expect(page).toContain('UNAVAILABLE_METRIC')
+    expect(page).toContain('<SettlementSection')
+    expect(page).toContain('settlement: null')
+    expect(page).not.toContain('Official Result')
+    expect(page).not.toContain('Delta:')
     expect(page).not.toContain("?? 'Jacob pays Yossi'")
   })
 
