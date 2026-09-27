@@ -27,6 +27,8 @@ export interface CertifiedPropertyObligationLine {
   readonly amountDueToJj: number
   readonly reason: string
   readonly evidenceRef: string
+  /** Certified line evidence keys (as written by the certification); empty object when absent. */
+  readonly metadata: Readonly<Record<string, unknown>>
 }
 
 export interface CertifiedFifoCreditLine {

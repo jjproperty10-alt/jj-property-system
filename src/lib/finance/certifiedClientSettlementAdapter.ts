@@ -104,6 +104,7 @@ function parseLines(raw: unknown): CertifiedPropertyObligationLine[] | null {
       amountDueToJj,
       reason,
       evidenceRef,
+      metadata: record(row.metadata) || {},
     })
   }
   lines.sort((a, b) => a.lineOrder - b.lineOrder)

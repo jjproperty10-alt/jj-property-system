@@ -22,6 +22,7 @@ function line(
     amountDueToJj: amount,
     reason: `fixture line ${order}`,
     evidenceRef: `ev-${order}`,
+    metadata: {},
   }
 }
 
