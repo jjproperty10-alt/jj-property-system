@@ -189,18 +189,18 @@ export default function PropertyDetailPage() {
   const totalPct = draftOwners.reduce((s, o) => s + num(o.ownership_pct), 0)
 
   return (
-    <div className="p-8">
+    <div className="min-w-0 p-8">
       {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
+      <div className="mb-6 flex flex-wrap items-center gap-4">
         <button onClick={() => router.back()}
-          className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800 transition-colors">
+          className="flex shrink-0 items-center gap-2 text-sm text-gray-500 hover:text-gray-800 transition-colors">
           <ArrowLeft size={16} /> Back
         </button>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <Building2 size={22} className="text-brand-500" />
-            <h1 className="text-2xl font-bold text-gray-900">{propertyName}</h1>
-            {s?.status && <span className={`badge ${STATUS_BADGE[s.status] ?? 'bg-gray-100 text-gray-600'}`}>{s.status}</span>}
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
+            <Building2 size={22} className="shrink-0 text-brand-500" />
+            <h1 className="min-w-0 break-words text-2xl font-bold text-gray-900">{propertyName}</h1>
+            {s?.status && <span className={`badge shrink-0 ${STATUS_BADGE[s.status] ?? 'bg-gray-100 text-gray-600'}`}>{s.status}</span>}
           </div>
           <p className="text-sm text-gray-500 mt-0.5 ml-8">{transactions.length} transactions</p>
           <Link
@@ -211,7 +211,7 @@ export default function PropertyDetailPage() {
           </Link>
         </div>
         <button onClick={load} disabled={loading}
-          className="btn-secondary flex items-center gap-2 text-sm">
+          className="btn-secondary flex shrink-0 items-center gap-2 text-sm">
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
         </button>
       </div>

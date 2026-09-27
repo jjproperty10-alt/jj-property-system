@@ -184,15 +184,20 @@ export function AssistantChat(props: {
     void listOpsConversation(props.initialConversationId).then((listed) => {
       if (cancelled || !listed.ok) return
       const bodies = listed.messages.filter((m) => m.direction === 'inbound').map((m) => m.body)
-      const replayed = replayUtterances(bodies, ctx, draftKeyRef.current)
+      const suggestion = props.suggestedPropertyName ?? null
+      const replayed = replayUtterances(bodies, ctx, draftKeyRef.current, suggestion)
       const history: ChatItem[] = []
       bodies.forEach((body, i) => {
         history.push({ id: `u-${i}`, role: 'user', text: body })
       })
+      const keptSuggestion = Boolean(suggestion) && replayed.slots.propertyName.value === suggestion
+      const replayPrompt = promptText(replayed.lastPrompt, replayed.preface)
       history.push({
         id: 'assistant-replay',
         role: 'assistant',
-        text: promptText(replayed.lastPrompt, replayed.preface),
+        text: keptSuggestion
+          ? `הנכס ${suggestion} הוצע כהקשר. אפשר לשנות אותו לפני יצירת הטיוטה.\n${replayPrompt}`
+          : replayPrompt,
         prompt: replayed.lastPrompt,
       })
       setConversationId(listed.conversationId)

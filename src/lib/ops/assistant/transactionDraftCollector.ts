@@ -1428,8 +1428,14 @@ export function replayUtterances(
   texts: readonly string[],
   ctx: CollectorContext,
   idempotencyKey: string,
+  suggestedPropertyName?: string | null,
 ): CollectorState {
   let state = createCollectorState(idempotencyKey)
+  const suggestion = suggestedPropertyName?.trim() ?? ''
+  if (suggestion) {
+    const picked = applyPropertyPick(state, suggestion, ctx)
+    if (picked.slots.propertyName.value === suggestion) state = picked
+  }
   for (let i = 0; i < texts.length; i += 1) {
     state = applyUserText(state, texts[i], {
       ...ctx,

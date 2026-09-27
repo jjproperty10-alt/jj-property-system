@@ -6,6 +6,7 @@ import {
   matchProperties,
   nicosiaToday,
   numberedDirectChoices,
+  replayUtterances,
   cancelCollector,
   resetForChangeDetails,
   resetForNewProposal,
@@ -281,6 +282,34 @@ describe('natural Hebrew intake and new-intent reset', () => {
     if (next.lastPrompt.kind === 'question') {
       expect(next.lastPrompt.field).toBe('propertyName')
     }
+  })
+})
+
+describe('property suggestion replay', () => {
+  it('keeps a unique property through replay so a later date is not treated as a property', () => {
+    const replayed = replayUtterances(['25', 'היום (2026-09-17)'], CTX, 'replay-key', 'Villa Mazotos')
+    expect(replayed.slots.propertyName.value).toBe('Villa Mazotos')
+    expect(replayed.slots.amountEur.value).toBe('25')
+    expect(replayed.slots.date.value).toBe('2026-09-17')
+    expect(replayed.lastPrompt.kind === 'question' ? replayed.lastPrompt.field : '').not.toBe('propertyName')
+  })
+
+  it('does not auto-select an ambiguous or unknown property name', () => {
+    const ambiguous = replayUtterances(['25'], CTX, 'replay-ambiguous', 'Tamir')
+    expect(ambiguous.slots.propertyName.status).toBe('unknown')
+    const unknown = replayUtterances(['25'], CTX, 'replay-unknown', 'Not A Real House')
+    expect(unknown.slots.propertyName.value).toBeUndefined()
+  })
+
+  it('still lets the user replace or clear the suggested property', () => {
+    const replayed = replayUtterances(['25', 'היום (2026-09-17)'], CTX, 'replay-change', 'Villa Mazotos')
+    const change = resetForChangeDetails(replayed, CTX)
+    const clearedPrompt = applyUserText(change, 'נכס', CTX)
+    expect(clearedPrompt.slots.propertyName.status).toBe('unknown')
+    const replaced = applyUserText(clearedPrompt, 'Tamir Kiti', CTX)
+    expect(replaced.slots.propertyName.value).toBe('Tamir Kiti')
+    const cleared = applyUserText(clearedPrompt, 'בלי נכס', CTX)
+    expect(cleared.slots.propertyName.value).toBeNull()
   })
 })
 
