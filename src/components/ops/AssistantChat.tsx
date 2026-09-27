@@ -1086,7 +1086,7 @@ function introItems(state: CollectorState): ChatItem[] {
   const property = state.slots.propertyName.value
   const opening = property
     ? `הנכס ${property} הוצע כהקשר. אפשר לשנות אותו לפני יצירת הטיוטה.\n${promptText(state.lastPrompt)}`
-    : 'אפשר להתחיל. לדוגמה: שילמתי 120 אירו חשמל בדירה של תמיר'
+    : promptText(state.lastPrompt)
   return [{
     id: 'intro',
     role: 'assistant',
@@ -1097,7 +1097,7 @@ function introItems(state: CollectorState): ChatItem[] {
 
 function promptText(prompt: AssistantPrompt, preface?: string): string {
   let body = ''
-  if (prompt.kind === 'unsupported') body = prompt.message
+  if (prompt.kind === 'unsupported' || prompt.kind === 'talk') body = prompt.message
   else if (prompt.kind === 'ready') body = 'זה הסיכום. טיוטה תיווצר רק אחרי לחיצה על צור טיוטה.'
   else body = prompt.prompt
   if (preface && preface.trim()) return `${preface}\n${body}`

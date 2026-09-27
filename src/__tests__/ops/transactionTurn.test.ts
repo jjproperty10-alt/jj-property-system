@@ -1,4 +1,9 @@
-import { classifyTransactionTurn } from '@/lib/ops/assistant/transactionTurn'
+import {
+  classifyTransactionTurn,
+  isAmountOnlyUtterance,
+  isCollectionExit,
+  opensTransactionCollection,
+} from '@/lib/ops/assistant/transactionTurn'
 
 describe('transaction turn classifier', () => {
   it('treats a full payment utterance as a new transaction when a proposal already exists', () => {
@@ -56,5 +61,25 @@ describe('transaction turn classifier', () => {
       hasDate: false,
       hasPropertyOrSubject: false,
     })).toBe('unknown')
+  })
+
+  it('opens collection only for an explicit income or expense, not a greeting or a bare number', () => {
+    expect(opensTransactionCollection('היי', false)).toBe(false)
+    expect(opensTransactionCollection('מה אתה יכול לעשות?', false)).toBe(false)
+    expect(opensTransactionCollection('500', false)).toBe(false)
+    expect(isAmountOnlyUtterance('500')).toBe(true)
+    expect(isAmountOnlyUtterance('500 אירו')).toBe(true)
+    expect(opensTransactionCollection('לא שילמתי חשמל', true)).toBe(false)
+    expect(opensTransactionCollection('מה שילמתי על חשמל?', true)).toBe(false)
+    expect(opensTransactionCollection('חשמל 2026', true)).toBe(false)
+    expect(opensTransactionCollection('שילמתי חשמל', true)).toBe(true)
+    expect(opensTransactionCollection('שילמתי 500 חשמל', true)).toBe(true)
+    expect(opensTransactionCollection('קיבלתי 850 שכירות', true)).toBe(true)
+    expect(opensTransactionCollection('תמיר 30 אירו', true)).toBe(true)
+    expect(opensTransactionCollection('עלה 120 וללקוח 150', false)).toBe(true)
+    expect(isCollectionExit('ביטול')).toBe(true)
+    expect(isCollectionExit('תפסיק')).toBe(true)
+    expect(isCollectionExit('שנה נושא')).toBe(true)
+    expect(isCollectionExit('היי')).toBe(false)
   })
 })
