@@ -102,5 +102,9 @@ describe('/assistant staff authorization', () => {
     expect(unique).toMatchObject({ props: { suggestedPropertyName: 'Tamir Dekelia' } })
     const ambiguous = await Page({ searchParams: { property: 'Tamir' } })
     expect(ambiguous).toMatchObject({ props: { suggestedPropertyName: null } })
+    const reopened = await Page({ searchParams: { c: 'conv-1', property: 'Tamir Dekelia' } })
+    expect(reopened).toMatchObject({
+      props: { initialConversationId: 'conv-1', suggestedPropertyName: null },
+    })
   })
 })

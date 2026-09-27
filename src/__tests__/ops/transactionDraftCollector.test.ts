@@ -1,6 +1,7 @@
 import {
   applyUserText,
   createCollectorState,
+  exactUniqueCatalogName,
   extractAmountEur,
   isUnsupportedCapability,
   matchProperties,
@@ -310,6 +311,45 @@ describe('property suggestion replay', () => {
     expect(replaced.slots.propertyName.value).toBe('Tamir Kiti')
     const cleared = applyUserText(clearedPrompt, 'בלי נכס', CTX)
     expect(cleared.slots.propertyName.value).toBeNull()
+  })
+
+  it('restores a stored unique name when the conversation is reopened without a URL property', () => {
+    const stored = exactUniqueCatalogName('Villa Mazotos', CATALOG)
+    const replayed = replayUtterances(['25', 'היום (2026-09-17)'], CTX, 'reopen-c-only', stored)
+    expect(stored).toBe('Villa Mazotos')
+    expect(replayed.slots.propertyName.value).toBe('Villa Mazotos')
+    expect(replayed.slots.date.value).toBe('2026-09-17')
+    expect(replayed.lastPrompt.kind === 'question' ? replayed.lastPrompt.field : '').not.toBe('propertyName')
+  })
+
+  it('does not restore a partial, ambiguous, unknown, or duplicate stored name', () => {
+    expect(exactUniqueCatalogName('Tamir', CATALOG)).toBeNull()
+    expect(exactUniqueCatalogName('Not A Real House', CATALOG)).toBeNull()
+    expect(exactUniqueCatalogName('villa mazotos', CATALOG)).toBeNull()
+    expect(exactUniqueCatalogName(null, CATALOG)).toBeNull()
+    const duplicated = [...CATALOG, { id: '7', name: 'Villa Mazotos' }]
+    expect(exactUniqueCatalogName('Villa Mazotos', duplicated)).toBeNull()
+    const replayed = replayUtterances(['25'], CTX, 'reopen-ambiguous', exactUniqueCatalogName('Tamir', CATALOG))
+    expect(replayed.slots.propertyName.status).toBe('unknown')
+  })
+
+  it('lets a saved property change or clear override the stored suggestion', () => {
+    const replaced = replayUtterances(
+      ['25', 'היום (2026-09-17)', 'שנה פרטים', 'נכס', 'Tamir Kiti'],
+      CTX,
+      'reopen-replace',
+      'Villa Mazotos',
+    )
+    expect(replaced.slots.propertyName.value).toBe('Tamir Kiti')
+    const cleared = replayUtterances(
+      ['25', 'היום (2026-09-17)', 'שנה פרטים', 'נכס', 'בלי נכס'],
+      CTX,
+      'reopen-clear',
+      'Villa Mazotos',
+    )
+    expect(cleared.slots.propertyName.value).toBeNull()
+    const untouched = replayUtterances(['25'], CTX, 'reopen-no-stored', null)
+    expect(untouched.slots.propertyName.status).toBe('unknown')
   })
 })
 

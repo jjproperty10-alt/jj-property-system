@@ -8,11 +8,11 @@ import {
   applyUserText,
   cancelCollector,
   applyPropertyPick,
+  exactUniqueCatalogName,
   createCollectorState,
   markDraftCreated,
   numberedDirectChoices,
   replayUtterances,
-  resetForChangeDetails,
   resetForNewProposal,
   type AssistantPrompt,
   type CollectorContext,
@@ -161,7 +161,7 @@ export function AssistantChat(props: {
   if (bootRef.current == null) {
     bootRef.current = bootCollector(
       draftKeyRef.current,
-      props.suggestedPropertyName ?? null,
+      props.initialConversationId ? null : (props.suggestedPropertyName ?? null),
       { catalog: props.catalog, staffPayerName: props.staffPayerName || null },
     )
   }
@@ -184,7 +184,7 @@ export function AssistantChat(props: {
     void listOpsConversation(props.initialConversationId).then((listed) => {
       if (cancelled || !listed.ok) return
       const bodies = listed.messages.filter((m) => m.direction === 'inbound').map((m) => m.body)
-      const suggestion = props.suggestedPropertyName ?? null
+      const suggestion = exactUniqueCatalogName(listed.suggestedPropertyName, ctx.catalog)
       const replayed = replayUtterances(bodies, ctx, draftKeyRef.current, suggestion)
       const history: ChatItem[] = []
       bodies.forEach((body, i) => {
@@ -218,6 +218,7 @@ export function AssistantChat(props: {
       conversationIdempotencyKey: convKeyRef.current,
       body: trimmed,
       messageIdempotencyKey: messageKey,
+      suggestedPropertyName: conversationId ? null : props.suggestedPropertyName ?? null,
     })
     if (!persisted.ok) {
       setLoading(false)
@@ -834,11 +835,7 @@ export function AssistantChat(props: {
                 type="button"
                 className="btn-secondary min-h-11 w-full sm:w-auto"
                 disabled={loading || Boolean(draft.createdDraftId)}
-                onClick={() => {
-                  const next = resetForChangeDetails(draft, ctx)
-                  setDraft(next)
-                  setItems((prev) => [...prev, { id: `change-${Date.now()}`, role: 'assistant', text: promptText(next.lastPrompt, next.preface), prompt: next.lastPrompt }])
-                }}
+                onClick={() => void sendBody('שנה פרטים')}
               >
                 2. שנה פרטים
               </button>
@@ -1078,9 +1075,10 @@ function bootCollector(
   ctx: CollectorContext,
 ): CollectorState {
   const base = createCollectorState(key)
-  if (!suggestedPropertyName) return base
-  const picked = applyPropertyPick(base, suggestedPropertyName, ctx)
-  if (picked.slots.propertyName.value !== suggestedPropertyName) return base
+  const suggestion = exactUniqueCatalogName(suggestedPropertyName, ctx.catalog)
+  if (!suggestion) return base
+  const picked = applyPropertyPick(base, suggestion, ctx)
+  if (picked.slots.propertyName.value !== suggestion) return base
   return picked
 }
 

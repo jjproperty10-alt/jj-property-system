@@ -45,7 +45,9 @@ export default async function AssistantPage({
     : null
   const properties = catalog.ok ? catalog.properties : []
   const propertyQuery = typeof searchParams?.property === 'string' ? searchParams.property.trim() : ''
-  const resolvedProperty = propertyQuery ? resolveProperty(propertyQuery, properties) : null
+  const resolvedProperty = !conversationId && propertyQuery
+    ? resolveProperty(propertyQuery, properties)
+    : null
   const suggestedPropertyName = resolvedProperty?.kind === 'unique' ? resolvedProperty.entry.name : null
 
   return (
