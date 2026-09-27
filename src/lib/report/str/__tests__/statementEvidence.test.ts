@@ -2,6 +2,7 @@ import { getAuthoritativeStatementLine, belongsToStatementMonth, STATEMENT_LINE_
 import { buildStrStatementLine, type StrLineEvidence } from '../strStatementLine'
 import { composeOwnerStrStatement, type StatementReservationEvidence } from '../ownerStrStatement'
 import { isBookingAccountVerifiedZero } from '../bookingTaxPolicy'
+import { bookingPaymentFeeEvidence } from '../bookingPaymentFeePolicy'
 
 describe('belongsToStatementMonth — arrival-month periodization', () => {
   it('check-in in month belongs; June check-in with July checkout does NOT', () => {
@@ -62,6 +63,8 @@ describe('Ofri/Sky View July 2026 — Hostaway parity, cent-exact', () => {
     taxVerifiedZeroEvidence: isBookingAccountVerifiedZero(ch, tax, ci),
     authoritativeLine: getAuthoritativeStatementLine(id, P, ci) ?? undefined,
     platformPayoutEvidenceEur: null,
+    // All four July Bookings: Hostaway paymentStatus "Paid", otaPaymentProcessingFee > 0 (scan 2026-09-27).
+    bookingPaymentFee: bookingPaymentFeeEvidence({ paymentStatus: 'Paid' }),
   })
   it('5 arrival-July reservations reconcile to Hostaway exactly', () => {
     const s = composeOwnerStrStatement({

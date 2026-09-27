@@ -13,6 +13,7 @@ import { PropertyAuditService, isRevenueEligible, parsePeriodFromDescription } f
 import { maskGuestName } from '@/lib/owners/ownerReservationAdapter'
 import { composeOwnerStrStatement, isOwnerStatementExtra, isOwnerStatementExtraCategory, isOwnerStatementPayment, OWNER_STATEMENT_EXTRA_CATEGORIES, type OwnerStrStatement, type StatementReservationEvidence, type StatementExtra } from './ownerStrStatement'
 import { isBookingAccountVerifiedZero } from './bookingTaxPolicy'
+import { bookingPaymentFeeEvidence } from './bookingPaymentFeePolicy'
 import { applyAirbnbCyprusVat } from './airbnbTaxPolicy'
 import { getAuthoritativeStatementLine, belongsToStatementMonth } from './statementEvidence'
 import { getHistoricalChannelEvidence, mergeLiveAndHistoricalEvidence } from './historicalChannelEvidence'
@@ -67,6 +68,8 @@ function toEvidence(propertyName: string, r: any, today: string): StatementReser
     // Authoritative Hostaway statement line (verbatim) when raw is incomplete/inconsistent.
     authoritativeLine: getAuthoritativeStatementLine(r.hostawayReservationId, propertyName, r.checkIn) ?? undefined,
     platformPayoutEvidenceEur: f.payout?.amount ?? null,
+    // Booking payment fee (1.6%) only behind per-reservation Hostaway evidence — never assumed.
+    bookingPaymentFee: bookingPaymentFeeEvidence({ paymentStatus: f.paymentStatus ?? null }),
   }
 }
 

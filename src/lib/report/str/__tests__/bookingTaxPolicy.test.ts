@@ -1,10 +1,13 @@
 import { isBookingAccountVerifiedZero, JJ_BOOKING_TAX_POLICY } from '../bookingTaxPolicy'
 import { buildStrStatementLine, type StrLineEvidence } from '../strStatementLine'
+import { bookingPaymentFeeEvidence } from '../bookingPaymentFeePolicy'
 
 const line = (o: Partial<StrLineEvidence>): StrLineEvidence => ({
   reservationId: 'x', channel: 'booking', grossEur: 1131.71, platformFeesEur: 169.76,
   platformFeesSource: 'hostaway:channelCommissionAmount', cleaningEur: 50, taxesEur: null,
-  platformPayoutEvidenceEur: null, ...o,
+  platformPayoutEvidenceEur: null,
+  // Tamir-style: Booking.com processed the payment (Hostaway paymentStatus "Paid") → 1.6% fee evidenced.
+  bookingPaymentFee: bookingPaymentFeeEvidence({ paymentStatus: 'Paid' }), ...o,
 })
 
 describe('isBookingAccountVerifiedZero — account-bounded, fail-closed', () => {

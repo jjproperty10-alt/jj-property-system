@@ -1,14 +1,18 @@
 import { buildStrStatementLine, roundEur, type StrLineEvidence } from '../strStatementLine'
+import { bookingPaymentFeeEvidence } from '../bookingPaymentFeePolicy'
 
 const airbnb = (o: Partial<StrLineEvidence> = {}): StrLineEvidence => ({
   reservationId: 'r1', channel: 'airbnb',
   grossEur: 1026, platformFeesEur: 159.03, platformFeesSource: 'hostaway:airbnbListingHostFee',
   cleaningEur: 60, taxesEur: 0, platformPayoutEvidenceEur: 866.97, ...o,
 })
+// Booking fixture = Tamir-style reservation: Hostaway paymentStatus "Paid" (Booking.com processed the
+// payment → 1.6% payment fee evidenced). The gate is tested separately below.
 const booking = (o: Partial<StrLineEvidence> = {}): StrLineEvidence => ({
   reservationId: 'r2', channel: 'booking',
   grossEur: 906.17, platformFeesEur: 135.93, platformFeesSource: 'hostaway:channelCommissionAmount',
-  cleaningEur: 50, taxesEur: null, platformPayoutEvidenceEur: 770.24, ...o,
+  cleaningEur: 50, taxesEur: null, platformPayoutEvidenceEur: 770.24,
+  bookingPaymentFee: bookingPaymentFeeEvidence({ paymentStatus: 'Paid' }), ...o,
 })
 
 describe('buildStrStatementLine — decisions A & B', () => {
@@ -55,6 +59,92 @@ describe('buildStrStatementLine — decisions A & B', () => {
     const l = buildStrStatementLine(airbnb())
     expect(l.platformFees.value).toBe(159.03)
     expect(l.platformFees.source).not.toContain('booking_payment_fee')
+  })
+
+  it('Airbnb ignores any Booking payment-fee evidence and never fails closed on it', () => {
+    const l = buildStrStatementLine(airbnb({ bookingPaymentFee: undefined }))
+    expect(l.platformFees.value).toBe(159.03)
+    expect(l.reviewReasons).not.toContain('booking_payment_fee_evidence_missing')
+    expect(l.needsReview).toBe(false)
+  })
+
+  describe('Booking payment fee — per-reservation evidence gate (approved 2026-09-27)', () => {
+    it('Orit 60635280: paymentStatus "Unknown" → NO payment fee; platform = commission only; net = Hostaway ownerPayout 625.20', () => {
+      const l = buildStrStatementLine(booking({
+        reservationId: '60635280', grossEur: 990, platformFeesEur: 148.5, cleaningEur: 60, taxesEur: 0,
+        platformPayoutEvidenceEur: 841.5, bookingPaymentFee: bookingPaymentFeeEvidence({ paymentStatus: 'Unknown' }),
+      }))
+      expect(l.platformFees.value).toBe(148.5)
+      expect(l.platformFees.source).toContain('booking_payment_fee_none[hostaway:paymentStatus=Unknown]')
+      expect(l.platformFees.source).not.toContain('1_6pct')
+      expect(l.managementFee.value).toBe(156.3)     // 0.20 x (841.50 - 60 - 0)
+      expect(l.netOwnerPayout.value).toBe(625.2)    // = Hostaway financeCalculatedField ownerPayout
+      expect(l.needsReview).toBe(false)
+    })
+
+    it('Orit 61196026: paymentStatus "Unknown" → 270 / 40.50 → mgmt 33.90 / net 135.60 (Hostaway ownerPayout)', () => {
+      const l = buildStrStatementLine(booking({
+        reservationId: '61196026', grossEur: 270, platformFeesEur: 40.5, cleaningEur: 60, taxesEur: 0,
+        platformPayoutEvidenceEur: 229.5, bookingPaymentFee: bookingPaymentFeeEvidence({ paymentStatus: 'Unknown' }),
+      }))
+      expect(l.platformFees.value).toBe(40.5)
+      expect(l.managementFee.value).toBe(33.9)
+      expect(l.netOwnerPayout.value).toBe(135.6)
+      expect(l.needsReview).toBe(false)
+    })
+
+    it('Tamir 60986104: paymentStatus "Paid" → 1131.71 / 169.76 → platform 187.87 (unchanged golden value)', () => {
+      const l = buildStrStatementLine(booking({
+        reservationId: '60986104', grossEur: 1131.71, platformFeesEur: 169.76,
+        bookingPaymentFee: bookingPaymentFeeEvidence({ paymentStatus: 'Paid' }),
+      }))
+      expect(l.platformFees.value).toBe(187.87)
+      expect(l.platformFees.source).toContain('jj_derived:booking_payment_fee_1_6pct[hostaway:paymentStatus=Paid]')
+    })
+
+    it('explicit Hostaway fee amount takes precedence over the 1.6% rate', () => {
+      const l = buildStrStatementLine(booking({
+        grossEur: 1131.71, platformFeesEur: 169.76,
+        bookingPaymentFee: bookingPaymentFeeEvidence({ paymentStatus: 'Paid', explicitPaymentFeeEur: 18.11 }),
+      }))
+      expect(l.platformFees.value).toBe(187.87)
+      expect(l.platformFees.source).toContain('hostaway:paymentFees:booking_payment_fee')
+      expect(l.platformFees.source).not.toContain('1_6pct')
+    })
+
+    it('explicit amount 0 from Hostaway → no fee even if status were unknown', () => {
+      const l = buildStrStatementLine(booking({
+        grossEur: 990, platformFeesEur: 148.5, taxesEur: 0,
+        bookingPaymentFee: bookingPaymentFeeEvidence({ paymentStatus: null, explicitPaymentFeeEur: 0 }),
+      }))
+      expect(l.platformFees.value).toBe(148.5)
+      expect(l.needsReview).toBe(false)
+    })
+
+    it('missing evidence (no bookingPaymentFee) → Platform Fees Unknown → Needs Review (fail closed, never assumed)', () => {
+      const l = buildStrStatementLine(booking({ taxesEur: 0, bookingPaymentFee: undefined }))
+      expect(l.platformFees.value).toBeNull()
+      expect(l.platformFees.provenance).toBe('unknown')
+      expect(l.platformFees.source).toContain('booking_payment_fee_evidence_missing')
+      expect(l.managementFee.value).toBeNull()
+      expect(l.netOwnerPayout.value).toBeNull()
+      expect(l.needsReview).toBe(true)
+      expect(l.reviewReasons).toEqual(expect.arrayContaining(['booking_payment_fee_evidence_missing', 'platform_fees_unknown']))
+    })
+
+    it('unrecognised paymentStatus (e.g. "Pending", null) → evidence missing → fail closed', () => {
+      for (const status of ['Pending', 'paid', '', null]) {
+        const l = buildStrStatementLine(booking({ taxesEur: 0, bookingPaymentFee: bookingPaymentFeeEvidence({ paymentStatus: status }) }))
+        expect(l.platformFees.value).toBeNull()
+        expect(l.reviewReasons).toContain('booking_payment_fee_evidence_missing')
+      }
+    })
+
+    it('booking_direct (recovered historical, actual fee recorded) is NOT gated and NOT surcharged', () => {
+      const l = buildStrStatementLine(booking({ channel: 'booking_direct', taxesEur: 0, bookingPaymentFee: undefined }))
+      expect(l.platformFees.value).toBe(135.93)
+      expect(l.reviewReasons).not.toContain('booking_payment_fee_evidence_missing')
+    })
   })
 
   it('verified-zero tax evidence unblocks a null-tax Booking line (0 is verified, not Unknown)', () => {

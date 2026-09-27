@@ -30,6 +30,8 @@ export interface RawReservationFinancials {
   readonly taxAmount: string | null;
   readonly airbnbListingBasePrice: string | null;
   readonly airbnbListingCleaningFee: string | null;
+  /** Hostaway `paymentStatus` verbatim ("Paid" / "Unknown" / ...). Optional: legacy callers omit it. */
+  readonly paymentStatus?: string | null;
 }
 
 /**
@@ -164,5 +166,6 @@ export function buildReservationFinancials(
     payout,
     payoutExpected: payout.amount, // Legacy compat
     basePrice,
+    paymentStatus: raw.paymentStatus ?? null,
   };
 }

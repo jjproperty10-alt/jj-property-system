@@ -11,6 +11,7 @@ import { PropertyAuditService, isRevenueEligible } from '@/lib/hostaway-audit'
 import { getStrReconciliationByName } from './ownerStrAuditAdapter'
 import { buildStrStatementLine, type StrLineEvidence } from '@/lib/report/str/strStatementLine'
 import { isBookingAccountVerifiedZero } from '@/lib/report/str/bookingTaxPolicy'
+import { bookingPaymentFeeEvidence } from '@/lib/report/str/bookingPaymentFeePolicy'
 import { getAuthoritativeStatementLine } from '@/lib/report/str/statementEvidence'
 
 export interface StrPropertyBreakdown {
@@ -98,6 +99,8 @@ export async function buildOwnerStrCockpit(input: OwnerStrCockpitInput): Promise
           taxVerifiedZeroEvidence: isBookingAccountVerifiedZero(String(r.channel), f.taxAmount ?? null, r.checkIn),
           authoritativeLine: getAuthoritativeStatementLine(r.hostawayReservationId, p.name, r.checkIn) ?? undefined,
           platformPayoutEvidenceEur: f.payout?.amount ?? null,
+          // Same per-reservation Booking payment-fee evidence gate as the Owner Statement PDF.
+          bookingPaymentFee: bookingPaymentFeeEvidence({ paymentStatus: f.paymentStatus ?? null }),
         }
         const line = buildStrStatementLine(ev)
         const g = line.gross.value, pf = line.platformFees.value
