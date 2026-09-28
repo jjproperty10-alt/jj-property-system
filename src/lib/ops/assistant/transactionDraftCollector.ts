@@ -38,6 +38,9 @@ export const CLIENT_CHARGE_DECISION = 'האם לחייב את הלקוח/הבע�
 export const CLIENT_CHARGE_AMOUNT = 'כמה לחייב באירו?'
 export const CLIENT_CHARGE_UNCLEAR = 'לא הבנתי אם לחייב. בחרו לא לחייב, או כתבו לקוח או בעלים.'
 export const CLIENT_CHARGE_AMOUNT_UNCLEAR = 'צריך סכום חיובי באירו, או בחרו לא לחייב.'
+export const CATEGORY_UNCLEAR = 'לא זיהיתי את הקטגוריה. בחרו מהרשימה, או כתבו שם קטגוריה קיים.'
+export const SUBCATEGORY_UNCLEAR = 'לא זיהיתי את תת־הקטגוריה. בחרו מהרשימה, או כתבו שם קיים.'
+export const CATEGORY_MATCHES = 'יש כמה התאמות. בחרו קטגוריה ותת־קטגוריה.'
 export const ASSISTANT_TALK_MESSAGE =
   'אפשר להכין טיוטת עסקה להכנסה או להוצאה. לדוגמה: שילמתי 120 אירו חשמל בדירה של תמיר. הטיוטה נוצרת רק אחרי אישור מפורש.'
 export const AMOUNT_ONLY_CLARIFICATION =
@@ -177,6 +180,10 @@ const PERSON_HINTS: readonly { readonly he: string; readonly en: string }[] = [
   { he: 'רוני', en: 'roni' },
   { he: 'יוסי', en: 'yossi' },
   { he: 'יעקב', en: 'jacob' },
+  { he: 'קיטי', en: 'kiti' },
+  { he: 'דקליה', en: 'dekelia' },
+  { he: 'רדיסון', en: 'radisson' },
+  { he: 'מזוטוס', en: 'mazotos' },
 ]
 
 const PROPERTY_ALIASES: readonly { readonly test: RegExp; readonly mustInclude: readonly string[] }[] = [
@@ -353,6 +360,62 @@ function uniqueByName(rows: readonly PropertyCatalogEntry[]): PropertyCatalogEnt
 
 function categoriesForSubcategory(sub: string): Category[] {
   return CATEGORIES.filter((c) => (CATEGORY_SUBCATEGORIES[c] ?? []).includes(sub))
+}
+
+function resolveCategoryAnswer(raw: string):
+  | { readonly kind: 'pair'; readonly category: Category; readonly subcategory: string }
+  | { readonly kind: 'category'; readonly category: Category }
+  | { readonly kind: 'choices'; readonly choices: NumberedChoice[] }
+  | { readonly kind: 'none' } {
+  const trimmed = raw.trim()
+  const halves = trimmed.split('/').map((part) => part.trim())
+  if (halves.length === 2) {
+    const cat = CATEGORIES.find((c) => c.toLowerCase() === halves[0].toLowerCase())
+    const list = cat ? CATEGORY_SUBCATEGORIES[cat] ?? [] : []
+    const sub = list.find((s) => s.toLowerCase() === halves[1].toLowerCase())
+    if (cat && sub) return { kind: 'pair', category: cat, subcategory: sub }
+  }
+
+  const named = CATEGORIES.find((c) => c.toLowerCase() === trimmed.toLowerCase())
+  if (named) return { kind: 'category', category: named }
+
+  const owners: { readonly category: Category; readonly subcategory: string }[] = []
+  for (let i = 0; i < CATEGORIES.length; i += 1) {
+    const category = CATEGORIES[i]
+    const list = CATEGORY_SUBCATEGORIES[category] ?? []
+    const sub = list.find((s) => s.toLowerCase() === trimmed.toLowerCase())
+    if (sub) owners.push({ category, subcategory: sub })
+  }
+  if (owners.length === 1) {
+    return { kind: 'pair', category: owners[0].category, subcategory: owners[0].subcategory }
+  }
+  if (owners.length > 1) {
+    return {
+      kind: 'choices',
+      choices: owners.slice(0, 3).map((row) => ({
+        id: `cat:${row.category}|${row.subcategory}`,
+        label: `${row.category} / ${row.subcategory}`,
+      })),
+    }
+  }
+
+  const pairs: NumberedChoice[] = []
+  const subs = keywordSubcategories(trimmed)
+  for (let s = 0; s < subs.length; s += 1) {
+    const sub = subs[s]
+    const cats = categoriesForSubcategory(sub)
+    for (let c = 0; c < cats.length; c += 1) {
+      pairs.push({ id: `cat:${cats[c]}|${sub}`, label: `${cats[c]} / ${sub}` })
+      if (pairs.length === 3) break
+    }
+    if (pairs.length === 3) break
+  }
+  if (pairs.length === 1) {
+    const [category, subcategory] = pairs[0].id.slice(4).split('|')
+    return { kind: 'pair', category: category as Category, subcategory }
+  }
+  if (pairs.length > 1) return { kind: 'choices', choices: pairs }
+  return { kind: 'none' }
 }
 
 export function extractAmountEur(text: string): string | 'other_currency' | null {
@@ -1145,6 +1208,9 @@ export function applyUserText(
       if (prompt.field === 'payer' || prompt.field === 'payee') {
         return applyTypedField(state, prompt.field, trimmed, ctx)
       }
+      if (prompt.field === 'category' || prompt.field === 'subcategory') {
+        return applyTypedField(state, prompt.field, trimmed, ctx)
+      }
     }
   }
 
@@ -1466,14 +1532,56 @@ function applyTypedField(
       return { ...state, lastPrompt: propertyQuestion([]) }
     }
   } else if (field === 'category') {
-    const cat = CATEGORIES.find((c) => c.toLowerCase() === raw.toLowerCase())
-    if (!cat) return state
-    slots = { ...slots, category: confirm(cat), subcategory: unknownSlot() }
+    const resolved = resolveCategoryAnswer(raw)
+    if (resolved.kind === 'pair') {
+      slots = { ...slots, category: confirm(resolved.category), subcategory: confirm(resolved.subcategory) }
+    } else if (resolved.kind === 'category') {
+      slots = { ...slots, category: confirm(resolved.category), subcategory: unknownSlot() }
+    } else if (resolved.kind === 'choices') {
+      return {
+        ...state,
+        lastPrompt: {
+          kind: 'question',
+          field: 'category',
+          prompt: CATEGORY_MATCHES,
+          choices: resolved.choices,
+          searchProperties: false,
+          allowOther: true,
+          allowUnknown: true,
+        },
+      }
+    } else {
+      return {
+        ...state,
+        lastPrompt: {
+          kind: 'question',
+          field: 'category',
+          prompt: CATEGORY_UNCLEAR,
+          choices: CATEGORIES.slice(0, 3).map((c) => ({ id: `catonly:${c}`, label: c })),
+          searchProperties: false,
+          allowOther: true,
+          allowUnknown: true,
+        },
+      }
+    }
   } else if (field === 'subcategory') {
     const cat = slots.category.value as Category | undefined
-    const list = cat ? CATEGORY_SUBCATEGORIES[cat] ?? [] : Object.values(CATEGORY_SUBCATEGORIES).flat()
+    const list = cat ? CATEGORY_SUBCATEGORIES[cat] ?? [] : []
     const hit = list.find((s) => s.toLowerCase() === raw.toLowerCase())
-    if (!hit) return { ...state, lastPrompt: nextPrompt(slots, ctx, state.hintText, false) }
+    if (!hit) {
+      return {
+        ...state,
+        lastPrompt: {
+          kind: 'question',
+          field: 'subcategory',
+          prompt: SUBCATEGORY_UNCLEAR,
+          choices: list.slice(0, 3).map((s) => ({ id: `sub:${s}`, label: s })),
+          searchProperties: false,
+          allowOther: true,
+          allowUnknown: true,
+        },
+      }
+    }
     slots = { ...slots, subcategory: confirm(hit) }
   } else if (field === 'payer') {
     slots = { ...slots, payer: confirm(raw) }

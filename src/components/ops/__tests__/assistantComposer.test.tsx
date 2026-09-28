@@ -1,6 +1,6 @@
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { AssistantChatHeader, ComposerClearButton } from '@/components/ops/AssistantChat'
+import { AssistantChatHeader, ComposerActionRow, ComposerClearButton, ComposerClearNotice } from '@/components/ops/AssistantChat'
 
 describe('assistant composer clear button', () => {
   it('clears typed text and says so', () => {
@@ -9,7 +9,6 @@ describe('assistant composer clear button', () => {
     const before = renderToStaticMarkup(
       <ComposerClearButton
         hasText={value.length > 0}
-        notice={notice}
         onClear={() => {
           value = ''
           notice = 'הטקסט נוקה'
@@ -24,18 +23,20 @@ describe('assistant composer clear button', () => {
     }
     onClear()
     const after = renderToStaticMarkup(
-      <ComposerClearButton hasText={value.length > 0} notice={notice} onClear={onClear} />,
+      <ComposerClearButton hasText={value.length > 0} onClear={onClear} />,
     )
+    const noticeHtml = renderToStaticMarkup(<ComposerClearNotice hasText={false} notice={notice} />)
     expect(value).toBe('')
-    expect(after).toContain('הטקסט נוקה')
+    expect(noticeHtml).toContain('הטקסט נוקה')
     expect(after).toContain('disabled')
   })
 
   it('is disabled with a visible notice when there is no text', () => {
     const html = renderToStaticMarkup(
-      <ComposerClearButton hasText={false} notice="" onClear={() => undefined} />,
+      <ComposerClearButton hasText={false} onClear={() => undefined} />,
     )
-    expect(html).toContain('אין טקסט למחיקה')
+    const noticeHtml = renderToStaticMarkup(<ComposerClearNotice hasText={false} notice="" />)
+    expect(noticeHtml).toContain('אין טקסט למחיקה')
     expect(html).toContain('disabled')
     expect(html).toContain('opacity-40')
   })
@@ -46,5 +47,16 @@ describe('assistant composer clear button', () => {
     expect(html).toContain('pl-16')
     expect(html).toContain('pt-16')
     expect(html).toContain('JJ Assistant / העוזר שלי')
+  })
+
+  it('keeps the send button on the composer action row', () => {
+    const html = renderToStaticMarkup(
+      <ComposerActionRow>
+        <button type="button" data-testid="assistant-send">Send</button>
+      </ComposerActionRow>,
+    )
+    expect(html).toContain('data-testid="assistant-composer-actions"')
+    expect(html).toContain('flex-nowrap')
+    expect(html).toContain('assistant-send')
   })
 })
