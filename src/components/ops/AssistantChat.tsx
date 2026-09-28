@@ -168,6 +168,7 @@ export function AssistantChat(props: {
   const [draft, setDraft] = useState<CollectorState>(bootRef.current)
   const [items, setItems] = useState<ChatItem[]>(() => introItems(bootRef.current as CollectorState))
   const [text, setText] = useState('')
+  const [clearNotice, setClearNotice] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [propertyQuery, setPropertyQuery] = useState('')
@@ -723,7 +724,7 @@ export function AssistantChat(props: {
 
   return (
     <div className="flex h-screen min-h-0 w-full max-w-full flex-col overflow-hidden overflow-x-hidden">
-      <header className="flex-shrink-0 border-b border-gray-200 bg-white px-4 pb-3 pt-16 md:px-6 md:pt-3">
+      <header className="flex-shrink-0 border-b border-gray-200 bg-white pb-3 pl-16 pr-4 pt-16 md:px-6 md:pt-3" data-testid="assistant-header">
         <div className="flex items-center gap-2">
           <Sparkles className="h-5 w-5 text-brand-500" aria-hidden />
           <h1 className="text-lg font-semibold text-gray-900">JJ Assistant / העוזר שלי</h1>
@@ -1045,7 +1046,17 @@ export function AssistantChat(props: {
             >
               עסקה חדשה
             </button>
-            <button type="button" className="btn-secondary min-h-11 min-w-11" aria-label="Clear typed text" onClick={() => setText('')} disabled={!text}>
+            <button
+              type="button"
+              className="btn-secondary min-h-11 min-w-11"
+              aria-label="מחק טקסט משדה הכתיבה"
+              data-testid="assistant-clear-input"
+              onClick={() => {
+                setText('')
+                setClearNotice('הטקסט נמחק משדה הכתיבה.')
+              }}
+              disabled={text.length === 0}
+            >
               <Trash2 className="h-4 w-4" />
             </button>
             <button
@@ -1059,6 +1070,9 @@ export function AssistantChat(props: {
               <Send className="h-4 w-4" />
             </button>
           </div>
+          {clearNotice && (
+            <p className="text-sm text-gray-600" dir="rtl" data-testid="assistant-clear-notice">{clearNotice}</p>
+          )}
         </div>
         {speech.listening && (
           <p className="mt-2 text-center text-xs font-medium text-red-600" data-testid="assistant-listening">מאזין…</p>

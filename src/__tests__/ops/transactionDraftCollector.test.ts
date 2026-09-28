@@ -214,7 +214,8 @@ describe('natural Hebrew intake and new-intent reset', () => {
     expect(electric.slots.amountEur.value).toBe('120')
     expect(electric.slots.category.value).toBe('Management')
     expect(electric.slots.subcategory.value).toBe('Electricity')
-    expect(electric.slots.payer.value).toBe('Yossi')
+    expect(electric.slots.payer.status).toBe('unknown')
+    expect(electric.slots.payer.value).toBeUndefined()
     expect(electric.slots.propertyName.status).toBe('unknown')
     expect(numberedDirectChoices(electric.lastPrompt).map((c) => c.label)).toEqual([
       'Tamir Dekelia', 'Tamir Kiti', 'Tamir Radisson',
@@ -489,6 +490,113 @@ describe('assistant intent routing', () => {
       expect(left.lastPrompt.kind).toBe('talk')
       expect(left.preface).toContain('בוטל. לא נוצרה טיוטה.')
     }
+  })
+})
+
+describe('expense payer, payee, and client charge', () => {
+  function question(state: ReturnType<typeof start>) {
+    expect(state.lastPrompt.kind).toBe('question')
+    if (state.lastPrompt.kind !== 'question') throw new Error('expected question')
+    return state.lastPrompt
+  }
+
+  function walkToPayer(text = 'שילמתי 500 אירו על חשמל') {
+    let state = applyUserText(start(), text, CTX)
+    expect(state.slots.payer.status).toBe('unknown')
+    expect(state.slots.amountEur.value).toBe('500')
+    const property = question(state)
+    expect(property.field).toBe('propertyName')
+    state = applyUserText(state, 'בלי נכס', CTX)
+    const date = question(state)
+    expect(date.field).toBe('date')
+    state = applyUserText(state, 'היום', CTX)
+    const payer = question(state)
+    expect(payer.prompt).toBe('מי שילם בפועל? (From / payer)')
+    expect(state.slots.payer.value).toBeUndefined()
+    return state
+  }
+
+  it('asks for an explicit payer and a different payee, and does not copy the expense amount', () => {
+    let state = walkToPayer()
+    state = applyUserText(state, 'Jacob', CTX)
+    const payee = question(state)
+    expect(payee.prompt).toBe('למי שולם? (To / payee)')
+    state = applyUserText(state, 'Company', CTX)
+    expect(state.slots.payer.value).toBe('Jacob')
+    expect(state.slots.payee.value).toBe('Company')
+    expect(state.slots.payer.value).not.toBe(state.slots.payee.value)
+    const charge = question(state)
+    expect(charge.choices.map((c) => c.label)).toEqual(['לא לחייב', 'לחייב לקוח/בעלים'])
+    expect(state.slots.clientCharge.value).toBeUndefined()
+
+    state = applyUserText(state, 'בעלים', CTX)
+    expect(question(state).prompt).toBe('כמה לחייב באירו?')
+    expect(state.slots.clientCharge.status).toBe('unknown')
+    state = applyUserText(state, '80', CTX)
+    expect(state.slots.clientCharge.value).toBe('80')
+    expect(state.slots.amountEur.value).toBe('500')
+  })
+
+  it('accepts לקוח as a request to enter a positive charge, and stores לא לחייב as null', () => {
+    let state = walkToPayer()
+    state = applyUserText(state, 'Anastasia', CTX)
+    state = applyUserText(state, 'JJ', CTX)
+    state = applyUserText(state, 'לקוח', CTX)
+    expect(question(state).prompt).toBe('כמה לחייב באירו?')
+    state = applyUserText(state, 'לא לחייב', CTX)
+    expect(state.slots.clientCharge.status).toBe('confirmed')
+    expect(state.slots.clientCharge.value).toBeNull()
+  })
+
+  it('rejects zero, negative, and unclear charge answers without copying 500', () => {
+    let state = walkToPayer()
+    state = applyUserText(state, 'Jacob', CTX)
+    state = applyUserText(state, 'Company', CTX)
+    state = applyUserText(state, 'אולי', CTX)
+    expect(question(state).prompt).toContain('לא הבנתי')
+    expect(question(state).choices.map((c) => c.label)).toEqual(['לא לחייב', 'לחייב לקוח/בעלים'])
+    expect(state.slots.clientCharge.value).toBeUndefined()
+    state = applyUserText(state, 'לחייב לקוח/בעלים', CTX)
+    for (const bad of ['0', '-5', 'לא ברור']) {
+      state = applyUserText(state, bad, CTX)
+      expect(question(state).prompt).toContain('סכום חיובי')
+      expect(state.slots.clientCharge.value).toBeUndefined()
+      expect(state.slots.amountEur.value).toBe('500')
+    }
+  })
+
+  it('replays each stage boundary and lets a later explicit answer win', () => {
+    const steps = ['שילמתי 500 אירו על חשמל', 'בלי נכס', 'היום', 'Jacob', 'Company', 'בעלים', '80']
+    steps.forEach((_, index) => {
+      const replayed = replayUtterances(steps.slice(0, index + 1), CTX, `replay-expense-${index}`)
+      expect(replayed.createdDraftId).toBeNull()
+      expect(replayed.slots.amountEur.value).toBe('500')
+    })
+    const earlyPayer = replayUtterances(steps.slice(0, 4), CTX, 'replay-payer-jacob')
+    expect(earlyPayer.slots.payer.value).toBe('Jacob')
+    const laterPayer = replayUtterances(
+      ['שילמתי 500 אירו על חשמל', 'בלי נכס', 'היום', 'Anastasia'],
+      CTX,
+      'replay-payer-anastasia',
+    )
+    expect(laterPayer.slots.payer.value).toBe('Anastasia')
+    const charged = replayUtterances(steps, CTX, 'replay-charge')
+    expect(charged.slots.clientCharge.value).toBe('80')
+    expect(charged.slots.payee.value).toBe('Company')
+    expect(charged.slots.payer.value).toBe('Jacob')
+  })
+
+  it('keeps cancel and a new transaction from creating a draft', () => {
+    const opened = walkToPayer()
+    const cancelled = applyUserText(opened, 'ביטול', CTX)
+    expect(cancelled.createdDraftId).toBeNull()
+    expect(cancelled.slots.amountEur.status).toBe('unknown')
+    expect(cancelled.preface).toContain('בוטל. לא נוצרה טיוטה.')
+
+    const restarted = resetForNewProposal(opened, 'draft-key-new')
+    expect(restarted.createdDraftId).toBeNull()
+    expect(restarted.slots.amountEur.status).toBe('unknown')
+    expect(restarted.preface).toContain('הבנתי, מתחילים עסקה חדשה.')
   })
 })
 

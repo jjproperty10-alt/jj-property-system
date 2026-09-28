@@ -40,6 +40,8 @@ describe('assistant microphone helpers', () => {
     expect(hook).toContain('stop()')
     expect(hook).toMatch(/useEffect\(\s*\(\)\s*=>\s*\(\)\s*=>\s*\{\s*stop\(\)/)
     expect(chat).toContain('onChange={(e) => setText(e.target.value)}')
+    expect(chat).toContain('data-testid="assistant-clear-input"')
+    expect(chat).toContain("setClearNotice('הטקסט נמחק משדה הכתיבה.')")
     expect(chat).not.toMatch(/onresult[\s\S]{0,200}sendBody/)
     expect(chat).toContain('MIC_PRIVACY_LABEL')
     expect(hook).toContain('continuous = false')
