@@ -168,6 +168,7 @@ export function AssistantChat(props: {
   const [draft, setDraft] = useState<CollectorState>(bootRef.current)
   const [items, setItems] = useState<ChatItem[]>(() => introItems(bootRef.current as CollectorState))
   const [text, setText] = useState('')
+  const [clearNotice, setClearNotice] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [propertyQuery, setPropertyQuery] = useState('')
@@ -177,6 +178,11 @@ export function AssistantChat(props: {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' })
   }, [items, draft.lastPrompt, loading])
+
+  useEffect(() => {
+    if (!text) return
+    setClearNotice((current) => (current ? '' : current))
+  }, [text])
 
   useEffect(() => {
     if (!props.initialConversationId) return
@@ -723,18 +729,7 @@ export function AssistantChat(props: {
 
   return (
     <div className="flex h-screen min-h-0 w-full max-w-full flex-col overflow-hidden overflow-x-hidden">
-      <header className="flex-shrink-0 border-b border-gray-200 bg-white px-4 pb-3 pt-16 md:px-6 md:pt-3">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-brand-500" aria-hidden />
-          <h1 className="text-lg font-semibold text-gray-900">JJ Assistant / העוזר שלי</h1>
-        </div>
-        <p className="mt-1 text-sm text-gray-600" dir="rtl">
-          העוזר מכין טיוטות בלבד. שום פעולה כספית אינה מתבצעת בלי אישור.
-        </p>
-        <p className="mt-1 text-xs font-medium text-brand-700" dir="rtl">
-          יכולת נתמכת: {ASSISTANT_CAPABILITY_LABEL}
-        </p>
-      </header>
+      <AssistantChatHeader />
 
       <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50 px-3 py-4 md:px-6" data-testid="assistant-thread">
         <ol className="mx-auto flex max-w-3xl flex-col gap-3">
@@ -1045,9 +1040,14 @@ export function AssistantChat(props: {
             >
               עסקה חדשה
             </button>
-            <button type="button" className="btn-secondary min-h-11 min-w-11" aria-label="Clear typed text" onClick={() => setText('')} disabled={!text}>
-              <Trash2 className="h-4 w-4" />
-            </button>
+            <ComposerClearButton
+              hasText={text.length > 0}
+              notice={clearNotice}
+              onClear={() => {
+                setText('')
+                setClearNotice('הטקסט נוקה')
+              }}
+            />
             <button
               type="button"
               data-testid="assistant-send"
@@ -1093,6 +1093,52 @@ function introItems(state: CollectorState): ChatItem[] {
     text: opening,
     prompt: state.lastPrompt,
   }]
+}
+
+export function AssistantChatHeader() {
+  return (
+    <header className="flex-shrink-0 border-b border-gray-200 bg-white pb-3 pl-16 pr-4 pt-16 md:px-6 md:pb-3 md:pt-3" data-testid="assistant-header">
+      <div className="flex min-w-0 items-center gap-2">
+        <Sparkles className="h-5 w-5 shrink-0 text-brand-500" aria-hidden />
+        <h1 className="min-w-0 break-words text-lg font-semibold text-gray-900">JJ Assistant / העוזר שלי</h1>
+      </div>
+      <p className="mt-1 text-sm text-gray-600" dir="rtl">
+        העוזר מכין טיוטות בלבד. שום פעולה כספית אינה מתבצעת בלי אישור.
+      </p>
+      <p className="mt-1 text-xs font-medium text-brand-700" dir="rtl">
+        יכולת נתמכת: {ASSISTANT_CAPABILITY_LABEL}
+      </p>
+    </header>
+  )
+}
+
+export function ComposerClearButton({
+  hasText,
+  notice,
+  onClear,
+}: {
+  hasText: boolean
+  notice: string
+  onClear: () => void
+}) {
+  const status = hasText ? '' : (notice || 'אין טקסט למחיקה')
+  return (
+    <>
+      <button
+        type="button"
+        data-testid="assistant-clear-text"
+        className={`btn-secondary min-h-11 min-w-11 ${hasText ? '' : 'cursor-not-allowed opacity-40'}`}
+        aria-label={hasText ? 'נקה את הטקסט' : 'אין טקסט למחיקה'}
+        disabled={!hasText}
+        onClick={onClear}
+      >
+        <Trash2 className="h-4 w-4" aria-hidden />
+      </button>
+      {status ? (
+        <p role="status" data-testid="assistant-clear-status" className="w-full text-xs text-gray-600">{status}</p>
+      ) : null}
+    </>
+  )
 }
 
 function promptText(prompt: AssistantPrompt, preface?: string): string {
