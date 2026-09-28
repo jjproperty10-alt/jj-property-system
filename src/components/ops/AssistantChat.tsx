@@ -180,6 +180,11 @@ export function AssistantChat(props: {
   }, [items, draft.lastPrompt, loading])
 
   useEffect(() => {
+    if (!text) return
+    setClearNotice((current) => (current ? '' : current))
+  }, [text])
+
+  useEffect(() => {
     if (!props.initialConversationId) return
     let cancelled = false
     void listOpsConversation(props.initialConversationId).then((listed) => {
@@ -978,10 +983,7 @@ export function AssistantChat(props: {
             dir="auto"
             value={text}
             disabled={loading}
-            onChange={(e) => {
-              setText(e.target.value)
-              setClearNotice('')
-            }}
+            onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
