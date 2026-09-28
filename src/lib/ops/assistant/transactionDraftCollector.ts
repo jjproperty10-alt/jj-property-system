@@ -14,7 +14,6 @@ import {
 import {
   classifyTransactionTurn,
   CORRECTION_HINT,
-  EXPENSE_VERB,
   hasExpenseVerb,
   hasReceiptVerb,
   isAmountOnlyUtterance,
@@ -133,6 +132,7 @@ export interface CollectorState {
   readonly hintText: string
   readonly preface: string
   readonly pendingMessage: string
+  readonly awaitingClientChargeAmount: boolean
 }
 
 const EMPTY_SLOT: Slot<never> = { status: 'unknown', value: undefined }
@@ -407,10 +407,6 @@ function extractKnownPayee(text: string): string | null {
   return null
 }
 
-function paidByStaff(text: string): boolean {
-  return EXPENSE_VERB.test(text) || /\bi paid\b/i.test(text)
-}
-
 function tenantPaid(text: string): boolean {
   return /הדייר|דייר\s+שילם|שילם\s+לי/.test(text)
 }
@@ -522,17 +518,11 @@ function applyClosedSemantics(slots: DraftSlots, text: string, ctx: CollectorCon
       category: assign(next.category, 'Management'),
       subcategory: assign(next.subcategory, sub),
     }
-    if (paidByStaff(text) && ctx.staffPayerName) {
-      next = { ...next, payer: assign(next.payer, ctx.staffPayerName) }
-    }
   } else if (hasExpenseVerb(text) && isCleaning(text)) {
     next = {
       ...next,
       category: assign(next.category, 'Management'),
       subcategory: assign(next.subcategory, 'Cleaning'),
-    }
-    if (paidByStaff(text) && ctx.staffPayerName) {
-      next = { ...next, payer: assign(next.payer, ctx.staffPayerName) }
     }
   } else if (tenantPaid(text) && hasReceiptVerb(text)) {
     next = { ...next, payer: assign(next.payer, 'Tenant') }
@@ -566,10 +556,6 @@ function applyUtterance(slots: DraftSlots, text: string, ctx: CollectorContext, 
   const payee = extractKnownPayee(text)
   if (payee && (hasExpenseVerb(text) || /מקבל|קיבל|לפאבי|לפבי|ליוסי|ליעקב/.test(text))) {
     next = { ...next, payee: assign(next.payee, payee) }
-  }
-
-  if (paidByStaff(text) && ctx.staffPayerName) {
-    next = { ...next, payer: assign(next.payer, ctx.staffPayerName) }
   }
 
   const resolved = resolveProperty(text, ctx.catalog)
@@ -665,6 +651,52 @@ function keywordSubcategories(text: string): string[] {
   return unique
 }
 
+function positiveChargeAmount(text: string): string | null {
+  const raw = text.trim()
+  if (extractExplicitNoneClientCharge(raw) || raw.startsWith('-')) return null
+  const labeled = raw.match(/^(\d+(?:[.,]\d{1,2})?)(?:\s*(?:€|euros?|eur|אירו|יורו))?$/i)
+  if (!labeled) return null
+  const amount = normalizeAmount(labeled[1])
+  const n = Number(amount)
+  if (!Number.isFinite(n) || n <= 0) return null
+  return amount
+}
+
+function wantsPartyCharge(text: string): boolean {
+  return /^(?:בעלים|לקוח|לחייב(?:\s+לקוח\/בעלים)?)$/.test(text.trim())
+}
+
+function chargeDecisionQuestion(unclear: boolean): AssistantPrompt {
+  return {
+    kind: 'question',
+    field: 'clientCharge',
+    prompt: unclear
+      ? 'לא הבנתי. אפשר לבחור לא לחייב, או לחייב לקוח/בעלים ואז לכתוב סכום חיובי באירו.'
+      : 'האם לחייב את הלקוח או הבעלים?',
+    choices: [
+      { id: CHOICE_NONE, label: 'לא לחייב' },
+      { id: 'charge:party', label: 'לחייב לקוח/בעלים' },
+    ],
+    searchProperties: false,
+    allowOther: true,
+    allowUnknown: true,
+  }
+}
+
+function chargeAmountQuestion(rejected: boolean): AssistantPrompt {
+  return {
+    kind: 'question',
+    field: 'clientCharge',
+    prompt: rejected
+      ? 'צריך סכום חיובי באירו. הסכום של ההוצאה לא מועתק.'
+      : 'כמה לחייב באירו?',
+    choices: [{ id: CHOICE_NONE, label: 'לא לחייב' }],
+    searchProperties: false,
+    allowOther: true,
+    allowUnknown: false,
+  }
+}
+
 function incomingRent(slots: DraftSlots): boolean {
   return slots.subcategory.value === 'Tenant Payment' && slots.payer.value === 'Tenant'
 }
@@ -674,6 +706,7 @@ function nextPrompt(
   ctx: CollectorContext,
   lastText: string,
   reviewDismissed = false,
+  awaitingClientChargeAmount = false,
 ): AssistantPrompt {
   const now = ctx.now ?? new Date()
   const parsedDate = parseCyprusDate(lastText, now)
@@ -807,10 +840,11 @@ function nextPrompt(
 
   if (!slotReady(slots.payer)) {
     const staff = ctx.staffPayerName
+    const receipt = incomingRent(slots) || hasReceiptVerb(lastText)
     return {
       kind: 'question',
       field: 'payer',
-      prompt: 'מי שילם?',
+      prompt: receipt ? 'מי שילם?' : 'מי שילם בפועל? (From / payer)',
       choices: staff ? [{ id: `payer:${staff}`, label: staff }] : [],
       searchProperties: false,
       allowOther: true,
@@ -838,7 +872,7 @@ function nextPrompt(
     return {
       kind: 'question',
       field: 'payee',
-      prompt: receipt ? 'מי קיבל את הכסף?' : 'למי שולם? אני לא מניח מקבל.',
+      prompt: receipt ? 'מי קיבל את הכסף?' : 'למי שולם? (To / payee)',
       choices,
       searchProperties: false,
       allowOther: true,
@@ -847,15 +881,7 @@ function nextPrompt(
   }
 
   if (!slotReady(slots.clientCharge)) {
-    return {
-      kind: 'question',
-      field: 'clientCharge',
-      prompt: 'האם לחייב את הלקוח/הבעלים? אני לא מעתיק את הסכום אוטומטית.',
-      choices: [{ id: CHOICE_NONE, label: 'אין חיוב (NULL)' }],
-      searchProperties: false,
-      allowOther: true,
-      allowUnknown: true,
-    }
+    return awaitingClientChargeAmount ? chargeAmountQuestion(false) : chargeDecisionQuestion(false)
   }
 
   if (!slotReady(slots.description)) {
@@ -904,6 +930,7 @@ export function createCollectorState(idempotencyKey: string): CollectorState {
     hintText: '',
     preface: '',
     pendingMessage: '',
+    awaitingClientChargeAmount: false,
   }
 }
 
@@ -1045,6 +1072,49 @@ function applyCorrection(state: CollectorState, text: string, ctx: CollectorCont
   }
 }
 
+function applyClientChargeText(
+  state: CollectorState,
+  text: string,
+  ctx: CollectorContext,
+): CollectorState {
+  const awaiting = state.awaitingClientChargeAmount
+  if (extractExplicitNoneClientCharge(text)) {
+    const slots = { ...state.slots, clientCharge: confirm<string | null>(null) }
+    return {
+      ...state,
+      slots,
+      awaitingClientChargeAmount: false,
+      preface: '',
+      lastPrompt: nextPrompt(slots, ctx, state.hintText, false, false),
+    }
+  }
+  if (!awaiting && wantsPartyCharge(text)) {
+    return {
+      ...state,
+      awaitingClientChargeAmount: true,
+      preface: '',
+      lastPrompt: chargeAmountQuestion(false),
+    }
+  }
+  const amount = positiveChargeAmount(text)
+  if (amount && (awaiting || /^\d/.test(text.trim()))) {
+    const slots = { ...state.slots, clientCharge: confirm(amount) }
+    return {
+      ...state,
+      slots,
+      awaitingClientChargeAmount: false,
+      preface: '',
+      lastPrompt: nextPrompt(slots, ctx, state.hintText, false, false),
+    }
+  }
+  return {
+    ...state,
+    awaitingClientChargeAmount: awaiting,
+    preface: '',
+    lastPrompt: awaiting ? chargeAmountQuestion(true) : chargeDecisionQuestion(true),
+  }
+}
+
 export function applyUserText(
   state: CollectorState,
   text: string,
@@ -1082,6 +1152,24 @@ export function applyUserText(
     }
     if (trimmed === 'אני לא יודע' || trimmed.toLowerCase() === "i don't know") {
       return applyChoiceId(state, CHOICE_UNKNOWN, trimmed, ctx)
+    }
+    if (
+      prompt.field === 'clientCharge'
+      && !isCollectionExit(trimmed)
+      && trimmed !== 'עסקה חדשה'
+    ) {
+      const turn = classifyMessage(state, trimmed, ctx)
+      if (turn !== 'cancel' && turn !== 'new_transaction') {
+        return applyClientChargeText(state, trimmed, ctx)
+      }
+    }
+    if (
+      (prompt.field === 'payer' || prompt.field === 'payee')
+      && !isCollectionExit(trimmed)
+      && trimmed !== 'עסקה חדשה'
+      && classifyMessage(state, trimmed, ctx) === 'continuation'
+    ) {
+      return applyTypedField(state, prompt.field, trimmed, ctx)
     }
   }
 
@@ -1246,15 +1334,8 @@ export function applyChoiceId(
     if (field === 'clientCharge') {
       return {
         ...state,
-        lastPrompt: {
-          kind: 'question',
-          field: 'clientCharge',
-          prompt: 'צריך החלטה מפורשת: אין חיוב, או סכום באירו.',
-          choices: [{ id: CHOICE_NONE, label: 'אין חיוב (NULL)' }],
-          searchProperties: false,
-          allowOther: true,
-          allowUnknown: false,
-        },
+        awaitingClientChargeAmount: false,
+        lastPrompt: chargeDecisionQuestion(true),
       }
     }
     if (field === 'notes') {
@@ -1266,7 +1347,12 @@ export function applyChoiceId(
   if (id === CHOICE_NONE) {
     if (field === 'clientCharge') {
       const slots = { ...state.slots, clientCharge: confirm<string | null>(null) }
-      return { ...state, slots, lastPrompt: nextPrompt(slots, ctx, state.hintText, false) }
+      return {
+        ...state,
+        slots,
+        awaitingClientChargeAmount: false,
+        lastPrompt: nextPrompt(slots, ctx, state.hintText, false, false),
+      }
     }
     if (field === 'notes') {
       const slots = { ...state.slots, notes: confirm('') }
@@ -1309,6 +1395,13 @@ export function applyChoiceId(
   if (id.startsWith('payee:')) {
     const slots = { ...state.slots, payee: confirm(id.slice(6)) }
     return { ...state, slots, lastPrompt: nextPrompt(slots, ctx, state.hintText, false), reviewDismissed: false }
+  }
+  if (id === 'charge:party') {
+    return {
+      ...state,
+      awaitingClientChargeAmount: true,
+      lastPrompt: chargeAmountQuestion(false),
+    }
   }
   if (id === 'change:property') {
     const slots = { ...state.slots, propertyName: unknownSlot<string | null>() }
@@ -1409,15 +1502,34 @@ function applyTypedField(
   } else if (field === 'notes') {
     slots = { ...slots, notes: confirm(raw) }
   } else if (field === 'clientCharge') {
-    if (extractExplicitNoneClientCharge(raw) || raw === '' || raw.toLowerCase() === 'null') {
+    const amount = positiveChargeAmount(raw)
+    if (extractExplicitNoneClientCharge(raw)) {
       slots = { ...slots, clientCharge: confirm<string | null>(null) }
-    } else {
-      const amount = extractAmountEur(raw) ?? (/^\d+(?:[.,]\d{1,2})?$/.test(raw) ? normalizeAmount(raw) : null)
-      if (!amount || amount === 'other_currency') return state
+    } else if (wantsPartyCharge(raw)) {
+      return {
+        ...state,
+        awaitingClientChargeAmount: true,
+        lastPrompt: chargeAmountQuestion(false),
+        preface: '',
+      }
+    } else if (amount) {
       slots = { ...slots, clientCharge: confirm(amount) }
+    } else {
+      return {
+        ...state,
+        awaitingClientChargeAmount: state.awaitingClientChargeAmount,
+        lastPrompt: state.awaitingClientChargeAmount ? chargeAmountQuestion(true) : chargeDecisionQuestion(true),
+        preface: '',
+      }
     }
   }
-  return { ...state, slots, lastPrompt: nextPrompt(slots, ctx, `${state.hintText} ${raw}`.trim(), false), preface: '' }
+  return {
+    ...state,
+    slots,
+    awaitingClientChargeAmount: false,
+    lastPrompt: nextPrompt(slots, ctx, `${state.hintText} ${raw}`.trim(), false, false),
+    preface: '',
+  }
 }
 
 export function exactUniqueCatalogName(
