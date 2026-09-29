@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { Mic, MicOff, Send, Sparkles, Square, Trash2 } from 'lucide-react'
 import {
@@ -992,11 +992,12 @@ export function AssistantChat(props: {
             }}
             placeholder="כתבו או דיברו בעברית…"
           />
-          <div className="flex flex-wrap items-center gap-2">
+          <ComposerActionRow>
             <label htmlFor="assistant-lang" className="sr-only">שפת הכתבה</label>
             <select
               id="assistant-lang"
-              className="input min-w-0 max-w-full py-2 text-xs"
+              data-testid="assistant-lang"
+              className="w-[4.5rem] shrink-0 rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs"
               value={speech.lang}
               onChange={(e) => speech.setLang(e.target.value as typeof speech.lang)}
               disabled={speech.listening}
@@ -1006,13 +1007,13 @@ export function AssistantChat(props: {
               ))}
             </select>
             {speech.listening ? (
-              <button type="button" className="btn-secondary min-h-11 min-w-11" aria-label="Stop listening" onClick={speech.stop}>
+              <button type="button" className="btn-secondary min-h-11 min-w-11 shrink-0 px-2" aria-label="Stop listening" onClick={speech.stop}>
                 <Square className="mx-auto h-4 w-4" />
               </button>
             ) : (
               <button
                 type="button"
-                className="btn-secondary min-h-11 min-w-11"
+                className="btn-secondary min-h-11 min-w-11 shrink-0 px-2"
                 aria-label="Start microphone"
                 onClick={speech.start}
                 disabled={!speech.supported || loading}
@@ -1022,7 +1023,7 @@ export function AssistantChat(props: {
             )}
             <button
               type="button"
-              className="btn-secondary min-h-11 px-3 text-sm"
+              className="btn-secondary min-h-11 min-w-0 shrink px-2 text-sm"
               aria-label="עסקה חדשה"
               data-testid="assistant-new-transaction"
               disabled={loading || Boolean(draft.createdDraftId)}
@@ -1042,7 +1043,6 @@ export function AssistantChat(props: {
             </button>
             <ComposerClearButton
               hasText={text.length > 0}
-              notice={clearNotice}
               onClear={() => {
                 setText('')
                 setClearNotice('הטקסט נוקה')
@@ -1051,14 +1051,15 @@ export function AssistantChat(props: {
             <button
               type="button"
               data-testid="assistant-send"
-              className="btn-primary min-h-11 min-w-11"
+              className="btn-primary ml-auto min-h-11 min-w-11 shrink-0 px-3"
               aria-label="Send"
               disabled={loading || !text.trim()}
               onClick={() => void sendBody(text)}
             >
               <Send className="h-4 w-4" />
             </button>
-          </div>
+          </ComposerActionRow>
+          <ComposerClearNotice hasText={text.length > 0} notice={clearNotice} />
         </div>
         {speech.listening && (
           <p className="mt-2 text-center text-xs font-medium text-red-600" data-testid="assistant-listening">מאזין…</p>
@@ -1112,32 +1113,40 @@ export function AssistantChatHeader() {
   )
 }
 
+export function ComposerActionRow({ children }: { children: ReactNode }) {
+  return (
+    <div data-testid="assistant-composer-actions" className="flex min-w-0 flex-nowrap items-center gap-2">
+      {children}
+    </div>
+  )
+}
+
+export function ComposerClearNotice({ hasText, notice }: { hasText: boolean; notice: string }) {
+  const status = hasText ? '' : (notice || 'אין טקסט למחיקה')
+  if (!status) return null
+  return (
+    <p role="status" data-testid="assistant-clear-status" className="text-xs text-gray-600">{status}</p>
+  )
+}
+
 export function ComposerClearButton({
   hasText,
-  notice,
   onClear,
 }: {
   hasText: boolean
-  notice: string
   onClear: () => void
 }) {
-  const status = hasText ? '' : (notice || 'אין טקסט למחיקה')
   return (
-    <>
-      <button
-        type="button"
-        data-testid="assistant-clear-text"
-        className={`btn-secondary min-h-11 min-w-11 ${hasText ? '' : 'cursor-not-allowed opacity-40'}`}
-        aria-label={hasText ? 'נקה את הטקסט' : 'אין טקסט למחיקה'}
-        disabled={!hasText}
-        onClick={onClear}
-      >
-        <Trash2 className="h-4 w-4" aria-hidden />
-      </button>
-      {status ? (
-        <p role="status" data-testid="assistant-clear-status" className="w-full text-xs text-gray-600">{status}</p>
-      ) : null}
-    </>
+    <button
+      type="button"
+      data-testid="assistant-clear-text"
+      className={`btn-secondary min-h-11 min-w-11 shrink-0 px-2 ${hasText ? '' : 'cursor-not-allowed opacity-40'}`}
+      aria-label={hasText ? 'נקה את הטקסט' : 'אין טקסט למחיקה'}
+      disabled={!hasText}
+      onClick={onClear}
+    >
+      <Trash2 className="h-4 w-4" aria-hidden />
+    </button>
   )
 }
 

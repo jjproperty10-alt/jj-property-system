@@ -8,6 +8,8 @@ import {
   nicosiaToday,
   numberedDirectChoices,
   replayUtterances,
+  resolveProperty,
+  reviewFromSlots,
   cancelCollector,
   resetForChangeDetails,
   resetForNewProposal,
@@ -608,6 +610,113 @@ describe('assistant intent routing', () => {
     expect(restarted.preface).toContain(UNSAVED_PREVIOUS_NOTICE)
     expect(restarted.slots.amountEur.status).toBe('unknown')
     expect(restarted.createdDraftId).toBeNull()
+  })
+
+  it('maps תמיר קיטי to the single catalog name Tamir Kiti and replays that match', () => {
+    const hebrew = resolveProperty('תמיר קיטי', CATALOG)
+    const english = resolveProperty('Tamir Kiti', CATALOG)
+    expect(hebrew.kind).toBe('unique')
+    expect(english.kind).toBe('unique')
+    if (hebrew.kind !== 'unique' || english.kind !== 'unique') return
+    expect(hebrew.entry.name).toBe('Tamir Kiti')
+    expect(english.entry.name).toBe('Tamir Kiti')
+
+    const partial = resolveProperty('תמיר', CATALOG)
+    expect(partial.kind).toBe('ambiguous')
+    if (partial.kind !== 'ambiguous') return
+    expect(partial.entries.map((entry) => entry.name)).toEqual(['Tamir Dekelia', 'Tamir Kiti', 'Tamir Radisson'])
+
+    const duplicate = resolveProperty('תמיר קיטי', [
+      { id: '2', name: 'Tamir Kiti' },
+      { id: '9', name: 'Tamir Kiti Annex' },
+    ])
+    expect(duplicate.kind).toBe('ambiguous')
+
+    const missing = resolveProperty('בית שלא קיים', CATALOG)
+    expect(missing.kind).toBe('none')
+
+    const opened = applyUserText(start(), 'שילמתי 20 אירו', CTX)
+    const picked = applyUserText(opened, 'תמיר קיטי', CTX)
+    expect(picked.slots.propertyName.value).toBe('Tamir Kiti')
+    expect(picked.createdDraftId).toBeNull()
+
+    const replayed = replayUtterances(['שילמתי 20 אירו', 'תמיר קיטי'], CTX, 'replay-kiti')
+    expect(replayed.slots.propertyName.value).toBe('Tamir Kiti')
+    const withoutKiti = CATALOG.filter((entry) => entry.name !== 'Tamir Kiti')
+    const rejected = replayUtterances(
+      ['שילמתי 20 אירו', 'תמיר קיטי'],
+      { ...CTX, catalog: withoutKiti },
+      'replay-kiti-missing',
+    )
+    expect(rejected.slots.propertyName.value).not.toBe('Tamir Kiti')
+    expect(rejected.lastPrompt.kind === 'question' ? rejected.lastPrompt.field : '').toBe('propertyName')
+    expect(rejected.createdDraftId).toBeNull()
+  })
+
+  it('accepts a typed category and does not repeat the question for an unclear answer', () => {
+    let state = applyUserText(start(), 'שילמתי 40 אירו', CTX)
+    state = applyUserText(state, 'בלי נכס', CTX)
+    state = applyUserText(state, 'היום', CTX)
+    expect(state.lastPrompt.kind).toBe('question')
+    if (state.lastPrompt.kind !== 'question') return
+    expect(state.lastPrompt.field).toBe('category')
+    const asked = state.lastPrompt.prompt
+    const named = applyUserText(state, 'Management', CTX)
+    expect(named.slots.category.value).toBe('Management')
+    expect(named.lastPrompt.kind === 'question' ? named.lastPrompt.field : '').toBe('subcategory')
+    const unclear = applyUserText(state, 'בלה', CTX)
+    expect(unclear.slots.category.status).toBe('unknown')
+    expect(unclear.lastPrompt.kind).toBe('question')
+    if (unclear.lastPrompt.kind !== 'question') return
+    expect(unclear.lastPrompt.prompt).not.toBe(asked)
+    expect(unclear.lastPrompt.prompt).toContain('לא זיהיתי')
+    const replayed = replayUtterances(
+      ['שילמתי 40 אירו', 'בלי נכס', 'היום', 'Management'],
+      CTX,
+      'replay-category',
+    )
+    expect(replayed.slots.category.value).toBe('Management')
+    expect(replayed.createdDraftId).toBeNull()
+  })
+
+  it('maps ניהול at the category question to canonical Management', () => {
+    let state = applyUserText(start(), 'שילמתי 40 אירו', CTX)
+    state = applyUserText(state, 'בלי נכס', CTX)
+    state = applyUserText(state, 'היום', CTX)
+    expect(state.lastPrompt.kind).toBe('question')
+    if (state.lastPrompt.kind !== 'question') return
+    expect(state.lastPrompt.field).toBe('category')
+    const asked = state.lastPrompt.prompt
+
+    const named = applyUserText(state, 'ניהול', CTX)
+    expect(named.slots.category.value).toBe('Management')
+    expect(named.slots.category.status).toBe('confirmed')
+    expect(reviewFromSlots(named.slots).category).toBe('Management')
+    expect(named.lastPrompt.kind === 'question' ? named.lastPrompt.field : '').toBe('subcategory')
+    expect(named.createdDraftId).toBeNull()
+
+    const unclear = applyUserText(state, 'בלה', CTX)
+    expect(unclear.slots.category.status).toBe('unknown')
+    expect(unclear.lastPrompt.kind).toBe('question')
+    if (unclear.lastPrompt.kind !== 'question') return
+    expect(unclear.lastPrompt.prompt).not.toBe(asked)
+    expect(unclear.lastPrompt.prompt).toContain('לא זיהיתי')
+
+    const otherHebrew = applyUserText(state, 'שיפוץ', CTX)
+    expect(otherHebrew.slots.category.status).toBe('unknown')
+    const feeLabel = applyUserText(state, 'דמי ניהול', CTX)
+    expect(feeLabel.slots.category.status).toBe('unknown')
+    expect(feeLabel.slots.subcategory.status).toBe('unknown')
+
+    const replayed = replayUtterances(
+      ['שילמתי 40 אירו', 'בלי נכס', 'היום', 'ניהול'],
+      CTX,
+      'replay-nihul',
+    )
+    expect(replayed.slots.category.value).toBe('Management')
+    expect(reviewFromSlots(replayed.slots).category).toBe('Management')
+    expect(replayed.lastPrompt.kind === 'question' ? replayed.lastPrompt.field : '').toBe('subcategory')
+    expect(replayed.createdDraftId).toBeNull()
   })
 
   it('leaves collection on cancel, stop, or a topic change without creating a draft', () => {
