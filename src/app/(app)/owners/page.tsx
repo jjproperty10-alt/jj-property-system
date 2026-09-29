@@ -10,11 +10,22 @@
  * Architecture: Server Component fetches data → OwnersRoomClient handles
  * client-side search/filter interactivity. No new DS primitives —
  * uses existing DS tokens/styles locally.
+ *
+ * Staff gate: authenticateStatementUser() runs before getOwnersRoom().
+ * The same active-staff check as /owners/[slug]. Middleware, hidden UI,
+ * and service-role RLS are not the gate.
+ *
+ * The Owners Room remains limited to a single active company. Do not enable
+ * it for a second company until every list source, certification, and balance
+ * is isolated by company and entity id. This page does not filter those
+ * sources and does not establish company isolation.
  */
 
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { notFound, redirect } from 'next/navigation'
 import { PageShell, WorkspaceHeader } from '@/components/ds'
+import { authenticateStatementUser } from '@/lib/statements/statementAuthService'
 import { getOwnersRoom } from '@/lib/owners/ownerWorkspaceService'
 import { OwnersRoomClient } from './OwnersRoomClient'
 
@@ -29,6 +40,15 @@ export default async function OwnersRoomPage({
 }: {
   searchParams?: { q?: string }
 }) {
+  const auth = await authenticateStatementUser()
+  if (!auth.ok) {
+    if (auth.error === 'NO_SESSION') {
+      redirect('/login')
+    }
+    // NOT_STAFF, STAFF_INACTIVE, AUTH_ERROR — same block as /owners/[slug].
+    notFound()
+  }
+
   const room = await getOwnersRoom()
   const initialQuery = typeof searchParams?.q === 'string' ? searchParams.q : ''
 
