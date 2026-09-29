@@ -51,6 +51,7 @@ DECLARE
   engagement uuid;
   company uuid;
   draft_id uuid;
+  first_draft uuid;
 BEGIN
   SELECT company_id INTO sole FROM registry.companies WHERE status = 'active';
   SELECT user_id INTO jj_user
@@ -111,8 +112,30 @@ BEGIN
     FROM finance.agent_transaction_drafts
     WHERE id = draft_id;
     INSERT INTO slice2_matrix VALUES ('one_draft_property', company = prop_company, 'assigned');
+    first_draft := draft_id;
   EXCEPTION WHEN OTHERS THEN
     INSERT INTO slice2_matrix VALUES ('one_draft_property', false, SQLERRM);
+  END;
+
+  BEGIN
+    SELECT result.id INTO draft_id
+    FROM public.create_agent_transaction_draft(
+      CURRENT_DATE, prop_id, 'slice2', 'JJ', 'Other',
+      NULL, NULL, NULL, NULL, NULL, 'slice2', 'draft',
+      'slice2-draft-prop', 'manual_form', 1
+    ) AS result;
+    INSERT INTO slice2_matrix VALUES (
+      'one_draft_reuse_same_company',
+      draft_id = first_draft
+        AND (
+          SELECT count(*)
+          FROM finance.agent_transaction_drafts
+          WHERE idempotency_key = 'slice2-draft-prop'
+        ) = 1,
+      'reused'
+    );
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO slice2_matrix VALUES ('one_draft_reuse_same_company', false, SQLERRM);
   END;
 
   BEGIN
@@ -236,6 +259,47 @@ BEGIN
   INSERT INTO public.properties (name, operating_company_id)
   VALUES ('slice2-prop-b', company_b)
   RETURNING id INTO prop_b;
+
+  ALTER TABLE finance.agent_transaction_drafts DISABLE TRIGGER trg_agent_tx_drafts_company;
+  CALL pg_temp.slice2_actor('authenticated', jj_user);
+  INSERT INTO finance.agent_transaction_drafts (
+    created_by, status, date, property_id, property_name_input,
+    category, subcategory, source_type, schema_version,
+    idempotency_key, operating_company_id
+  ) VALUES (
+    jj_user, 'draft', CURRENT_DATE, prop_b, 'slice2-b',
+    'JJ', 'Other', 'manual_form', 1,
+    'slice2-cross-key', company_b
+  );
+  ALTER TABLE finance.agent_transaction_drafts ENABLE TRIGGER trg_agent_tx_drafts_company;
+  BEGIN
+    SELECT result.id INTO draft_id
+    FROM public.create_agent_transaction_draft(
+      CURRENT_DATE, prop_id, 'slice2', 'JJ', 'Other',
+      NULL, NULL, NULL, NULL, NULL, 'slice2', 'draft',
+      'slice2-cross-key', 'manual_form', 1
+    ) AS result;
+    INSERT INTO slice2_matrix VALUES ('two_draft_key_other_company_blocked', false, 'returned');
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO slice2_matrix VALUES (
+      'two_draft_key_other_company_blocked',
+      SQLERRM = 'BLOCKED_BY_COMPANY_CONTEXT'
+        AND (
+          SELECT count(*)
+          FROM finance.agent_transaction_drafts
+          WHERE idempotency_key = 'slice2-cross-key'
+            AND operating_company_id = prop_company
+        ) = 0
+        AND (
+          SELECT count(*)
+          FROM finance.agent_transaction_drafts
+          WHERE idempotency_key = 'slice2-cross-key'
+            AND operating_company_id = company_b
+        ) = 1,
+      SQLERRM
+    );
+  END;
+
   BEGIN
     SELECT result.id INTO draft_id
     FROM public.create_agent_transaction_draft(

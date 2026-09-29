@@ -4,6 +4,11 @@
 -- and consumed in the same transaction by the company helper.
 -- Direct inserts, set_config, and an explicit UUID stay fail-closed
 -- once more than one company is active.
+-- idempotency_key stays globally UNIQUE. Reuse is allowed only when the
+-- existing draft belongs to the company this call would write. A key owned
+-- by another company raises BLOCKED_BY_COMPANY_CONTEXT and returns nothing.
+-- A later slice may scope the key to one company. This slice does not
+-- change the existing global uniqueness constraint.
 -- This migration does not insert a company, user, membership, or business row.
 
 BEGIN;
@@ -325,6 +330,9 @@ DECLARE
   v_id uuid;
   v_row_status text;
   v_company uuid;
+  v_existing_company uuid;
+  v_expected_company uuid;
+  v_active_count integer;
 BEGIN
   v_uid := auth.uid();
   IF v_uid IS NULL THEN
@@ -413,14 +421,32 @@ BEGIN
     RETURN;
   END IF;
 
-  SELECT d.id, d.status
-    INTO v_id, v_row_status
+  SELECT d.id, d.status, d.operating_company_id
+    INTO v_id, v_row_status, v_existing_company
     FROM finance.agent_transaction_drafts AS d
    WHERE d.idempotency_key = btrim(p_idempotency_key);
 
   IF v_id IS NULL THEN
     RAISE EXCEPTION 'Draft already exists for this key.'
       USING ERRCODE = 'unique_violation';
+  END IF;
+
+  v_expected_company := v_company;
+  IF v_expected_company IS NULL THEN
+    SELECT count(*)
+      INTO v_active_count
+    FROM registry.companies
+    WHERE status = 'active';
+    IF v_active_count = 1 THEN
+      SELECT company_id
+        INTO v_expected_company
+      FROM registry.companies
+      WHERE status = 'active';
+    END IF;
+  END IF;
+
+  IF v_existing_company IS DISTINCT FROM v_expected_company THEN
+    RAISE EXCEPTION 'BLOCKED_BY_COMPANY_CONTEXT';
   END IF;
 
   id := v_id;
@@ -478,6 +504,8 @@ BEGIN
        WHERE namespace.nspname = 'public'
          AND proc.proname = 'create_agent_transaction_draft'
          AND position('public.properties' in proc.prosrc) > 0
+         AND position('d.operating_company_id' in proc.prosrc) > 0
+         AND position('BLOCKED_BY_COMPANY_CONTEXT' in proc.prosrc) > 0
          AND has_function_privilege('authenticated', proc.oid, 'EXECUTE')
          AND NOT has_function_privilege('service_role', proc.oid, 'EXECUTE')
      ) <> 1
