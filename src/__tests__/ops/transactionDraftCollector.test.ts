@@ -9,6 +9,7 @@ import {
   numberedDirectChoices,
   replayUtterances,
   resolveProperty,
+  reviewFromSlots,
   cancelCollector,
   resetForChangeDetails,
   resetForNewProposal,
@@ -675,6 +676,46 @@ describe('assistant intent routing', () => {
       'replay-category',
     )
     expect(replayed.slots.category.value).toBe('Management')
+    expect(replayed.createdDraftId).toBeNull()
+  })
+
+  it('maps ניהול at the category question to canonical Management', () => {
+    let state = applyUserText(start(), 'שילמתי 40 אירו', CTX)
+    state = applyUserText(state, 'בלי נכס', CTX)
+    state = applyUserText(state, 'היום', CTX)
+    expect(state.lastPrompt.kind).toBe('question')
+    if (state.lastPrompt.kind !== 'question') return
+    expect(state.lastPrompt.field).toBe('category')
+    const asked = state.lastPrompt.prompt
+
+    const named = applyUserText(state, 'ניהול', CTX)
+    expect(named.slots.category.value).toBe('Management')
+    expect(named.slots.category.status).toBe('confirmed')
+    expect(reviewFromSlots(named.slots).category).toBe('Management')
+    expect(named.lastPrompt.kind === 'question' ? named.lastPrompt.field : '').toBe('subcategory')
+    expect(named.createdDraftId).toBeNull()
+
+    const unclear = applyUserText(state, 'בלה', CTX)
+    expect(unclear.slots.category.status).toBe('unknown')
+    expect(unclear.lastPrompt.kind).toBe('question')
+    if (unclear.lastPrompt.kind !== 'question') return
+    expect(unclear.lastPrompt.prompt).not.toBe(asked)
+    expect(unclear.lastPrompt.prompt).toContain('לא זיהיתי')
+
+    const otherHebrew = applyUserText(state, 'שיפוץ', CTX)
+    expect(otherHebrew.slots.category.status).toBe('unknown')
+    const feeLabel = applyUserText(state, 'דמי ניהול', CTX)
+    expect(feeLabel.slots.category.status).toBe('unknown')
+    expect(feeLabel.slots.subcategory.status).toBe('unknown')
+
+    const replayed = replayUtterances(
+      ['שילמתי 40 אירו', 'בלי נכס', 'היום', 'ניהול'],
+      CTX,
+      'replay-nihul',
+    )
+    expect(replayed.slots.category.value).toBe('Management')
+    expect(reviewFromSlots(replayed.slots).category).toBe('Management')
+    expect(replayed.lastPrompt.kind === 'question' ? replayed.lastPrompt.field : '').toBe('subcategory')
     expect(replayed.createdDraftId).toBeNull()
   })
 

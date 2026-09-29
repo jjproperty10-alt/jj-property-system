@@ -191,6 +191,11 @@ const PROPERTY_ALIASES: readonly { readonly test: RegExp; readonly mustInclude: 
   { test: /רוני|\broni\b/i, mustInclude: ['roni'] },
 ]
 
+/** Exact Hebrew label of the Management category. Not a translator for other categories. */
+const CATEGORY_HEBREW_ALIAS: Readonly<Record<string, Category>> = {
+  ניהול: 'Management',
+}
+
 const KEYWORD_SUBCATEGORIES: readonly { readonly re: RegExp; readonly names: readonly string[] }[] = [
   { re: /חשמל|electric/i, names: ['Electricity', 'Electricity Bill'] },
   { re: /מים|water/i, names: ['Water'] },
@@ -378,6 +383,9 @@ function resolveCategoryAnswer(raw: string):
 
   const named = CATEGORIES.find((c) => c.toLowerCase() === trimmed.toLowerCase())
   if (named) return { kind: 'category', category: named }
+
+  const hebrewAlias = CATEGORY_HEBREW_ALIAS[normalizeName(trimmed)]
+  if (hebrewAlias) return { kind: 'category', category: hebrewAlias }
 
   const owners: { readonly category: Category; readonly subcategory: string }[] = []
   for (let i = 0; i < CATEGORIES.length; i += 1) {
