@@ -18,8 +18,10 @@ jest.mock('@/lib/nav/resolveFrameUser', () => ({
 }))
 
 const catalogMock = jest.fn()
+const aliasMock = jest.fn()
 jest.mock('@/lib/ops/assistant/opsConversationActions', () => ({
   listAssistantProperties: () => catalogMock(),
+  listAssistantPropertyAliases: () => aliasMock(),
 }))
 
 const TEST_PARTNER_ACTORS = [
@@ -45,6 +47,8 @@ beforeEach(() => {
   authMock.mockClear()
   frameMock.mockReset()
   catalogMock.mockReset()
+  aliasMock.mockReset()
+  aliasMock.mockResolvedValue({ ok: true, aliases: [] })
   listEntitiesMock.mockReset()
   listPartnersMock.mockReset()
   listEntitiesMock.mockResolvedValue({ ok: true, entities: [] })
@@ -103,6 +107,37 @@ describe('/assistant staff authorization', () => {
     const ambiguous = await Page({ searchParams: { property: 'Tamir' } })
     expect(ambiguous).toMatchObject({ props: { suggestedPropertyName: null } })
     const reopened = await Page({ searchParams: { c: 'conv-1', property: 'Tamir Dekelia' } })
+    expect(reopened).toMatchObject({
+      props: { initialConversationId: 'conv-1', suggestedPropertyName: null },
+    })
+  })
+
+  it('suggests a property from one approved alias and does not suggest an unmatched or repeated name', async () => {
+    authMock.mockResolvedValue({ ok: true, userId: 'staff-1', staffRole: 'operations', isActive: true })
+    frameMock.mockResolvedValue({ id: 'staff-1', name: 'Yossi', email: 'yossi@x', role: 'ceo' })
+    catalogMock.mockResolvedValue({
+      ok: true,
+      properties: [
+        { id: 'p1', name: 'Mobile Test House' },
+        { id: 'p2', name: 'Tamir Kiti' },
+        { id: 'p3', name: 'Tamir Kiti' },
+      ],
+    })
+    aliasMock.mockResolvedValue({
+      ok: true,
+      aliases: [
+        { rawName: 'בית הבדיקה', canonicalName: 'Mobile Test House' },
+        { rawName: 'שם חסר', canonicalName: 'Missing House' },
+        { rawName: 'תמיר קיטי', canonicalName: 'Tamir Kiti' },
+      ],
+    })
+    const unique = await Page({ searchParams: { property: 'בית הבדיקה' } })
+    expect(unique).toMatchObject({ props: { suggestedPropertyName: 'Mobile Test House' } })
+    const missing = await Page({ searchParams: { property: 'שם חסר' } })
+    expect(missing).toMatchObject({ props: { suggestedPropertyName: null } })
+    const repeated = await Page({ searchParams: { property: 'תמיר קיטי' } })
+    expect(repeated).toMatchObject({ props: { suggestedPropertyName: null } })
+    const reopened = await Page({ searchParams: { c: 'conv-1', property: 'בית הבדיקה' } })
     expect(reopened).toMatchObject({
       props: { initialConversationId: 'conv-1', suggestedPropertyName: null },
     })

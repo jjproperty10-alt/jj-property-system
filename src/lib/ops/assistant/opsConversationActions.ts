@@ -9,7 +9,8 @@
 import { authenticateStatementUser } from '@/lib/statements/statementAuthService'
 import { createSupabaseServerClient } from '@/lib/supabaseServer'
 import { OPS_MESSAGE_BODY_MAX } from '@/lib/ops/types'
-import { exactUniqueCatalogName } from '@/lib/ops/assistant/transactionDraftCollector'
+import { exactUniqueCatalogName, type ApprovedPropertyAlias } from '@/lib/ops/assistant/transactionDraftCollector'
+import { assessConversationRestore } from '@/lib/ops/assistant/conversationRestore'
 import { createAgentTransactionDraft } from '@/lib/transactions/agentDraftActions'
 import type { CreateAgentDraftInput, CreateAgentDraftResult } from '@/lib/transactions/agentDraftActions'
 
@@ -119,6 +120,15 @@ export async function listOpsConversation(
   const id = conversationId.trim()
   if (!id) return { ok: false, error: 'Missing conversation id.' }
 
+  const restore = assessConversationRestore({
+    actorUserId: auth.userId,
+    actorIsActiveStaff: auth.isActive,
+    actorCompanyId: null,
+    conversationOwnerId: auth.userId,
+    conversationCompanyId: null,
+  })
+  if (!restore.ok) return { ok: false, error: restore.error }
+
   const session = createSupabaseServerClient()
   const { data, error } = await session.rpc('list_ops_conversation', {
     p_conversation_id: id,
@@ -139,6 +149,23 @@ export async function listOpsConversation(
     status: String(row.status ?? ''),
     suggestedPropertyName: storedName && storedName.trim() ? storedName.trim() : null,
     messages,
+  }
+}
+
+export async function listAssistantPropertyAliases(): Promise<
+  | { readonly ok: true; readonly aliases: readonly ApprovedPropertyAlias[] }
+  | OpsActionFailure
+> {
+  const auth = await authenticateStatementUser()
+  if (!auth.ok) return authError(auth.error)
+  const session = createSupabaseServerClient()
+  const { data, error } = await session.from('property_name_aliases').select('raw_name, canonical_name')
+  if (error || data == null) return { ok: true, aliases: [] }
+  return {
+    ok: true,
+    aliases: (data as { raw_name: string | null; canonical_name: string | null }[])
+      .filter((row) => row.raw_name && row.canonical_name)
+      .map((row) => ({ rawName: String(row.raw_name), canonicalName: String(row.canonical_name) })),
   }
 }
 

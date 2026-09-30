@@ -32,6 +32,7 @@ import {
   createAssistantTransactionDraft,
   createWebOpsConversation,
   listOpsConversation,
+  listAssistantPropertyAliases,
   submitAssistantInbound,
 } from '@/lib/ops/assistant/opsConversationActions'
 import fs from 'fs'
@@ -134,25 +135,22 @@ describe('ops conversation wrappers', () => {
     }))
   })
 
-  it('returns the stored suggestion and treats a missing column as empty', async () => {
+  it('blocks conversation restore when company isolation is unproven', async () => {
     mockAuth.mockResolvedValue(staffAuth())
-    mockRpc.mockResolvedValueOnce({
-      data: [{
-        conversation_id: 'conv-1',
-        status: 'open',
-        suggested_property_name: 'Mobile Test House',
-        messages: [],
-      }],
-      error: null,
-    })
     const listed = await listOpsConversation('conv-1')
-    expect(listed.ok && listed.suggestedPropertyName).toBe('Mobile Test House')
-    mockRpc.mockResolvedValueOnce({
-      data: [{ conversation_id: 'conv-2', status: 'open', messages: [] }],
-      error: null,
-    })
-    const older = await listOpsConversation('conv-2')
-    expect(older.ok && older.suggestedPropertyName).toBeNull()
+    expect(listed.ok).toBe(false)
+    if (listed.ok) return
+    expect(listed.error).toContain('הבידוד לפי חברה אינו מוכח')
+    expect(mockRpc).not.toHaveBeenCalled()
+  })
+
+  it('refuses conversation restore for an unauthorized user', async () => {
+    mockAuth.mockResolvedValue({ ok: false, error: 'NOT_STAFF' })
+    const listed = await listOpsConversation('conv-1')
+    expect(listed.ok).toBe(false)
+    if (listed.ok) return
+    expect(listed.error).toBe('Not authorized')
+    expect(mockRpc).not.toHaveBeenCalled()
   })
 
   it('create draft delegates to createAgentTransactionDraft and is idempotent per key', async () => {
@@ -173,5 +171,33 @@ describe('ops conversation wrappers', () => {
     expect(createDraftMock).toHaveBeenCalledTimes(2)
     expect(createDraftMock.mock.calls[0][0].idempotency_key).toBe('same-key')
     expect(createDraftMock.mock.calls[1][0].idempotency_key).toBe('same-key')
+  })
+
+  it('reads property aliases with the staff session and returns none when the read fails', async () => {
+    mockAuth.mockResolvedValue(staffAuth())
+    mockFrom.mockImplementation((table: string) => {
+      if (table !== 'property_name_aliases') throw new Error(`unexpected table ${table}`)
+      return {
+        select: async () => ({
+          data: [{ raw_name: 'בית הבדיקה', canonical_name: 'Mobile Test House' }],
+          error: null,
+        }),
+      }
+    })
+    const listed = await listAssistantPropertyAliases()
+    expect(listed.ok && listed.aliases).toEqual([
+      { rawName: 'בית הבדיקה', canonicalName: 'Mobile Test House' },
+    ])
+
+    mockFrom.mockImplementation(() => ({
+      select: async () => ({ data: null, error: { message: 'missing' } }),
+    }))
+    const failed = await listAssistantPropertyAliases()
+    expect(failed.ok && failed.aliases).toEqual([])
+
+    mockAuth.mockResolvedValue({ ok: false, error: 'Not authorized' })
+    const blocked = await listAssistantPropertyAliases()
+    expect(blocked.ok).toBe(false)
+    expect(mockRpc).not.toHaveBeenCalled()
   })
 })

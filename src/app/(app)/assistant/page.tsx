@@ -9,7 +9,7 @@ import type { Metadata } from 'next'
 import { redirect, notFound } from 'next/navigation'
 import { authenticateStatementUser } from '@/lib/statements/statementAuthService'
 import { resolveFrameUser } from '@/lib/nav/resolveFrameUser'
-import { listAssistantProperties } from '@/lib/ops/assistant/opsConversationActions'
+import { listAssistantProperties, listAssistantPropertyAliases } from '@/lib/ops/assistant/opsConversationActions'
 import {
   listClientSettlementEntities,
   listPartnerFundingActors,
@@ -38,15 +38,17 @@ export default async function AssistantPage({
 
   const frame = await resolveFrameUser()
   const catalog = await listAssistantProperties()
+  const aliasList = await listAssistantPropertyAliases()
   const entities = await listClientSettlementEntities()
   const partners = await listPartnerFundingActors()
   const conversationId = typeof searchParams?.c === 'string' && searchParams.c.trim()
     ? searchParams.c.trim()
     : null
   const properties = catalog.ok ? catalog.properties : []
+  const aliases = aliasList.ok ? aliasList.aliases : []
   const propertyQuery = typeof searchParams?.property === 'string' ? searchParams.property.trim() : ''
   const resolvedProperty = !conversationId && propertyQuery
-    ? resolveProperty(propertyQuery, properties)
+    ? resolveProperty(propertyQuery, properties, aliases)
     : null
   const suggestedPropertyName = resolvedProperty?.kind === 'unique' ? resolvedProperty.entry.name : null
 
@@ -54,6 +56,7 @@ export default async function AssistantPage({
     <AssistantChat
       staffPayerName={frame?.name ?? ''}
       catalog={properties}
+      aliases={aliases}
       entities={entities.ok ? entities.entities : []}
       partners={partners.ok ? partners.actors : []}
       initialConversationId={conversationId}

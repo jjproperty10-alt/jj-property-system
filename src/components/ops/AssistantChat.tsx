@@ -14,6 +14,7 @@ import {
   numberedDirectChoices,
   replayUtterances,
   resetForNewProposal,
+  type ApprovedPropertyAlias,
   type AssistantPrompt,
   type CollectorContext,
   type CollectorState,
@@ -101,14 +102,19 @@ function Ltr({ children }: { children: React.ReactNode }) {
 export function AssistantChat(props: {
   readonly staffPayerName: string
   readonly catalog: readonly PropertyCatalogEntry[]
+  readonly aliases?: readonly ApprovedPropertyAlias[]
   readonly entities?: readonly EntityChoice[]
   readonly partners?: readonly EntityChoice[]
   readonly initialConversationId: string | null
   readonly suggestedPropertyName?: string | null
 }) {
   const ctx: CollectorContext = useMemo(
-    () => ({ catalog: props.catalog, staffPayerName: props.staffPayerName || null }),
-    [props.catalog, props.staffPayerName],
+    () => ({
+      catalog: props.catalog,
+      staffPayerName: props.staffPayerName || null,
+      aliases: props.aliases,
+    }),
+    [props.catalog, props.staffPayerName, props.aliases],
   )
   const convKeyRef = useRef(crypto.randomUUID())
   const draftKeyRef = useRef(crypto.randomUUID())
@@ -162,7 +168,7 @@ export function AssistantChat(props: {
     bootRef.current = bootCollector(
       draftKeyRef.current,
       props.initialConversationId ? null : (props.suggestedPropertyName ?? null),
-      { catalog: props.catalog, staffPayerName: props.staffPayerName || null },
+      { catalog: props.catalog, staffPayerName: props.staffPayerName || null, aliases: props.aliases },
     )
   }
   const [draft, setDraft] = useState<CollectorState>(bootRef.current)
@@ -184,11 +190,19 @@ export function AssistantChat(props: {
     setClearNotice((current) => (current ? '' : current))
   }, [text])
 
+  const openedConversationId = useRef(props.initialConversationId)
   useEffect(() => {
-    if (!props.initialConversationId) return
+    const id = openedConversationId.current
+    if (!id) return
     let cancelled = false
-    void listOpsConversation(props.initialConversationId).then((listed) => {
-      if (cancelled || !listed.ok) return
+    void listOpsConversation(id).then((listed) => {
+      if (cancelled) return
+      if (!listed.ok) {
+        const cleared = createCollectorState(draftKeyRef.current)
+        setDraft(cleared)
+        setItems([{ id: 'restore-blocked', role: 'assistant', text: listed.error, prompt: cleared.lastPrompt }])
+        return
+      }
       const bodies = listed.messages.filter((m) => m.direction === 'inbound').map((m) => m.body)
       const suggestion = exactUniqueCatalogName(listed.suggestedPropertyName, ctx.catalog)
       const replayed = replayUtterances(bodies, ctx, draftKeyRef.current, suggestion)
@@ -211,7 +225,7 @@ export function AssistantChat(props: {
       setItems(history)
     })
     return () => { cancelled = true }
-  }, [ctx, props.initialConversationId])
+  }, [ctx])
 
   async function sendBody(body: string) {
     const trimmed = body.trim()
