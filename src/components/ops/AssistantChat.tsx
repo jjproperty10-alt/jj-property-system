@@ -190,13 +190,17 @@ export function AssistantChat(props: {
     setClearNotice((current) => (current ? '' : current))
   }, [text])
 
+  const openedConversationId = useRef(props.initialConversationId)
   useEffect(() => {
-    if (!props.initialConversationId) return
+    const id = openedConversationId.current
+    if (!id) return
     let cancelled = false
-    void listOpsConversation(props.initialConversationId).then((listed) => {
+    void listOpsConversation(id).then((listed) => {
       if (cancelled) return
       if (!listed.ok) {
-        setItems([{ id: 'restore-blocked', role: 'assistant', text: listed.error }])
+        const cleared = createCollectorState(draftKeyRef.current)
+        setDraft(cleared)
+        setItems([{ id: 'restore-blocked', role: 'assistant', text: listed.error, prompt: cleared.lastPrompt }])
         return
       }
       const bodies = listed.messages.filter((m) => m.direction === 'inbound').map((m) => m.body)
@@ -221,7 +225,7 @@ export function AssistantChat(props: {
       setItems(history)
     })
     return () => { cancelled = true }
-  }, [ctx, props.initialConversationId])
+  }, [ctx])
 
   async function sendBody(body: string) {
     const trimmed = body.trim()
