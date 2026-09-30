@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { createBrowserClient } from '@supabase/ssr'
+import { gateServiceReads } from '@/lib/auth/serviceRoleCompanyGate'
 
 export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,10 +19,24 @@ export function createSupabaseBrowserClient() {
   )
 }
 
-export function createServiceClient() {
+function rawServiceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_KEY!,
     { auth: { persistSession: false } },
   )
+}
+
+async function resolveSoleServiceCompany(): Promise<string> {
+  const { data, error } = await rawServiceClient().rpc('resolve_service_read_company', {
+    p_requested: null,
+  })
+  if (error || typeof data !== 'string' || data.length === 0) {
+    throw new Error('BLOCKED_BY_COMPANY_CONTEXT')
+  }
+  return data
+}
+
+export function createServiceClient() {
+  return gateServiceReads(rawServiceClient(), resolveSoleServiceCompany)
 }
