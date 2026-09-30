@@ -787,6 +787,56 @@ describe('assistant intent routing', () => {
     expect(replayed.createdDraftId).toBeNull()
   })
 
+  it('resolves one approved alias to a catalog name and asks when the alias is not unique', () => {
+    const catalog: PropertyCatalogEntry[] = [
+      { id: '1', name: 'Mobile Test House' },
+      { id: '2', name: 'Tamir Kiti' },
+      { id: '3', name: 'Tamir Kiti' },
+    ]
+    const aliases = [{ rawName: 'בית הבדיקה', canonicalName: 'Mobile Test House' }]
+    const ctx: CollectorContext = { ...CTX, catalog, aliases }
+    const opened = applyUserText(start(), 'שילמתי 40 אירו בבית הבדיקה', ctx)
+    expect(opened.slots.propertyName.value).toBe('Mobile Test House')
+    expect(opened.slots.propertyName.status).toBe('proposed')
+    expect(opened.createdDraftId).toBeNull()
+
+    const replayed = replayUtterances(['שילמתי 40 אירו בבית הבדיקה'], ctx, 'replay-alias')
+    expect(replayed.slots.propertyName.value).toBe('Mobile Test House')
+
+    const withoutAlias = replayUtterances(
+      ['שילמתי 40 אירו בבית הבדיקה'],
+      { ...ctx, aliases: [] },
+      'replay-no-alias',
+    )
+    expect(withoutAlias.slots.propertyName.status).toBe('unknown')
+
+    const missing = applyUserText(
+      start(),
+      'שילמתי 40 אירו בבית הבדיקה',
+      {
+        ...CTX,
+        catalog: [{ id: '1', name: 'Mobile Test House' }],
+        aliases: [{ rawName: 'בית הבדיקה', canonicalName: 'Tamir Kiti' }],
+      },
+    )
+    expect(missing.slots.propertyName.status).toBe('unknown')
+    expect(missing.slots.propertyName.value).toBeUndefined()
+
+    const sharedName = applyUserText(
+      start(),
+      'שילמתי 40 אירו לתמיר קיטי',
+      {
+        ...CTX,
+        catalog,
+        aliases: [{ rawName: 'תמיר קיטי', canonicalName: 'Tamir Kiti' }],
+      },
+    )
+    expect(sharedName.slots.propertyName.status).toBe('unknown')
+    expect(sharedName.lastPrompt.kind).toBe('question')
+    if (sharedName.lastPrompt.kind !== 'question') return
+    expect(sharedName.lastPrompt.choices.map((choice) => choice.label)).toEqual(['Tamir Kiti', 'Tamir Kiti'])
+  })
+
   it('leaves collection on cancel, stop, or a topic change without creating a draft', () => {
     for (const text of ['ביטול', 'תפסיק', 'שנה נושא']) {
       const opened = applyUserText(start(), 'שילמתי 40 אירו חשמל', CTX)

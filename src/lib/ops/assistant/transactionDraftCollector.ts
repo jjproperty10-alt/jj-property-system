@@ -126,11 +126,17 @@ export interface DraftReview {
   readonly notes: string
 }
 
+export interface ApprovedPropertyAlias {
+  readonly rawName: string
+  readonly canonicalName: string
+}
+
 export interface CollectorContext {
   readonly catalog: readonly PropertyCatalogEntry[]
   readonly staffPayerName: string | null
   readonly now?: Date
   readonly freshIdempotencyKey?: string
+  readonly aliases?: readonly ApprovedPropertyAlias[]
 }
 
 export interface CollectorState {
@@ -262,9 +268,46 @@ export type PropertyResolution =
   | { readonly kind: 'ambiguous'; readonly entries: readonly PropertyCatalogEntry[] }
   | { readonly kind: 'none' }
 
+function aliasMentioned(text: string, rawName: string): boolean {
+  const raw = normalizeName(rawName)
+  if (raw.length < 2) return false
+  const padded = ` ${normalizeName(text)} `
+  if (padded.includes(` ${raw} `)) return true
+  const prefixes = ['ב', 'ל', 'מ', 'ה', 'ו']
+  for (let i = 0; i < prefixes.length; i += 1) {
+    if (padded.includes(` ${prefixes[i]}${raw} `)) return true
+  }
+  return false
+}
+
+function approvedAliasHits(
+  text: string,
+  catalog: readonly PropertyCatalogEntry[],
+  aliases: readonly ApprovedPropertyAlias[] | undefined,
+): PropertyCatalogEntry[] {
+  if (!aliases || aliases.length === 0) return []
+  const hits: PropertyCatalogEntry[] = []
+  const seen: Record<string, true> = {}
+  for (let i = 0; i < aliases.length; i += 1) {
+    if (!aliasMentioned(text, aliases[i].rawName)) continue
+    const canonical = normalizeName(aliases[i].canonicalName)
+    if (!canonical) continue
+    for (let p = 0; p < catalog.length; p += 1) {
+      const entry = catalog[p]
+      if (normalizeName(entry.name) !== canonical) continue
+      const key = entry.id
+      if (seen[key]) continue
+      seen[key] = true
+      hits.push(entry)
+    }
+  }
+  return hits
+}
+
 export function resolveProperty(
   text: string,
   catalog: readonly PropertyCatalogEntry[],
+  aliases?: readonly ApprovedPropertyAlias[],
 ): PropertyResolution {
   const raw = text.trim()
   if (!raw || catalog.length === 0) return { kind: 'none' }
@@ -273,6 +316,10 @@ export function resolveProperty(
   const exact = catalog.filter((p) => normalizeName(p.name) === normalized)
   if (exact.length === 1) return { kind: 'unique', entry: exact[0] }
   if (exact.length > 1) return { kind: 'ambiguous', entries: uniqueByName(exact) }
+
+  const aliasHits = approvedAliasHits(raw, catalog, aliases)
+  if (aliasHits.length === 1) return { kind: 'unique', entry: aliasHits[0] }
+  if (aliasHits.length > 1) return { kind: 'ambiguous', entries: aliasHits }
 
   for (let a = 0; a < PROPERTY_ALIASES.length; a += 1) {
     const alias = PROPERTY_ALIASES[a]
@@ -749,7 +796,7 @@ function applyUtterance(slots: DraftSlots, text: string, ctx: CollectorContext, 
     if (unverified) next = { ...next, payee: setSlot(next.payee, unverified) }
   }
 
-  const resolved = resolveProperty(textForPropertyMatch(text), ctx.catalog)
+  const resolved = resolveProperty(textForPropertyMatch(text), ctx.catalog, ctx.aliases)
   if (resolved.kind === 'unique') {
     next = { ...next, propertyName: assign(next.propertyName, resolved.entry.name) }
   }
@@ -883,7 +930,7 @@ function nextPrompt(
 
   if (!slotReady(slots.propertyName)) {
     const propertyText = textForPropertyMatch(lastText)
-    const resolved = resolveProperty(propertyText, ctx.catalog)
+    const resolved = resolveProperty(propertyText, ctx.catalog, ctx.aliases)
     const candidates = resolved.kind === 'ambiguous'
       ? resolved.entries
       : matchProperties(propertyText, ctx.catalog)
@@ -1099,7 +1146,7 @@ function nextIdempotencyKey(state: CollectorState, ctx: CollectorContext): strin
 }
 
 function messageHasPropertyOrSubject(text: string, ctx: CollectorContext): boolean {
-  const resolved = resolveProperty(text, ctx.catalog)
+  const resolved = resolveProperty(text, ctx.catalog, ctx.aliases)
   return (
     SUBJECT_HINT.test(text)
     || resolved.kind !== 'none'
@@ -1178,7 +1225,7 @@ function applyCorrection(state: CollectorState, text: string, ctx: CollectorCont
   const amount = extractAmountEur(text)
   if (amount && amount !== 'other_currency') slots = { ...slots, amountEur: overwriteSlot(slots.amountEur, amount) }
 
-  const resolved = resolveProperty(textForPropertyMatch(text), ctx.catalog)
+  const resolved = resolveProperty(textForPropertyMatch(text), ctx.catalog, ctx.aliases)
   if (resolved.kind === 'unique') {
     slots = { ...slots, propertyName: overwriteSlot(slots.propertyName, resolved.entry.name) }
   }
@@ -1593,7 +1640,7 @@ function applyTypedField(
   } else if (field === 'propertyName') {
     const hits = matchProperties(raw, ctx.catalog)
     const exact = ctx.catalog.filter((p) => p.name.toLowerCase() === raw.toLowerCase())
-    const resolved = resolveProperty(raw, ctx.catalog)
+    const resolved = resolveProperty(raw, ctx.catalog, ctx.aliases)
     if (exact.length === 1) {
       slots = { ...slots, propertyName: confirm(exact[0].name) }
     } else if (resolved.kind === 'unique') {
