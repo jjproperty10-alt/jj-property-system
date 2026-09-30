@@ -10,6 +10,7 @@ import { authenticateStatementUser } from '@/lib/statements/statementAuthService
 import { createSupabaseServerClient } from '@/lib/supabaseServer'
 import { OPS_MESSAGE_BODY_MAX } from '@/lib/ops/types'
 import { exactUniqueCatalogName } from '@/lib/ops/assistant/transactionDraftCollector'
+import { assessConversationRestore } from '@/lib/ops/assistant/conversationRestore'
 import { createAgentTransactionDraft } from '@/lib/transactions/agentDraftActions'
 import type { CreateAgentDraftInput, CreateAgentDraftResult } from '@/lib/transactions/agentDraftActions'
 
@@ -118,6 +119,15 @@ export async function listOpsConversation(
   if (!auth.ok) return authError(auth.error)
   const id = conversationId.trim()
   if (!id) return { ok: false, error: 'Missing conversation id.' }
+
+  const restore = assessConversationRestore({
+    actorUserId: auth.userId,
+    actorIsActiveStaff: auth.isActive,
+    actorCompanyId: null,
+    conversationOwnerId: auth.userId,
+    conversationCompanyId: null,
+  })
+  if (!restore.ok) return { ok: false, error: restore.error }
 
   const session = createSupabaseServerClient()
   const { data, error } = await session.rpc('list_ops_conversation', {

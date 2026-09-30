@@ -10,6 +10,7 @@ import {
   replayUtterances,
   resolveProperty,
   reviewFromSlots,
+  applyChoiceId,
   cancelCollector,
   resetForChangeDetails,
   resetForNewProposal,
@@ -215,8 +216,8 @@ describe('natural Hebrew intake and new-intent reset', () => {
 
     const electric = applyUserText(start(), 'שילמתי 120 אירו חשמל בדירה של תמיר', CTX)
     expect(electric.slots.amountEur.value).toBe('120')
-    expect(electric.slots.category.value).toBe('Management')
-    expect(electric.slots.subcategory.value).toBe('Electricity')
+    expect(electric.slots.category.status).toBe('unknown')
+    expect(electric.slots.subcategory.status).toBe('unknown')
     expect(electric.slots.payer.status).toBe('unknown')
     expect(electric.slots.propertyName.status).toBe('unknown')
     expect(numberedDirectChoices(electric.lastPrompt).map((c) => c.label)).toEqual([
@@ -463,12 +464,13 @@ describe('assistant intent routing', () => {
   it('opens and replays an explicit expense and an explicit rent receipt', () => {
     const expense = applyUserText(start(), 'שילמתי 500 חשמל', CTX)
     expect(expense.slots.amountEur.value).toBe('500')
-    expect(expense.slots.subcategory.value).toBe('Electricity')
+    expect(expense.slots.category.status).toBe('unknown')
+    expect(expense.slots.subcategory.status).toBe('unknown')
     expect(expense.lastPrompt.kind).toBe('question')
     expect(expense.createdDraftId).toBeNull()
     const replayedExpense = replayUtterances(['שילמתי 500 חשמל'], CTX, 'replay-explicit-expense')
     expect(replayedExpense.slots.amountEur.value).toBe('500')
-    expect(replayedExpense.slots.subcategory.value).toBe('Electricity')
+    expect(replayedExpense.slots.subcategory.status).toBe('unknown')
     expect(replayedExpense.createdDraftId).toBeNull()
 
     const income = applyUserText(start(), 'קיבלתי 850 שכירות', CTX)
@@ -491,12 +493,18 @@ describe('assistant intent routing', () => {
     const dated = applyUserText(applyUserText(opened, 'בלי נכס', CTX), 'היום', CTX)
     expect(dated.lastPrompt.kind).toBe('question')
     if (dated.lastPrompt.kind !== 'question') return
-    expect(dated.lastPrompt.field).toBe('payer')
-    expect(dated.lastPrompt.prompt).toContain('מי שילם בפועל')
-    expect(dated.slots.payer.value).not.toBe('Company')
-    expect(dated.slots.payer.value).not.toBe('Yossi')
+    expect(dated.lastPrompt.field).toBe('category')
+    const classified = applyUserText(dated, 'Management / Electricity', CTX)
+    expect(classified.slots.category.value).toBe('Management')
+    expect(classified.slots.subcategory.value).toBe('Electricity')
+    expect(classified.lastPrompt.kind).toBe('question')
+    if (classified.lastPrompt.kind !== 'question') return
+    expect(classified.lastPrompt.field).toBe('payer')
+    expect(classified.lastPrompt.prompt).toContain('מי שילם בפועל')
+    expect(classified.slots.payer.value).not.toBe('Company')
+    expect(classified.slots.payer.value).not.toBe('Yossi')
 
-    const paid = applyUserText(dated, 'Jacob', CTX)
+    const paid = applyUserText(classified, 'Jacob', CTX)
     expect(paid.slots.payer.value).toBe('Jacob')
     expect(paid.lastPrompt.kind).toBe('question')
     if (paid.lastPrompt.kind !== 'question') return
@@ -512,7 +520,7 @@ describe('assistant intent routing', () => {
 
   function expenseReadyForCharge() {
     return replayUtterances(
-      ['שילמתי 500 אירו על חשמל', 'בלי נכס', 'היום', 'Jacob', 'Company'],
+      ['שילמתי 500 אירו על חשמל', 'בלי נכס', 'היום', 'Management / Electricity', 'Jacob', 'Company'],
       CTX,
       'charge-ready',
     )
@@ -569,7 +577,7 @@ describe('assistant intent routing', () => {
 
   it('restores each expense step from the saved utterances, and a later answer wins', () => {
     const payer = replayUtterances(
-      ['שילמתי 500 אירו על חשמל', 'בלי נכס', 'היום'],
+      ['שילמתי 500 אירו על חשמל', 'בלי נכס', 'היום', 'Management / Electricity'],
       CTX,
       'replay-payer',
     )
@@ -577,7 +585,7 @@ describe('assistant intent routing', () => {
     expect(payer.slots.payer.status).toBe('unknown')
 
     const payee = replayUtterances(
-      ['שילמתי 500 אירו על חשמל', 'בלי נכס', 'היום', 'Jacob'],
+      ['שילמתי 500 אירו על חשמל', 'בלי נכס', 'היום', 'Management / Electricity', 'Jacob'],
       CTX,
       'replay-payee',
     )
@@ -585,7 +593,7 @@ describe('assistant intent routing', () => {
     expect(payee.lastPrompt.kind === 'question' ? payee.lastPrompt.field : '').toBe('payee')
 
     const charge = replayUtterances(
-      ['שילמתי 500 אירו על חשמל', 'בלי נכס', 'היום', 'Jacob', 'Company', 'לקוח', '40'],
+      ['שילמתי 500 אירו על חשמל', 'בלי נכס', 'היום', 'Management / Electricity', 'Jacob', 'Company', 'לקוח', '40'],
       CTX,
       'replay-charge',
     )
@@ -595,7 +603,7 @@ describe('assistant intent routing', () => {
     expect(charge.slots.amountEur.value).toBe('500')
 
     const replaced = replayUtterances(
-      ['שילמתי 500 אירו על חשמל', 'בלי נכס', 'היום', 'Jacob', 'Company', 'לקוח', '40', 'לא לחייב'],
+      ['שילמתי 500 אירו על חשמל', 'בלי נכס', 'היום', 'Management / Electricity', 'Jacob', 'Company', 'לקוח', '40', 'לא לחייב'],
       CTX,
       'replay-charge-override',
     )
@@ -716,6 +724,66 @@ describe('assistant intent routing', () => {
     expect(replayed.slots.category.value).toBe('Management')
     expect(reviewFromSlots(replayed.slots).category).toBe('Management')
     expect(replayed.lastPrompt.kind === 'question' ? replayed.lastPrompt.field : '').toBe('subcategory')
+    expect(replayed.createdDraftId).toBeNull()
+  })
+
+  it('reads one expense sentence without guessing a category or a property from person names', () => {
+    const catalog: PropertyCatalogEntry[] = [
+      ...CATALOG,
+      { id: '7', name: 'Yossi Villa' },
+    ]
+    const ctx: CollectorContext = { ...CTX, catalog }
+    const sentence = 'יוסי שילם 500 אירו לסיון על חשמל בתמיר דקליה'
+    const opened = applyUserText(start(), sentence, ctx)
+    expect(opened.slots.amountEur.value).toBe('500')
+    expect(opened.slots.payer.value).toBe('Yossi')
+    expect(opened.slots.payer.status).toBe('confirmed')
+    expect(opened.slots.payee.value).toBe('סיון')
+    expect(opened.slots.payee.status).toBe('proposed')
+    expect(opened.slots.propertyName.value).toBe('Tamir Dekelia')
+    expect(opened.slots.category.status).toBe('unknown')
+    expect(opened.slots.subcategory.status).toBe('unknown')
+    expect(opened.createdDraftId).toBeNull()
+    expect(opened.lastPrompt.kind === 'question' ? opened.lastPrompt.field : '').toBe('date')
+
+    const dated = applyUserText(opened, 'היום', ctx)
+    expect(dated.slots.category.status).toBe('unknown')
+    expect(dated.slots.subcategory.status).toBe('unknown')
+    expect(dated.lastPrompt.kind).toBe('question')
+    if (dated.lastPrompt.kind !== 'question') return
+    expect(dated.lastPrompt.field).toBe('category')
+    expect(dated.lastPrompt.choices.map((choice) => choice.label)).toContain('Management / Electricity')
+    expect(dated.lastPrompt.choices.some((choice) => choice.label === 'Electricity')).toBe(false)
+
+    const classified = applyChoiceId(dated, 'cat:Management|Electricity', 'Management / Electricity', ctx)
+    expect(classified.slots.category.value).toBe('Management')
+    expect(classified.slots.subcategory.value).toBe('Electricity')
+    expect(classified.lastPrompt.kind === 'question' ? classified.lastPrompt.field : '').toBe('payee')
+    if (classified.lastPrompt.kind !== 'question') return
+    expect(classified.lastPrompt.prompt).toContain('סיון')
+    expect(classified.lastPrompt.choices.map((choice) => choice.label)).toContain('סיון')
+
+    const confirmed = applyUserText(classified, 'כן', ctx)
+    expect(confirmed.slots.payee.value).toBe('סיון')
+    expect(confirmed.slots.payee.status).toBe('confirmed')
+    expect(confirmed.createdDraftId).toBeNull()
+
+    const several = applyUserText(start(), 'יוסי שילם 500 אירו לסיון על חשמל בתמיר', ctx)
+    expect(several.slots.propertyName.status).toBe('unknown')
+    expect(several.lastPrompt.kind).toBe('question')
+    if (several.lastPrompt.kind !== 'question') return
+    expect(several.lastPrompt.choices.map((choice) => choice.label)).toEqual([
+      'Tamir Dekelia',
+      'Tamir Kiti',
+      'Tamir Radisson',
+    ])
+
+    const replayed = replayUtterances([sentence], ctx, 'replay-sentence')
+    expect(replayed.slots.payer.value).toBe('Yossi')
+    expect(replayed.slots.payee.value).toBe('סיון')
+    expect(replayed.slots.payee.status).toBe('proposed')
+    expect(replayed.slots.propertyName.value).toBe('Tamir Dekelia')
+    expect(replayed.slots.category.status).toBe('unknown')
     expect(replayed.createdDraftId).toBeNull()
   })
 

@@ -134,25 +134,22 @@ describe('ops conversation wrappers', () => {
     }))
   })
 
-  it('returns the stored suggestion and treats a missing column as empty', async () => {
+  it('blocks conversation restore when company isolation is unproven', async () => {
     mockAuth.mockResolvedValue(staffAuth())
-    mockRpc.mockResolvedValueOnce({
-      data: [{
-        conversation_id: 'conv-1',
-        status: 'open',
-        suggested_property_name: 'Mobile Test House',
-        messages: [],
-      }],
-      error: null,
-    })
     const listed = await listOpsConversation('conv-1')
-    expect(listed.ok && listed.suggestedPropertyName).toBe('Mobile Test House')
-    mockRpc.mockResolvedValueOnce({
-      data: [{ conversation_id: 'conv-2', status: 'open', messages: [] }],
-      error: null,
-    })
-    const older = await listOpsConversation('conv-2')
-    expect(older.ok && older.suggestedPropertyName).toBeNull()
+    expect(listed.ok).toBe(false)
+    if (listed.ok) return
+    expect(listed.error).toContain('הבידוד לפי חברה אינו מוכח')
+    expect(mockRpc).not.toHaveBeenCalled()
+  })
+
+  it('refuses conversation restore for an unauthorized user', async () => {
+    mockAuth.mockResolvedValue({ ok: false, error: 'NOT_STAFF' })
+    const listed = await listOpsConversation('conv-1')
+    expect(listed.ok).toBe(false)
+    if (listed.ok) return
+    expect(listed.error).toBe('Not authorized')
+    expect(mockRpc).not.toHaveBeenCalled()
   })
 
   it('create draft delegates to createAgentTransactionDraft and is idempotent per key', async () => {

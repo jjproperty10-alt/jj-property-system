@@ -188,7 +188,11 @@ export function AssistantChat(props: {
     if (!props.initialConversationId) return
     let cancelled = false
     void listOpsConversation(props.initialConversationId).then((listed) => {
-      if (cancelled || !listed.ok) return
+      if (cancelled) return
+      if (!listed.ok) {
+        setItems([{ id: 'restore-blocked', role: 'assistant', text: listed.error }])
+        return
+      }
       const bodies = listed.messages.filter((m) => m.direction === 'inbound').map((m) => m.body)
       const suggestion = exactUniqueCatalogName(listed.suggestedPropertyName, ctx.catalog)
       const replayed = replayUtterances(bodies, ctx, draftKeyRef.current, suggestion)
