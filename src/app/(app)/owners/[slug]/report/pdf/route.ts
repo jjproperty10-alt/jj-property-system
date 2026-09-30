@@ -28,9 +28,11 @@ import { authenticateStatementUser } from '@/lib/statements/statementAuthService
 import { getOwnerWorkspace } from '@/lib/owners/ownerWorkspaceService'
 import { fetchRC3Report } from '@/lib/report/fetchReport'
 import { createServiceClient } from '@/lib/supabase'
-import { OwnerSettlementPdfV3, OwnerPortfolioPdf } from '@/lib/pdf/OwnerSettlementPdfV3'
+import { OwnerSettlementPdfV3, OwnerPortfolioPdf, CertifiedBridgeBlockedError } from '@/lib/pdf/OwnerSettlementPdfV3'
+import { CertifiedPropertyAccountPdf } from '@/lib/pdf/CertifiedPropertyAccountPdf'
 import { loadCertifiedSettlementForEntity } from '@/lib/finance/certifiedClientSettlementAdapter'
 import { isCertifiedAvailable } from '@/lib/finance/certifiedClientSettlementPresentation'
+import { composeLiveCertifiedPropertyAccount } from '@/lib/report/certifiedPropertyAccountPack'
 import type { CertifiedClientSettlementAvailable } from '@/lib/finance/certifiedClientSettlementTypes'
 import type { Lang } from '@/lib/report/labels'
 import type { ReportType } from '@/lib/report/reportTypes'
@@ -206,6 +208,41 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
   const workspace = await getOwnerWorkspace(params.slug)
   if (!workspace) return new Response('Owner not found', { status: 404 })
 
+  let certifiedSettlement: CertifiedClientSettlementAvailable | undefined
+  try {
+    const certified = await loadCertifiedSettlementForEntity(workspace.identity.id, toDate)
+    if (isCertifiedAvailable(certified)) certifiedSettlement = certified
+  } catch {
+    certifiedSettlement = undefined
+  }
+
+  if (certifiedSettlement) {
+    const composed = composeLiveCertifiedPropertyAccount(certifiedSettlement)
+    if (composed.status === 'blocked') {
+      return new Response('Could not generate report', { status: 500 })
+    }
+    if (composed.status === 'ready') {
+      registerPdfFonts()
+      const element = React.createElement(CertifiedPropertyAccountPdf, {
+        statement: composed.statement,
+        lang,
+        ownerName: workspace.identity.name,
+      })
+      const buffer = await renderToBuffer(element as any)
+      const ownerName = (workspace.identity.name || 'Owner').replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_')
+      const dateSuffix = fromDate && toDate ? `_${fromDate}_to_${toDate}` : '_all_history'
+      const filename = `${ownerName}_Financial_Report${dateSuffix}.pdf`
+      return new Response(new Uint8Array(buffer), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `inline; filename="${filename}"`,
+          'Cache-Control': 'no-store',
+        },
+      })
+    }
+  }
+
   const properties = workspace.identity.properties
   if (!properties || properties.length === 0) {
     return new Response('No properties found for this owner', { status: 404 })
@@ -287,14 +324,6 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
   //     multiple properties → Full Owner Report (Owner Summary + per-property).
   registerPdfFonts()
 
-  let certifiedSettlement: CertifiedClientSettlementAvailable | undefined
-  try {
-    const certified = await loadCertifiedSettlementForEntity(workspace.identity.id, toDate)
-    if (isCertifiedAvailable(certified)) certifiedSettlement = certified
-  } catch {
-    certifiedSettlement = undefined
-  }
-
   const element = (
     finalReports.length === 1
       ? React.createElement(OwnerSettlementPdfV3, { report: finalReports[0], lang, reportType, certifiedSettlement, ownerName: workspace.identity.name })
@@ -317,6 +346,9 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
     },
   })
   } catch (err: unknown) {
+    if (err instanceof CertifiedBridgeBlockedError) {
+      return new Response('Could not generate report', { status: 500 })
+    }
     const message = err instanceof Error ? err.message : String(err)
     const name = err instanceof Error ? err.name : 'Unknown'
     console.error('[PDF Route Error]', name, message)

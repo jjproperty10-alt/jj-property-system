@@ -114,7 +114,7 @@ describe('certified FIFO / exclusion arithmetic', () => {
 describe('certified settlement labels', () => {
   test('Hebrew and English required labels exist', () => {
     expect(t('certOpeningBalance', 'he')).toBe('יתרת התחייבויות פתיחה מאושרת')
-    expect(t('certNoncashCredit', 'he')).toBe('זיכוי יישוב ללא מזומן')
+    expect(t('certNoncashCredit', 'he')).toBe('זיכוי שרון')
     expect(t('certIncludedCash', 'he')).toBe('תשלום מזומן שנכלל ביישוב')
     expect(t('certExclusionDoubleCount', 'he')).toBe('הוצא מההתחשבנות – ייצוג כפול')
     expect(t('certClosingDueToJj', 'he')).toBe('יתרה סופית לתשלום ל-JJ')
@@ -122,7 +122,7 @@ describe('certified settlement labels', () => {
     expect(t('certNoncash', 'he')).toBe('לא מזומן')
 
     expect(t('certOpeningBalance', 'en')).toBe('Certified opening obligation balance')
-    expect(t('certNoncashCredit', 'en')).toBe('Noncash settlement credit')
+    expect(t('certNoncashCredit', 'en')).toBe('Sharon assignment credit')
     expect(t('certIncludedCash', 'en')).toBe('Cash payment included in settlement')
     expect(t('certExclusionDoubleCount', 'en')).toBe('Excluded from settlement – double representation')
     expect(t('certClosingDueToJj', 'en')).toBe('Final balance due to JJ')

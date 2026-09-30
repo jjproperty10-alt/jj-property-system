@@ -40,6 +40,8 @@ import { getOwnerClientReport, getPortfolioOwnerNet } from '../report/ownerClien
 import { renovationGroupHeaders, splitOperatingIncome, splitOperatingIncomeTotals, computeStatementComponents } from '../report/statementPresentation'
 import type { CertifiedClientSettlementAvailable } from '../finance/certifiedClientSettlementTypes'
 import { CertifiedCoverPage, CertifiedSupportingBanner } from './CertifiedSettlementPdf'
+import { CertifiedPropertyAccountPdf } from './CertifiedPropertyAccountPdf'
+import { composeLiveCertifiedPropertyAccount } from '../report/certifiedPropertyAccountPack'
 
 /* ─── Palette ───────────────────────────────────────────────────────────────── */
 
@@ -1180,6 +1182,41 @@ export function OwnerPropertyPage({
   )
 }
 
+export class CertifiedBridgeBlockedError extends Error {
+  readonly reason: string
+  constructor(reason: string) {
+    super(`certified_bridge_blocked:${reason}`)
+    this.name = 'CertifiedBridgeBlockedError'
+    this.reason = reason
+  }
+}
+
+function certifiedOrLegacyDocument({
+  certifiedSettlement,
+  lang,
+  ownerName,
+  fallback,
+}: {
+  certifiedSettlement?: CertifiedClientSettlementAvailable
+  lang: Lang
+  ownerName?: string
+  fallback: () => React.ReactElement
+}): React.ReactElement {
+  if (!certifiedSettlement) return fallback()
+  const composed = composeLiveCertifiedPropertyAccount(certifiedSettlement)
+  if (composed.status === 'ready') {
+    return CertifiedPropertyAccountPdf({
+      statement: composed.statement,
+      lang,
+      ownerName,
+    })
+  }
+  if (composed.status === 'blocked') {
+    throw new CertifiedBridgeBlockedError(composed.reason)
+  }
+  return fallback()
+}
+
 export function OwnerSettlementPdfV3({
   report,
   lang = 'en',
@@ -1187,24 +1224,28 @@ export function OwnerSettlementPdfV3({
   certifiedSettlement,
   ownerName,
 }: OwnerSettlementPdfV3Props) {
-  const supportingLedger = Boolean(certifiedSettlement)
-  return (
-    <Document
-      title={`JJ ${t(supportingLedger ? 'certSectionTitle' : 'docPropertyStatement', lang)} — ${ownerName || report.reporting_name}`}
-      author="JJ Property 10"
-      creator="JJ Property 10"
-    >
-      {certifiedSettlement ? (
-        <CertifiedCoverPage dto={certifiedSettlement} lang={lang} ownerName={ownerName} />
-      ) : null}
-      <OwnerPropertyPage
-        report={report}
-        lang={lang}
-        reportType={reportType}
-        supportingLedger={supportingLedger}
-      />
-    </Document>
-  )
+  return certifiedOrLegacyDocument({
+    certifiedSettlement,
+    lang,
+    ownerName,
+    fallback: () => (
+      <Document
+        title={`JJ ${t(certifiedSettlement ? 'certSectionTitle' : 'docPropertyStatement', lang)} — ${ownerName || report.reporting_name}`}
+        author="JJ Property 10"
+        creator="JJ Property 10"
+      >
+        {certifiedSettlement ? (
+          <CertifiedCoverPage dto={certifiedSettlement} lang={lang} ownerName={ownerName} />
+        ) : null}
+        <OwnerPropertyPage
+          report={report}
+          lang={lang}
+          reportType={reportType}
+          supportingLedger={Boolean(certifiedSettlement)}
+        />
+      </Document>
+    ),
+  })
 }
 /* ─── G1: Full Owner Report (multi-property) ───────────────────────────────── */
 
@@ -1300,27 +1341,34 @@ export function OwnerPortfolioPdf({
   ownerName,
 }: OwnerPortfolioPdfProps) {
   const reportTypeLabel = reportType === 'periodic' ? t('reportTypePeriodic', lang) : t('reportTypeFull', lang)
-  const supportingLedger = Boolean(certifiedSettlement)
-  return (
-    <Document
-      title={`JJ ${supportingLedger ? t('certSectionTitle', lang) : reportTypeLabel} — ${ownerName || 'Owner Portfolio'}`}
-      author="JJ Property 10"
-      creator="JJ Property 10"
-    >
-      {certifiedSettlement ? (
-        <CertifiedCoverPage dto={certifiedSettlement} lang={lang} ownerName={ownerName} />
-      ) : reports.length > 1 ? (
-        <OwnerSummaryPage reports={reports} lang={lang} />
-      ) : null}
-      {reports.map(r => (
-        <OwnerPropertyPage
-          key={r.reporting_name}
-          report={r}
-          lang={lang}
-          reportType={reportType}
-          supportingLedger={supportingLedger}
-        />
-      ))}
-    </Document>
-  )
+  return certifiedOrLegacyDocument({
+    certifiedSettlement,
+    lang,
+    ownerName,
+    fallback: () => {
+      const supportingLedger = Boolean(certifiedSettlement)
+      return (
+        <Document
+          title={`JJ ${supportingLedger ? t('certSectionTitle', lang) : reportTypeLabel} — ${ownerName || 'Owner Portfolio'}`}
+          author="JJ Property 10"
+          creator="JJ Property 10"
+        >
+          {certifiedSettlement ? (
+            <CertifiedCoverPage dto={certifiedSettlement} lang={lang} ownerName={ownerName} />
+          ) : reports.length > 1 ? (
+            <OwnerSummaryPage reports={reports} lang={lang} />
+          ) : null}
+          {reports.map(r => (
+            <OwnerPropertyPage
+              key={r.reporting_name}
+              report={r}
+              lang={lang}
+              reportType={reportType}
+              supportingLedger={supportingLedger}
+            />
+          ))}
+        </Document>
+      )
+    },
+  })
 }
