@@ -67,8 +67,9 @@ export default function MasterDashboard() {
                         : 'yossi_pays_jacob'
   const ceo           = data.ceo ?? null
   const ceoAvailable  = ceo != null
-  // Due to owners — authoritative source: v_ceo_summary.due_to_owners (correct formula, all categories)
-  // NOT v_owner_balances (uses banned COALESCE(client_charge, amount_eur) formula)
+  // Due to owners — displayed from v_ceo_summary.due_to_owners (not v_owner_balances).
+  // P-LEDGER-6: owner-facing basis is COALESCE(client_charge, amount_eur); cash uses amount_eur only.
+  // Whether v_ceo_summary.due_to_owners follows P-LEDGER-6 is unverified / pending verification.
   const ownerDueTotal = ceoAvailable && ceo.due_to_owners != null ? n(ceo.due_to_owners) : null
 
   const alerts = [
