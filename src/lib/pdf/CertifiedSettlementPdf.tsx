@@ -259,6 +259,14 @@ export function CertifiedCoverPage({
           amount={fmtPropertyAmount(line.amountDueToJj)}
         />
       ))}
+      {(dto.ownerLevelObligations ?? []).map((line) => (
+        <MoneyRow
+          key={`owner-${line.id}`}
+          lang={lang}
+          label={`${t('certOwnerLevelLine', lang)} · ${line.effectiveDate}`}
+          amount={fmt(line.amountDueToJj)}
+        />
+      ))}
       <MoneyRow lang={lang} total label={t('certOpeningTotal', lang)} amount={fmt(dto.openingDueToJj)} />
 
       <View style={{ marginTop: 6 }} wrap={false}>

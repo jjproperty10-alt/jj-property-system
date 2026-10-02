@@ -67,6 +67,8 @@ export const TERMS = {
   unitDetail: { he: 'פירוט יחידה', en: 'Unit detail' },
   balancesByProperty: { he: 'יתרות לפי נכס', en: 'Balances by property' },
   propertyBalances: { he: 'סך יתרות הנכסים', en: 'Property balances' },
+  ownerLevelObligation: { he: 'תשלום כללי ברמת הבעלים', en: 'Owner-level payment' },
+  certifiedOpening: { he: 'יתרת פתיחה מאושרת', en: 'Certified opening balance' },
   purchase: { he: SECTION.purchase, en: 'Purchase' },
   renovation: { he: SECTION.renovation, en: 'Renovation' },
   setup: { he: 'הכנת הנכס', en: 'Property setup' },

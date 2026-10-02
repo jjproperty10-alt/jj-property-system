@@ -38,6 +38,11 @@
 -- Does not use COALESCE(client_charge, amount_eur). Opening uses stored
 -- certification totals and owner-level amount_due_to_jj. Cash uses
 -- allocation signed_amount.
+--
+-- When at least one applied owner-level obligation is inside p_as_of, the
+-- payload gains owner_level_obligations (not a property line). When there
+-- are none, that key is omitted so a payload with no owner-level row stays
+-- the same shape as the previous reader.
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION finance.read_certified_client_settlement(
@@ -68,7 +73,9 @@ DECLARE
   v_cert_count       INTEGER;
   v_certs_due        NUMERIC(12,2);
   v_owner_due        NUMERIC(12,2);
+  v_owner_lines      JSONB;
   v_opening          NUMERIC(12,2);
+  v_payload          JSONB;
 BEGIN
   IF p_entity_id IS NULL THEN
     RAISE EXCEPTION '[input] entity_id must be a UUID.';
@@ -165,8 +172,21 @@ BEGIN
   FROM finance.client_settlement_certifications c
   WHERE c.id = ANY (v_cert_ids);
 
-  SELECT COALESCE(pg_catalog.sum(o.amount_due_to_jj), 0)
-    INTO v_owner_due
+  SELECT COALESCE(pg_catalog.sum(o.amount_due_to_jj), 0),
+         COALESCE(
+           pg_catalog.jsonb_agg(
+             pg_catalog.jsonb_build_object(
+               'id', o.id,
+               'effective_date', o.effective_date,
+               'amount_due_to_jj', o.amount_due_to_jj,
+               'component_code', o.component_code,
+               'source_transaction_id', o.source_transaction_id
+             )
+             ORDER BY o.effective_date, o.id
+           ),
+           '[]'::jsonb
+         )
+    INTO v_owner_due, v_owner_lines
   FROM finance.client_owner_level_obligations o
   WHERE o.entity_id = p_entity_id
     AND o.status = 'applied'
@@ -365,7 +385,7 @@ BEGIN
         AND l.certification_id = ANY (v_cert_ids)
     );
 
-  RETURN pg_catalog.jsonb_build_object(
+  v_payload := pg_catalog.jsonb_build_object(
     'unavailable', false,
     'as_of', p_as_of,
     'certification_as_of', v_header.as_of,
@@ -384,6 +404,14 @@ BEGIN
     'unbound_lines', v_unbound,
     'cash_executions', v_cash_exec
   );
+  -- Omit the key when empty so a client with no owner-level row keeps the
+  -- previous payload shape. The rows are not property lines.
+  IF pg_catalog.jsonb_array_length(v_owner_lines) > 0 THEN
+    v_payload := v_payload || pg_catalog.jsonb_build_object(
+      'owner_level_obligations', v_owner_lines
+    );
+  END IF;
+  RETURN v_payload;
 END;
 $csc$;
 

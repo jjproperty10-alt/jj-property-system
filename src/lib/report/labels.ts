@@ -230,6 +230,7 @@ const L = {
                           he: 'דוח בעלים מאוחד. הפרדת שותפים תתבצע בהמשך' },
   certFifoCreditsTotal: { en: 'Total settlement credits',                  he: 'סה"כ זיכויי יישוב' },
   certPropertyLinesTitle: { en: 'Certified opening obligations by property', he: 'התחייבויות פתיחה מאושרות לפי נכס' },
+  certOwnerLevelLine:   { en: 'Owner-level payment',                       he: 'תשלום כללי ברמת הבעלים' },
   certOpeningTotal:     { en: 'Opening total',                             he: 'סה"כ פתיחה' },
   certExclusionCustodyNote: { en: 'Cash held by Jacob remains outside this settlement calculation.',
                           he: 'מזומן אצל יעקב נשאר מחוץ לחישוב התחשבנות זה.' },

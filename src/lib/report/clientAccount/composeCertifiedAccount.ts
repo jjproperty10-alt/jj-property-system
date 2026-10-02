@@ -37,6 +37,7 @@ import type {
   LedgerRow,
   PropertyAccount,
   ReportPeriod,
+  OwnerLevelObligationLine,
   SettlementBridge,
   SettlementBridgeStep,
   StatusLine,
@@ -832,6 +833,7 @@ function composeProperty(
  */
 function settlementBridgeOf(
   propertyBalance: number,
+  ownerLevelTotal: number,
   credits: readonly CreditPresentation[],
   cashAllocationSignedTotal: number,
   closing: number,
@@ -845,6 +847,16 @@ function settlementBridgeOf(
     sourceTransactionId: null,
     dateLabel: null,
   }]
+  if (!sameMoney(ownerLevelTotal, 0)) {
+    steps.push({
+      kind: 'owner-level',
+      label: term('ownerLevelObligation', language),
+      signedDueToJj: roundEur(ownerLevelTotal),
+      eventId: null,
+      sourceTransactionId: null,
+      dateLabel: null,
+    })
+  }
   const ordered = [
     ...credits.filter((credit) => credit.dateRole === 'credit-event'),
     ...credits.filter((credit) => credit.dateRole === 'cash-receipt'),
@@ -924,9 +936,15 @@ export function composeCertifiedClientAccount(input: CompositionInput): ClientAc
   const properties = [...input.lines]
     .sort((a, b) => a.lineOrder - b.lineOrder)
     .map((line) => withOwnerDescriptions(composeProperty(ordered, line, includeDeleted, omitted, period, events), input.descriptionByRowId))
-  const opening = roundEur(properties.reduce((sum, property) => sum + property.amountDueToJj, 0))
+  const propertyOpening = roundEur(properties.reduce((sum, property) => sum + property.amountDueToJj, 0))
+  const ownerLevel = ownerLevelLines(input)
+  const ownerLevelTotal = roundEur(ownerLevel.reduce((sum, line) => sum + line.amountDueToJj, 0))
+  const opening = roundEur(propertyOpening + ownerLevelTotal)
   if (!sameMoney(opening, input.openingDueToJj)) {
-    throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `Property balances ${opening} do not equal certified opening ${input.openingDueToJj}.`)
+    throw new ClientAccountBlock(
+      'BLOCKED_ACCOUNTING',
+      `Property balances ${propertyOpening} plus owner-level ${ownerLevelTotal} do not equal certified opening ${input.openingDueToJj}.`,
+    )
   }
   const creditLanguage = input.reportLanguage || 'he'
   const credits: CreditPresentation[] = input.credits.map((credit) => {
@@ -956,7 +974,14 @@ export function composeCertifiedClientAccount(input: CompositionInput): ClientAc
   if (!sameMoney(closing, input.closingDueToJj)) {
     throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `Closing ${closing} does not equal certified closing ${input.closingDueToJj}.`)
   }
-  const settlementBridge = settlementBridgeOf(opening, credits, input.cashAllocationSignedTotal, closing, creditLanguage)
+  const settlementBridge = settlementBridgeOf(
+    propertyOpening,
+    ownerLevelTotal,
+    credits,
+    input.cashAllocationSignedTotal,
+    closing,
+    creditLanguage,
+  )
   const closingBeforeMonthlyStr = closing
   const propertiesWithMonthlyStr = properties.map((property) => {
     const admitted = input.certifiedStrMonthlyByPropertyKey?.[property.propertyKey]
@@ -975,6 +1000,7 @@ export function composeCertifiedClientAccount(input: CompositionInput): ClientAc
   })
   const closingAfterMonthlyStr = roundEur(
     propertiesWithMonthlyStr.reduce((sum, property) => sum + property.amountDueToJj, 0)
+    + ownerLevelTotal
     - creditTotal
     - input.cashAllocationSignedTotal,
   )
@@ -1018,11 +1044,45 @@ export function composeCertifiedClientAccount(input: CompositionInput): ClientAc
     closingDueToJj: closing,
     closingDirection: directionOf(closing),
     properties: propertiesWithMonthlyStr,
+    ...(ownerLevel.length > 0 ? { ownerLevelObligations: ownerLevel } : {}),
     credits,
     settlementBridge,
     sourceNotes: properties.flatMap((property) => property.sourceNotes),
     omittedNetZeroSourceIds: omitted,
   }
+}
+
+/**
+ * Owner-level rows stay outside every property. An empty list is the same as
+ * omitting the input: no section and no change to the opening identity.
+ */
+function ownerLevelLines(input: CompositionInput): OwnerLevelObligationLine[] {
+  const raw = input.ownerLevelObligations ?? []
+  if (raw.length === 0) return []
+  const language = input.reportLanguage || 'he'
+  const seen = new Set<string>()
+  const lines: OwnerLevelObligationLine[] = []
+  for (const row of raw) {
+    const day = row.effectiveDate?.slice(0, 10)
+    if (!row.id || !ISO_DAY_RE.test(day || '') || day > input.asOf) {
+      throw new ClientAccountBlock('BLOCKED_ACCOUNTING', 'An owner-level obligation has no admissible identity or date.')
+    }
+    if (seen.has(row.id)) {
+      throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `Owner-level obligation ${row.id} appears twice.`)
+    }
+    if (!Number.isFinite(row.amountDueToJj) || row.amountDueToJj <= 0) {
+      throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `Owner-level obligation ${row.id} has no positive amount.`)
+    }
+    seen.add(row.id)
+    lines.push({
+      id: row.id,
+      effectiveDate: day,
+      amountDueToJj: roundEur(row.amountDueToJj),
+      label: term('ownerLevelObligation', language),
+      dateLabel: dayLabel(day),
+    })
+  }
+  return lines
 }
 
 export function applicableSectionNames(property: PropertyAccount): string[] {

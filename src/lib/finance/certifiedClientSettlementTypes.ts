@@ -74,6 +74,17 @@ export interface CertifiedUnboundLine {
   readonly blockedCode: 'unbound_certification_line'
 }
 
+/**
+ * Applied owner-level obligation. Not a property line. Positive amount_due_to_jj
+ * reduces what JJ owes the client. Absent when the reader has no such row.
+ */
+export interface CertifiedOwnerLevelObligation {
+  readonly id: string
+  readonly effectiveDate: string
+  readonly amountDueToJj: number
+  readonly sourceTransactionId: string
+}
+
 export interface CertifiedCashExecutionRef {
   readonly executionId: string
   readonly transactionId: string
@@ -91,6 +102,8 @@ export interface CertifiedClientSettlementAvailable {
   readonly certificationAsOf: string
   readonly openingDueToJj: number
   readonly propertyLines: readonly CertifiedPropertyObligationLine[]
+  /** Present only when the reader returned at least one applied owner-level row. */
+  readonly ownerLevelObligations?: readonly CertifiedOwnerLevelObligation[]
   readonly fifoCredits: readonly CertifiedFifoCreditLine[]
   readonly exclusions: readonly CertifiedExclusionLine[]
   readonly fifoCreditsTotal: number

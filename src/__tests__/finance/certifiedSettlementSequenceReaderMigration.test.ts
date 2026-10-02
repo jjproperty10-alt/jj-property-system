@@ -51,6 +51,8 @@ describe('20261002150000 certified settlement sequence reader', () => {
     expect(executable).toMatch(/certification_id = ANY \(v_cert_ids\)/)
     expect(executable).not.toMatch(/partner_funding_events/)
     expect(executable).not.toMatch(/COALESCE\s*\(\s*client_charge/i)
+    expect(executable).toMatch(/owner_level_obligations/)
+    expect(executable).toMatch(/jsonb_array_length\(v_owner_lines\) > 0/)
     expect(executable).toMatch(/'certified_opening_due_to_jj', v_opening/)
     expect(executable).toMatch(/'certified_remaining_due_to_jj', v_remaining_due/)
     expect(executable).toMatch(/'cash_executions', v_cash_exec/)

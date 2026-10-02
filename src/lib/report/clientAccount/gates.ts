@@ -171,6 +171,7 @@ export function clientAccountPlainText(doc: ClientAccountDocument): string {
       parts.push(term('strMonthlyFootnote', language))
     }
   }
+  for (const line of doc.ownerLevelObligations ?? []) parts.push(line.label, line.dateLabel, fmt(line.amountDueToJj))
   for (const credit of doc.credits) parts.push(credit.label, credit.monthLabel, credit.dateCaption || '', credit.note || '', credit.dateRole, fmt(credit.amount))
   for (const note of doc.sourceNotes) parts.push(note.propertyName, note.text)
   return parts.join('\n')
@@ -278,6 +279,9 @@ function clientStrings(doc: ClientAccountDocument): { where: string; text: strin
       }
     }
   }
+  for (const line of doc.ownerLevelObligations ?? []) {
+    out.push({ where: 'owner-level/label', text: line.label }, { where: 'owner-level/date', text: line.dateLabel })
+  }
   for (const credit of doc.credits) {
     out.push({ where: `credit/${credit.eventType}`, text: credit.label }, { where: 'credit/month', text: credit.monthLabel })
     if (credit.note) out.push({ where: 'credit/note', text: credit.note })
@@ -373,10 +377,22 @@ export function runAccountingGates(doc: ClientAccountDocument, input: Compositio
   }
   results.push({ id: 'categories-equal-property-balance', checks })
 
-  // 3. Sum of property balances equals the client property total.
+  // 3. Property balances plus owner-level obligations equal the certified opening.
+  //    With no owner-level row the property sum must equal the opening, as before.
   const propertyTotal = roundEur(doc.properties.reduce((sum, property) => sum + property.amountDueToJj, 0))
-  if (!sameMoney(propertyTotal, doc.openingDueToJj) || !sameMoney(propertyTotal, input.openingDueToJj)) {
-    block('properties-equal-client-total', `properties ${propertyTotal} do not equal client total ${doc.openingDueToJj}.`)
+  const ownerTotal = roundEur((doc.ownerLevelObligations ?? []).reduce((sum, line) => sum + line.amountDueToJj, 0))
+  const inputOwnerTotal = roundEur((input.ownerLevelObligations ?? []).reduce((sum, line) => sum + line.amountDueToJj, 0))
+  const clientTotal = roundEur(propertyTotal + ownerTotal)
+  if (
+    !sameMoney(clientTotal, doc.openingDueToJj)
+    || !sameMoney(clientTotal, input.openingDueToJj)
+    || !sameMoney(ownerTotal, inputOwnerTotal)
+    || !sameMoney(propertyTotal, doc.settlementBridge.propertyBalanceDueToJj)
+  ) {
+    block(
+      'properties-equal-client-total',
+      `properties ${propertyTotal} plus owner-level ${ownerTotal} do not equal client total ${doc.openingDueToJj}.`,
+    )
   }
   results.push({ id: 'properties-equal-client-total', checks: 1 })
 
@@ -626,8 +642,18 @@ export function runAccountingGates(doc: ClientAccountDocument, input: Compositio
   if (steps.length < 2 || steps[0].kind !== 'property-balance' || steps[steps.length - 1].kind !== 'closing') {
     block('settlement-events-counted-once', 'the settlement bridge must start at the property balance and end at the closing.')
   }
-  if (!sameMoney(steps[0].signedDueToJj, doc.openingDueToJj) || !sameMoney(bridge.propertyBalanceDueToJj, doc.openingDueToJj)) {
+  const bridgeOwner = roundEur((doc.ownerLevelObligations ?? []).reduce((sum, line) => sum + line.amountDueToJj, 0))
+  const ownerSteps = steps.filter((step) => step.kind === 'owner-level')
+  if (!sameMoney(steps[0].signedDueToJj, bridge.propertyBalanceDueToJj)) {
     block('settlement-events-counted-once', 'the settlement bridge does not start at the property balance.')
+  }
+  if (!sameMoney(roundEur(bridge.propertyBalanceDueToJj + bridgeOwner), doc.openingDueToJj)) {
+    block('settlement-events-counted-once', 'the settlement bridge does not start at the property balance.')
+  }
+  if (sameMoney(bridgeOwner, 0)) {
+    if (ownerSteps.length !== 0) block('settlement-events-counted-once', 'an owner-level step is present without an owner-level obligation.')
+  } else if (ownerSteps.length !== 1 || steps[1]?.kind !== 'owner-level' || !sameMoney(ownerSteps[0].signedDueToJj, bridgeOwner)) {
+    block('settlement-events-counted-once', 'the owner-level obligation is not a single step after the property balance.')
   }
   if (!sameMoney(steps[steps.length - 1].signedDueToJj, doc.closingDueToJj) || !sameMoney(bridge.closingDueToJj, doc.closingDueToJj)) {
     block('settlement-events-counted-once', 'the settlement bridge does not end at the certified closing.')

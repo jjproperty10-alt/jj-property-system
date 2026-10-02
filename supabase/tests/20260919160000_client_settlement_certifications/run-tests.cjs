@@ -14,6 +14,7 @@ const PORT = process.env.JJ_PG_PORT || '15438'
 const CONTAINER = 'jj-client-settlement-cert-pg'
 const SETTLEMENT = path.join(REPO, 'supabase/migrations/20260919140000_client_settlement_layer.sql')
 const MIGRATION = path.join(REPO, 'supabase/migrations/20260919160000_client_settlement_certifications.sql')
+const CUMULATIVE = path.join(REPO, 'supabase/migrations/20261002150000_certified_settlement_sequence_reader.sql')
 const FORBIDDEN = [
   '2944e9ad',
   '09e99dfa',
@@ -114,6 +115,8 @@ async function main() {
     path.join(HERE, '00_bootstrap.sql'),
     SETTLEMENT,
     MIGRATION,
+    path.join(HERE, '10_cumulative_reader_stubs.sql'),
+    CUMULATIVE,
     path.join(HERE, '99_matrix.sql'),
   ]
 
@@ -138,8 +141,14 @@ async function main() {
       if (before !== after) throw new Error('view definition changed: ' + view)
     }
     console.log('VIEW_DEFS_UNCHANGED')
+    // DELIBERATE BEHAVIOUR CHANGE: the matrix now expects cumulative openings.
+    // Install the later reader after the original migration, on empty stub tables.
     console.log('apply', path.basename(files[3]))
-    const lastResult = await client.query(fs.readFileSync(files[3], 'utf8'))
+    await client.query(fs.readFileSync(files[3], 'utf8'))
+    console.log('apply', path.basename(files[4]))
+    await client.query(fs.readFileSync(files[4], 'utf8'))
+    console.log('apply', path.basename(files[5]))
+    const lastResult = await client.query(fs.readFileSync(files[5], 'utf8'))
     const resultSets = Array.isArray(lastResult) ? lastResult : [lastResult]
     const rows = resultSets.find((r) => r.rows && r.rows[0] && 'passed' in r.rows[0])?.rows
     console.table(rows)

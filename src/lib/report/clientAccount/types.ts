@@ -65,6 +65,13 @@ export type SettlementEventInclusion = 'included' | 'excluded' | 'consumed_elsew
  * Every event carries a stable identity (`id`, plus `sourceTransactionId` for payments) so the
  * engine can prove it is counted exactly once.
  */
+/** Certified owner-level obligation. Never assigned to a property. */
+export interface OwnerLevelObligationInput {
+  readonly id: string
+  readonly effectiveDate: string
+  readonly amountDueToJj: number
+}
+
 export interface CertifiedCreditInput {
   readonly id: string
   readonly sourceTransactionId?: string | null
@@ -100,6 +107,8 @@ export interface CompositionInput {
   readonly closingDueToJj: number
   readonly cashAllocationSignedTotal: number
   readonly lines: readonly CertifiedAccountLine[]
+  /** Omitted or empty when the client has no owner-level obligation. */
+  readonly ownerLevelObligations?: readonly OwnerLevelObligationInput[]
   readonly credits: readonly CertifiedCreditInput[]
   /**
    * Ledger transaction ids already consumed by another settlement mechanism (for example a cash
@@ -250,7 +259,16 @@ export interface CreditPresentation {
   readonly inclusion: 'included'
 }
 
-export type SettlementBridgeStepKind = 'property-balance' | 'credit' | 'payment' | 'cash-allocation' | 'closing'
+export type SettlementBridgeStepKind = 'property-balance' | 'owner-level' | 'credit' | 'payment' | 'cash-allocation' | 'closing'
+
+/** Shown only when an owner-level obligation is in the account. Not a property. */
+export interface OwnerLevelObligationLine {
+  readonly id: string
+  readonly effectiveDate: string
+  readonly amountDueToJj: number
+  readonly label: string
+  readonly dateLabel: string
+}
 
 /**
  * One step of the client-level bridge. Order is fixed: property balance → credits → payments
@@ -298,6 +316,8 @@ export interface ClientAccountDocument {
   readonly closingDueToJj: number
   readonly closingDirection: ClosingDirection
   readonly properties: readonly PropertyAccount[]
+  /** Omitted when the client has no owner-level obligation, so the document matches the previous shape. */
+  readonly ownerLevelObligations?: readonly OwnerLevelObligationLine[]
   readonly credits: readonly CreditPresentation[]
   readonly settlementBridge: SettlementBridge
   readonly sourceNotes: readonly SourceNote[]

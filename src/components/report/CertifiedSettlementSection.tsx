@@ -65,6 +65,17 @@ export function CertifiedSettlementSection({
         </div>
       ))}
 
+      {(dto.ownerLevelObligations ?? []).map((line) => (
+        <div
+          key={line.id}
+          className="flex items-center justify-between py-1.5 text-xs text-slate-700"
+          data-owner-level-obligation={line.id}
+        >
+          <span>{t('certOwnerLevelLine', lang)} · {line.effectiveDate}</span>
+          <span className="font-mono">{eur(line.amountDueToJj)}</span>
+        </div>
+      ))}
+
       {dto.fifoCredits.map((credit) => (
         <div
           key={credit.eventId}

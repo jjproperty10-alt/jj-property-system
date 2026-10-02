@@ -30,6 +30,43 @@ const ENTITY = URIEL_SHAPED_CERTIFIED.entityId
 const AS_OF = URIEL_SHAPED_CERTIFIED.asOf
 
 describe('parseCertifiedReaderPayload', () => {
+  test('a payload with no owner-level key does not invent the section', () => {
+    const dto = parseCertifiedReaderPayload(readerPayloadFromDto(URIEL_SHAPED_CERTIFIED), ENTITY, AS_OF)
+    expect(dto.unavailable).toBe(false)
+    if (dto.unavailable) return
+    expect(dto).not.toHaveProperty('ownerLevelObligations')
+  })
+
+  test('owner-level rows stay separate and must reconcile to the opening', () => {
+    const raw = readerPayloadFromDto(URIEL_SHAPED_CERTIFIED)
+    const lineSum = (raw.lines as { amount_due_to_jj: number }[]).reduce((sum, line) => sum + line.amount_due_to_jj, 0)
+    const fifo = URIEL_SHAPED_CERTIFIED.fifoCreditsTotal
+    raw.owner_level_obligations = [{
+      id: '01000000-0000-4000-8000-000000000001',
+      effective_date: '2026-08-24',
+      amount_due_to_jj: 10000,
+      component_code: 'owner_general_payment',
+      source_transaction_id: '71000000-0000-4000-8000-000000000001',
+    }]
+    raw.certified_opening_due_to_jj = lineSum + 10000
+    raw.certified_closing_due_to_jj = lineSum + 10000 - fifo
+    const dto = parseCertifiedReaderPayload(raw, ENTITY, AS_OF)
+    expect(dto.unavailable).toBe(false)
+    if (dto.unavailable) return
+    expect(dto.ownerLevelObligations).toEqual([{
+      id: '01000000-0000-4000-8000-000000000001',
+      effectiveDate: '2026-08-24',
+      amountDueToJj: 10000,
+      sourceTransactionId: '71000000-0000-4000-8000-000000000001',
+    }])
+    expect(dto.propertyLines.reduce((sum, line) => sum + line.amountDueToJj, 0)).toBeCloseTo(lineSum, 2)
+
+    raw.certified_opening_due_to_jj = lineSum + 10000.01
+    raw.certified_closing_due_to_jj = lineSum + 10000.01 - fifo
+    const bad = parseCertifiedReaderPayload(raw, ENTITY, AS_OF)
+    expect(bad.unavailable).toBe(true)
+  })
+
   test('parses an available overlay and keeps integer-cent closing', () => {
     const dto = parseCertifiedReaderPayload(readerPayloadFromDto(URIEL_SHAPED_CERTIFIED), ENTITY, AS_OF)
     expect(dto.unavailable).toBe(false)

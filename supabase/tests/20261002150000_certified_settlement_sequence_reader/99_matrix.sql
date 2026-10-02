@@ -66,7 +66,10 @@ BEGIN
       AND (v_seq->'lines'->2->>'line_order')::int = 3
       AND (v_seq->'lines'->3->>'line_order')::int = 4
       AND (v_seq->'lines'->0->>'certification_id') = 'c1000000-0000-4000-8000-0000000000a1'
-      AND (v_seq->'lines'->2->>'certification_id') = 'c1000000-0000-4000-8000-0000000000b1',
+      AND (v_seq->'lines'->2->>'certification_id') = 'c1000000-0000-4000-8000-0000000000b1'
+      AND jsonb_array_length(v_seq->'owner_level_obligations') = 1
+      AND (v_seq->'owner_level_obligations'->0->>'amount_due_to_jj')::numeric = 10000
+      AND (v_seq->'owner_level_obligations'->0->>'id') = '01000000-0000-4000-8000-000000000001',
     v_seq->>'certified_remaining_due_to_jj'
   );
 

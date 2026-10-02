@@ -40,7 +40,13 @@ Font.register({
 })
 
 export function clientReportOutline(doc: ClientAccountDocument): string[] {
-  return [term('settlementSummary', doc.reportLanguage), ...doc.properties.map((property) => property.propertyName)]
+  return [
+    term('settlementSummary', doc.reportLanguage),
+    ...doc.properties.map((property) => property.propertyName),
+    ...(doc.ownerLevelObligations && doc.ownerLevelObligations.length > 0
+      ? [term('ownerLevelObligation', doc.reportLanguage)]
+      : []),
+  ]
 }
 
 function cutoffLabel(asOf: string): string {
@@ -190,7 +196,11 @@ export function ClientAccountPdf({ doc }: { doc: ClientAccountDocument }) {
   const language = doc.reportLanguage
   const he = language === 'he'
   const cutoff = cutoffLabel(doc.asOf)
-  const totalDirection: ClosingDirection = doc.openingDueToJj > 0 ? 'client_owes_jj' : 'settled'
+  const ownerLines = doc.ownerLevelObligations ?? []
+  const propertyTotal = doc.properties.reduce((sum, property) => sum + property.amountDueToJj, 0)
+  const totalDirection: ClosingDirection = (ownerLines.length > 0 ? propertyTotal : doc.openingDueToJj) > 0
+    ? 'client_owes_jj'
+    : 'settled'
   return (
     <Document title={doc.reportTitle} author="JJ Property">
       <Page size="A4" style={s.page}>
@@ -233,8 +243,32 @@ export function ClientAccountPdf({ doc }: { doc: ClientAccountDocument }) {
               <Phrase text={balanceDirectionText(name, totalDirection, language)} language={language} color={colors.navy} bold />
             </View>
           )}
-          amount={<Text style={[s.amount, s.bold, { color: colors.navy }]}>{fmt(doc.openingDueToJj)}</Text>}
+          amount={<Text style={[s.amount, s.bold, { color: colors.navy }]}>{fmt(ownerLines.length > 0 ? propertyTotal : doc.openingDueToJj)}</Text>}
         />
+        {ownerLines.map((line) => (
+          <TableRow
+            key={line.id}
+            language={language}
+            date={<DateText label={line.dateLabel} language={language} />}
+            description={<Desc text={line.label} language={language} />}
+            direction={(
+              <View style={s.direction}>
+                <Phrase text={term('ownerLevelObligation', language)} language={language} color={colors.navy} />
+              </View>
+            )}
+            amount={<Text style={[s.amount, { color: colors.navy }]}>{fmt(line.amountDueToJj)}</Text>}
+          />
+        ))}
+        {ownerLines.length > 0 ? (
+          <TableRow
+            language={language}
+            style={s.rowTotal}
+            date={null}
+            description={<Desc text={term('certifiedOpening', language)} language={language} bold style={{ color: colors.navy }} />}
+            direction={null}
+            amount={<Text style={[s.amount, s.bold, { color: colors.navy }]}>{fmt(doc.openingDueToJj)}</Text>}
+          />
+        ) : null}
 
         {doc.credits.length > 0 ? (
           <View style={s.card} wrap={false}>

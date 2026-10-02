@@ -643,14 +643,18 @@ BEGIN
     v_closing := (v_j->>'certified_closing_due_to_jj')::numeric;
     v_fifo := (v_j->>'fifo_credits_total')::numeric;
     v_excl := jsonb_array_length(v_j->'exclusions');
+    -- DELIBERATE BEHAVIOUR CHANGE: applied openings on different as_of dates
+    -- are cumulative. May v2 2.20 (v1 void) + June 5.00 + August 26.50 = 33.70.
+    -- The previous assertion expected the latest certification only (26.50, 3 lines).
     v_ok := (v_j->>'unavailable')::boolean = false
-      AND (v_j->>'certified_opening_due_to_jj')::numeric = 26.50
+      AND (v_j->>'certified_opening_due_to_jj')::numeric = 33.70
       AND v_fifo = 100.00
-      AND v_closing = 26.50 - 100.00
-      AND v_closing = -73.50
+      AND v_closing = 33.70 - 100.00
+      AND v_closing = -66.30
       AND v_excl = 1
-      AND jsonb_array_length(v_j->'lines') = 3
-      AND (v_j->'lines'->0->>'line_order')::int = 1;
+      AND jsonb_array_length(v_j->'lines') = 6
+      AND (v_j->'lines'->0->>'line_order')::int = 1
+      AND NOT (v_j ? 'owner_level_obligations');
     PERFORM pg_temp.record('reader_certified_closing', v_ok, v_j::text);
 
     v_j := finance.read_certified_client_settlement(v_ent_b, '2026-08-31');

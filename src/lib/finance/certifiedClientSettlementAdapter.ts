@@ -26,6 +26,7 @@ import type {
   CertifiedExclusionLine,
   CertifiedFifoCreditLine,
   CertifiedObligationSlice,
+  CertifiedOwnerLevelObligation,
   CertifiedPropertyObligationLine,
   CertifiedUnboundLine,
   CertifiedUnavailableReason,
@@ -110,6 +111,35 @@ function parseLines(raw: unknown): CertifiedPropertyObligationLine[] | null {
   lines.sort((a, b) => a.lineOrder - b.lineOrder)
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].lineOrder !== i + 1) return null
+  }
+  return lines
+}
+
+function parseOwnerLevelObligations(raw: unknown): CertifiedOwnerLevelObligation[] | null {
+  if (raw == null) return []
+  if (!Array.isArray(raw)) return null
+  const lines: CertifiedOwnerLevelObligation[] = []
+  for (const item of raw) {
+    const row = record(item)
+    if (!row) return null
+    const id = asText(row.id)
+    const effectiveDate = asIsoDate(row.effective_date)
+    const amountDueToJj = asNumber(row.amount_due_to_jj)
+    const sourceTransactionId = asText(row.source_transaction_id)
+    if (
+      !id ||
+      !isValidUUID(id) ||
+      !effectiveDate ||
+      amountDueToJj == null ||
+      certifiedCents(amountDueToJj) == null ||
+      amountDueToJj <= 0 ||
+      row.component_code !== 'owner_general_payment' ||
+      !sourceTransactionId ||
+      !isValidUUID(sourceTransactionId)
+    ) {
+      return null
+    }
+    lines.push({ id, effectiveDate, amountDueToJj, sourceTransactionId })
   }
   return lines
 }
@@ -366,6 +396,7 @@ export function parseCertifiedReaderPayload(
   const fifoTotal = asNumber(payload.fifo_credits_total)
   const overlayClosing = asNumber(payload.certified_closing_due_to_jj)
   const lines = parseLines(payload.lines)
+  const ownerLevelObligations = parseOwnerLevelObligations(payload.owner_level_obligations)
   const fifoCredits = parseFifoCredits(payload.fifo_credits)
   const exclusions = parseExclusions(payload.exclusions)
   const slices = parseObligationSlices(payload.obligation_slices)
@@ -403,6 +434,7 @@ export function parseCertifiedReaderPayload(
     certifiedCents(cashSigned) == null ||
     certifiedCents(remainingDue) == null ||
     lines == null ||
+    ownerLevelObligations == null ||
     fifoCredits == null ||
     exclusions == null ||
     slices == null ||
@@ -444,6 +476,14 @@ export function parseCertifiedReaderPayload(
     return unavailable('malformed_payload', entityId, asOf)
   }
 
+  if (ownerLevelObligations.length > 0) {
+    const propertySum = roundCertifiedEur(lines.reduce((sum, line) => sum + line.amountDueToJj, 0))
+    const ownerSum = roundCertifiedEur(ownerLevelObligations.reduce((sum, line) => sum + line.amountDueToJj, 0))
+    if (certifiedCents(roundCertifiedEur(propertySum + ownerSum)) !== certifiedCents(opening)) {
+      return unavailable('malformed_payload', entityId, asOf)
+    }
+  }
+
   const available: CertifiedClientSettlementAvailable = {
     unavailable: false,
     certificationId,
@@ -452,6 +492,7 @@ export function parseCertifiedReaderPayload(
     certificationAsOf,
     openingDueToJj: opening,
     propertyLines: lines,
+    ...(ownerLevelObligations.length > 0 ? { ownerLevelObligations } : {}),
     fifoCredits,
     exclusions,
     fifoCreditsTotal: fifoTotal,

@@ -146,6 +146,15 @@ export function compositionFromCertifiedSettlement(request: CertifiedComposition
       evidenceRef: line.evidenceRef,
       metadata: line.metadata || {},
     })),
+    ...(settlement.ownerLevelObligations && settlement.ownerLevelObligations.length > 0
+      ? {
+          ownerLevelObligations: settlement.ownerLevelObligations.map((line) => ({
+            id: line.id,
+            effectiveDate: line.effectiveDate,
+            amountDueToJj: line.amountDueToJj,
+          })),
+        }
+      : {}),
     // The certified reader returns only events applied by the certification, in EUR.
     credits: settlement.fifoCredits.map((credit) => ({
       id: credit.eventId,
