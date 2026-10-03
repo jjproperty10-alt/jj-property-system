@@ -19,6 +19,7 @@
  *   Unit tests target resolveOwnership directly; no DB mock required.
  */
 
+import { requireStaffCompanyPermission } from '@/lib/auth/requireStaffCompanyPermission'
 import { createServiceClient } from '@/lib/supabase'
 import type {
   EntityType,
@@ -139,6 +140,7 @@ export async function fetchOwnershipForProperty(
   referenceDate?: string,
 ): Promise<PropertyOwnershipRecord> {
   const refDate = referenceDate ?? new Date().toISOString().slice(0, 10)
+  await requireStaffCompanyPermission()
   const supabase = createServiceClient()
 
   // ── 1. Look up entity in entity_registry ──────────────────────────────────

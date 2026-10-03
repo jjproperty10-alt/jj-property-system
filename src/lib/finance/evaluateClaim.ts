@@ -30,6 +30,7 @@
  */
 
 import 'server-only'
+import { requireStaffCompanyPermission } from '@/lib/auth/requireStaffCompanyPermission'
 import { createServiceClient } from '@/lib/supabase'
 import type {
   ClaimEvaluation,
@@ -313,6 +314,7 @@ export interface EvaluateClaimParams {
  * The result is snapshotted inside decision_log.evidence_chain when logDecision() is called.
  */
 export async function evaluateClaim(params: EvaluateClaimParams): Promise<ClaimEvaluation> {
+  await requireStaffCompanyPermission()
   const { templateId, entityId, entityType, periodStart, periodEnd } = params
 
   const [template, evidenceLinks] = await Promise.all([

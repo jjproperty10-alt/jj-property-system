@@ -1,19 +1,17 @@
 /**
- * One verified company lets the three former direct clients finish their reads.
- * A missing or empty company id, and a refused resolver, return no data and
- * send no read.
+ * One verified company plus active staff membership lets the three paths
+ * finish their reads. A missing company, a refused resolver, or a missing
+ * staff/membership permission returns no data and sends no relation read.
  *
- * FINDING: this gate does not check staff role or company membership.
- * resolve_service_read_company (see the throwaway test) allows only a userless
- * service_role session plus exactly one active company. It does not read
- * user_roles or access.company_memberships. requireDecisionSessionUser() only
- * checks that auth.getUser() returned a user. An authenticated user with no
- * staff role and no company membership is not rejected by either check.
+ * The company resolver SQL itself still does not read staff or membership.
+ * These tests cover the session check that now runs before the reads.
  */
 const mockState = {
   mode: 'ok' as 'ok' | 'throw' | 'null' | 'undefined' | 'empty',
+  permission: 'allow' as 'allow' | 'nonstaff' | 'nonmember' | 'inactive' | 'rpc-error',
   companyId: '00000000-0000-4000-8000-00000000000a',
   sent: [] as string[],
+  serviceResolves: 0,
   user: { id: 'user-1' } as { id: string } | null,
   rows: {
     v_cashbox_audit: [{ cash_box_name: 'JJ', balance: '10.00' }],
@@ -55,6 +53,18 @@ jest.mock('@/lib/supabase', () => {
       maybeSingle() {
         return filter
       },
+      limit() {
+        return filter
+      },
+      gte() {
+        return filter
+      },
+      lte() {
+        return filter
+      },
+      in() {
+        return filter
+      },
       then(
         onFulfilled?: ((value: unknown) => unknown) | null,
         onRejected?: ((reason: unknown) => unknown) | null,
@@ -81,44 +91,78 @@ jest.mock('@/lib/supabase', () => {
     return client
   }
 
+  function resolveCompany() {
+    mockState.serviceResolves += 1
+    if (mockState.mode === 'throw') throw new Error('BLOCKED_BY_COMPANY_CONTEXT')
+    if (mockState.mode === 'null' || mockState.mode === 'undefined' || mockState.mode === 'empty') {
+      throw new Error('BLOCKED_BY_COMPANY_CONTEXT')
+    }
+    return mockState.companyId
+  }
+
   return {
-    createServiceClient: () =>
-      gateServiceReads(buildClient(), async () => {
-        if (mockState.mode === 'throw') throw new Error('BLOCKED_BY_COMPANY_CONTEXT')
-        if (mockState.mode === 'null') return null
-        if (mockState.mode === 'undefined') return undefined
-        if (mockState.mode === 'empty') return ''
-        return mockState.companyId
-      }),
+    resolveSoleServiceCompany: () => Promise.resolve(resolveCompany()),
+    createServiceClient: () => gateServiceReads(buildClient(), async () => resolveCompany()),
   }
 })
+
+function mockSessionRpc(fn: string) {
+  if (mockState.permission === 'rpc-error') return { data: null, error: { message: 'rpc down' } }
+  if (fn === 'require_jj_staff') {
+    if (mockState.permission === 'nonstaff' || mockState.permission === 'inactive') {
+      return { data: null, error: { message: 'not staff' } }
+    }
+    return { data: mockState.user?.id ?? null, error: null }
+  }
+  if (fn === 'is_company_member') {
+    if (mockState.permission === 'nonmember') return { data: false, error: null }
+    return { data: true, error: null }
+  }
+  return { data: null, error: { message: `unexpected rpc ${fn}` } }
+}
 
 jest.mock('@/lib/supabaseServer', () => ({
   createSupabaseServerClient: () => ({
     auth: {
       getUser: async () => ({ data: { user: mockState.user }, error: null }),
     },
+    rpc: async (fn: string) => mockSessionRpc(fn),
+    schema: () => ({
+      rpc: async (fn: string) => mockSessionRpc(fn),
+    }),
   }),
 }))
 
+function decisionArgs() {
+  return {
+    entityId: 'Jacob',
+    entityType: 'partner',
+    periodStart: new Date(2026, 6, 1),
+    periodEnd: new Date(2026, 6, 31),
+    decisionType: 'approve_withdrawal',
+  }
+}
+
 async function loadComponents() {
-  const [{ fetchAll }, { fetchOwnershipForProperty }, { requireDecisionSessionUser }] = await Promise.all([
+  const [{ fetchAll }, { fetchOwnershipForProperty }, { loadFinanceDecision }] = await Promise.all([
     import('@/app/(app)/page'),
     import('@/lib/ownership/ownershipService'),
     import('@/app/(app)/finance/decision/[partner]/[period]/page'),
   ])
-  return { fetchAll, fetchOwnershipForProperty, requireDecisionSessionUser }
+  return { fetchAll, fetchOwnershipForProperty, loadFinanceDecision }
 }
 
 describe('one active company: the three clients still return their data', () => {
   beforeEach(() => {
     mockState.mode = 'ok'
+    mockState.permission = 'allow'
     mockState.sent = []
+    mockState.serviceResolves = 0
     mockState.user = { id: 'user-1' }
   })
 
-  test('CEO page receives all 4 views, ownership is the real percentage, getUser returns the session user', async () => {
-    const { fetchAll, fetchOwnershipForProperty, requireDecisionSessionUser } = await loadComponents()
+  test('CEO page receives all 4 views, ownership is the real percentage, the decision page returns a position', async () => {
+    const { fetchAll, fetchOwnershipForProperty, loadFinanceDecision } = await loadComponents()
 
     const dashboard = await fetchAll()
     expect(dashboard.errors).toEqual([])
@@ -139,15 +183,19 @@ describe('one active company: the three clients still return their data', () => 
     expect(mockState.sent).toEqual(['entity_registry', 'partnership_ownership'])
 
     mockState.sent = []
-    const user = await requireDecisionSessionUser()
-    expect(user.id).toBe('user-1')
-    expect(mockState.sent).toEqual([])
+    const loaded = await loadFinanceDecision(decisionArgs())
+    expect(loaded.position.entityId).toBe('Jacob')
+    expect(loaded.decision.entityId).toBe('Jacob')
+    expect(loaded.decision.decisionType).toBe('approve_withdrawal')
+    expect(mockState.sent).toEqual(expect.arrayContaining(['claim_templates', 'v_cashbox_audit']))
   })
 })
 
 describe('company context fail-closed: no view data and no ownership passthrough', () => {
   beforeEach(() => {
+    mockState.permission = 'allow'
     mockState.sent = []
+    mockState.serviceResolves = 0
     mockState.user = { id: 'user-1' }
   })
 
@@ -185,24 +233,58 @@ describe('company context fail-closed: no view data and no ownership passthrough
   })
 })
 
-describe('decision page session check', () => {
+describe('staff and membership fail closed before any service-role relation read', () => {
   beforeEach(() => {
     mockState.mode = 'ok'
+    mockState.permission = 'allow'
     mockState.sent = []
+    mockState.serviceResolves = 0
+    mockState.user = { id: 'user-1' }
   })
 
-  test('unauthenticated getUser throws and reads nothing', async () => {
+  async function expectNoPermissionData() {
+    const { fetchAll, fetchOwnershipForProperty, loadFinanceDecision } = await loadComponents()
+    mockState.sent = []
+    mockState.serviceResolves = 0
+    const dashboard = await fetchAll()
+    expect(dashboard.cashboxes).toEqual([])
+    expect(dashboard.anastasia).toBeNull()
+    expect(dashboard.summary).toBeNull()
+    expect(dashboard.pl).toBeNull()
+    expect(dashboard.errors).toEqual(['BLOCKED_BY_MISSING_PERMISSION'])
+    await expect(fetchOwnershipForProperty('Villa Mazotos', 'Avi', '2026-06-01')).rejects.toThrow(
+      'BLOCKED_BY_MISSING_PERMISSION',
+    )
+    await expect(loadFinanceDecision(decisionArgs())).rejects.toThrow('BLOCKED_BY_MISSING_PERMISSION')
+    expect(mockState.sent).toEqual([])
+  }
+
+  test('staff + non-member returns no data and sends no read', async () => {
+    mockState.permission = 'nonmember'
+    await expectNoPermissionData()
+  })
+
+  test('member + non-staff returns no data and sends no read', async () => {
+    mockState.permission = 'nonstaff'
+    await expectNoPermissionData()
+    expect(mockState.serviceResolves).toBe(0)
+  })
+
+  test('inactive staff returns no data and sends no read', async () => {
+    mockState.permission = 'inactive'
+    await expectNoPermissionData()
+    expect(mockState.serviceResolves).toBe(0)
+  })
+
+  test('an RPC error returns no data and sends no read', async () => {
+    mockState.permission = 'rpc-error'
+    await expectNoPermissionData()
+    expect(mockState.serviceResolves).toBe(0)
+  })
+
+  test('an unauthenticated user returns no data and sends no read', async () => {
     mockState.user = null
-    const { requireDecisionSessionUser } = await loadComponents()
-    await expect(requireDecisionSessionUser()).rejects.toThrow('Not authenticated')
-    expect(mockState.sent).toEqual([])
-  })
-
-  test('finding: an authenticated user with no staff role and no membership is not rejected', async () => {
-    mockState.user = { id: 'user-without-staff-or-membership' }
-    const { requireDecisionSessionUser } = await loadComponents()
-    const user = await requireDecisionSessionUser()
-    expect(user.id).toBe('user-without-staff-or-membership')
-    expect(mockState.sent).toEqual([])
+    await expectNoPermissionData()
+    expect(mockState.serviceResolves).toBe(0)
   })
 })

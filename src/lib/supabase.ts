@@ -30,7 +30,7 @@ function rawServiceClient() {
   return createClient(url, key, { auth: { persistSession: false } })
 }
 
-async function resolveSoleServiceCompany(): Promise<string> {
+export async function resolveSoleServiceCompany(): Promise<string> {
   const { data, error } = await rawServiceClient().rpc('resolve_service_read_company', {
     p_requested: null,
   })

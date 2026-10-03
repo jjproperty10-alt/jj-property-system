@@ -20,6 +20,7 @@
 // Net company P&L: €10,719.61
 // ============================================================
 
+import { MISSING_PERMISSION_BLOCK, requireStaffCompanyPermission } from '@/lib/auth/requireStaffCompanyPermission'
 import { createServiceClient } from '@/lib/supabase'
 import { UNAVAILABLE_METRIC } from '@/lib/legacy/staffMetricLabel'
 import { SettlementSection, type Settlement } from '@/components/ceo/SettlementSection'
@@ -137,7 +138,23 @@ const COMPANY_CONTEXT_BLOCKED = 'BLOCKED_BY_COMPANY_CONTEXT'
 // ---- Data Fetching ----
 
 export async function fetchAll() {
-  const sb = createServiceClient()
+  let sb: ReturnType<typeof createServiceClient>
+  try {
+    await requireStaffCompanyPermission()
+    sb = createServiceClient()
+  } catch (error) {
+    if (error instanceof Error && (error.message === COMPANY_CONTEXT_BLOCKED || error.message === MISSING_PERMISSION_BLOCK)) {
+      return {
+        cashboxes: [] as CashboxRow[],
+        settlement: null as Settlement | null,
+        anastasia: null as AnastasiaClearing | null,
+        summary: null as CeoSummary | null,
+        pl: null as CompanyPL | null,
+        errors: [error.message],
+      }
+    }
+    throw error
+  }
 
   // Production exposes v_ceo_summary, but not total_cash_position_profit and not
   // public.v_settlement_verification. select('*') keeps every column the view

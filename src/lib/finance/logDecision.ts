@@ -25,6 +25,7 @@
  */
 
 import 'server-only'
+import { requireStaffCompanyPermission } from '@/lib/auth/requireStaffCompanyPermission'
 import { createServiceClient } from '@/lib/supabase'
 import type {
   ClaimEvaluation,
@@ -106,6 +107,7 @@ export interface LogDecisionParams {
  * ADR-005 IL-1: INSERTs only. The DB trigger rejects any UPDATE/DELETE.
  */
 export async function logDecision(params: LogDecisionParams): Promise<{ id: string }> {
+  await requireStaffCompanyPermission()
   const {
     decisionType,
     entityId,

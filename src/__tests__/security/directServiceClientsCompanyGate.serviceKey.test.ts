@@ -14,6 +14,10 @@ jest.mock('@/lib/supabaseServer', () => ({
     auth: {
       getUser: async () => ({ data: { user: mockSession.user }, error: null }),
     },
+    rpc: async () => ({ data: mockSession.user?.id ?? null, error: null }),
+    schema: () => ({
+      rpc: async () => ({ data: true, error: null }),
+    }),
   }),
 }))
 
@@ -134,13 +138,14 @@ describe('missing SUPABASE_SERVICE_KEY fails closed and does not use the anon ke
     }
   })
 
-  test('getUser still returns the session user when the service key is missing, and reads no relation', async () => {
+  test('a missing service key blocks the decision path before any relation read and does not use the anon key', async () => {
     delete process.env.SUPABASE_SERVICE_KEY
-    const { requireDecisionSessionUser } = await load()
+    const { requireDecisionSessionUser, MISSING_SERVICE_KEY_BLOCK } = await load()
     const callsBefore = mockClientCalls.length
-    const user = await requireDecisionSessionUser()
-    expect(user.id).toBe('session-user')
+    await expect(requireDecisionSessionUser()).rejects.toThrow(MISSING_SERVICE_KEY_BLOCK)
     expect(mockClientCalls.length).toBe(callsBefore)
     expect(mockRpc.sent).toEqual([])
+    const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    expect(mockClientCalls.slice(callsBefore).some((call) => call[1] === anon)).toBe(false)
   })
 })

@@ -22,8 +22,7 @@
  * Classification: Mechanical Refactor — no logic changes.
  */
 
-import { redirect } from 'next/navigation'
-import { createSupabaseServerClient } from '@/lib/supabaseServer'
+import { requireStaffCompanyPermission } from '@/lib/auth/requireStaffCompanyPermission'
 import { computeFinancialPosition } from '@/lib/finance/computeFinancialPosition'
 import { evaluateDecision } from '@/lib/finance/evaluateDecision'
 import { logDecision } from '@/lib/finance/logDecision'
@@ -55,10 +54,23 @@ function capitalize(s: string) {
 // ── Server Action — logDecision on execute ───────────────────────────────────
 
 export async function requireDecisionSessionUser() {
-  const sessionClient = createSupabaseServerClient()
-  const { data: { user } } = await sessionClient.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
-  return user
+  const { userId } = await requireStaffCompanyPermission()
+  return { id: userId }
+}
+
+export async function loadFinanceDecision(params: {
+  entityId: string
+  entityType: string
+  periodStart: Date
+  periodEnd: Date
+  decisionType: string
+}) {
+  await requireStaffCompanyPermission()
+  const [position, decision] = await Promise.all([
+    computeFinancialPosition(params),
+    evaluateDecision(params),
+  ])
+  return { position, decision }
 }
 
 async function executeDecision(
@@ -72,9 +84,7 @@ async function executeDecision(
 ): Promise<void> {
   'use server'
 
-  // Get current staff session for decidedBy.
-  // Session identity only: the cookie-aware anon-key client. No service key here;
-  // every data read below goes through createServiceClient() and its company gate.
+  // Staff + membership of the resolved company, before any service-role read.
   const user = await requireDecisionSessionUser()
 
   // Re-compute position + evaluate decision at execution time
@@ -151,23 +161,32 @@ export default async function FinanceDecisionPage({ params }: PageProps) {
   const entityType = 'partner'
   const decisionType = 'approve_withdrawal'
 
-  // Compute position + decision evaluation in parallel (server-side)
-  const [position, decision] = await Promise.all([
-    computeFinancialPosition({
+  let loaded: Awaited<ReturnType<typeof loadFinanceDecision>> | null = null
+  let blocked: string | null = null
+  try {
+    loaded = await loadFinanceDecision({
       entityId,
       entityType,
       periodStart,
       periodEnd,
       decisionType,
-    }),
-    evaluateDecision({
-      decisionType,
-      entityId,
-      entityType,
-      periodStart,
-      periodEnd,
-    }),
-  ])
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : ''
+    if (message === 'BLOCKED_BY_MISSING_PERMISSION' || message === 'BLOCKED_BY_COMPANY_CONTEXT') {
+      blocked = message
+    } else {
+      throw error
+    }
+  }
+  if (!loaded) {
+    return (
+      <PageShell maxWidth="md">
+        <p className="p-8 text-sm text-red-700">{blocked}</p>
+      </PageShell>
+    )
+  }
+  const { position, decision } = loaded
 
   // Bind Server Action for this specific partner/period
   const handleExecute = async (params: { override: boolean; overrideReason?: string }) => {

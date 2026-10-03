@@ -15,6 +15,7 @@
  */
 
 import 'server-only'
+import { requireStaffCompanyPermission } from '@/lib/auth/requireStaffCompanyPermission'
 import { evaluateClaim } from './evaluateClaim'
 import type { DecisionEvaluation, ClaimEvaluation } from './types'
 import { createServiceClient } from '@/lib/supabase'
@@ -49,6 +50,7 @@ export interface EvaluateDecisionParams {
 export async function evaluateDecision(
   params: EvaluateDecisionParams,
 ): Promise<DecisionEvaluation> {
+  await requireStaffCompanyPermission()
   const { decisionType, entityId, entityType, periodStart, periodEnd } = params
 
   const templateIds = await loadRequiredTemplates(decisionType)

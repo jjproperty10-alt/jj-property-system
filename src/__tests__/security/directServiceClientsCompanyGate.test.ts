@@ -102,17 +102,48 @@ describe('direct service-key clients use the company gate', () => {
       expect(source).not.toMatch(/\bcreateServerClient\(/)
     }
     expect(read(CEO_PAGE)).toContain("import { createServiceClient } from '@/lib/supabase'")
-    expect(read(CEO_PAGE)).toContain('const sb = createServiceClient()')
+    expect(read(CEO_PAGE)).toContain('sb = createServiceClient()')
     expect(read(OWNERSHIP)).toContain("import { createServiceClient } from '@/lib/supabase'")
     expect(read(OWNERSHIP)).not.toContain('NEXT_PUBLIC_SUPABASE_ANON_KEY')
-    expect(read(DECISION_PAGE)).toContain("import { createSupabaseServerClient } from '@/lib/supabaseServer'")
-    expect(read(DECISION_PAGE)).toContain('sessionClient.auth.getUser()')
+    expect(read(DECISION_PAGE)).toContain('requireStaffCompanyPermission')
+    expect(read(CEO_PAGE)).toContain('requireStaffCompanyPermission')
+    expect(read(OWNERSHIP)).toContain('requireStaffCompanyPermission')
+  })
+
+  test('session permission calls require_jj_staff and is_company_member, not the finance helpers', () => {
+    const source = read('src/lib/auth/requireStaffCompanyPermission.ts')
+    expect(source).toContain("rpc('require_jj_staff'")
+    expect(source).toContain("rpc('is_company_member'")
+    const executable = source.slice(source.lastIndexOf('export async function'))
+    expect(executable).not.toContain('is_active_jj_staff')
+    expect(executable).not.toContain('is_active_jj_admin')
+    expect(read('supabase/migrations/20260917090100_agent_transaction_drafts.sql')).toContain(
+      'CREATE OR REPLACE FUNCTION finance.is_active_jj_staff()',
+    )
+    expect(read('supabase/migrations/20260924180000_employee_config_staff_and_definer_search_path.sql')).toContain(
+      'CREATE OR REPLACE FUNCTION finance.is_active_jj_admin()',
+    )
+    expect(read('supabase/migrations/20260924210000_access_company_memberships.sql')).toContain(
+      'CREATE FUNCTION access.is_company_member(target_company_id uuid)',
+    )
+    expect(read('supabase/migrations/20260917120000_agent_transaction_draft_public_rpcs.sql')).toContain(
+      'finance is NOT exposed',
+    )
+    const definedInMigrations = readdirSync(path.join(root, 'supabase/migrations'))
+      .filter((name) => name.endsWith('.sql'))
+      .some((name) => /CREATE (OR REPLACE )?FUNCTION public\.require_jj_staff/.test(read(path.join('supabase/migrations', name))))
+    expect(definedInMigrations).toBe(false)
   })
 
   test('every relation the CEO page and ownershipService read is gated', () => {
     const ceo = read(CEO_PAGE)
     const ownership = read(OWNERSHIP)
-    const relations = Array.from(`${ceo}\n${ownership}`.matchAll(/\.from\('([a-z_]+)'\)/g)).map((m) => m[1])
+    const decisionReads = [
+      'src/lib/finance/computeFinancialPosition.ts',
+      'src/lib/finance/evaluateDecision.ts',
+      'src/lib/finance/evaluateClaim.ts',
+    ].map(read).join('\n')
+    const relations = Array.from(`${ceo}\n${ownership}\n${decisionReads}`.matchAll(/\.from\('([a-z_]+)'\)/g)).map((m) => m[1])
     expect(relations.length).toBeGreaterThan(0)
     for (const relation of relations) {
       expect(
@@ -162,7 +193,8 @@ describe('direct service-key clients use the company gate', () => {
     })
     await expect(db.from('user_roles').select('*')).rejects.toThrow('BLOCKED_BY_UNGATED_RELATION')
     await expect(db.from('transactions').select('*').eq('id', 'tx-1')).rejects.toThrow('BLOCKED_BY_UNGATED_RELATION')
-    await expect(db.schema('finance').from('claim_templates').select('id')).rejects.toThrow('BLOCKED_BY_UNGATED_RELATION')
+    await expect(db.schema('finance').from('position_score_deltas').select('to_score')).rejects.toThrow('BLOCKED_BY_UNGATED_RELATION')
+    await expect(db.schema('finance').from('decision_log').select('id')).rejects.toThrow('BLOCKED_BY_UNGATED_RELATION')
     expect(resolved).toBe(0)
     expect(log).toEqual([])
   })
@@ -179,6 +211,16 @@ describe('direct service-key clients use the company gate', () => {
   })
 })
 
+jest.mock('@/lib/supabaseServer', () => ({
+  createSupabaseServerClient: () => ({
+    auth: {
+      getUser: async () => ({ data: { user: { id: 'staff-user' } }, error: null }),
+    },
+    rpc: async () => ({ data: 'staff-user', error: null }),
+    schema: () => ({ rpc: async () => ({ data: true, error: null }) }),
+  }),
+}))
+
 describe('ownershipService fails closed on a refused company context', () => {
   const log: Filter[] = []
   let refuse = false
@@ -191,6 +233,10 @@ describe('ownershipService fails closed on a refused company context', () => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { gateServiceReads: gate } = require('@/lib/auth/serviceRoleCompanyGate')
     return {
+      resolveSoleServiceCompany: async () => {
+        if (refuse) throw new Error('BLOCKED_BY_COMPANY_CONTEXT')
+        return 'company-a'
+      },
       createServiceClient: () =>
         gate(
           mockClient(

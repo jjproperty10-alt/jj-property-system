@@ -42,6 +42,12 @@ export const SERVICE_ROLE_COMPANY_WIDE_RELATIONS: ReadonlySet<string> = new Set(
   'v_cashbox_audit',
   'v_ceo_summary',
   'v_jj_company_pl',
+  // Decision-page selects. Still no operating_company_id filter: the company
+  // resolver must succeed, and the caller must already have passed the staff
+  // and membership check. An unlisted relation stays refused.
+  'claim_templates',
+  'evidence_links',
+  'statement_events',
 ])
 
 type CompanyFilter = {
@@ -85,10 +91,18 @@ function blockedRead(message: string): CompanyFilter {
     order: () => CompanyFilter
     single: () => CompanyFilter
     maybeSingle: () => CompanyFilter
+    limit: () => CompanyFilter
+    gte: () => CompanyFilter
+    lte: () => CompanyFilter
+    in: () => CompanyFilter
   }
   chain.order = () => filter
   chain.single = () => filter
   chain.maybeSingle = () => filter
+  chain.limit = () => filter
+  chain.gte = () => filter
+  chain.lte = () => filter
+  chain.in = () => filter
   return filter
 }
 

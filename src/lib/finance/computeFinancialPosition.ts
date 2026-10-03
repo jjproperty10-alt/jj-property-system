@@ -16,6 +16,7 @@
  */
 
 import 'server-only'
+import { requireStaffCompanyPermission } from '@/lib/auth/requireStaffCompanyPermission'
 import { createServiceClient } from '@/lib/supabase'
 import { evaluateClaim } from './evaluateClaim'
 import type {
@@ -128,6 +129,7 @@ export interface ComputeFinancialPositionParams {
 export async function computeFinancialPosition(
   params: ComputeFinancialPositionParams,
 ): Promise<FinancialPosition> {
+  await requireStaffCompanyPermission()
   const { entityId, entityType, periodStart, periodEnd, decisionType } = params
 
   // Load claim template IDs (filtered by decisionType if provided)
