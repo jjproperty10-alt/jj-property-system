@@ -14,7 +14,10 @@ jest.mock('@/lib/supabaseServer', () => ({
     auth: {
       getUser: async () => ({ data: { user: mockSession.user }, error: null }),
     },
-    rpc: async () => ({ data: mockSession.user?.id ?? null, error: null }),
+    rpc: async (fn: string) =>
+      fn === 'is_company_member'
+        ? { data: true, error: null }
+        : { data: mockSession.user?.id ?? null, error: null },
     schema: () => ({
       rpc: async () => ({ data: true, error: null }),
     }),
