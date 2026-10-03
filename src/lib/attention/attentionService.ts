@@ -61,7 +61,7 @@ async function safe(fn: Provider): Promise<AttentionItemDTO[]> {
 }
 
 // ── Provider: verification tasks (REPORTING) ────────────────────────────────
-function verificationTasks(db: ReturnType<typeof createServiceClient>): Provider {
+function verificationTasks(db: Awaited<ReturnType<typeof createServiceClient>>): Provider {
   return async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (db as any)
@@ -93,7 +93,7 @@ function verificationTasks(db: ReturnType<typeof createServiceClient>): Provider
 }
 
 // ── Provider: PMS sync errors (STR_RECONCILIATION) ──────────────────────────
-function pmsSyncErrors(db: ReturnType<typeof createServiceClient>): Provider {
+function pmsSyncErrors(db: Awaited<ReturnType<typeof createServiceClient>>): Provider {
   return async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (db as any)
@@ -125,7 +125,7 @@ function pmsSyncErrors(db: ReturnType<typeof createServiceClient>): Provider {
 }
 
 // ── Provider: Revenue Intelligence stale market snapshot (REVENUE_INTELLIGENCE) ──
-function riStaleWarnings(db: ReturnType<typeof createServiceClient>): Provider {
+function riStaleWarnings(db: Awaited<ReturnType<typeof createServiceClient>>): Provider {
   return async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (db as any)
@@ -165,9 +165,9 @@ const SEVERITY_ORDER: Record<AttentionSeverity, number> = { CRITICAL: 0, ATTENTI
  * Optionally filter to a canonical property (matched by name where the source carries one).
  */
 export async function getAttentionItems(opts: { propertyName?: string } = {}): Promise<readonly AttentionItemDTO[]> {
-  let db: ReturnType<typeof createServiceClient>
+  let db: Awaited<ReturnType<typeof createServiceClient>>
   try {
-    db = createServiceClient()
+    db = await createServiceClient()
   } catch (err) {
     console.error('[attention] createServiceClient failed:', err)
     return []

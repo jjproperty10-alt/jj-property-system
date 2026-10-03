@@ -116,7 +116,7 @@ export function assemblePortfolio(
 async function fetchOwnerEntityRows(
   ownerName: string,
 ): Promise<{ entities: RawEntityRow[]; ownershipRows: RawOwnershipRow[] }> {
-  const supabase = createServiceClient()
+  const supabase = await createServiceClient()
 
   const { data: ownershipData, error: ownershipError } = await supabase
     .from('partnership_ownership')
@@ -230,7 +230,7 @@ export async function getOwnerProperty(
     to: config.periodTo ?? null,
   }
 
-  const supabase = createServiceClient()
+  const supabase = await createServiceClient()
 
   const { data: entityData, error: entityError } = await supabase
     .from('entity_registry')

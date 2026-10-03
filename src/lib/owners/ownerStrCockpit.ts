@@ -53,7 +53,7 @@ export interface OwnerStrCockpitInput {
 
 export async function buildOwnerStrCockpit(input: OwnerStrCockpitInput): Promise<OwnerStrCockpit> {
   const today = input.today ?? new Date().toISOString().slice(0, 10)
-  const sb = createServiceClient()
+  const sb = await createServiceClient()
   const audit = new PropertyAuditService(sb)
 
   const breakdown: StrPropertyBreakdown[] = []

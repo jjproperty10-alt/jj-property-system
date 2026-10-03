@@ -21,7 +21,7 @@ export async function resolveStrStatementPdfScope(
   slug: string,
   propertyId: string | null,
 ): Promise<StrPdfScopeResult> {
-  const sb = createServiceClient()
+  const sb = await createServiceClient()
   const workspace = await getOwnerWorkspace(slug)
 
   let ownerName: string

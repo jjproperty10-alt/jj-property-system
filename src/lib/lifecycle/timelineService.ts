@@ -133,7 +133,7 @@ export async function loadInvestmentTimeline(
   propertyName: string,
   options: TimelineServiceOptions = {},
 ): Promise<InvestmentTimelineDTO | null> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   // -- Step 1: resolve entity_id from canonical_name -------------------------
   const { data: entityRow, error: entityErr } = await db

@@ -184,7 +184,7 @@ export async function createRentalContractAction(
     return { ok: false, error: 'validation', message: validationError }
   }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -235,7 +235,7 @@ export async function updateRentalContractAction(
     return { ok: false, error: 'validation', message: validationError }
   }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

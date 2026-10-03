@@ -141,7 +141,7 @@ export async function resolveOwnerAudit(slug: string): Promise<AuditResolutionRe
   // schema to PostgREST. Grants: postgres + service_role only.
   let sb
   try {
-    sb = createServiceClient()
+    sb = await createServiceClient()
   } catch (err) {
     return {
       status: 'source_unavailable',

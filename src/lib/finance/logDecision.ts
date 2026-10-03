@@ -43,7 +43,7 @@ async function getLastPositionScore(
   entityId: string,
   entityType: string,
 ): Promise<number | null> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const { data, error } = await db
     .schema('finance')
     .from('position_score_deltas')
@@ -61,7 +61,7 @@ async function getLastPositionScore(
 async function appendScoreDelta(
   delta: Omit<PositionScoreDelta, 'id' | 'occurredAt'>,
 ): Promise<void> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const { error } = await db.schema('finance').from('position_score_deltas').insert({
     entity_type: delta.entityType,
     entity_id: delta.entityId,
@@ -159,7 +159,7 @@ export async function logDecision(params: LogDecisionParams): Promise<{ id: stri
   }
 
   // INSERT to decision_log (append-only — trigger blocks UPDATE/DELETE)
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const { data, error } = await db
     .schema('finance')
     .from('decision_log')

@@ -56,9 +56,9 @@ export async function resolveParty(input: string, sourceSystem?: string): Promis
     return { status: 'not_found', input: input ?? '' }
   }
 
-  let sb: ReturnType<typeof createServiceClient>
+  let sb: Awaited<ReturnType<typeof createServiceClient>>
   try {
-    sb = createServiceClient()
+    sb = await createServiceClient()
   } catch (err) {
     return { status: 'source_unavailable', error: `createServiceClient failed: ${String(err)}` }
   }
@@ -100,9 +100,9 @@ export async function resolvePartyForEntity(entityIdentityId: string): Promise<E
     return { status: 'not_found', entityId: entityIdentityId ?? '' }
   }
 
-  let sb: ReturnType<typeof createServiceClient>
+  let sb: Awaited<ReturnType<typeof createServiceClient>>
   try {
-    sb = createServiceClient()
+    sb = await createServiceClient()
   } catch (err) {
     return { status: 'source_unavailable', error: `createServiceClient failed: ${String(err)}` }
   }

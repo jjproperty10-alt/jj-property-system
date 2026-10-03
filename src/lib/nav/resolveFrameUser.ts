@@ -69,7 +69,7 @@ export async function resolveFrameUser(): Promise<FrameUser | null> {
     if (authError || !user) return null
 
     // Step 2: Query user_roles (service-role — ONLY after auth succeeds)
-    const db = createServiceClient()
+    const db = await createServiceClient()
     const { data, error: roleError } = await db
       .from('user_roles')
       .select('role, full_name')

@@ -133,7 +133,7 @@ export async function fetchDepositHistory(
   rentalContractId: string,
 ): Promise<DepositHistoryDTO> {
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (sb as any)

@@ -95,7 +95,7 @@ async function resolveExcludedTransactionIds(
 ): Promise<Set<string>> {
   if (allTransactionIds.length === 0) return new Set()
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   // Step 1: Find the active statement series for this owner
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

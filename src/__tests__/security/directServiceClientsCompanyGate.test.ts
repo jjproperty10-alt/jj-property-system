@@ -102,7 +102,7 @@ describe('direct service-key clients use the company gate', () => {
       expect(source).not.toMatch(/\bcreateServerClient\(/)
     }
     expect(read(CEO_PAGE)).toContain("import { createServiceClient } from '@/lib/supabase'")
-    expect(read(CEO_PAGE)).toContain('sb = createServiceClient()')
+    expect(read(CEO_PAGE)).toContain('sb = await createServiceClient()')
     expect(read(OWNERSHIP)).toContain("import { createServiceClient } from '@/lib/supabase'")
     expect(read(OWNERSHIP)).not.toContain('NEXT_PUBLIC_SUPABASE_ANON_KEY')
     expect(read(DECISION_PAGE)).toContain('requireStaffCompanyPermission')

@@ -21,7 +21,7 @@ import type { DecisionEvaluation, ClaimEvaluation } from './types'
 import { createServiceClient } from '@/lib/supabase'
 
 async function loadRequiredTemplates(decisionType: string): Promise<string[]> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const { data, error } = await db
     .schema('finance')
     .from('claim_templates')

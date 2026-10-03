@@ -106,6 +106,15 @@ function buildMockDb(responses: MockResponse[]): MockDb {
   return { db, eqHistory, selectHistory, inHistory }
 }
 
+/** The service client itself must not be thenable. await createServiceClient()
+ * would otherwise adopt db.then and skip the query chain. */
+function serviceClient(db: Record<string, jest.Mock>) {
+  return {
+    schema: (...args: unknown[]) => db.schema(...args),
+    from: (...args: unknown[]) => db.from(...args),
+  }
+}
+
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
 const AVI_ENTITY  = { id: 'avi-uuid',  entity_type: 'investor' }
@@ -271,7 +280,7 @@ describe('loadInvestmentTimeline — data mapping hotfix (D1/D2/D3/E)', () => {
 
   it('T1 (D1): summary view is queried by partner_name', async () => {
     const { db, eqHistory } = aviHappyPath()
-    mockCreateServiceClient.mockReturnValue(db)
+    mockCreateServiceClient.mockReturnValue(serviceClient(db))
     const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
 
     expect(dto).not.toBeNull()
@@ -280,7 +289,7 @@ describe('loadInvestmentTimeline — data mapping hotfix (D1/D2/D3/E)', () => {
 
   it('T2 (D1): summary view is also filtered by property_name', async () => {
     const { db, eqHistory } = aviHappyPath()
-    mockCreateServiceClient.mockReturnValue(db)
+    mockCreateServiceClient.mockReturnValue(serviceClient(db))
     await loadInvestmentTimeline('Avi', 'Villa Mazotos')
 
     // Both partner_name and property_name must appear as eq calls for the view
@@ -292,7 +301,7 @@ describe('loadInvestmentTimeline — data mapping hotfix (D1/D2/D3/E)', () => {
 
   it('T3 (D2): capital_event select includes "notes", not "description" as a bare column', async () => {
     const { db, selectHistory } = aviHappyPath()
-    mockCreateServiceClient.mockReturnValue(db)
+    mockCreateServiceClient.mockReturnValue(serviceClient(db))
     await loadInvestmentTimeline('Avi', 'Villa Mazotos')
 
     const hasNotes = selectHistory.some(s => s.includes('notes'))
@@ -308,7 +317,7 @@ describe('loadInvestmentTimeline — data mapping hotfix (D1/D2/D3/E)', () => {
 
   it('T4 (D2): capital_event.notes is mapped to DTO event description', async () => {
     const { db } = aviHappyPath()
-    mockCreateServiceClient.mockReturnValue(db)
+    mockCreateServiceClient.mockReturnValue(serviceClient(db))
     const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
 
     const capitalEvts = dto?.events.filter(e => e.eventType === 'capital_event') ?? []
@@ -324,7 +333,7 @@ describe('loadInvestmentTimeline — data mapping hotfix (D1/D2/D3/E)', () => {
 
   it('T5 (D3): verification_tasks uses source_id, never record_id', async () => {
     const { db, inHistory } = aviHappyPath()
-    mockCreateServiceClient.mockReturnValue(db)
+    mockCreateServiceClient.mockReturnValue(serviceClient(db))
     await loadInvestmentTimeline('Avi', 'Villa Mazotos')
 
     const sourceIdCalls = inHistory.filter(([col]) => col === 'source_id')
@@ -336,7 +345,7 @@ describe('loadInvestmentTimeline — data mapping hotfix (D1/D2/D3/E)', () => {
 
   it('T6 (D3): relevant verification task rows are reflected in DTO evidence count', async () => {
     const { db } = aviHappyPath()
-    mockCreateServiceClient.mockReturnValue(db)
+    mockCreateServiceClient.mockReturnValue(serviceClient(db))
     const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
 
     // Mock returns 2 task rows for Avi's two capital events (F3: SELECT rows, not COUNT)
@@ -354,7 +363,7 @@ describe('loadInvestmentTimeline — data mapping hotfix (D1/D2/D3/E)', () => {
       { data: [],            error: null },   // no ownership periods
       // No 7th call — task query is guarded by allEventIds.length > 0
     ])
-    mockCreateServiceClient.mockReturnValue(db)
+    mockCreateServiceClient.mockReturnValue(serviceClient(db))
     const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
 
     expect(dto?.evidence.openVerificationTasks).toBe(0)
@@ -375,7 +384,7 @@ describe('loadInvestmentTimeline — data mapping hotfix (D1/D2/D3/E)', () => {
       { data: ENTRY_CHECK,   error: null },
       SCHEMA_ERR,   // summary view schema error
     ])
-    mockCreateServiceClient.mockReturnValue(db)
+    mockCreateServiceClient.mockReturnValue(serviceClient(db))
 
     await expect(loadInvestmentTimeline('Avi', 'Villa Mazotos'))
       .rejects.toThrow('[timelineService] summary view query failed')
@@ -385,7 +394,7 @@ describe('loadInvestmentTimeline — data mapping hotfix (D1/D2/D3/E)', () => {
 
   it('T9: unknown capital (Oren) stays null — P-ARCH-1', async () => {
     const { db } = orenHappyPath()
-    mockCreateServiceClient.mockReturnValue(db)
+    mockCreateServiceClient.mockReturnValue(serviceClient(db))
     const dto = await loadInvestmentTimeline('Oren', 'Villa Mazotos 2')
 
     expect(dto?.summary.capitalPaid).toBeNull()
@@ -395,7 +404,7 @@ describe('loadInvestmentTimeline — data mapping hotfix (D1/D2/D3/E)', () => {
 
   it('T10: Avi summary is fully populated', async () => {
     const { db } = aviHappyPath()
-    mockCreateServiceClient.mockReturnValue(db)
+    mockCreateServiceClient.mockReturnValue(serviceClient(db))
     const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
 
     expect(dto?.summary.currentOwnershipPct).toBe(50)
@@ -408,7 +417,7 @@ describe('loadInvestmentTimeline — data mapping hotfix (D1/D2/D3/E)', () => {
 
   it('T11: Avi has exactly two capital events in timeline', async () => {
     const { db } = aviHappyPath()
-    mockCreateServiceClient.mockReturnValue(db)
+    mockCreateServiceClient.mockReturnValue(serviceClient(db))
     const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
 
     const capitalEvts = dto?.events.filter(e => e.eventType === 'capital_event') ?? []
@@ -417,7 +426,7 @@ describe('loadInvestmentTimeline — data mapping hotfix (D1/D2/D3/E)', () => {
 
   it('T12: Avi €50,000 event appears exactly once', async () => {
     const { db } = aviHappyPath()
-    mockCreateServiceClient.mockReturnValue(db)
+    mockCreateServiceClient.mockReturnValue(serviceClient(db))
     const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
 
     const evts50k = dto?.events.filter(e => e.amount === 50000) ?? []
@@ -426,7 +435,7 @@ describe('loadInvestmentTimeline — data mapping hotfix (D1/D2/D3/E)', () => {
 
   it('T13: no €30,000 event appears in Avi timeline', async () => {
     const { db } = aviHappyPath()
-    mockCreateServiceClient.mockReturnValue(db)
+    mockCreateServiceClient.mockReturnValue(serviceClient(db))
     const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
 
     const evts30k = dto?.events.filter(e => e.amount === 30000) ?? []
@@ -435,7 +444,7 @@ describe('loadInvestmentTimeline — data mapping hotfix (D1/D2/D3/E)', () => {
 
   it('T14: Oren capital paid and remaining remain null (capital_unknown)', async () => {
     const { db } = orenHappyPath()
-    mockCreateServiceClient.mockReturnValue(db)
+    mockCreateServiceClient.mockReturnValue(serviceClient(db))
     const dto = await loadInvestmentTimeline('Oren', 'Villa Mazotos 2')
 
     expect(dto).not.toBeNull()
@@ -447,7 +456,7 @@ describe('loadInvestmentTimeline — data mapping hotfix (D1/D2/D3/E)', () => {
 
   it('T15: no JJ internal fields leak into partner DTO (P-ARCH-6)', async () => {
     const { db } = aviHappyPath()
-    mockCreateServiceClient.mockReturnValue(db)
+    mockCreateServiceClient.mockReturnValue(serviceClient(db))
     const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
 
     const str = JSON.stringify(dto)
@@ -464,7 +473,7 @@ describe('loadInvestmentTimeline — data mapping hotfix (D1/D2/D3/E)', () => {
       { data: OREN_ENTITY, error: null },
       { data: [],          error: null },   // no partner_entry → unauthorized
     ])
-    mockCreateServiceClient.mockReturnValue(db)
+    mockCreateServiceClient.mockReturnValue(serviceClient(db))
     const dto = await loadInvestmentTimeline('Oren', 'Villa Mazotos')
 
     expect(dto).toBeNull()
@@ -472,7 +481,7 @@ describe('loadInvestmentTimeline — data mapping hotfix (D1/D2/D3/E)', () => {
 
   it('T17: financial amounts are not modified by service (€200K + €50K = €250K required)', async () => {
     const { db } = aviHappyPath()
-    mockCreateServiceClient.mockReturnValue(db)
+    mockCreateServiceClient.mockReturnValue(serviceClient(db))
     const dto = await loadInvestmentTimeline('Avi', 'Villa Mazotos')
 
     const capitalEvts = dto?.events.filter(e => e.eventType === 'capital_event') ?? []

@@ -282,7 +282,7 @@ export async function loadPartnerStatement(
   options: PartnerStatementOptions = {},
 ): Promise<PartnerStatementDTO | null> {
   const { viewMode = 'partner', lang = 'en', fromDate, toDate } = options
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   // ── Step 1: resolve entity from slug (case-insensitive) ──────────────────
   const { data: allEntities, error: entityErr } = await db
@@ -370,7 +370,7 @@ export async function loadPartnerStatementForEntity(
   const ownerType = entityType ?? 'partner'
   // Deduplicate while preserving authorization boundary — never add properties
   const propertyNames = Array.from(new Set(Array.from(inputPropertyNames)))
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   // ── Step 3: load summary rows from view (all properties in one query) ─────
   const { data: summaryRows } = await db

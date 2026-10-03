@@ -168,7 +168,7 @@ export default async function OwnerLtrStatementPage({ params, searchParams }: Pa
     canonical_name: identityResult.data.identity.displayName,
   }
 
-  const sb = createServiceClient()
+  const sb = await createServiceClient()
 
   // ── Step 3: Find active LTR service engagements ─────────────────────────
   // Query by canonical property_id UUID — never by property_name text

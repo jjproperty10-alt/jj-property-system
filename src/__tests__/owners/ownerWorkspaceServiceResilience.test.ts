@@ -180,7 +180,7 @@ afterEach(() => jest.resetAllMocks())
 // ── getOwnersRoom ─────────────────────────────────────────────────────────
 
 describe('getOwnersRoom', () => {
-  it('S1: returns empty room when createServiceClient() throws', async () => {
+  it('S1: returns empty room when await createServiceClient() throws', async () => {
     mockCreateServiceClient.mockImplementation(() => {
       throw new Error('[TEST] SUPABASE_SERVICE_KEY undefined')
     })
@@ -220,7 +220,7 @@ describe('getOwnersRoom', () => {
 // ── getOwnerWorkspace ─────────────────────────────────────────────────────
 
 describe('getOwnerWorkspace', () => {
-  it('S1: returns null when createServiceClient() throws', async () => {
+  it('S1: returns null when await createServiceClient() throws', async () => {
     mockCreateServiceClient.mockImplementation(() => {
       throw new Error('[TEST] SUPABASE_SERVICE_KEY undefined')
     })
@@ -255,7 +255,7 @@ describe('getOwnerWorkspace', () => {
 // ── getOwnerMaintenance ───────────────────────────────────────────────────
 
 describe('getOwnerMaintenance', () => {
-  it('S1: returns [] when createServiceClient() throws on workspace lookup', async () => {
+  it('S1: returns [] when await createServiceClient() throws on workspace lookup', async () => {
     // G3-A: workspace lookup uses identity resolver (mockResolveBySlug = not_found → workspace null → [])
     // createServiceClient throwing is irrelevant to the maintenance path after G3-A
     // but the default not_found mock already guarantees []

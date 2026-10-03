@@ -86,7 +86,7 @@ export async function createRentTermAction(
     return { ok: false, error: 'Governing evidence too long (max 2000 characters)' }
   }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -145,7 +145,7 @@ export async function generateRentObligationsAction(
   const throughDate = new Date(year, month, 0) // last day of month
   const throughDateStr = throughDate.toISOString().split('T')[0]
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -207,7 +207,7 @@ export async function allocateRentPaymentAction(
     return { ok: false, error: 'Invalid rental contract ID' }
   }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -278,7 +278,7 @@ export async function reverseRentAllocationAction(
     return { ok: false, error: 'Reason too long (max 2000 characters)' }
   }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

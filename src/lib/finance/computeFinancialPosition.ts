@@ -34,7 +34,7 @@ async function loadCashboxData(entityId: string): Promise<{
   totalReceived: number | null
   totalPaid: number | null
 }> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const { data, error } = await db
     .from('v_cashbox_audit')
     .select('cash_box_name, balance, total_received, total_paid')
@@ -53,7 +53,7 @@ async function loadClaimTemplateIds(
   entityType: string,
   decisionType?: string,
 ): Promise<string[]> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
   let q = db.schema('finance').from('claim_templates').select('id, decision_type')
   if (decisionType) q = q.eq('decision_type', decisionType)
   const { data, error } = await q

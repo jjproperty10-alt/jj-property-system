@@ -105,7 +105,7 @@ export async function getPortfolio(
 ): Promise<HostawayPortfolioSummaryDTO> {
   const { startDate, endDate } = input
 
-  const sb = createServiceClient()
+  const sb = await createServiceClient()
   const auditService: IPropertyAuditService = new PropertyAuditService(sb)
 
   let auditableProperties: readonly AuditableProperty[] = []
