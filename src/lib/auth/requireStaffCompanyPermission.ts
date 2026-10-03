@@ -8,12 +8,13 @@
  *     The throwaway test installs the verbatim harness body. p_allowed_roles
  *     null means any active jj_staff_config row. A raise, a null, or false
  *     is BLOCKED_BY_MISSING_PERMISSION.
- *   - access.is_company_member(uuid) — body in
- *     supabase/migrations/20260924210000_access_company_memberships.sql.
- *     Not SECURITY DEFINER. EXECUTE is granted to authenticated. Called as
- *     schema('access').rpc. Migrations record PostgREST schemas as public
- *     and lifecycle only, so this RPC errors until `access` is exposed, and
- *     that error fails closed.
+ *   - public.is_company_member(uuid) — SECURITY INVOKER wrapper in
+ *     supabase/migrations/20261003170000_public_is_company_member_wrapper.sql.
+ *     The body returns access.is_company_member(p_company_id). PostgREST
+ *     exposes public and lifecycle only, so the session client calls rpc()
+ *     on the public schema. authenticated already has USAGE on schema access
+ *     (20260924210000), which is why the wrapper does not adopt the owner
+ *     role. An error, null, or false is BLOCKED_BY_MISSING_PERMISSION.
  *
  * Not called, because the finance schema is not exposed to PostgREST
  * (supabase/migrations/20260917120000_agent_transaction_draft_public_rpcs.sql):
@@ -52,8 +53,8 @@ export async function requireStaffCompanyPermission(): Promise<{ userId: string;
 
   const companyId = await resolveSoleServiceCompany()
 
-  const member = await session.schema('access').rpc('is_company_member', {
-    target_company_id: companyId,
+  const member = await session.rpc('is_company_member', {
+    p_company_id: companyId,
   })
   if (!memberAccepted(member)) throw new Error(MISSING_PERMISSION_BLOCK)
 

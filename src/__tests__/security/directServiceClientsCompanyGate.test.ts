@@ -113,7 +113,9 @@ describe('direct service-key clients use the company gate', () => {
   test('session permission calls require_jj_staff and is_company_member, not the finance helpers', () => {
     const source = read('src/lib/auth/requireStaffCompanyPermission.ts')
     expect(source).toContain("rpc('require_jj_staff'")
-    expect(source).toContain("rpc('is_company_member'")
+    expect(source).toContain("rpc('is_company_member', { p_company_id: companyId })")
+    expect(source).not.toContain("schema('access')")
+    expect(source).not.toContain('schema("access")')
     const executable = source.slice(source.lastIndexOf('export async function'))
     expect(executable).not.toContain('is_active_jj_staff')
     expect(executable).not.toContain('is_active_jj_admin')
@@ -133,6 +135,24 @@ describe('direct service-key clients use the company gate', () => {
       .filter((name) => name.endsWith('.sql'))
       .some((name) => /CREATE (OR REPLACE )?FUNCTION public\.require_jj_staff/.test(read(path.join('supabase/migrations', name))))
     expect(definedInMigrations).toBe(false)
+  })
+
+  test('the permission code never calls schema(access)', () => {
+    const source = read('src/lib/auth/requireStaffCompanyPermission.ts')
+    expect(source).not.toContain("schema('access')")
+    expect(source).not.toContain('schema("access")')
+    expect(source).toContain("rpc('is_company_member', { p_company_id: companyId })")
+    const migration = read('supabase/migrations/20261003170000_public_is_company_member_wrapper.sql')
+    const fn = migration.slice(migration.indexOf('CREATE OR REPLACE FUNCTION'), migration.indexOf('REVOKE ALL'))
+    expect(fn).toContain('SECURITY INVOKER')
+    expect(fn).not.toContain('SECURITY DEFINER')
+    expect(fn).toContain("SET search_path = ''")
+    expect(fn).toContain('SELECT access.is_company_member(p_company_id)')
+    expect(migration).toContain('REVOKE ALL ON FUNCTION public.is_company_member(uuid) FROM PUBLIC, anon')
+    expect(migration).toContain('GRANT EXECUTE ON FUNCTION public.is_company_member(uuid) TO authenticated')
+    expect(read('supabase/migrations/20260924210000_access_company_memberships.sql')).toContain(
+      'GRANT USAGE ON SCHEMA access TO authenticated, service_role',
+    )
   })
 
   test('every relation the CEO page and ownershipService read is gated', () => {
