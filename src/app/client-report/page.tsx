@@ -26,7 +26,7 @@
 // ============================================================
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabaseBrowser'
 import { readStaffView } from '@/lib/legacy/staffViewActions'
 import Link from 'next/link'
 import {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabaseBrowser'
 import { User, Phone, Mail, Plus, Trash2, Building2 } from 'lucide-react'
 
 type Contact = {

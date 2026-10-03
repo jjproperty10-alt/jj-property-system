@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createSupabaseBrowserClient } from '@/lib/supabase'
+import { createSupabaseBrowserClient } from '@/lib/supabaseBrowser'
 import { Lock, Eye, EyeOff, CheckCircle, AlertCircle, Loader } from 'lucide-react'
 
 /**

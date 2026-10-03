@@ -6,7 +6,7 @@
 // No UI logic. Import from '@/lib/entity-registry'.
 // ============================================================
 
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabaseBrowser'
 import { readStaffView } from '@/lib/legacy/staffViewActions'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
