@@ -1,8 +1,18 @@
 -- #288 session alias and draft matrix. Throwaway local Postgres only.
 -- The runner wraps this file in BEGIN ... ROLLBACK.
 --
--- Detail text starts with PASSED, FAILED, or BLOCKED.
--- FAILED means a requested guarantee does not hold for the SQL that exists.
+-- Two security scenarios for public.property_name_aliases:
+--   repo.*  — what the migrations in this repo create (RLS off, only
+--             company_member_read). Labeled REPO-VS-LIVE DRIFT.
+--   live.*  — Production read-only capture of 2026-10-03: RLS enabled and
+--             not forced, auth_all_property_name_aliases plus
+--             company_member_read, GRANT ALL to anon, authenticated, and
+--             service_role. Production has 54 rows and one company. This
+--             fixture keeps three synthetic rows and a second company so
+--             cross-company visibility can be observed under those policies.
+--
+-- Detail text starts with PASSED, FAILED, BLOCKED, REPORT, or REPO-VS-LIVE DRIFT.
+-- FAILED means a requested guarantee does not hold.
 -- BLOCKED means #288 has no database object for that guarantee.
 -- A BLOCKED row is ok=true only when that absence was confirmed.
 
@@ -58,6 +68,16 @@ BEGIN
 END
 $as$;
 
+CREATE PROCEDURE pg_temp.pr288_jwt(p_role text, p_user uuid)
+LANGUAGE plpgsql
+AS $jwt$
+BEGIN
+  PERFORM set_config('request.jwt.claim.role', coalesce(p_role, ''), true);
+  PERFORM set_config('request.jwt.claim.sub', coalesce(p_user::text, ''), true);
+  PERFORM set_config('request.jwt.claims', '', true);
+END
+$jwt$;
+
 DO $matrix$
 DECLARE
   company_a uuid := '00000000-0000-4000-8000-00000000000a';
@@ -96,6 +116,16 @@ DECLARE
   src text;
   alias_funcs integer;
   ambiguous_rows integer;
+  auth_all_count integer;
+  rls_forced boolean;
+  grant_count integer;
+  alias_before integer;
+  alias_after integer;
+  changed_rows integer;
+  using_expr text;
+  check_expr text;
+  policy_public boolean;
+  restrictive_ok boolean;
 BEGIN
   INSERT INTO registry.companies (company_id, canonical_name, status)
   VALUES (company_b, 'Throwaway Company B', 'active');
@@ -158,6 +188,24 @@ BEGIN
     'SCHEMA relrowsecurity=' || rls_on::text
       || ' restrictive company_member_read policies=' || policy_count::text
       || '. Migration 20260930120000 creates the policy and does not enable row security.'
+  );
+
+  SELECT count(*)
+    INTO auth_all_count
+  FROM pg_policy AS policy
+  JOIN pg_class AS relation ON relation.oid = policy.polrelid
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = 'public'
+    AND relation.relname = 'property_name_aliases'
+    AND policy.polname = 'auth_all_property_name_aliases';
+
+  CALL pg_temp.pr288_row(
+    'schema.repo_vs_live_drift',
+    rls_on = false AND policy_count = 1 AND auth_all_count = 0,
+    'REPO-VS-LIVE DRIFT no migration enables row security on public.property_name_aliases or creates auth_all_property_name_aliases. '
+      || 'Repo result: relrowsecurity=false, company_member_read only. '
+      || 'Production 2026-10-03: relrowsecurity=true, not forced, permissive auth_all_property_name_aliases FOR ALL TO public USING auth.role()=authenticated with no WITH CHECK, plus company_member_read, and GRANT ALL to anon, authenticated, and service_role. '
+      || 'Production has 54 alias rows and 1 company. This fixture uses 3 synthetic rows and a second company so the cross-company check can run.'
   );
 
   SELECT prosrc INTO src
@@ -276,7 +324,7 @@ BEGIN
         WHEN err IS NOT NULL THEN 'FAILED ' || err
         WHEN forbidden_aliases = 0 AND allowed_aliases = rec.expect_allowed_aliases
           THEN 'PASSED allowed=' || allowed_aliases::text || ' forbidden=0'
-        ELSE 'FAILED session select raw_name, canonical_name is not limited to the caller company. allowed='
+        ELSE 'FAILED REPO-STATE session select raw_name, canonical_name is not limited to the caller company. allowed='
           || coalesce(allowed_aliases::text, 'null')
           || ' expected_allowed=' || rec.expect_allowed_aliases::text
           || ' forbidden=' || coalesce(forbidden_aliases::text, 'null')
@@ -338,7 +386,7 @@ BEGIN
         WHEN probe_err IS NOT NULL THEN 'FAILED ' || probe_err
         WHEN probe_forbidden = 0 AND probe_allowed = rec.expect_allowed_aliases
           THEN 'PASSED with RLS forced on, allowed=' || probe_allowed::text
-        ELSE 'FAILED restrictive company_member_read alone does not return the caller aliases. allowed='
+        ELSE 'FAILED REPO-STATE restrictive company_member_read alone does not return the caller aliases. allowed='
           || coalesce(probe_allowed::text, 'null')
           || ' expected=' || rec.expect_allowed_aliases::text
           || ' forbidden=' || coalesce(probe_forbidden::text, 'null')
@@ -475,7 +523,7 @@ BEGIN
     false,
     CASE
       WHEN probe_err LIKE '%permission denied%'
-        THEN 'FAILED repo migrations do not GRANT SELECT. The session select raises permission denied, so allowed aliases are not returned. ' || probe_err
+        THEN 'FAILED REPO-STATE repo migrations do not GRANT SELECT. The session select raises permission denied, so allowed aliases are not returned. ' || probe_err
       WHEN probe_err IS NULL
         THEN 'FAILED revoke did not deny the select'
       ELSE 'FAILED ' || probe_err
@@ -566,6 +614,302 @@ BEGIN
       ELSE 'FAILED err=' || coalesce(err, 'null')
         || ' drafts ' || draft_before::text || '->' || draft_after::text
         || ' transactions ' || tx_before::text || '->' || tx_after::text
+    END
+  );
+
+  -- Live-parity security from the 2026-10-03 Production read-only capture.
+  -- Not taken from a migration: none enables RLS or creates this policy.
+  ALTER TABLE public.property_name_aliases ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY auth_all_property_name_aliases
+    ON public.property_name_aliases
+    AS PERMISSIVE
+    FOR ALL
+    TO PUBLIC
+    USING (auth.role() = 'authenticated');
+  GRANT ALL ON TABLE public.property_name_aliases TO anon, authenticated, service_role;
+
+  SELECT relation.relrowsecurity, relation.relforcerowsecurity
+    INTO rls_on, rls_forced
+  FROM pg_class AS relation
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = 'public'
+    AND relation.relname = 'property_name_aliases';
+
+  SELECT pg_get_expr(policy.polqual, policy.polrelid),
+         pg_get_expr(policy.polwithcheck, policy.polrelid),
+         policy.polroles = ARRAY[0]::oid[]
+    INTO using_expr, check_expr, policy_public
+  FROM pg_policy AS policy
+  WHERE policy.polrelid = 'public.property_name_aliases'::regclass
+    AND policy.polname = 'auth_all_property_name_aliases'
+    AND policy.polpermissive
+    AND policy.polcmd = '*';
+
+  SELECT count(*)
+    INTO grant_count
+  FROM information_schema.role_table_grants AS granted
+  WHERE granted.table_schema = 'public'
+    AND granted.table_name = 'property_name_aliases'
+    AND granted.grantee IN ('anon', 'authenticated', 'service_role')
+    AND granted.privilege_type IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE');
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM pg_policy AS policy
+    WHERE policy.polrelid = 'public.property_name_aliases'::regclass
+      AND policy.polname = 'company_member_read'
+      AND NOT policy.polpermissive
+      AND policy.polcmd = '*'
+      AND pg_get_expr(policy.polqual, policy.polrelid) LIKE '%access.is_company_member(operating_company_id)%'
+      AND pg_get_expr(policy.polwithcheck, policy.polrelid) LIKE '%access.is_company_member(operating_company_id)%'
+  ) INTO restrictive_ok;
+
+  CALL pg_temp.pr288_row(
+    'live.security_matches_production_capture',
+    rls_on
+      AND NOT rls_forced
+      AND policy_public
+      AND using_expr LIKE '%auth.role()%'
+      AND using_expr LIKE '%authenticated%'
+      AND check_expr IS NULL
+      AND grant_count = 15
+      AND restrictive_ok,
+    'PASSED live parity relrowsecurity=' || rls_on::text
+      || ' forced=' || rls_forced::text
+      || ' auth_all_using=' || coalesce(using_expr, 'null')
+      || ' auth_all_check=' || coalesce(check_expr, 'null')
+      || ' public_role=' || coalesce(policy_public::text, 'null')
+      || ' grant_slots=' || grant_count::text
+      || '. Synthetic rows stay at 3 with a second company; production row count 54 and its single company are not copied.'
+  );
+
+  FOR rec IN SELECT * FROM pr288_actor ORDER BY role_key LOOP
+    err := NULL;
+    allowed_aliases := NULL;
+    forbidden_aliases := NULL;
+    forbidden_names := NULL;
+    fp_before := pg_temp.pr288_fingerprint();
+    CALL pg_temp.pr288_as(rec.user_id);
+    BEGIN
+      SET LOCAL ROLE authenticated;
+      SELECT count(*) INTO allowed_aliases
+      FROM public.property_name_aliases AS row_alias
+      WHERE access.is_company_member(row_alias.operating_company_id);
+      SELECT count(*), coalesce(string_agg(row_alias.canonical_name, ',' ORDER BY row_alias.canonical_name), '')
+        INTO forbidden_aliases, forbidden_names
+      FROM public.property_name_aliases AS row_alias
+      WHERE NOT access.is_company_member(row_alias.operating_company_id);
+      PERFORM 1
+      FROM (
+        SELECT raw_name, canonical_name
+        FROM public.property_name_aliases
+      ) AS app_select;
+    EXCEPTION WHEN OTHERS THEN
+      err := SQLERRM;
+    END;
+    RESET ROLE;
+    fp_after := pg_temp.pr288_fingerprint();
+
+    CALL pg_temp.pr288_row(
+      'live.' || rec.role_key || '.alias_allowed_only',
+      err IS NULL
+        AND forbidden_aliases = 0
+        AND allowed_aliases = rec.expect_allowed_aliases,
+      CASE
+        WHEN err IS NOT NULL THEN 'FAILED ' || err
+        WHEN forbidden_aliases = 0 AND allowed_aliases = rec.expect_allowed_aliases
+          THEN 'PASSED allowed=' || allowed_aliases::text || ' forbidden=0'
+        ELSE 'FAILED allowed=' || coalesce(allowed_aliases::text, 'null')
+          || ' expected_allowed=' || rec.expect_allowed_aliases::text
+          || ' forbidden=' || coalesce(forbidden_aliases::text, 'null')
+          || ' forbidden_names=' || coalesce(forbidden_names, '')
+      END
+    );
+
+    CALL pg_temp.pr288_row(
+      'live.' || rec.role_key || '.alias_read_does_not_write',
+      fp_before = fp_after,
+      CASE
+        WHEN fp_before = fp_after THEN 'PASSED alias read left every counted table unchanged.'
+        ELSE 'FAILED fingerprint ' || fp_before || ' -> ' || fp_after
+      END
+    );
+  END LOOP;
+
+  err := NULL;
+  allowed_aliases := NULL;
+  CALL pg_temp.pr288_jwt('anon', NULL);
+  BEGIN
+    SET LOCAL ROLE anon;
+    SELECT count(*) INTO allowed_aliases
+    FROM (
+      SELECT raw_name, canonical_name
+      FROM public.property_name_aliases
+    ) AS app_select;
+  EXCEPTION WHEN OTHERS THEN
+    err := SQLERRM;
+  END;
+  RESET ROLE;
+  CALL pg_temp.pr288_row(
+    'live.anon.alias_read',
+    err IS NULL AND allowed_aliases = 0,
+    CASE
+      WHEN err IS NOT NULL THEN 'FAILED ' || err
+      WHEN allowed_aliases = 0 THEN 'PASSED anon select returns 0 rows. auth_all_property_name_aliases requires auth.role()=authenticated.'
+      ELSE 'FAILED anon saw ' || allowed_aliases::text || ' rows'
+    END
+  );
+
+  err := NULL;
+  alias_before := (SELECT count(*) FROM public.property_name_aliases);
+  CALL pg_temp.pr288_jwt('anon', NULL);
+  BEGIN
+    SET LOCAL ROLE anon;
+    INSERT INTO public.property_name_aliases (raw_name, canonical_name, operating_company_id)
+    VALUES ('anon-insert', 'Anon Write', company_a);
+    RAISE EXCEPTION 'pr288_probe_done';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM IS DISTINCT FROM 'pr288_probe_done' THEN
+      err := SQLERRM;
+    END IF;
+  END;
+  RESET ROLE;
+  alias_after := (SELECT count(*) FROM public.property_name_aliases);
+  CALL pg_temp.pr288_row(
+    'live.anon.alias_insert',
+    err IS NOT NULL AND alias_after = alias_before,
+    CASE
+      WHEN err IS NULL THEN 'FAILED anon insert succeeded'
+      WHEN alias_after <> alias_before THEN 'FAILED row count changed ' || alias_before::text || '->' || alias_after::text
+      ELSE 'PASSED anon insert refused: ' || err
+    END
+  );
+
+  err := NULL;
+  changed_rows := -1;
+  CALL pg_temp.pr288_jwt('anon', NULL);
+  BEGIN
+    SET LOCAL ROLE anon;
+    UPDATE public.property_name_aliases SET canonical_name = canonical_name;
+    GET DIAGNOSTICS changed_rows = ROW_COUNT;
+    RAISE EXCEPTION 'pr288_probe_done';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM IS DISTINCT FROM 'pr288_probe_done' THEN
+      err := SQLERRM;
+    END IF;
+  END;
+  RESET ROLE;
+  CALL pg_temp.pr288_row(
+    'live.anon.alias_update',
+    (err IS NOT NULL AND changed_rows < 0) OR (err IS NULL AND changed_rows = 0),
+    CASE
+      WHEN err IS NOT NULL THEN 'PASSED anon update refused: ' || err
+      WHEN changed_rows = 0 THEN 'PASSED anon update changed 0 rows. RLS hides every alias from anon, so the command does not error.'
+      ELSE 'FAILED anon update changed ' || changed_rows::text || ' rows'
+    END
+  );
+
+  err := NULL;
+  changed_rows := -1;
+  CALL pg_temp.pr288_jwt('anon', NULL);
+  BEGIN
+    SET LOCAL ROLE anon;
+    DELETE FROM public.property_name_aliases;
+    GET DIAGNOSTICS changed_rows = ROW_COUNT;
+    RAISE EXCEPTION 'pr288_probe_done';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM IS DISTINCT FROM 'pr288_probe_done' THEN
+      err := SQLERRM;
+    END IF;
+  END;
+  RESET ROLE;
+  CALL pg_temp.pr288_row(
+    'live.anon.alias_delete',
+    (err IS NOT NULL AND changed_rows < 0) OR (err IS NULL AND changed_rows = 0),
+    CASE
+      WHEN err IS NOT NULL THEN 'PASSED anon delete refused: ' || err
+      WHEN changed_rows = 0 THEN 'PASSED anon delete removed 0 rows. RLS hides every alias from anon.'
+      ELSE 'FAILED anon delete removed ' || changed_rows::text || ' rows'
+    END
+  );
+
+  err := NULL;
+  alias_before := (SELECT count(*) FROM public.property_name_aliases);
+  CALL pg_temp.pr288_jwt('anon', NULL);
+  BEGIN
+    SET LOCAL ROLE anon;
+    TRUNCATE TABLE public.property_name_aliases;
+    RAISE EXCEPTION 'pr288_probe_done';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM IS DISTINCT FROM 'pr288_probe_done' THEN
+      err := SQLERRM;
+    END IF;
+  END;
+  RESET ROLE;
+  alias_after := (SELECT count(*) FROM public.property_name_aliases);
+  CALL pg_temp.pr288_row(
+    'live.anon.alias_truncate',
+    alias_after = alias_before AND alias_before = 3,
+    CASE
+      WHEN alias_after <> alias_before THEN 'FAILED truncate probe left ' || alias_after::text || ' rows, started at ' || alias_before::text
+      WHEN err IS NULL THEN 'REPORT anon could TRUNCATE public.property_name_aliases. GRANT ALL includes TRUNCATE, and TRUNCATE ignores row security. The statement was rolled back. Row count stayed ' || alias_after::text || '.'
+      ELSE 'REPORT anon TRUNCATE was refused: ' || err || '. Row count stayed ' || alias_after::text || '.'
+    END
+  );
+
+  FOR rec IN
+    SELECT * FROM pr288_actor
+    WHERE expect_allowed_aliases > 0
+    ORDER BY role_key
+  LOOP
+    err := NULL;
+    alias_before := (SELECT count(*) FROM public.property_name_aliases);
+    CALL pg_temp.pr288_as(rec.user_id);
+    BEGIN
+      SET LOCAL ROLE authenticated;
+      INSERT INTO public.property_name_aliases (raw_name, canonical_name, operating_company_id)
+      VALUES ('cross-' || rec.role_key, 'Other Company', company_b);
+      RAISE EXCEPTION 'pr288_probe_done';
+    EXCEPTION WHEN OTHERS THEN
+      IF SQLERRM IS DISTINCT FROM 'pr288_probe_done' THEN
+        err := SQLERRM;
+      END IF;
+    END;
+    RESET ROLE;
+    alias_after := (SELECT count(*) FROM public.property_name_aliases);
+    CALL pg_temp.pr288_row(
+      'live.' || rec.role_key || '.cross_company_alias_insert',
+      err IS NOT NULL AND alias_after = alias_before,
+      CASE
+        WHEN err IS NULL THEN 'FAILED insert of a Company B alias succeeded'
+        WHEN alias_after <> alias_before THEN 'FAILED row count changed'
+        ELSE 'PASSED insert for the other company refused: ' || err
+      END
+    );
+  END LOOP;
+
+  err := NULL;
+  alias_before := (SELECT count(*) FROM public.property_name_aliases);
+  CALL pg_temp.pr288_as(member);
+  BEGIN
+    SET LOCAL ROLE authenticated;
+    INSERT INTO public.property_name_aliases (raw_name, canonical_name, operating_company_id)
+    VALUES ('own-member', 'House A Extra', company_a);
+    RAISE EXCEPTION 'pr288_probe_done';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM IS DISTINCT FROM 'pr288_probe_done' THEN
+      err := SQLERRM;
+    END IF;
+  END;
+  RESET ROLE;
+  alias_after := (SELECT count(*) FROM public.property_name_aliases);
+  CALL pg_temp.pr288_row(
+    'live.member.own_company_alias_insert',
+    err IS NULL AND alias_after = alias_before,
+    CASE
+      WHEN err IS NOT NULL THEN 'FAILED own-company insert refused: ' || err
+      WHEN alias_after <> alias_before THEN 'FAILED own-company insert was not rolled back'
+      ELSE 'PASSED own-company insert is allowed for an authenticated member and was rolled back. The cross-company refusal is the company check.'
     END
   );
 

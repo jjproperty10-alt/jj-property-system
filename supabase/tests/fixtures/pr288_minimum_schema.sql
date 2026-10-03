@@ -45,14 +45,21 @@
 --   and 20260926200000_property_children_operating_company_not_null.sql.
 --   Restrictive policy company_member_read copied from
 --   supabase/migrations/20260930120000_company_member_read_isolation.sql.
---   That migration does not ENABLE ROW LEVEL SECURITY, and no migration in
---   this repo does. RLS stays off. The policy is stored and not applied.
---   HARNESS: GRANT SELECT TO authenticated so the session role can issue the
---   same select. No GRANT appears in the repo. The matrix also measures the
---   revoke (repo-only privileges).
+--   REPO-VS-LIVE DRIFT: that migration does not ENABLE ROW LEVEL SECURITY,
+--   and no migration in this repo does. No migration creates
+--   auth_all_property_name_aliases. This fixture leaves RLS off and does not
+--   create that policy. The matrix live.* block then applies the 2026-10-03
+--   Production capture: RLS enabled and not forced, permissive
+--   auth_all_property_name_aliases FOR ALL TO PUBLIC USING
+--   (auth.role() = 'authenticated') with no WITH CHECK, and GRANT ALL to
+--   anon, authenticated, and service_role.
+--   HARNESS, repo scenario only: GRANT SELECT TO authenticated so the
+--   session role can issue the select. No GRANT appears in the repo. The
+--   matrix revokes it while measuring repo_without_grant.
 --   Not copied: registry.enforce_child_operating_company and
 --   trg_property_name_aliases_operating_company. The #288 read path does not
---   insert aliases.
+--   insert aliases. Production had 54 alias rows and one company; those rows
+--   are not copied. The matrix uses three synthetic rows and a second company.
 -- finance.is_active_jj_staff()
 --   Body and grants from supabase/migrations/20260917090100_agent_transaction_drafts.sql
 --   (anon revoke repeated by 20260923120000).
