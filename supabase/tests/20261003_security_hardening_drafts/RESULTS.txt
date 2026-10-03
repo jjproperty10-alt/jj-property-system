@@ -1,0 +1,34 @@
+postgres 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
+== user_roles ==
+user_roles before_md5=876937011ae38a4617c6ae6943b0c29a
+user_roles after_md5=b30618152e63726e2e33fbd0a4b8bf2d
+user_roles rollback_md5=876937011ae38a4617c6ae6943b0c29a
+user_roles rollback_match=yes
+== contacts ==
+contacts before_md5=c4a17c64eaf418f73066aade92eebe27
+contacts after_md5=2c2d38e5429122e2582c60622fa22a12
+contacts rollback_md5=c4a17c64eaf418f73066aade92eebe27
+contacts rollback_match=yes
+== capital_audit ==
+capital_audit before_md5=91e8717102675d660f2acaf4cf5bf887
+capital_audit after_md5=601f8eb3398f39dc8e67a54bced645d6
+capital_audit rollback_md5=91e8717102675d660f2acaf4cf5bf887
+capital_audit rollback_match=yes
+== capital_audit_no_actor ==
+capital_audit_no_actor before_md5=91e8717102675d660f2acaf4cf5bf887
+capital_audit_no_actor after_md5=72bcfe14e1d7f9a4348e9d5c4e81b0dc
+capital_audit_no_actor rollback_md5=91e8717102675d660f2acaf4cf5bf887
+capital_audit_no_actor rollback_match=yes
+== pms ==
+pms before_md5=63b541018075d64edbe419c2308da8c3
+pms after_md5=28033ca1dcfa10f503fe4bb89755ace2
+pms rollback_md5=63b541018075d64edbe419c2308da8c3
+pms rollback_match=yes
+== grants ==
+grants before_md5=7e01a71802a4f5a2df31b751547507fe
+grants after_md5=4389746198e8a38e957c39916a55ac1d
+grants rollback_md5=7e01a71802a4f5a2df31b751547507fe
+grants rollback_match=yes
+== compose ==
+compose after_behaviors=pass
+ALL_LOCAL_PROOFS_PASSED
