@@ -29,6 +29,7 @@ const NON_MEMBER = '00000000-0000-4000-8000-0000000000b2'
 const mockSession = {
   userId: MEMBER as string | null,
   rpcMode: 'sql' as 'sql' | 'error',
+  schemas: [] as string[],
 }
 
 let mockDbClient: Client | null = null
@@ -61,8 +62,8 @@ async function mockQuerySessionRpc(
     const result =
       schema === 'public' && fn === 'require_jj_staff'
         ? await db.query('SELECT public.require_jj_staff($1::text[]) AS result', [args?.p_allowed_roles ?? null])
-        : schema === 'access' && fn === 'is_company_member'
-          ? await db.query('SELECT access.is_company_member($1::uuid) AS result', [args?.target_company_id ?? null])
+        : schema === 'public' && fn === 'is_company_member'
+          ? await db.query('SELECT public.is_company_member($1::uuid) AS result', [args?.p_company_id ?? null])
           : null
     if (!result) throw new Error(`unexpected rpc ${schema}.${fn}`)
     await db.query('COMMIT')
@@ -179,9 +180,12 @@ jest.mock('@/lib/supabaseServer', () => ({
       }),
     },
     rpc: (fn: string, args?: Record<string, unknown>) => mockSessionCall('public', fn, args),
-    schema: (schema: string) => ({
-      rpc: (fn: string, args?: Record<string, unknown>) => mockSessionCall(schema, fn, args),
-    }),
+    schema: (schema: string) => {
+      mockSession.schemas.push(schema)
+      return {
+        rpc: (fn: string, args?: Record<string, unknown>) => mockSessionCall(schema, fn, args),
+      }
+    },
   }),
 }))
 
@@ -238,6 +242,9 @@ maybe('company gate against the live resolver SQL (throwaway Postgres)', () => {
       REVOKE ALL ON FUNCTION finance.is_active_jj_staff() FROM PUBLIC;
       GRANT EXECUTE ON FUNCTION finance.is_active_jj_staff() TO authenticated;
     `)
+    await db.query(
+      readFileSync(path.join(root, 'supabase/migrations/20261003170000_public_is_company_member_wrapper.sql'), 'utf8'),
+    )
   })
 
   afterAll(async () => {
@@ -251,6 +258,7 @@ maybe('company gate against the live resolver SQL (throwaway Postgres)', () => {
     mockDb.resolve = resolveAsServiceRole
     mockSession.userId = MEMBER
     mockSession.rpcMode = 'sql'
+    mockSession.schemas = []
     await db.query('DELETE FROM access.company_memberships')
     await db.query('DELETE FROM public.jj_staff_config')
     await db.query('DELETE FROM registry.companies')
@@ -430,6 +438,7 @@ maybe('company gate against the live resolver SQL (throwaway Postgres)', () => {
     )
     await expect(loadFinanceDecision(decisionArgs())).rejects.toThrow('BLOCKED_BY_MISSING_PERMISSION')
     expect(mockDb.sent).toEqual([])
+    expect(mockSession.schemas).toEqual([])
   }
 
   test('staff and member of the one active company: the three paths return data', async () => {
@@ -446,6 +455,26 @@ maybe('company gate against the live resolver SQL (throwaway Postgres)', () => {
     const loaded = await loadFinanceDecision(decisionArgs())
     expect(loaded.position.entityId).toBe('Jacob')
     expect(loaded.decision.decisionType).toBe('approve_withdrawal')
+    expect(mockSession.schemas).toEqual([])
+  })
+
+  test('the permission code never calls schema(access)', async () => {
+    const source = readFileSync(path.join(root, 'src/lib/auth/requireStaffCompanyPermission.ts'), 'utf8')
+    expect(source).not.toContain("schema('access')")
+    expect(source).not.toContain('schema("access")')
+    const definition = await db.query(
+      `SELECT prosecdef, pg_get_functiondef('public.is_company_member(uuid)'::regprocedure) AS def
+       FROM pg_proc
+       JOIN pg_namespace ON pg_namespace.oid = pg_proc.pronamespace
+       WHERE pg_namespace.nspname = 'public' AND pg_proc.proname = 'is_company_member'`,
+    )
+    expect(definition.rows[0].prosecdef).toBe(false)
+    expect(definition.rows[0].def).toContain('access.is_company_member')
+    mockSession.schemas = []
+    const { fetchAll } = await loadComponents()
+    const dashboard = await fetchAll()
+    expect(dashboard.errors).toEqual([])
+    expect(mockSession.schemas).toEqual([])
   })
 
   test('staff + non-member: no data and no relation read', async () => {
