@@ -53,9 +53,7 @@ export async function requireStaffCompanyPermission(): Promise<{ userId: string;
 
   const companyId = await resolveSoleServiceCompany()
 
-  const member = await session.rpc('is_company_member', {
-    p_company_id: companyId,
-  })
+  const member = await session.rpc('is_company_member', { p_company_id: companyId })
   if (!memberAccepted(member)) throw new Error(MISSING_PERMISSION_BLOCK)
 
   return { userId: user.id, companyId }
