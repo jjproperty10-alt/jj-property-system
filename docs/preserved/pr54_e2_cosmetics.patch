@@ -1,0 +1,795 @@
+diff --git a/src/__tests__/ds/e2Migration.test.tsx b/src/__tests__/ds/e2Migration.test.tsx
+new file mode 100644
+index 0000000..cdefeeb
+--- /dev/null
++++ b/src/__tests__/ds/e2Migration.test.tsx
+@@ -0,0 +1,85 @@
++/**
++ * E2 Migration smoke tests
++ *
++ * Verifies that MoneyValue integration preserves P-ARCH-1 (null -> em-dash)
++ * through the migrated partner report layer.
++ *
++ * Uses renderToStaticMarkup (Node environment, no jsdom).
++ * Tests are intentionally narrow — full business logic is tested elsewhere.
++ */
++import { renderToStaticMarkup } from 'react-dom/server'
++import { MoneyValue } from '../../components/ds'
++import { SectionHeader } from '../../components/ds'
++
++function render(el: React.ReactElement): string {
++  return renderToStaticMarkup(el)
++}
++
++describe('E2 — MoneyValue null preservation (P-ARCH-1)', () => {
++  it('renders null amount as em-dash, not "0" or "null"', () => {
++    const html = render(<MoneyValue amount={null} />)
++    expect(html).toMatch(/\u2014|&#8212;/)
++    expect(html).not.toMatch(/>0</)
++    expect(html).not.toMatch(/>null</)
++  })
++
++  it('renders zero amount as "\u20ac0" not as em-dash', () => {
++    const html = render(<MoneyValue amount={0} />)
++    expect(html).not.toMatch(/&#8212;/)
++    expect(html).toContain('0')
++  })
++
++  it('renders non-null amount with dir="ltr"', () => {
++    const html = render(<MoneyValue amount={50000} />)
++    expect(html).toContain('dir="ltr"')
++  })
++
++  it('null amount does NOT include dir="ltr" (em-dash is direction-neutral)', () => {
++    const html = render(<MoneyValue amount={null} />)
++    expect(html).not.toContain('dir="ltr"')
++  })
++})
++
++describe('E2 — SectionHeader renders title', () => {
++  it('renders h3 with the provided title', () => {
++    const html = render(<SectionHeader title="Capital" />)
++    expect(html).toContain('Capital')
++  })
++
++  it('renders action slot content', () => {
++    const html = render(
++      <SectionHeader title="Capital" action={<span data-testid="badge">Fully Paid</span>} />
++    )
++    expect(html).toContain('Fully Paid')
++  })
++
++  it('renders badge slot content inline with title', () => {
++    const html = render(
++      <SectionHeader title="Timeline" badge={<span>3 pending</span>} />
++    )
++    expect(html).toContain('3 pending')
++    expect(html).toContain('Timeline')
++  })
++})
++
++describe('E2 — MoneyValue size variants', () => {
++  it('sm renders text-sm class', () => {
++    const html = render(<MoneyValue amount={1000} size="sm" />)
++    expect(html).toContain('text-sm')
++  })
++
++  it('lg renders text-xl class', () => {
++    const html = render(<MoneyValue amount={1000} size="lg" />)
++    expect(html).toContain('text-xl')
++  })
++})
++
++describe('E2 — MoneyValue null with className (conditional coloring)', () => {
++  it('null amount ignores conditional color className (uses gray italic instead)', () => {
++    const html = render(<MoneyValue amount={null} className="text-green-700 font-semibold" />)
++    // The null path renders its own gray italic style, not the conditional className color
++    // The className is still applied to the span but gray-400 and italic are also present
++    expect(html).toMatch(/&#8212;|\u2014/)
++    expect(html).toContain('text-gray-400')
++  })
++})
+diff --git a/src/components/partner/PartnerCapitalSection.tsx b/src/components/partner/PartnerCapitalSection.tsx
+index edff757..24f8721 100644
+--- a/src/components/partner/PartnerCapitalSection.tsx
++++ b/src/components/partner/PartnerCapitalSection.tsx
+@@ -1,144 +1,124 @@
+ import type { CapitalStatement } from '@/lib/lifecycle/partnerStatementTypes'
++import { MoneyValue, SectionHeader } from '@/components/ds'
+ 
+-const eur = (n: number) =>
+-  new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n)
+-
+-interface Props { capital: CapitalStatement }
++interface Props {
++  capital: CapitalStatement
++}
+ 
+ /**
+- * PartnerCapitalSection — PR D v2: RTL-safe + a11y pass
++ * PartnerCapitalSection
++ *
++ * Renders capital events, status badge, and payment history.
++ * No business logic — all values come pre-computed from the DTO.
++ *
++ * Handles all CapitalStatus values including deprecated `not_applicable`
++ * (retained in v1.0 for source compatibility; never emitted by the service).
++ * P-ARCH-1: NULL rendered as em-dash (MoneyValue) or "—", never coerced to 0.
+  *
+- * Changes from PR D v1:
+- * - dir="ltr" on all financial values (amounts, dates, percentages) — RTL-safe
+- * - text-[10px] text-gray-400 labels upgraded to text-xs text-gray-600 (WCAG contrast)
+- * - motion-reduce:transition-none on progress bar
+- * - No change to business logic or null handling
++ * E2: Migrated to MoneyValue (null → em-dash + dir="ltr") and SectionHeader.
++ * AmountRow inline component removed — replaced by jj-label + MoneyValue.
+  */
+ export function PartnerCapitalSection({ capital }: Props) {
+-  const {
+-    capitalStatus,
+-    agreedEntryValuationEur,
+-    requiredCapitalEur,
+-    capitalPaidEur,
+-    capitalRemainingEur,
+-    payments,
+-  } = capital
+-
+-  const paidPct =
+-    requiredCapitalEur !== null &&
+-    requiredCapitalEur > 0 &&
+-    capitalPaidEur !== null
+-      ? Math.min(100, Math.round((capitalPaidEur / requiredCapitalEur) * 100))
+-      : null
+-
+   return (
+-    <section className="px-6 py-6">
+-      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-600">Capital</h3>
++    <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
++      <SectionHeader
++        title="Capital"
++        action={<CapitalStatusBadge status={capital.capitalStatus} />}
++        className="mb-4"
++      />
+ 
+-      {/* KPI tiles */}
+-      <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
+-        {agreedEntryValuationEur !== null && (
+-          <KpiTile label="Agreed Valuation" value={eur(agreedEntryValuationEur)} />
++      <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm mb-4">
++        {capital.agreedEntryValuationEur !== null && (
++          <div>
++            <div className="jj-label mb-0.5">Agreed Valuation</div>
++            <MoneyValue amount={capital.agreedEntryValuationEur} size="sm" />
++          </div>
+         )}
+-        {requiredCapitalEur !== null && (
+-          <KpiTile label="Required" value={eur(requiredCapitalEur)} />
++        {capital.requiredCapitalEur !== null && (
++          <div>
++            <div className="jj-label mb-0.5">Required Capital</div>
++            <MoneyValue amount={capital.requiredCapitalEur} size="sm" />
++          </div>
+         )}
+-        <KpiTile
+-          label="Paid"
+-          value={capitalPaidEur !== null ? eur(capitalPaidEur) : '—'}
+-          valueClass={
+-            capitalPaidEur !== null
+-              ? 'text-lg font-bold text-emerald-600'
+-              : 'text-base text-gray-400 italic'
+-          }
+-        />
+-        {capitalRemainingEur !== null && (
+-          <KpiTile
+-            label="Remaining"
+-            value={eur(capitalRemainingEur)}
+-            valueClass={
+-              capitalRemainingEur > 0
+-                ? 'text-lg font-bold text-amber-600'
+-                : 'text-lg font-bold text-emerald-600'
+-            }
++        <div>
++          <div className="jj-label mb-0.5">Capital Paid</div>
++          <MoneyValue
++            amount={capital.capitalPaidEur}
++            size="sm"
++            className={capital.capitalPaidEur !== null ? 'text-green-700 font-semibold' : ''}
+           />
+-        )}
+-      </div>
+-
+-      {/* Progress bar — only when both required and paid are known */}
+-      {paidPct !== null && (
+-        <div className="mt-4">
+-          <div className="flex justify-between text-xs text-gray-600 mb-1.5">
+-            <span>Capital paid</span>
+-            <span className="font-semibold tabular-nums" dir="ltr">{paidPct}%</span>
+-          </div>
+-          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+-            <div
+-              className={`h-full rounded-full transition-all motion-reduce:transition-none ${
+-                paidPct === 100 ? 'bg-emerald-500' : 'bg-blue-600'
+-              }`}
+-              style={{ width: `${paidPct}%` }}
++        </div>
++        {capital.capitalRemainingEur !== null && (
++          <div>
++            <div className="jj-label mb-0.5">Remaining</div>
++            <MoneyValue
++              amount={capital.capitalRemainingEur}
++              size="sm"
++              className={capital.capitalRemainingEur > 0 ? 'text-amber-700 font-semibold' : 'text-green-700 font-semibold'}
+             />
+           </div>
+-        </div>
+-      )}
+-
+-      {/* Pending confirmation note — capital_unknown with no payments */}
+-      {capitalStatus === 'capital_unknown' && payments.length === 0 && (
+-        <p className="mt-3 text-xs text-gray-500 italic">Capital details pending confirmation.</p>
+-      )}
++        )}
++      </div>
+ 
+-      {/* Payment history */}
+-      {payments.length > 0 && (
+-        <div className="mt-5">
+-          <p className="text-xs font-bold uppercase tracking-widest text-gray-600 mb-2">
+-            Payment history
++      {capital.payments.length > 0 && (
++        <div className="border-t border-gray-100 pt-4">
++          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">
++            Payment History
+           </p>
+-          <div className="divide-y divide-gray-50">
+-            {payments.map((payment) => (
+-              <div key={payment.eventId} className="flex items-center justify-between py-2.5">
+-                <div className="flex items-center gap-3 min-w-0">
+-                  <span className="text-xs tabular-nums text-gray-500 shrink-0" dir="ltr">
+-                    {payment.effectiveDate
+-                      ? new Date(payment.effectiveDate).toLocaleDateString('en-IE', {
+-                          day: 'numeric', month: 'short', year: 'numeric',
+-                        })
+-                      : '—'}
++          <ul className="space-y-1.5">
++            {capital.payments.map((p) => (
++              <li key={p.eventId} className="flex items-center justify-between text-sm">
++                <div className="flex items-center gap-2 min-w-0">
++                  <span className="text-gray-500 shrink-0" dir="ltr">
++                    {p.effectiveDate
++                      ? new Date(p.effectiveDate).toLocaleDateString('en-IE')
++                      : '\u2014'}
+                   </span>
+-                  {payment.payerName && (
+-                    <span className="text-xs text-gray-500 truncate">via {payment.payerName}</span>
++                  {p.payerName && (
++                    <span className="text-xs text-gray-400 truncate">via {p.payerName}</span>
+                   )}
+-                  {payment.effectiveDateConfidence === 'pending_verification' && (
+-                    <span className="shrink-0 text-xs font-medium text-amber-600">
+-                      date unconfirmed
+-                    </span>
++                  {p.effectiveDateConfidence === 'pending_verification' && (
++                    <span className="text-[10px] text-amber-500 shrink-0">date unconfirmed</span>
+                   )}
+                 </div>
+-                <span className="shrink-0 ml-4 text-sm font-semibold text-gray-800 tabular-nums" dir="ltr">
+-                  {eur(payment.amountEur)}
+-                </span>
+-              </div>
++                <MoneyValue
++                  amount={p.amountEur}
++                  size="sm"
++                  className="font-semibold text-gray-900 shrink-0 ml-4"
++                />
++              </li>
+             ))}
+-          </div>
++          </ul>
+         </div>
+       )}
+-    </section>
++
++      {capital.capitalStatus === 'capital_unknown' && capital.payments.length === 0 && (
++        <p className="text-xs text-gray-400 italic mt-2">
++          Capital details pending confirmation.
++        </p>
++      )}
++    </div>
+   )
+ }
+ 
+-function KpiTile({
+-  label,
+-  value,
+-  valueClass = 'text-lg font-bold text-gray-900',
+-}: {
+-  label: string
+-  value: string
+-  valueClass?: string
+-}) {
++type CapStatus = CapitalStatement['capitalStatus']
++
++/**
++ * Handles all 5 CapitalStatus values.
++ * not_applicable: @deprecated in v1.0 — never emitted by service, but UI must handle it safely.
++ */
++function CapitalStatusBadge({ status }: { status: CapStatus }) {
++  const map: Record<CapStatus, { label: string; className: string }> = {
++    no_capital_event: { label: 'No Capital Events', className: 'bg-gray-50 text-gray-400 border border-gray-200' },
++    fully_paid:       { label: 'Fully Paid',        className: 'bg-green-100 text-green-700' },
++    partially_paid:   { label: 'Partially Paid',    className: 'bg-amber-100 text-amber-700' },
++    capital_unknown:  { label: 'Capital Pending',   className: 'bg-gray-100 text-gray-600' },
++    not_applicable:   { label: 'N/A',               className: 'bg-gray-50 text-gray-400 border border-gray-200' },
++  }
++  const { label, className } = map[status] ?? { label: status, className: 'bg-gray-100 text-gray-600' }
+   return (
+-    <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3">
+-      <div className="text-xs font-semibold uppercase tracking-widest text-gray-600 mb-1">{label}</div>
+-      <div className={`tabular-nums ${valueClass}`} dir="ltr">{value}</div>
+-    </div>
++    <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${className}`}>
++      {label}
++    </span>
+   )
+ }
+diff --git a/src/components/partner/PartnerFinancialSection.tsx b/src/components/partner/PartnerFinancialSection.tsx
+index 809c77d..439206c 100644
+--- a/src/components/partner/PartnerFinancialSection.tsx
++++ b/src/components/partner/PartnerFinancialSection.tsx
+@@ -1,7 +1,5 @@
+ import type { FinancialStatement, SettlementStatement } from '@/lib/lifecycle/partnerStatementTypes'
+-
+-const eur = (n: number) =>
+-  new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n)
++import { MoneyValue, SectionHeader } from '@/components/ds'
+ 
+ interface Props {
+   financial: FinancialStatement
+@@ -9,15 +7,16 @@ interface Props {
+ }
+ 
+ /**
+- * PartnerFinancialSection — PR D v2: RTL-safe + a11y pass
++ * PartnerFinancialSection
++ *
++ * Renders RC3 financial data (platform income, expenses, BPO, balance).
++ * Skips info/reference rows — those are internal classification markers only.
++ * No business logic — all values pre-computed by fetchRC3Report().
++ *
++ * currentBalanceEur is null until Settlement Engine (RC2).
++ * Rendered as "—" by MoneyValue. Direction is NOT inferred from null.
+  *
+- * Changes from PR D v1:
+- * - dir="ltr" on date range span; replaced hardcoded → arrow with en dash –
+- * - dir="ltr" on table date cells, amount cells, closing balance, settlement balance
+- * - text-[10px] text-gray-400 table headers upgraded to text-xs text-gray-600
+- * - break-words on description cells to prevent overflow
+- * - motion-reduce:transition-none on table row hover transition
+- * - Business logic unchanged (visibleRow, null handling, P-ARCH-1)
++ * E2: Migrated to MoneyValue (amounts + null) and SectionHeader.
+  */
+ export function PartnerFinancialSection({ financial, settlement }: Props) {
+   const visibleSections = financial.accountSections.filter(
+@@ -27,91 +26,82 @@ export function PartnerFinancialSection({ financial, settlement }: Props) {
+   if (visibleSections.length === 0) return null
+ 
+   return (
+-    <section className="px-6 py-6">
+-      <div className="flex items-center justify-between">
+-        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-600">Financial</h3>
+-        {(financial.fromDate || financial.toDate) && (
+-          <span className="text-xs text-gray-600 tabular-nums" dir="ltr">
+-            {financial.fromDate ?? 'all time'} – {financial.toDate ?? 'present'}
++    <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
++      <SectionHeader
++        title="Financial Report"
++        action={(financial.fromDate || financial.toDate) ? (
++          <span dir="ltr">
++            {financial.fromDate ?? 'all time'} → {financial.toDate ?? 'present'}
+           </span>
+-        )}
+-      </div>
++        ) : undefined}
++        className="mb-4"
++      />
+ 
+-      <div className="mt-4 space-y-6">
++      <div className="space-y-6">
+         {visibleSections.map((section) => {
+           const rows = section.rows.filter(visibleRow)
+-          const isPositive = section.closing_balance >= 0
+           return (
+             <div key={section.account_type}>
+               <div className="flex items-center justify-between mb-2">
+                 <span className="text-sm font-semibold text-gray-800">{section.account_label}</span>
+-                <span
+-                  className={`text-sm font-bold tabular-nums ${isPositive ? 'text-blue-700' : 'text-red-600'}`}
+-                  dir="ltr"
+-                >
+-                  {eur(section.closing_balance)}
+-                </span>
++                <MoneyValue
++                  amount={section.closing_balance}
++                  size="sm"
++                  className={`font-bold ${section.closing_balance >= 0 ? 'text-blue-700' : 'text-red-600'}`}
++                />
+               </div>
+ 
+               {rows.length > 0 && (
+-                <div className="rounded-lg bg-gray-50 border border-gray-100 overflow-hidden">
+-                  <table className="w-full text-xs">
+-                    <thead>
+-                      <tr className="border-b border-gray-200 text-xs text-gray-600 uppercase tracking-wide">
+-                        <th className="text-left px-3 py-2 font-semibold w-24">Date</th>
+-                        <th className="text-left px-3 py-2 font-semibold">Description</th>
+-                        <th className="text-right px-3 py-2 font-semibold w-24">Amount</th>
++                <table className="w-full text-xs border-collapse">
++                  <thead>
++                    <tr className="text-[10px] text-gray-400 uppercase tracking-wide border-b border-gray-100">
++                      <th className="text-left py-1 font-medium w-24">Date</th>
++                      <th className="text-left py-1 font-medium">Description</th>
++                      <th className="text-right py-1 font-medium w-20">Amount</th>
++                    </tr>
++                  </thead>
++                  <tbody className="divide-y divide-gray-50">
++                    {rows.map((row) => (
++                      <tr key={row.id} className="text-gray-700 hover:bg-gray-50">
++                        <td className="py-1.5 text-gray-400 align-top" dir="ltr">{row.date}</td>
++                        <td className="py-1.5 align-top pr-2">
++                          <span className="font-medium">{row.display_label}</span>
++                          {row.description && (
++                            <span className="text-gray-400"> — {row.description}</span>
++                          )}
++                        </td>
++                        <td className="py-1.5 text-right align-top">
++                          <MoneyValue
++                            amount={row.client_amount}
++                            size="sm"
++                            className={`font-medium ${row.balance_effect >= 0 ? 'text-green-600' : 'text-red-500'}`}
++                          />
++                        </td>
+                       </tr>
+-                    </thead>
+-                    <tbody className="divide-y divide-gray-100">
+-                      {rows.map((row) => (
+-                        <tr key={row.id} className="hover:bg-white/70 transition-colors motion-reduce:transition-none">
+-                          <td className="px-3 py-2 text-gray-500 align-top tabular-nums whitespace-nowrap" dir="ltr">
+-                            {row.date}
+-                          </td>
+-                          <td className="px-3 py-2 align-top break-words">
+-                            <span className="font-medium text-gray-700">{row.display_label}</span>
+-                            {row.description && (
+-                              <span className="text-gray-500 ml-1">— {row.description}</span>
+-                            )}
+-                          </td>
+-                          <td
+-                            className={`px-3 py-2 text-right align-top font-semibold tabular-nums ${
+-                              row.balance_effect >= 0 ? 'text-emerald-600' : 'text-red-500'
+-                            }`}
+-                            dir="ltr"
+-                          >
+-                            {eur(row.client_amount)}
+-                          </td>
+-                        </tr>
+-                      ))}
+-                    </tbody>
+-                  </table>
+-                </div>
++                    ))}
++                  </tbody>
++                </table>
+               )}
+             </div>
+           )
+         })}
+       </div>
+ 
+-      {/* Settlement balance — null until Settlement Engine (RC2) */}
+-      <div className="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between">
++      {/* Settlement balance — null until RC2; direction NOT inferred */}
++      <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-between">
+         <span className="text-sm font-bold text-gray-700">Current Balance</span>
+-        <div className="text-right">
+-          <span
+-            className={`text-sm font-bold tabular-nums ${
+-              settlement.currentBalanceEur !== null ? 'text-gray-900' : 'text-gray-400'
+-            }`}
+-            dir="ltr"
+-          >
+-            {settlement.currentBalanceEur !== null ? eur(settlement.currentBalanceEur) : '—'}
+-          </span>
+-          {settlement.currentBalanceEur === null && (
+-            <p className="text-xs text-gray-500 italic mt-0.5">Pending Settlement Engine</p>
+-          )}
+-        </div>
++        <MoneyValue
++          amount={settlement.currentBalanceEur}
++          size="sm"
++          className="font-bold text-gray-400"
++        />
+       </div>
+-    </section>
++      {settlement.currentBalanceEur === null && (
++        <p className="text-[10px] text-gray-400 italic mt-1">
++          Final balance pending Settlement Engine.
++        </p>
++      )}
++    </div>
+   )
+ }
+ 
+diff --git a/src/components/partner/PartnerPortfolioSection.tsx b/src/components/partner/PartnerPortfolioSection.tsx
+index 6541c8d..b735988 100644
+--- a/src/components/partner/PartnerPortfolioSection.tsx
++++ b/src/components/partner/PartnerPortfolioSection.tsx
+@@ -1,97 +1,77 @@
+ import type { PortfolioSummary } from '@/lib/lifecycle/partnerStatementTypes'
++import { MoneyValue, SectionHeader } from '@/components/ds'
+ 
+-const eur = (n: number | null): string =>
+-  n === null
+-    ? '—'
+-    : new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n)
+-
+-interface Props { portfolio: PortfolioSummary }
++interface Props {
++  portfolio: PortfolioSummary
++}
+ 
+ /**
+- * PartnerPortfolioSection — PR D v2: RTL-safe + a11y pass
++ * PartnerPortfolioSection
++ *
++ * Portfolio summary across all authorized properties for this investor.
++ * Only shown when investor has 2+ properties (guarded by PartnerReport).
+  *
+- * Changes from PR D v1:
+- * - dir="ltr" on all financial value divs in KPI tiles
+- * - text-[10px] text-gray-400 labels upgraded to text-xs text-gray-600
+- * - "Pending Settlement Engine" text upgraded to text-gray-500
+- * - Unknown capital note upgraded to text-xs text-gray-500
+- * - Business logic unchanged
++ * NULL totals rendered as "—" by MoneyValue (P-ARCH-1).
++ * Settlement fields (direction, netSettlementEur) remain stub until RC2:
++ *   - direction: 'unknown' — NOT inferred
++ *   - netSettlementEur: null — NOT included in totals arithmetic
++ *   - No "settled" / "payable" / "receivable" label is rendered for unknown direction
++ *
++ * E2: Migrated to MoneyValue (null handling + dir="ltr") and SectionHeader.
++ * PortfolioRow inline component removed — replaced by jj-label + MoneyValue.
+  */
+ export function PartnerPortfolioSection({ portfolio }: Props) {
+-  const hasUnknownCapital =
++  const hasUnknown =
+     portfolio.totalCapitalPaidEur === null || portfolio.totalCapitalRemainingEur === null
+ 
++  const propertyWord = portfolio.totalPropertiesCount === 1 ? 'property' : 'properties'
++
+   return (
+-    <div className="rounded-2xl overflow-hidden border border-gray-200/80 bg-white shadow-sm">
+-      {/* Header strip */}
+-      <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/80">
+-        <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500">
+-          Portfolio Summary · {portfolio.totalPropertiesCount}{' '}
+-          {portfolio.totalPropertiesCount === 1 ? 'property' : 'properties'}
+-        </h2>
+-      </div>
++    <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
++      <SectionHeader
++        title={`Portfolio Summary \u2014 ${portfolio.totalPropertiesCount} ${propertyWord}`}
++        className="mb-4"
++      />
+ 
+-      {/* KPI tiles */}
+-      <div className="px-6 py-6">
+-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+-          <PortfolioTile
+-            label="Agreed Valuation"
+-            value={eur(portfolio.totalAgreedValuationEur)}
+-          />
+-          <PortfolioTile
+-            label="Total Paid"
+-            value={eur(portfolio.totalCapitalPaidEur)}
+-            valueClass={
+-              portfolio.totalCapitalPaidEur !== null
+-                ? 'text-lg font-bold text-emerald-600 tabular-nums'
+-                : 'text-base text-gray-400 italic'
+-            }
++      <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
++        <div>
++          <div className="jj-label mb-0.5">Total Agreed Valuation</div>
++          <MoneyValue amount={portfolio.totalAgreedValuationEur} size="sm" />
++        </div>
++        <div>
++          <div className="jj-label mb-0.5">Total Capital Paid</div>
++          <MoneyValue
++            amount={portfolio.totalCapitalPaidEur}
++            size="sm"
++            className={portfolio.totalCapitalPaidEur !== null ? 'text-green-700 font-semibold' : ''}
+           />
+-          <PortfolioTile
+-            label="Total Remaining"
+-            value={eur(portfolio.totalCapitalRemainingEur)}
+-            valueClass={
+-              portfolio.totalCapitalRemainingEur !== null
+-                ? portfolio.totalCapitalRemainingEur > 0
+-                  ? 'text-lg font-bold text-amber-600 tabular-nums'
+-                  : 'text-lg font-bold text-emerald-600 tabular-nums'
+-                : 'text-base text-gray-400 italic'
++        </div>
++        <div>
++          <div className="jj-label mb-0.5">Total Remaining</div>
++          <MoneyValue
++            amount={portfolio.totalCapitalRemainingEur}
++            size="sm"
++            className={
++              portfolio.totalCapitalRemainingEur !== null && portfolio.totalCapitalRemainingEur > 0
++                ? 'text-amber-700 font-semibold'
++                : portfolio.totalCapitalRemainingEur !== null
++                  ? 'text-green-700 font-semibold'
++                  : ''
+             }
+           />
+-
+-          {/* Net Settlement — stub until Settlement Engine (RC2) */}
+-          <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3">
+-            <div className="text-xs font-semibold uppercase tracking-widest text-gray-600 mb-1">
+-              Net Settlement
+-            </div>
+-            {/* direction: 'unknown' — NOT rendered as balanced/payable/receivable */}
+-            <div className="text-xs text-gray-500 italic">Pending Settlement Engine</div>
+-          </div>
+         </div>
+-
+-        {hasUnknownCapital && (
+-          <p className="mt-4 text-xs text-gray-500 italic">
+-            * Some totals unavailable — capital amounts for one or more properties are not yet confirmed.
+-          </p>
+-        )}
++        <div>
++          <div className="jj-label mb-0.5">Net Settlement</div>
++          {/* direction: 'unknown' — NOT rendered as balanced/payable/receivable */}
++          <div className="text-gray-400 text-xs italic">Pending Settlement Engine</div>
++        </div>
+       </div>
+-    </div>
+-  )
+-}
+ 
+-function PortfolioTile({
+-  label,
+-  value,
+-  valueClass = 'text-lg font-bold text-gray-900 tabular-nums',
+-}: {
+-  label: string
+-  value: string
+-  valueClass?: string
+-}) {
+-  return (
+-    <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3">
+-      <div className="text-xs font-semibold uppercase tracking-widest text-gray-600 mb-1">{label}</div>
+-      <div className={valueClass} dir="ltr">{value}</div>
++      {hasUnknown && (
++        <p className="mt-3 text-[10px] text-gray-400 italic">
++          * Some totals are unavailable — capital amounts for one or more properties are not yet confirmed.
++        </p>
++      )}
+     </div>
+   )
+ }
+diff --git a/src/components/partner/PartnerTimelineSection.tsx b/src/components/partner/PartnerTimelineSection.tsx
+index 672e3ea..c6f4265 100644
+--- a/src/components/partner/PartnerTimelineSection.tsx
++++ b/src/components/partner/PartnerTimelineSection.tsx
+@@ -1,74 +1,73 @@
+ import type { TimelineStatement, TimelineEvent } from '@/lib/lifecycle/partnerStatementTypes'
++import { MoneyValue, SectionHeader } from '@/components/ds'
+ 
+-interface Props { timeline: TimelineStatement }
+-
+-const eur = (n: number) =>
+-  new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n)
++interface Props {
++  timeline: TimelineStatement
++}
+ 
+ /**
+- * PartnerTimelineSection — PR D v2: RTL-safe + a11y pass
++ * PartnerTimelineSection
+  *
+- * Changes from PR D v1:
+- * - dir="ltr" on date labels and amount values
+- * - text-[10px] text-gray-400 labels upgraded to text-xs text-gray-600
+- * - break-words on event descriptions
+- * - Business logic unchanged
++ * Renders ordered lifecycle events as a vertical timeline.
++ * Events are pre-ordered (effectiveDate ASC, nulls last) by buildPartnerTimeline().
++ * The UI does NOT re-sort.
++ * Pending-date events shown with "date unconfirmed" label — P-ARCH-1 (no placeholder dates).
++ * No business logic in this component.
++ *
++ * E2: Migrated to MoneyValue (event amounts) and SectionHeader.
+  */
+ export function PartnerTimelineSection({ timeline }: Props) {
+   if (timeline.events.length === 0 && !timeline.hasPendingDates) return null
+ 
+   return (
+-    <section className="px-6 py-6">
+-      <div className="flex items-center justify-between">
+-        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-600">Timeline</h3>
+-        {timeline.hasPendingDates && timeline.openVerificationTasks > 0 && (
+-          <span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+-            {timeline.openVerificationTasks}{' '}
+-            {timeline.openVerificationTasks === 1 ? 'date' : 'dates'} to confirm
++    <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
++      <SectionHeader
++        title="Timeline"
++        action={(timeline.hasPendingDates && timeline.openVerificationTasks > 0) ? (
++          <span className="text-[10px] text-amber-600 font-medium">
++            {timeline.openVerificationTasks} date{timeline.openVerificationTasks !== 1 ? 's' : ''} pending confirmation
+           </span>
+-        )}
+-      </div>
++        ) : undefined}
++        className="mb-4"
++      />
+ 
+       {timeline.events.length === 0 ? (
+-        <p className="mt-3 text-xs text-gray-500 italic">No timeline events recorded yet.</p>
++        <p className="text-xs text-gray-400 italic">No timeline events recorded yet.</p>
+       ) : (
+-        <ol className="mt-4 relative pl-5 border-l-2 border-gray-100 space-y-5">
++        <ol className="relative pl-6 border-l-2 border-gray-100 space-y-5">
+           {timeline.events.map((event) => (
+-            <EventItem key={event.eventId} event={event} />
++            <TimelineEventItem key={event.eventId} event={event} />
+           ))}
+         </ol>
+       )}
+-    </section>
++    </div>
+   )
+ }
+ 
+-function EventItem({ event }: { event: TimelineEvent }) {
++function TimelineEventItem({ event }: { event: TimelineEvent }) {
+   const dateLabel = event.effectiveDate
+     ? new Date(event.effectiveDate).toLocaleDateString('en-IE', {
+         day: 'numeric', month: 'short', year: 'numeric',
+       })
+     : 'Date unknown'
+ 
+-  const isPending = event.effectiveDateConfidence === 'pending_verification'
+-
+   return (
+     <li className="relative">
+-      {/* Timeline dot */}
+-      <span className="absolute -left-[1.45rem] top-1 w-3 h-3 rounded-full border-2 border-white bg-blue-500 shadow-sm" />
+-
+-      <div className="flex items-center gap-2 mb-0.5">
+-        <span className="text-xs tabular-nums text-gray-600" dir="ltr">{dateLabel}</span>
+-        {isPending && (
+-          <span className="text-xs font-semibold text-amber-600">· unconfirmed</span>
++      <span className="absolute -left-[1.45rem] top-1 w-3 h-3 rounded-full border-2 border-white bg-blue-400 shadow-sm" />
++      <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-2">
++        <span dir="ltr">{dateLabel}</span>
++        {event.effectiveDateConfidence === 'pending_verification' && (
++          <span className="text-amber-500 font-medium">date unconfirmed</span>
+         )}
+       </div>
+-
+-      <div className="text-sm font-semibold text-gray-800 leading-snug">{event.title}</div>
++      <div className="text-sm font-semibold text-gray-800 leading-tight">{event.title}</div>
+       {event.description && (
+-        <div className="text-xs text-gray-500 mt-0.5 leading-relaxed break-words">{event.description}</div>
++        <div className="text-xs text-gray-500 mt-0.5">{event.description}</div>
+       )}
+       {event.amountEur !== null && (
+-        <div className="text-xs font-semibold text-gray-600 mt-0.5 tabular-nums" dir="ltr">{eur(event.amountEur)}</div>
++        <div className="mt-0.5">
++          <MoneyValue amount={event.amountEur} size="sm" className="text-gray-600" />
++        </div>
+       )}
+     </li>
+   )
