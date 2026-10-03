@@ -230,8 +230,9 @@ describe('ownershipService fails closed on a refused company context', () => {
   })
 
   jest.mock('@/lib/supabase', () => {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { gateServiceReads: gate } = require('@/lib/auth/serviceRoleCompanyGate')
+    const { gateServiceReads: gate } = jest.requireActual<typeof import('@/lib/auth/serviceRoleCompanyGate')>(
+      '@/lib/auth/serviceRoleCompanyGate',
+    )
     return {
       resolveSoleServiceCompany: async () => {
         if (refuse) throw new Error('BLOCKED_BY_COMPANY_CONTEXT')

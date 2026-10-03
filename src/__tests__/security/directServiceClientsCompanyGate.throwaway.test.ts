@@ -14,13 +14,15 @@
  * way once a user id is present, because the function never reads
  * access.company_memberships or user_roles.
  */
+import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { Client } from 'pg'
 import { gateServiceReads, SERVICE_ROLE_COMPANY_WIDE_RELATIONS } from '@/lib/auth/serviceRoleCompanyGate'
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { assertThrowaway } = require('../../../scripts/run-throwaway-pg-matrix.cjs')
+const { assertThrowaway } = createRequire(__filename)('../../../scripts/run-throwaway-pg-matrix.cjs') as {
+  assertThrowaway: (conninfo: string | undefined) => void
+}
 
 const COMPANY_A = '00000000-0000-4000-8000-00000000000a'
 const MEMBER = '00000000-0000-4000-8000-0000000000a1'
@@ -112,8 +114,9 @@ const mockDb = {
 }
 
 jest.mock('@/lib/supabase', () => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { gateServiceReads: gate } = require('@/lib/auth/serviceRoleCompanyGate')
+  const { gateServiceReads: gate } = jest.requireActual<typeof import('@/lib/auth/serviceRoleCompanyGate')>(
+    '@/lib/auth/serviceRoleCompanyGate',
+  )
 
   function make(relation: string) {
     const filter = {

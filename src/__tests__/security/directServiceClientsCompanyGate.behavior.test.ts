@@ -36,8 +36,9 @@ const mockState = {
 }
 
 jest.mock('@/lib/supabase', () => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { gateServiceReads } = require('@/lib/auth/serviceRoleCompanyGate')
+  const { gateServiceReads } = jest.requireActual<typeof import('@/lib/auth/serviceRoleCompanyGate')>(
+    '@/lib/auth/serviceRoleCompanyGate',
+  )
 
   function make(relation: string) {
     const filter = {
