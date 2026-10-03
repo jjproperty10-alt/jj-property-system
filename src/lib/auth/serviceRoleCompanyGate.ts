@@ -1,39 +1,52 @@
-export const SERVICE_ROLE_COMPANY_TABLES: ReadonlySet<string> = new Set([
-  'agent_transaction_drafts',
-  'management_fee_configs',
-  'ownership',
-  'properties',
-  'property_acquisition',
-  'property_definitions',
-  'property_mappings',
-  'property_name_aliases',
-  'property_owners',
-  'property_ownership',
-  'property_reporting_map',
-  'service_engagements',
-])
+/**
+ * Filtered service reads. Each relation names the column the company id is
+ * compared with. The set below is derived from these keys.
+ *
+ * entity_identity and management_relationship filter on operating_company_id.
+ * parties filters on company_id. Those columns are added or already present
+ * only after Slice A's migration is applied; this file does not apply it.
+ */
+export const SERVICE_ROLE_COMPANY_COLUMNS: Readonly<Record<string, string>> = {
+  agent_transaction_drafts: 'operating_company_id',
+  entity_identity: 'operating_company_id',
+  management_fee_configs: 'operating_company_id',
+  management_relationship: 'operating_company_id',
+  ownership: 'operating_company_id',
+  parties: 'company_id',
+  properties: 'operating_company_id',
+  property_acquisition: 'operating_company_id',
+  property_definitions: 'operating_company_id',
+  property_mappings: 'operating_company_id',
+  property_name_aliases: 'operating_company_id',
+  property_owners: 'operating_company_id',
+  property_ownership: 'operating_company_id',
+  property_reporting_map: 'operating_company_id',
+  service_engagements: 'operating_company_id',
+}
+
+export const SERVICE_ROLE_COMPANY_TABLES: ReadonlySet<string> = new Set(
+  Object.keys(SERVICE_ROLE_COMPANY_COLUMNS),
+)
 
 /**
- * NOTES — Slice B overlap.
- * An unseen local Slice B edits this same file. This change is additive so
- * the two can be reconciled by hand:
- *   - SERVICE_ROLE_COMPANY_WIDE_RELATIONS is a new export. Do not merge it
- *     into SERVICE_ROLE_COMPANY_TABLES: those relations are filtered on
- *     operating_company_id; these are verify-only and must stay disjoint.
- *   - gateSelectedRead takes a GateMode ('filter' | 'verify' | 'refuse').
- *   - gateServiceReads selects the mode with gateModeFor instead of testing
- *     SERVICE_ROLE_COMPANY_TABLES alone. A relation in neither set is
- *     refused. A resolver result that is not a non-empty string is refused.
- *     Neither path sends the read.
- * Keep Slice B's edits to the filtered path and this verify-only / refuse path.
- * Replacing the file wholesale drops one of them.
+ * NOTES — hand merge of Slice B onto the direct-service-client draft.
+ * Slice B replaced the filtered-relation list with SERVICE_ROLE_COMPANY_COLUMNS
+ * and passed that column into the selected-read gate. This file keeps that map.
+ * It also keeps the draft that Slice B did not have:
+ *   - GateMode is 'filter' | 'verify' | 'refuse'.
+ *   - SERVICE_ROLE_COMPANY_WIDE_RELATIONS stays disjoint from the filtered map.
+ *     Those relations wait for a verified company and add no column filter.
+ *   - A relation in neither set is refused. The underlying client is not called.
+ *   - A resolver result that is not a non-empty string is refused. The read
+ *     is not sent.
+ * A missing column on a filtered relation is refused. It is not passed through.
+ * Replacing this file with Slice B alone would drop refuse, verify, and the
+ * non-empty company check.
  *
- * Relations a service-role caller may read only inside a verified company
- * context, but which have no operating_company_id column to filter on yet
- * (company-wide views and registries). The read waits for the company
- * resolver; when it refuses (for example, more than one active company and
- * no verified permit), the read is never sent. No filter is added.
- * Move a relation to SERVICE_ROLE_COMPANY_TABLES once it carries the column.
+ * Relations a caller may read only inside a verified company context, but
+ * which have no company column to filter on yet (company-wide views and
+ * registries). Move a relation into SERVICE_ROLE_COMPANY_COLUMNS once it
+ * carries the column named there.
  */
 export const SERVICE_ROLE_COMPANY_WIDE_RELATIONS: ReadonlySet<string> = new Set([
   'entity_registry',
@@ -42,7 +55,7 @@ export const SERVICE_ROLE_COMPANY_WIDE_RELATIONS: ReadonlySet<string> = new Set(
   'v_cashbox_audit',
   'v_ceo_summary',
   'v_jj_company_pl',
-  // Decision-page selects. Still no operating_company_id filter: the company
+  // Decision-page selects. Still no company-column filter: the company
   // resolver must succeed, and the caller must already have passed the staff
   // and membership check. An unlisted relation stays refused.
   'claim_templates',
@@ -108,6 +121,7 @@ function blockedRead(message: string): CompanyFilter {
 
 function gateSelectedRead(
   filter: CompanyFilter,
+  column: string,
   resolveCompanyId: () => Promise<string>,
   mode: Exclude<GateMode, 'refuse'>,
 ): CompanyFilter {
@@ -124,7 +138,7 @@ function gateSelectedRead(
     return resolveCompanyId().then((companyId) => {
       try {
         const verified = companyIdOrBlock(companyId)
-        if (mode === 'filter') filter.eq('operating_company_id', verified)
+        if (mode === 'filter') filter.eq(column, verified)
       } catch (error) {
         fail(error)
         return undefined
@@ -153,6 +167,12 @@ export function gateServiceReads<T extends CompanyClient>(
         select: () => blockedRead(`${UNGATED_RELATION_BLOCK}:${relation}`),
       }
     }
+    const column = mode === 'filter' ? SERVICE_ROLE_COMPANY_COLUMNS[relation] : ''
+    if (mode === 'filter' && !column) {
+      return {
+        select: () => blockedRead(`${UNGATED_RELATION_BLOCK}:${relation}`),
+      }
+    }
     const query = originalFrom(relation)
     if (query === null || typeof query !== 'object') {
       return query
@@ -162,7 +182,7 @@ export function gateServiceReads<T extends CompanyClient>(
     const originalSelect = selectable.select.bind(selectable)
     selectable.select = (...args: unknown[]) => {
       const selected = originalSelect(...args)
-      return gateSelectedRead(selected, resolveCompanyId, mode)
+      return gateSelectedRead(selected, column, resolveCompanyId, mode)
     }
     return selectable
   }
