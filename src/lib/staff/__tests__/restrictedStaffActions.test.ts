@@ -18,8 +18,27 @@ import {
   upsertPartnershipCapital,
 } from '@/lib/staff/restrictedStaffActions'
 
+const sessionReads: string[] = []
+const sessionRows: Array<{ role?: string; is_active?: boolean }> = []
+
 jest.mock('@/lib/supabase', () => ({
   createServiceClient: jest.fn(),
+}))
+
+jest.mock('@/lib/supabaseServer', () => ({
+  createSupabaseServerClient: () => ({
+    from: (relation: string) => {
+      sessionReads.push(relation)
+      const api: Record<string, jest.Mock> & { then?: (resolve: (value: unknown) => void) => void } = {}
+      for (const method of ['select', 'eq', 'limit']) {
+        api[method] = jest.fn(() => api)
+      }
+      api.then = (resolve) => {
+        resolve({ data: sessionRows, error: null })
+      }
+      return api
+    },
+  }),
 }))
 
 jest.mock('@/lib/statements/statementAuthService', () => ({
@@ -51,6 +70,8 @@ function clientFor(result: { data?: unknown; error?: { message: string } | null;
 beforeEach(() => {
   authMock.mockReset()
   serviceMock.mockReset()
+  sessionReads.length = 0
+  sessionRows.length = 0
 })
 
 describe('restricted staff actions', () => {
@@ -177,6 +198,7 @@ describe('restricted staff actions', () => {
     expect(await upsertPartnershipCapital(row)).toEqual({ ok: true })
     expect(saved.from).toHaveBeenCalledWith('partnership_capital')
     expect(saved.from).not.toHaveBeenCalledWith('user_roles')
+    expect(sessionReads).toEqual([])
     expect(saved.query.upsert).toHaveBeenCalled()
   })
 
@@ -192,14 +214,11 @@ describe('restricted staff actions', () => {
       amount_paid_by_partner: 10,
       notes: null,
     }
-    const query = builder({ data: [{ role: 'employee', is_active: true }] })
-    const from = jest.fn(() => query)
-    serviceMock.mockReturnValue({ from } as never)
+    sessionRows.push({ role: 'employee', is_active: true })
 
     expect(await upsertPartnershipCapital(row)).toEqual({ ok: false, error: 'not authorized' })
-    expect(from).toHaveBeenCalledWith('user_roles')
-    expect(from).not.toHaveBeenCalledWith('partnership_capital')
-    expect(query.upsert).not.toHaveBeenCalled()
+    expect(sessionReads).toEqual(['user_roles'])
+    expect(serviceMock).not.toHaveBeenCalled()
   })
 
   test('an active superadmin can upsert partnership capital without a ceo staff role', async () => {
@@ -214,11 +233,15 @@ describe('restricted staff actions', () => {
       amount_paid_by_partner: 10,
       notes: null,
     }
-    const query = builder({ data: [{ role: 'superadmin', is_active: true }] })
+    sessionRows.push({ role: 'superadmin', is_active: true })
+    const query = builder({})
     const from = jest.fn(() => query)
     serviceMock.mockReturnValue({ from } as never)
 
     expect(await upsertPartnershipCapital(row)).toEqual({ ok: true })
+    expect(sessionReads).toEqual(['user_roles'])
+    expect(from).toHaveBeenCalledWith('partnership_capital')
+    expect(from).not.toHaveBeenCalledWith('user_roles')
     expect(query.upsert).toHaveBeenCalled()
   })
 

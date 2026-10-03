@@ -5,10 +5,12 @@
  *
  * Session client only for the two checks:
  *   - public.require_jj_staff(text[]) — SECURITY DEFINER, public schema, so
- *     session.rpc() can reach it. supabase/migrations has no CREATE for it.
- *     The throwaway test installs the verbatim harness body. p_allowed_roles
- *     null means any active jj_staff_config row. A raise, a null, or false
- *     is BLOCKED_BY_MISSING_PERMISSION.
+ *     session.rpc() can reach it. Draft
+ *     supabase/migrations/20261003150500_require_jj_staff.sql creates it
+ *     when it is absent and leaves an existing jj_staff_config body unchanged.
+ *     The throwaway test installs the verbatim harness body on its own
+ *     database. p_allowed_roles null means any active jj_staff_config row.
+ *     A raise, a null, or false is BLOCKED_BY_MISSING_PERMISSION.
  *   - public.is_company_member(uuid) — SECURITY INVOKER wrapper in
  *     supabase/migrations/20261003170000_public_is_company_member_wrapper.sql.
  *     The body returns access.is_company_member(p_company_id). PostgREST

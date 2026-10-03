@@ -61,6 +61,19 @@ export const SERVICE_ROLE_COMPANY_WIDE_RELATIONS: ReadonlySet<string> = new Set(
   'claim_templates',
   'evidence_links',
   'statement_events',
+  // Staff-action tables with no company column yet. The contacts draft
+  // records that contacts and contact_properties have neither company_id
+  // nor operating_company_id, and it does not add one. Verify mode still
+  // waits for the company resolver and adds no column filter. user_roles
+  // stays unlisted and refused. The admin check reads the caller's own
+  // user_roles row on the session client.
+  'jj_staff_config',
+  'contacts',
+  'contact_properties',
+  'contact_opening_balances',
+  'partnership_capital',
+  'entity_aliases',
+  'accounting_rules',
 ])
 
 type CompanyFilter = {

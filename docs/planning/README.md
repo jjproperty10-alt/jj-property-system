@@ -2,6 +2,8 @@
 
 These notes are not authority. Current rules stay in `docs/canonical/` and `docs/governance/`.
 
+The combined draft apply order, still not applied, is `combined_apply_order_2026-10-03.md`.
+
 ## Security drafts, 2026-10-03 — not approved
 
 The files below are drafts. They are not approved for apply. Do not merge them and do not run them against a Supabase project.

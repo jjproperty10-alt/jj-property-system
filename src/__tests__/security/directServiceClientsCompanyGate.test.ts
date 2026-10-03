@@ -131,10 +131,10 @@ describe('direct service-key clients use the company gate', () => {
     expect(read('supabase/migrations/20260917120000_agent_transaction_draft_public_rpcs.sql')).toContain(
       'finance is NOT exposed',
     )
-    const definedInMigrations = readdirSync(path.join(root, 'supabase/migrations'))
-      .filter((name) => name.endsWith('.sql'))
-      .some((name) => /CREATE (OR REPLACE )?FUNCTION public\.require_jj_staff/.test(read(path.join('supabase/migrations', name))))
-    expect(definedInMigrations).toBe(false)
+    const staffDraft = read('supabase/migrations/20261003150500_require_jj_staff.sql')
+    expect(staffDraft).toContain('CREATE FUNCTION public.require_jj_staff')
+    expect(staffDraft).toContain('jj_staff_config')
+    expect(staffDraft).toContain('BLOCKED_BY_FUNCTION_DRIFT')
   })
 
   test('the permission code never calls schema(access)', () => {

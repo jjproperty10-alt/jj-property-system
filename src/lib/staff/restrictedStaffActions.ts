@@ -10,15 +10,25 @@ import type {
   EntityType,
   PartnershipOwnership,
 } from '@/lib/entity-registry'
+import { MISSING_PERMISSION_BLOCK } from '@/lib/auth/requireStaffCompanyPermission'
 import { authenticateStatementUser } from '@/lib/statements/statementAuthService'
 import { createServiceClient } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabaseServer'
 
 /**
  * Staff-gated access to the tables whose draft RLS no longer allows the
- * anon-key browser singleton. authenticateStatementUser() must succeed
- * before createServiceClient() is opened. There is no requireStaffCompanyPermission
- * helper in this repo; this is the existing staff check.
+ * anon-key browser singleton. authenticateStatementUser() must succeed,
+ * and createServiceClient() then repeats active staff plus company
+ * membership before the client is returned. A staff user who is not a
+ * member of the resolved company never receives the client.
+ *
+ * Capital upsert keeps the stricter admin gate on top of that factory:
+ * an active jj_staff_config ceo or superadmin, or an active user_roles
+ * superadmin. The user_roles read is the caller's own row on the session
+ * client. The service client still refuses user_roles.
  */
+
+type ServiceDb = Awaited<ReturnType<typeof createServiceClient>>
 
 type Failure = { ok: false; error: string }
 
@@ -44,35 +54,55 @@ function finiteOrNull(value: number | null): number | null | undefined {
   return value
 }
 
-async function openStaffDb(): Promise<{ ok: true; db: ReturnType<typeof createServiceClient> } | Failure> {
+function permissionDenied(error: unknown): boolean {
+  return error instanceof Error && (
+    error.message === MISSING_PERMISSION_BLOCK
+    || error.message === 'BLOCKED_BY_COMPANY_CONTEXT'
+  )
+}
+
+async function openService(): Promise<{ ok: true; db: ServiceDb } | Failure> {
+  try {
+    const db = await createServiceClient()
+    return { ok: true, db }
+  } catch (error) {
+    if (permissionDenied(error)) return { ok: false, error: 'not authorized' }
+    throw error
+  }
+}
+
+async function openStaffDb(): Promise<{ ok: true; db: ServiceDb } | Failure> {
   const auth = await authenticateStatementUser()
   if (!auth.ok) return { ok: false, error: 'not authorized' }
-  return { ok: true, db: createServiceClient() }
+  return openService()
+}
+
+async function isActiveSuperadmin(userId: string): Promise<boolean> {
+  const session = createSupabaseServerClient()
+  const { data, error } = await session
+    .from('user_roles')
+    .select('role, is_active')
+    .eq('user_id', userId)
+    .limit(1)
+  if (error) return false
+  const row = (Array.isArray(data) ? data[0] : data) as { role?: string; is_active?: boolean } | null | undefined
+  return !!row && row.role === 'superadmin' && row.is_active === true
 }
 
 /**
  * File 3 writes partnership_capital only when finance.is_active_jj_admin() is true:
  * an active jj_staff_config ceo, or an active user_roles superadmin.
  * finance_admin and statement_operator are staff, and they are not admins.
+ * The factory's staff and membership check still runs before the write.
  */
-async function openAdminDb(): Promise<{ ok: true; db: ReturnType<typeof createServiceClient> } | Failure> {
+async function openAdminDb(): Promise<{ ok: true; db: ServiceDb } | Failure> {
   const auth = await authenticateStatementUser()
   if (!auth.ok) return { ok: false, error: 'not authorized' }
-  if (auth.staffRole === 'ceo' || auth.staffRole === 'superadmin') {
-    return { ok: true, db: createServiceClient() }
+  if (auth.staffRole !== 'ceo' && auth.staffRole !== 'superadmin') {
+    const superadmin = await isActiveSuperadmin(auth.userId)
+    if (!superadmin) return { ok: false, error: 'not authorized' }
   }
-  const db = createServiceClient()
-  const { data, error } = await db
-    .from('user_roles')
-    .select('role, is_active')
-    .eq('user_id', auth.userId)
-    .limit(1)
-  if (error) return { ok: false, error: 'not authorized' }
-  const row = Array.isArray(data) ? data[0] as { role?: string; is_active?: boolean } | undefined : undefined
-  if (!row || row.role !== 'superadmin' || row.is_active !== true) {
-    return { ok: false, error: 'not authorized' }
-  }
-  return { ok: true, db }
+  return openService()
 }
 
 export type StaffContactRow = {
