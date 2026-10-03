@@ -58,6 +58,18 @@ function directionOf(signed: number): ClosingDirection {
   return signed > 0 ? 'client_owes_jj' : signed < 0 ? 'jj_owes_client' : 'settled'
 }
 
+/**
+ * Direction label for the page-1 "property balances" total row. The amount is
+ * printed unsigned (fmt), so the label carries the direction: a negative
+ * due_to_jj total is a credit to the client, never "settled".
+ */
+export function propertyTotalDirection(doc: ClientAccountDocument): ClosingDirection {
+  const ownerLines = doc.ownerLevelObligations ?? []
+  const propertyTotal = doc.properties.reduce((sum, property) => sum + property.amountDueToJj, 0)
+  const total = ownerLines.length > 0 ? propertyTotal : doc.openingDueToJj
+  return Math.abs(total) < 0.005 ? 'settled' : directionOf(total)
+}
+
 function PropertyPages({
   property,
   clientName,
@@ -198,9 +210,8 @@ export function ClientAccountPdf({ doc }: { doc: ClientAccountDocument }) {
   const cutoff = cutoffLabel(doc.asOf)
   const ownerLines = doc.ownerLevelObligations ?? []
   const propertyTotal = doc.properties.reduce((sum, property) => sum + property.amountDueToJj, 0)
-  const totalDirection: ClosingDirection = (ownerLines.length > 0 ? propertyTotal : doc.openingDueToJj) > 0
-    ? 'client_owes_jj'
-    : 'settled'
+  const totalDirection = propertyTotalDirection(doc)
+  const openingDirection = directionOf(doc.openingDueToJj)
   return (
     <Document title={doc.reportTitle} author="JJ Property">
       <Page size="A4" style={s.page}>
@@ -265,7 +276,11 @@ export function ClientAccountPdf({ doc }: { doc: ClientAccountDocument }) {
             style={s.rowTotal}
             date={null}
             description={<Desc text={term('certifiedOpening', language)} language={language} bold style={{ color: colors.navy }} />}
-            direction={null}
+            direction={(
+              <View style={s.direction}>
+                <Phrase text={balanceDirectionText(name, openingDirection, language)} language={language} color={colors.navy} bold />
+              </View>
+            )}
             amount={<Text style={[s.amount, s.bold, { color: colors.navy }]}>{fmt(doc.openingDueToJj)}</Text>}
           />
         ) : null}

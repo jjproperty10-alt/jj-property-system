@@ -155,11 +155,12 @@ export function certifiedDirectionCopy(
 ): { heroPrefix: string; heroSuffix?: string; directionPrefix: string; directionSuffix?: string; totalLabel: string } {
   const owner = ownerNameForReport(ownerName, lang)
   if (dto.closingDirection === 'jj_owes_client') {
+    // DirectionLine renders prefix, then "JJ", then suffix. JJ is the payer here,
+    // so JJ goes last on the hero line and first on the direction line.
     return {
-      heroPrefix: lang === 'he' ? 'לתשלום ל-' : 'Payable to ',
-      heroSuffix: lang === 'he' ? ` על ידי ${owner}` : ` by ${owner}`,
-      directionPrefix: lang === 'he' ? 'JJ owes ' : 'JJ owes ',
-      directionSuffix: owner,
+      heroPrefix: lang === 'he' ? `לתשלום ל${owner} על ידי` : `Payable to ${owner} by`,
+      directionPrefix: '',
+      directionSuffix: lang === 'he' ? `חייב ל${owner}` : `owes ${owner}`,
       totalLabel: tFill('certPayableToOwnerByJj', lang, { owner }),
     }
   }
