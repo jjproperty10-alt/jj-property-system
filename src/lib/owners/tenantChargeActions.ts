@@ -108,7 +108,7 @@ export async function createTenantChargeAction(
 
   // ── RPC call ──────────────────────────────────────────────────────────────
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -173,7 +173,7 @@ export async function updateTenantChargeStatusAction(
     return { ok: false, error: `Invalid status: ${input.newStatus}` }
   }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -241,7 +241,7 @@ export async function setPresentationOverrideAction(
     }
   }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

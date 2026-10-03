@@ -23,7 +23,7 @@ const TRANSACTION_COLUMNS =
   'id, date, property_name, category, subcategory, description, payer, payee, amount_eur, client_charge, notes, k_note, is_deleted, review_status'
 
 export async function fetchVillaMazotosTransactionsForExternalPartner(): Promise<ExternalPartnerTransactionsFetchResult> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const { data, error } = await db
     .from('transactions')
     .select(TRANSACTION_COLUMNS)

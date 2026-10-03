@@ -64,7 +64,7 @@ export async function recordMeterReadingAction(
 
   // ── RPC call ───────────────────────────────────────────────────────────────
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

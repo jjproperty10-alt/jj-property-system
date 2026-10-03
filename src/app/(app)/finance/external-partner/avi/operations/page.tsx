@@ -47,7 +47,7 @@ export default async function Vm1PropertyOperationsPage({ searchParams }: Props)
   }
 
   const loaded = await loadVm1OperationsView({
-    client: createServiceClient(),
+    client: await createServiceClient(),
     ownerStatementClient: createSupabaseServerClient(),
     fromParam: searchParams.from,
     toParam: searchParams.to,

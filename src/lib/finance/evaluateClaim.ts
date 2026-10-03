@@ -45,7 +45,7 @@ import { EVIDENCE_STRENGTH_WEIGHTS } from './types'
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 async function loadClaimTemplate(templateId: string): Promise<ClaimTemplate> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const { data, error } = await db
     .schema('finance')
     .from('claim_templates')
@@ -69,7 +69,7 @@ async function loadEvidenceLinks(
   periodStart: Date,
   periodEnd: Date,
 ): Promise<EvidenceLink[]> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const ps = periodStart.toISOString().split('T')[0]
   const pe = periodEnd.toISOString().split('T')[0]
 
@@ -128,7 +128,7 @@ interface EvalResult {
 async function evaluateCashboxSufficiency(
   entityId: string,
 ): Promise<EvalResult> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const { data, error } = await db
     .from('v_cashbox_audit')
     .select('cash_box_name, balance, total_received, total_paid')
@@ -182,7 +182,7 @@ async function evaluateNoOpenCorrections(
   periodStart: Date,
   periodEnd: Date,
 ): Promise<EvalResult> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   // Find correction_initiated events in this period
   const { data: initiated, error: e1 } = await db

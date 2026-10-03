@@ -141,7 +141,7 @@ export async function fetchOwnershipForProperty(
 ): Promise<PropertyOwnershipRecord> {
   const refDate = referenceDate ?? new Date().toISOString().slice(0, 10)
   await requireStaffCompanyPermission()
-  const supabase = createServiceClient()
+  const supabase = await createServiceClient()
 
   // ── 1. Look up entity in entity_registry ──────────────────────────────────
   const { data: entityData, error: entityError } = await supabase

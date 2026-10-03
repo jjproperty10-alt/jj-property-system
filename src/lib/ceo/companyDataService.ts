@@ -115,7 +115,7 @@ function coerceAnastasia(raw: Record<string, unknown>): AnastasiaClearing {
 // ─── Data Fetch ──────────────────────────────────────────────────────────
 
 export async function getCompanyOverview(): Promise<CompanyOverviewDTO> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   const [cashboxRes, plRes, anastasiaRes] = await Promise.all([
     db.from('v_cashbox_audit').select('*').order('cash_box_name'),

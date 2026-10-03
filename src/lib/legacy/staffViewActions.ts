@@ -112,7 +112,7 @@ export async function readStaffView(request: StaffViewRequest): Promise<StaffVie
     return { data: null, error: { message: 'not authorized', code: '42501' }, count: null }
   }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
   let query = db.from(request.view).select(select, request.head ? { count: 'exact', head: true } : undefined) as any
   for (const filter of filters) {
     if (filter[0] === 'eq') query = query.eq(filter[1], filter[2])

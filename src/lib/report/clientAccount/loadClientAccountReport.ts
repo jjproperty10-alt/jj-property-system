@@ -74,7 +74,7 @@ async function readRows(sb: Db, propertyNames: readonly string[], asOf: string):
 
 export async function loadClientAccountReport(adapter: ClientReportAdapter): Promise<ClientAccountLoadResult> {
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
     const entity = await resolveEntityId(sb, adapter.identity)
     if ('blocked' in entity) return { status: 'blocked', code: 'NO_CLIENT_IDENTITY', reason: entity.blocked }
 

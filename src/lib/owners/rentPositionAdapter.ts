@@ -227,7 +227,7 @@ export async function fetchPropertyRentPosition(
   propertyId: string,
 ): Promise<readonly RentPositionDTO[]> {
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (sb as any)
@@ -256,7 +256,7 @@ export async function fetchRentObligations(
   rentalContractId: string,
 ): Promise<readonly RentObligationRowDTO[]> {
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     // Direct query via service_role — obligations are RLS deny-all
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -287,7 +287,7 @@ export async function fetchRentTermHistory(
   rentalContractId: string,
 ): Promise<readonly RentTermDTO[]> {
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     // Direct query via service_role — terms are RLS deny-all
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

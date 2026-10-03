@@ -21,7 +21,7 @@ interface CashboxRow {
 }
 
 export async function readCashboxes(): Promise<CashboxView[]> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const views: CashboxView[] = []
 
   const { data: boxes } = await db

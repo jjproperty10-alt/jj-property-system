@@ -145,7 +145,7 @@ export async function fetchPropertyManagementFees(
   propertyId: string,
 ): Promise<ManagementFeePositionDTO> {
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (sb as any)

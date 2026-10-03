@@ -126,7 +126,7 @@ async function resolvePropertyNames(
   }
 
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     // Try the RPC first (joins EPA → property_definitions)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -186,7 +186,7 @@ export async function fetchEntityProperties(
   entityId: string,
 ): Promise<readonly EntityPropertyOption[]> {
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (sb as any)
@@ -236,7 +236,7 @@ export async function fetchEntityServiceEngagements(
   // Call RPC
   let rows: ServiceEngagementRow[]
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (sb as any)

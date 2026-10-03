@@ -282,7 +282,7 @@ export default async function OwnerWorkspacePage({
   const strProperties = selectStrProperties(services)
   const statementProperties = includeHistoricalStrProperties(
     strProperties,
-    await historicalPropertiesForOwner(createServiceClient(), workspace.identity.properties),
+    await historicalPropertiesForOwner(await createServiceClient(), workspace.identity.properties),
   )
   const strCockpit = activeTab === 'reservations' && strProperties.length > 0
     ? await buildOwnerStrCockpit({ properties: strProperties, startDate: resBounds.start, endDate: resBounds.end })

@@ -87,7 +87,7 @@ export async function createStatementDraftAction(
   if (!auth.ok) return { ok: false, error: 'You must be signed in' }
   if (!seriesId || !isValidUUID(seriesId)) return { ok: false, error: 'Invalid series ID' }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (db as any).schema('statements')
@@ -110,7 +110,7 @@ export async function addDraftLineAction(
   if (!draftId || !isValidUUID(draftId)) return { ok: false, error: 'Invalid draft ID' }
   if (!line || !isValidUUID(line.sourceTransactionId)) return { ok: false, error: 'Invalid source transaction ID' }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (db as any).schema('statements')
@@ -157,7 +157,7 @@ export async function removeDraftLineAction(
   if (!draftId || !isValidUUID(draftId)) return { ok: false, error: 'Invalid draft ID' }
   if (!sourceTransactionId || !isValidUUID(sourceTransactionId)) return { ok: false, error: 'Invalid source transaction ID' }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (db as any).schema('statements')
@@ -183,7 +183,7 @@ export async function setDraftStatusAction(
     return { ok: false, error: `Invalid draft status "${String(newStatus)}" (allowed: draft, ready_to_send)` }
   }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (db as any).schema('statements')
@@ -230,7 +230,7 @@ export async function sendStatementAction(
   const invalid = validateSendPayload(payload)
   if (invalid) return { ok: false, error: invalid }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (db as any).schema('statements')

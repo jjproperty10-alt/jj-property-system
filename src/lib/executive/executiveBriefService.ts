@@ -115,7 +115,7 @@ function safeProvider(
 //
 
 async function gatherVerificationTasks(): Promise<ExecutiveBriefCandidate[]> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   const { data, error } = await db
     .schema('lifecycle')
@@ -184,7 +184,7 @@ async function gatherVerificationTasks(): Promise<ExecutiveBriefCandidate[]> {
 //
 
 async function gatherCashboxPositions(): Promise<ExecutiveBriefCandidate[]> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   const { data, error } = await db.from('v_cashbox_audit').select('*')
 
@@ -247,7 +247,7 @@ async function gatherCashboxPositions(): Promise<ExecutiveBriefCandidate[]> {
 //
 
 async function gatherPmsStatus(): Promise<ExecutiveBriefCandidate[]> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   const { data, error } = await db
     .schema('pms')

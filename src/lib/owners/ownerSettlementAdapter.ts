@@ -91,7 +91,7 @@ interface TemporalQueryResult {
  * - querySucceeded=false → caller must NOT assign GREEN
  */
 async function fetchTemporalYellowContacts(): Promise<TemporalQueryResult> {
-  const sb = createServiceClient()
+  const sb = await createServiceClient()
   const yellowContacts = new Map<string, string>()
 
   try {
@@ -159,7 +159,7 @@ export async function fetchAllSettlements(): Promise<Map<string, OwnerSettlement
   const result = new Map<string, OwnerSettlementDTO>()
 
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     // Parallel: settlement summaries + temporal transitions
     const [summaryResult, temporal] = await Promise.all([
@@ -195,7 +195,7 @@ export async function fetchSettlementByName(
   contactName: string,
 ): Promise<OwnerSettlementDTO | null> {
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     const [summaryResult, temporal] = await Promise.all([
       sb

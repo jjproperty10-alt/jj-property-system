@@ -135,7 +135,7 @@ export async function fetchContractTenantCharges(
   rentalContractId: string,
 ): Promise<readonly TenantChargeObligationDTO[]> {
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (sb as any)
@@ -163,7 +163,7 @@ export async function fetchPropertyTenantCharges(
   propertyId: string,
 ): Promise<readonly TenantChargeObligationDTO[]> {
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (sb as any)
@@ -192,7 +192,7 @@ export async function fetchOutstandingTenantCharges(
   propertyId: string,
 ): Promise<readonly TenantChargeObligationDTO[]> {
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (sb as any)
@@ -234,7 +234,7 @@ export async function resolvePresentation(
   }
 
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (sb as any)

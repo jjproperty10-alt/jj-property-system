@@ -123,7 +123,7 @@ export async function getOwnersRoom(asOf?: string): Promise<OwnersRoomDTO> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let seriesData: any[] | null = null
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const _sr = await (sb as any).schema('statements').from('statement_series').select('*').limit(100)
     seriesData = _sr.data
@@ -446,7 +446,7 @@ export async function getOwnerFinancial(
   // resolution on every financial row. When empty (current production), gracefully null.
   let seriesId: string | undefined
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data } = await (sb as any)
       .schema('statements')
@@ -732,7 +732,7 @@ export async function getOwnerTimeline(slug: string): Promise<TimelineEventDTO[]
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let events: any[] | null = null
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const _r = await (sb as any).schema('statements').from('statement_events').select('*').limit(50)
     events = _r.data
@@ -788,7 +788,7 @@ export async function getUpcomingEvents(slug: string): Promise<UpcomingEventDTO[
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let data: any[] | null = null
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const _r = await (sb as any).schema('statements').from('upcoming_events').select('*').limit(20)
     data = _r.data

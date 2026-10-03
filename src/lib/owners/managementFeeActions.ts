@@ -79,7 +79,7 @@ export async function generateManagementFeeAction(
     return { ok: false, error: 'Period start must be before period end' }
   }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -182,7 +182,7 @@ export async function offsetManagementFeeAction(
     return { ok: false, error: `Invalid payer: ${paidBy}` }
   }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

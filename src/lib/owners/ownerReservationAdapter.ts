@@ -221,7 +221,7 @@ export async function fetchOwnerReservations(
     return emptyReservationSummary(startDate, endDate)
   }
 
-  const sb = createServiceClient()
+  const sb = await createServiceClient()
   const auditService: IPropertyAuditService = new PropertyAuditService(sb)
 
   // Run audits in parallel — one per verified owner property
@@ -320,7 +320,7 @@ export async function fetchReservationActivity(
   const wideStart = `${y - 3}-01-01`
   const wideEnd = `${y + 2}-12-31`
 
-  const sb = createServiceClient()
+  const sb = await createServiceClient()
   const auditService: IPropertyAuditService = new PropertyAuditService(sb)
 
   const settled = await Promise.allSettled(

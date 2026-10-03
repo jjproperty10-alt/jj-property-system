@@ -44,9 +44,9 @@ export async function resolveProperty(input: string): Promise<PropertyResolution
     return { status: 'not_found', input: input ?? '' }
   }
 
-  let sb: ReturnType<typeof createServiceClient>
+  let sb: Awaited<ReturnType<typeof createServiceClient>>
   try {
-    sb = createServiceClient()
+    sb = await createServiceClient()
   } catch (err) {
     return { status: 'source_unavailable', error: `createServiceClient failed: ${String(err)}` }
   }

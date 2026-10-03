@@ -285,7 +285,7 @@ async function buildJjPosition(
   cashboxes: readonly CashboxView[],
   receivables: { receivableToJjEur: number | null; payableByJjEur: number | null },
 ): Promise<JjPosition> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
   let economicProfit: number | null = null
   try {
     const { data } = await db.from('v_jj_company_pl').select('net_company_pl').maybeSingle()

@@ -11,7 +11,7 @@ import { summarizeMoneyPosition, type ReceivablesSummary, type MoneyPositionRow 
 export type { ReceivablesSummary } from '../moneyPosition'
 
 export async function readReceivables(): Promise<ReceivablesSummary> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const { data } = await db
     .from('v_money_position')
     .select('direction, counterparty_type, open_amount_eur')

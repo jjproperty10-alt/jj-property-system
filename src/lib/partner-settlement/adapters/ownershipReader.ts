@@ -35,7 +35,7 @@ function confidenceOf(status: string | null, effectiveFrom: string | null): Owne
 }
 
 export async function readOwnership(): Promise<Map<string, PropertyOwnership>> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const out = new Map<string, PropertyOwnership>()
 
   const { data: rows } = await db

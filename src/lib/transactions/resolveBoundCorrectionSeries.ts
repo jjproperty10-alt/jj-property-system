@@ -43,7 +43,7 @@ export async function resolveBoundCorrectionSeries(args: {
     }
   }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   // Reverse lookup: property → verified active management relationships.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

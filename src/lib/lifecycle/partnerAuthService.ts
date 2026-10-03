@@ -95,7 +95,7 @@ import type {
 export async function resolveAuthorizedInvestorEntity(
   authUserId: string,
 ): Promise<ResolverOutcome> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   // ── Step 3: look up investor_auth mapping ─────────────────────────────────
   const { data: authRecord, error: authErr } = await db
@@ -200,7 +200,7 @@ export async function resolveAndLoadForVerifiedUser(
   // Derives the authorized scope from lifecycle.partner_entry (DB call 3).
   // Any unauthorized property → PROPERTY_UNAUTHORIZED before any data load.
   if (opts.requestedProperties && opts.requestedProperties.length > 0) {
-    const db = createServiceClient()
+    const db = await createServiceClient()
     const { data: entries } = await db
       .schema('lifecycle')
       .from('partner_entry')
