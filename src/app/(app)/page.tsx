@@ -136,7 +136,7 @@ const COMPANY_CONTEXT_BLOCKED = 'BLOCKED_BY_COMPANY_CONTEXT'
 
 // ---- Data Fetching ----
 
-async function fetchAll() {
+export async function fetchAll() {
   const sb = createServiceClient()
 
   // Production exposes v_ceo_summary, but not total_cash_position_profit and not

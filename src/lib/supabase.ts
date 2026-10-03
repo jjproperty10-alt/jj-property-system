@@ -19,12 +19,15 @@ export function createSupabaseBrowserClient() {
   )
 }
 
+export const MISSING_SERVICE_KEY_BLOCK = 'BLOCKED_BY_MISSING_SERVICE_KEY'
+
 function rawServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY!,
-    { auth: { persistSession: false } },
-  )
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_KEY
+  if (!url || !key) {
+    throw new Error(MISSING_SERVICE_KEY_BLOCK)
+  }
+  return createClient(url, key, { auth: { persistSession: false } })
 }
 
 async function resolveSoleServiceCompany(): Promise<string> {

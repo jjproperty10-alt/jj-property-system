@@ -20,10 +20,12 @@ export const SERVICE_ROLE_COMPANY_TABLES: ReadonlySet<string> = new Set([
  *   - SERVICE_ROLE_COMPANY_WIDE_RELATIONS is a new export. Do not merge it
  *     into SERVICE_ROLE_COMPANY_TABLES: those relations are filtered on
  *     operating_company_id; these are verify-only and must stay disjoint.
- *   - gateSelectedRead takes a GateMode ('filter' | 'verify').
+ *   - gateSelectedRead takes a GateMode ('filter' | 'verify' | 'refuse').
  *   - gateServiceReads selects the mode with gateModeFor instead of testing
- *     SERVICE_ROLE_COMPANY_TABLES alone.
- * Keep Slice B's edits to the filtered path and this verify-only path.
+ *     SERVICE_ROLE_COMPANY_TABLES alone. A relation in neither set is
+ *     refused. A resolver result that is not a non-empty string is refused.
+ *     Neither path sends the read.
+ * Keep Slice B's edits to the filtered path and this verify-only / refuse path.
  * Replacing the file wholesale drops one of them.
  *
  * Relations a service-role caller may read only inside a verified company
@@ -62,28 +64,67 @@ type CompanyClient = {
 
 const gated = new WeakSet<object>()
 
-type GateMode = 'filter' | 'verify'
+type GateMode = 'filter' | 'verify' | 'refuse'
+
+export const UNGATED_RELATION_BLOCK = 'BLOCKED_BY_UNGATED_RELATION'
+
+function companyIdOrBlock(companyId: unknown): string {
+  if (typeof companyId !== 'string' || companyId.length === 0) {
+    throw new Error('BLOCKED_BY_COMPANY_CONTEXT')
+  }
+  return companyId
+}
+
+function blockedRead(message: string): CompanyFilter {
+  const error = new Error(message)
+  const filter: CompanyFilter = {
+    eq: () => filter,
+    then: (onFulfilled, onRejected) => Promise.reject(error).then(onFulfilled, onRejected),
+  }
+  const chain = filter as CompanyFilter & {
+    order: () => CompanyFilter
+    single: () => CompanyFilter
+    maybeSingle: () => CompanyFilter
+  }
+  chain.order = () => filter
+  chain.single = () => filter
+  chain.maybeSingle = () => filter
+  return filter
+}
 
 function gateSelectedRead(
   filter: CompanyFilter,
   resolveCompanyId: () => Promise<string>,
-  mode: GateMode,
+  mode: Exclude<GateMode, 'refuse'>,
 ): CompanyFilter {
   if (gated.has(filter)) return filter
   gated.add(filter)
   const originalThen = filter.then.bind(filter)
-  filter.then = (onFulfilled, onRejected) =>
-    resolveCompanyId().then((companyId) => {
-      if (mode === 'filter') filter.eq('operating_company_id', companyId)
+  filter.then = (onFulfilled, onRejected) => {
+    // Await ignores the return value of then() and settles only by calling
+    // the handlers it passes in. A throw inside an inner promise must invoke
+    // onRejected itself, or the caller hangs and the rejection is unhandled.
+    const fail = (error: unknown) => {
+      if (typeof onRejected === 'function') onRejected(error)
+    }
+    return resolveCompanyId().then((companyId) => {
+      try {
+        const verified = companyIdOrBlock(companyId)
+        if (mode === 'filter') filter.eq('operating_company_id', verified)
+      } catch (error) {
+        fail(error)
+        return undefined
+      }
       return originalThen(onFulfilled, onRejected)
-    }, onRejected)
+    }, fail)
+  }
   return filter
 }
 
-function gateModeFor(relation: string): GateMode | null {
+function gateModeFor(relation: string): GateMode {
   if (SERVICE_ROLE_COMPANY_TABLES.has(relation)) return 'filter'
   if (SERVICE_ROLE_COMPANY_WIDE_RELATIONS.has(relation)) return 'verify'
-  return null
+  return 'refuse'
 }
 
 export function gateServiceReads<T extends CompanyClient>(
@@ -92,9 +133,14 @@ export function gateServiceReads<T extends CompanyClient>(
 ): T {
   const originalFrom = client.from.bind(client)
   client.from = (relation: string) => {
-    const query = originalFrom(relation)
     const mode = gateModeFor(relation)
-    if (mode === null || query === null || typeof query !== 'object') {
+    if (mode === 'refuse') {
+      return {
+        select: () => blockedRead(`${UNGATED_RELATION_BLOCK}:${relation}`),
+      }
+    }
+    const query = originalFrom(relation)
+    if (query === null || typeof query !== 'object') {
       return query
     }
     const selectable = query as CompanyQuery

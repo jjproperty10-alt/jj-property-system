@@ -60,9 +60,10 @@ type MockClient = {
   schema(name: string): MockClient
 }
 
-function client(): MockClient {
+function client(seen: string[] = []): MockClient {
   return {
     from(relation: string) {
+      seen.push(relation)
       return {
         relation,
         select(_columns?: string, _options?: SelectOptions) {
@@ -77,7 +78,7 @@ function client(): MockClient {
       }
     },
     schema(_name: string) {
-      return client()
+      return client(seen)
     },
   }
 }
@@ -113,9 +114,10 @@ describe('service role read company', () => {
     expect(SERVICE_ROLE_COMPANY_TABLES.has('properties')).toBe(true)
   })
 
-  test('scopes a company table read and leaves other reads unchanged', async () => {
+  test('scopes a company table read and refuses relations outside the sets', async () => {
     let calls = 0
-    const db = gateServiceReads(client(), async () => {
+    const seen: string[] = []
+    const db = gateServiceReads(client(seen), async () => {
       calls += 1
       return 'company-1'
     })
@@ -124,9 +126,8 @@ describe('service role read company', () => {
     await properties
     expect(properties.eqs).toEqual(['operating_company_id=company-1'])
 
-    const transactions = db.from('transactions').select('id') as Filter
-    await transactions
-    expect(transactions.eqs).toEqual([])
+    await expect(db.from('transactions').select('id')).rejects.toThrow('BLOCKED_BY_UNGATED_RELATION')
+    expect(seen).not.toContain('transactions')
 
     const inserted = db.from('properties').insert() as Filter
     await inserted

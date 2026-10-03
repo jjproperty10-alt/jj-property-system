@@ -54,6 +54,13 @@ function capitalize(s: string) {
 
 // ── Server Action — logDecision on execute ───────────────────────────────────
 
+export async function requireDecisionSessionUser() {
+  const sessionClient = createSupabaseServerClient()
+  const { data: { user } } = await sessionClient.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+  return user
+}
+
 async function executeDecision(
   partner: string,
   entityType: string,
@@ -68,10 +75,7 @@ async function executeDecision(
   // Get current staff session for decidedBy.
   // Session identity only: the cookie-aware anon-key client. No service key here;
   // every data read below goes through createServiceClient() and its company gate.
-  const sessionClient = createSupabaseServerClient()
-
-  const { data: { user } } = await sessionClient.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireDecisionSessionUser()
 
   // Re-compute position + evaluate decision at execution time
   const [position, decision] = await Promise.all([

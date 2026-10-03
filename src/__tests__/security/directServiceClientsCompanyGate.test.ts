@@ -64,7 +64,7 @@ function mockClient(rows: Record<string, unknown>, log: Filter[]) {
     from(relation: string) {
       return { select: (..._args: unknown[]) => make(relation) }
     },
-    schema() {
+    schema(_name?: string) {
       return client
     },
   }
@@ -153,16 +153,29 @@ describe('direct service-key clients use the company gate', () => {
     expect(log.every((filter) => filter.sent === 0)).toBe(true)
   })
 
-  test('ungated relations are unchanged', async () => {
+  test('a relation outside both sets is refused and the client is not asked', async () => {
     const log: Filter[] = []
     let resolved = 0
-    const db = gateServiceReads(mockClient({ user_roles: [] }, log), async () => {
+    const db = gateServiceReads(mockClient({ user_roles: [{ id: 'role-1' }], transactions: [{ id: 'tx-1' }] }, log), async () => {
       resolved += 1
       return 'company-a'
     })
-    await db.from('user_roles').select('*')
+    await expect(db.from('user_roles').select('*')).rejects.toThrow('BLOCKED_BY_UNGATED_RELATION')
+    await expect(db.from('transactions').select('*').eq('id', 'tx-1')).rejects.toThrow('BLOCKED_BY_UNGATED_RELATION')
+    await expect(db.schema('finance').from('claim_templates').select('id')).rejects.toThrow('BLOCKED_BY_UNGATED_RELATION')
     expect(resolved).toBe(0)
-    expect(log[0].eqs).toEqual([])
+    expect(log).toEqual([])
+  })
+
+  test('a null, undefined, or empty company id sends no read', async () => {
+    for (const companyId of [null, undefined, ''] as Array<string | null | undefined>) {
+      const log: Filter[] = []
+      const db = gateServiceReads(mockClient({ v_cashbox_audit: [{ cash_box_name: 'JJ' }] }, log), async () => companyId as string)
+      await expect(db.from('v_cashbox_audit').select('*').order('cash_box_name')).rejects.toThrow(
+        'BLOCKED_BY_COMPANY_CONTEXT',
+      )
+      expect(log.every((filter) => filter.sent === 0)).toBe(true)
+    }
   })
 })
 
