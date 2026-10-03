@@ -337,7 +337,7 @@ export default async function CEODashboard() {
               />
               <Metric
                 label="JJ owes Anastasia"
-                labelHe="JJ חייב לאנסטסיה"
+                labelHe="JJ חייבת לאנסטסיה"
                 value={eur(anastasia?.jj_owes_anastasia)}
                 sub="GREATEST(0, −cash_on_hand)"
                 highlight="none"
@@ -373,7 +373,7 @@ export default async function CEODashboard() {
                   <div className="text-xs text-gray-400 mt-0.5">Rent collected, not yet distributed</div>
                 </div>
                 <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200">
-                  JJ owes · JJ חייב
+                  JJ owes · JJ חייבת
                 </span>
               </div>
               <div className="mb-3 min-w-0 break-words text-3xl font-bold text-red-600 sm:text-4xl">
