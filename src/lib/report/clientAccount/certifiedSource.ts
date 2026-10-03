@@ -78,6 +78,8 @@ export interface ClientEvidenceOverrides {
   readonly creditLabels?: CompositionInput['creditLabels']
   readonly ownerRentMonthsByRowId?: CompositionInput['ownerRentMonthsByRowId']
   readonly descriptionByRowId?: CompositionInput['descriptionByRowId']
+  readonly hebrewOwesForm?: CompositionInput['hebrewOwesForm']
+  readonly displayGroups?: CompositionInput['displayGroups']
   readonly strLumpDescription?: string
 }
 
@@ -177,6 +179,8 @@ export function compositionFromCertifiedSettlement(request: CertifiedComposition
     creditLabels: evidence.creditLabels,
     ownerRentMonthsByRowId: evidence.ownerRentMonthsByRowId,
     descriptionByRowId: evidence.descriptionByRowId,
+    displayGroups: evidence.displayGroups,
+    hebrewOwesForm: evidence.hebrewOwesForm,
     historicalSourceNamesByPropertyKey: evidence.historicalSourceNamesByPropertyKey,
     purchaseSupplementsByPropertyKey: evidence.purchaseSupplementsByPropertyKey,
     strLumpDescription: evidence.strLumpDescription,

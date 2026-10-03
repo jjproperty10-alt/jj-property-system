@@ -139,7 +139,7 @@ describe('Orit Rob adapter — fail closed', () => {
     expect(oritRobAdapter.period).toEqual({ start: '2026-04-01', end: '2026-08-31' })
     expect(oritRobAdapter.asOf).toBe('2026-08-31')
     expect(oritRobAdapter.identity).toEqual({ kind: 'canonicalName', canonicalNames: ['Orit Rob', 'Orit Rob Pingodes'] })
-    expect(oritRobAdapter.evidence).toBeUndefined()
+    expect(typeof oritRobAdapter.evidence).toBe('function')
   })
 
   test('1. no applied Orit certification → blocked, and no ledger row is read', async () => {

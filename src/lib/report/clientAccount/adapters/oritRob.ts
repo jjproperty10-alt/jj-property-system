@@ -1,7 +1,8 @@
 /**
  * Orit Rob — period account through the universal engine.
- * Identity and scope only. No amounts, balances or transaction ids live here; the report is
- * blocked until a certified client settlement exists for this entity at the cutoff.
+ * Identity, scope, and Hebrew gender only. No amounts, balances, or transaction ids.
+ * Display groups are row tags (displayGroupKey), not ids stored in this adapter.
+ * The report stays blocked until a certified client settlement exists for this entity.
  */
 
 import type { ClientReportAdapter } from './types'
@@ -18,4 +19,5 @@ export const oritRobAdapter: ClientReportAdapter = {
   period: ORIT_ROB_PERIOD,
   identity: { kind: 'canonicalName', canonicalNames: ['Orit Rob', 'Orit Rob Pingodes'] },
   strMonthly: ORIT_ROB_PERIOD,
+  evidence: () => ({ hebrewOwesForm: 'feminine' as const }),
 }

@@ -4,7 +4,7 @@
  */
 
 import { BRIDGE, SECTION, UNIT_TITLE_SUFFIX, term } from './terminology'
-import type { ClosingDirection, DisplayLine, PropertyAccount } from './types'
+import type { ClientAccountDocument, ClosingDirection, DisplayLine, PropertyAccount, SettlementBridgeStep } from './types'
 
 export type ReportLanguage = 'he' | 'en'
 export type DescriptionRole = 'general' | 'purchase-payment' | 'renovation-payment' | 'owner-transfer'
@@ -93,6 +93,11 @@ export function sameMoney(a: number, b: number): boolean {
   return Math.abs(roundEur(a) - roundEur(b)) < 0.001
 }
 
+/**
+ * Internal due-to-JJ sign. Positive means the owner owes JJ. Negative means JJ
+ * owes the owner. Balance headlines print the absolute amount and say which
+ * way it goes. Income, expense and movement rows are not sign-flipped.
+ */
 export function directionOf(dueToJj: number): ClosingDirection {
   if (Math.abs(dueToJj) < 0.005) return 'settled'
   return dueToJj > 0 ? 'client_owes_jj' : 'jj_owes_client'
@@ -106,29 +111,130 @@ export function tableFlexDirection(language: ReportLanguage): 'row-reverse' | 'r
   return language === 'he' ? 'row-reverse' : 'row'
 }
 
+/** Period header. A full account has no start and keeps the cutoff line. */
+export function periodHeaderText(end: string, start: string | null, language: ReportLanguage = 'he'): string {
+  if (language === 'en') return start ? `From ${start} through ${end} inclusive.` : `Through ${end} inclusive.`
+  return start ? `מתאריך ${start} עד תאריך ${end} כולל.` : `עד תאריך ${end} כולל.`
+}
+
 export function undatedLabel(language: ReportLanguage = 'he'): string {
   return language === 'en' ? 'Date not recorded' : UNDATED_LABEL
 }
 
-export function heroDirectionText(clientName: string, direction: ClosingDirection, language: ReportLanguage = 'he'): string {
+export function heroDirectionText(
+  clientName: string,
+  direction: ClosingDirection,
+  language: ReportLanguage = 'he',
+  owesForm: 'masculine' | 'feminine' = 'masculine',
+): string {
   if (language === 'en') {
     if (direction === 'client_owes_jj') return `${clientName} owes JJ.`
-    if (direction === 'jj_owes_client') return `Credit to ${clientName}.`
+    if (direction === 'jj_owes_client') return `JJ owes ${clientName}.`
     return 'The account is closed.'
   }
-  if (direction === 'client_owes_jj') return `${clientName} חייב ל־JJ.`
-  if (direction === 'jj_owes_client') return `זיכוי ל${clientName}.`
+  if (direction === 'client_owes_jj') return `${clientName} ${owesForm === 'feminine' ? 'חייבת' : 'חייב'} ל־JJ.`
+  if (direction === 'jj_owes_client') return `JJ חייבת ל${clientName}.`
   return 'החשבון סגור.'
 }
 
-export function balanceDirectionText(clientName: string, direction: ClosingDirection, language: ReportLanguage = 'he'): string {
+export type DirectionSurface = 'movement' | 'balance'
+
+export interface SettlementClosingRow {
+  readonly label: string
+  readonly signedDueToJj: number
+  readonly result: boolean
+}
+
+function paymentMonthLabel(step: SettlementBridgeStep, monthByEventId: Readonly<Record<string, string>>): string | null {
+  if (step.eventId && monthByEventId[step.eventId]) return monthByEventId[step.eventId]
+  return step.dateLabel
+}
+
+/** Display rows for the client closing bridge. The closing row is the result, not an extra charge. */
+export function settlementClosingDisplay(doc: Pick<ClientAccountDocument, 'settlementBridge' | 'credits' | 'reportLanguage'>): SettlementClosingRow[] {
+  const language = doc.reportLanguage
+  const monthByEventId: Record<string, string> = {}
+  for (const credit of doc.credits) if (credit.eventId && credit.monthLabel) monthByEventId[credit.eventId] = credit.monthLabel
+  return doc.settlementBridge.steps.map((step) => {
+    if (step.kind === 'property-balance') {
+      return { label: term('propertyBalanceBeforePayments', language), signedDueToJj: step.signedDueToJj, result: false }
+    }
+    if (step.kind === 'payment') {
+      const month = paymentMonthLabel(step, monthByEventId)
+      const label = month
+        ? (language === 'en' ? `Payment ${month}` : `תשלום ${month}`)
+        : step.label
+      return { label, signedDueToJj: step.signedDueToJj, result: false }
+    }
+    if (step.kind === 'closing') {
+      const label = step.signedDueToJj > 0
+        ? term('balancePayableToJj', language)
+        : step.signedDueToJj < 0
+          ? term('jjOwesClient', language)
+          : (language === 'en' ? 'The account is closed' : 'החשבון סגור')
+      return { label, signedDueToJj: step.signedDueToJj, result: true }
+    }
+    return { label: step.label, signedDueToJj: step.signedDueToJj, result: false }
+  })
+}
+
+/** Property-page bridge title. Payments that sit on the client bridge are not inside this total. */
+export function propertyBridgeTitle(doc: Pick<ClientAccountDocument, 'settlementBridge' | 'reportLanguage'>): string {
+  const separatesClientMovements = doc.settlementBridge.steps.some((step) => step.kind === 'payment' || step.kind === 'credit' || step.kind === 'cash-allocation')
+  return separatesClientMovements ? term('propertyBridgeBeforePayments', doc.reportLanguage) : term('closingBridge', doc.reportLanguage)
+}
+
+/** Equals-row label for the property bridge. The amount stays the certified property balance. */
+export function propertyBalanceResultLabel(doc: Pick<ClientAccountDocument, 'settlementBridge' | 'reportLanguage'>): string {
+  const separated = propertyBridgeTitle(doc) === term('propertyBridgeBeforePayments', doc.reportLanguage)
+  return separated ? term('propertyBalanceBeforePayments', doc.reportLanguage) : term('propertyBalance', doc.reportLanguage)
+}
+
+/** Open-items row when general payments sit on the summary bridge. Amount is the certified closing. */
+export function finalOpenBalanceDisplay(
+  doc: Pick<ClientAccountDocument, 'settlementBridge' | 'closingDueToJj' | 'closingDirection' | 'reportLanguage'>,
+): { label: string; amount: number; direction: ClosingDirection } | null {
+  const hasPayment = doc.settlementBridge.steps.some((step) => step.kind === 'payment')
+  if (!hasPayment) return null
+  return {
+    label: term('finalOpenBalance', doc.reportLanguage),
+    amount: Math.abs(doc.closingDueToJj),
+    direction: doc.closingDirection,
+  }
+}
+
+/** Property-page note: general payments are applied on the summary bridge, and the final balance is the certified closing. */
+export function propertyPaymentsNote(
+  doc: Pick<ClientAccountDocument, 'settlementBridge' | 'closingDueToJj' | 'reportLanguage'>,
+  formattedClosing: string,
+): string | null {
+  const count = doc.settlementBridge.steps.filter((step) => step.kind === 'payment').length
+  if (count === 0) return null
+  if (doc.reportLanguage === 'en') {
+    const subject = count === 1 ? 'The payment is' : count === 2 ? 'The two payments are' : 'The payments are'
+    if (doc.closingDueToJj > 0) return `${subject} deducted in the summary bridge. The final balance payable is ${formattedClosing}.`
+    if (doc.closingDueToJj < 0) return `${subject} deducted in the summary bridge. The final balance is a credit of ${formattedClosing}.`
+    return `${subject} deducted in the summary bridge. The account is closed.`
+  }
+  const subject = count === 1 ? 'התשלום מופחת' : count === 2 ? 'שני התשלומים מופחתים' : 'התשלומים מופחתים'
+  if (doc.closingDueToJj > 0) return `${subject} בגשר הסיכום. היתרה הסופית לתשלום היא ${formattedClosing}.`
+  if (doc.closingDueToJj < 0) return `${subject} בגשר הסיכום. היתרה הסופית היא זיכוי של ${formattedClosing}.`
+  return `${subject} בגשר הסיכום. החשבון סגור.`
+}
+
+export function balanceDirectionText(
+  clientName: string,
+  direction: ClosingDirection,
+  language: ReportLanguage = 'he',
+  surface: DirectionSurface = 'movement',
+): string {
   if (language === 'en') {
     if (direction === 'client_owes_jj') return 'Payable to JJ.'
-    if (direction === 'jj_owes_client') return `Credit to ${clientName}.`
+    if (direction === 'jj_owes_client') return surface === 'balance' ? `JJ owes ${clientName}.` : `Credit to ${clientName}.`
     return 'Closed.'
   }
   if (direction === 'client_owes_jj') return 'לתשלום ל־JJ.'
-  if (direction === 'jj_owes_client') return `זיכוי ל${clientName}.`
+  if (direction === 'jj_owes_client') return surface === 'balance' ? `JJ חייבת ל${clientName}.` : `זיכוי ל${clientName}.`
   return 'נסגר.'
 }
 

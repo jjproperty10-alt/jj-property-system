@@ -83,7 +83,7 @@ describe('universal client report engine', () => {
       rows: [row({ id: 'r1', amountEur: 20, subcategory: 'Tenant Payment', description: 'שכירות', payer: 'Tenant' })],
     }))
     expect(document.closingDirection).toBe('jj_owes_client')
-    expect(heroDirectionText(document.clientDisplayName, document.closingDirection)).toContain(TERMS.creditToClient.he)
+    expect(heroDirectionText(document.clientDisplayName, document.closingDirection)).toContain('JJ חייבת')
     expect(document.properties[0].lines[0].effect).toBe('credit')
     expect(document.properties[0].direction).toBe('jj_owes_client')
   })

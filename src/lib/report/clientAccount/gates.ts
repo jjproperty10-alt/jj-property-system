@@ -26,6 +26,8 @@ export interface AccountAssertion {
   readonly allocationRule: string | null
   readonly actionType: string | null
   readonly dateRole: string | null
+  readonly sourceComponents: readonly { readonly sourceId: string; readonly amount: number }[] | null
+  readonly clientChargeDefaulted?: boolean
 }
 
 function displayedLines(doc: ClientAccountDocument): DisplayLine[] {
@@ -46,6 +48,14 @@ export function buildAssertionRegister(doc: ClientAccountDocument): AccountAsser
       }
       seen.set(id, line.countedIn)
     }
+    const components = line.sourceComponents || null
+    if (components) {
+      const componentIds = components.map((component) => component.sourceId)
+      const sum = roundEur(components.reduce((total, component) => total + component.amount, 0))
+      if (!sameMoney(sum, line.amount) || componentIds.join('|') !== [...line.sourceIds].join('|')) {
+        throw new Error(`BLOCKED_ACCOUNTING: display group ${line.clientText} does not equal its sources.`)
+      }
+    }
     assertions.push({
       property: line.propertyName,
       section: line.section,
@@ -63,6 +73,8 @@ export function buildAssertionRegister(doc: ClientAccountDocument): AccountAsser
       allocationRule: line.allocationRule || null,
       actionType: null,
       dateRole: null,
+      sourceComponents: components,
+      clientChargeDefaulted: line.clientChargeDefaulted,
     })
   }
   for (const property of doc.properties) {
@@ -84,6 +96,7 @@ export function buildAssertionRegister(doc: ClientAccountDocument): AccountAsser
         allocationRule: null,
         actionType: null,
         dateRole: summary.state,
+        sourceComponents: null,
       })
     }
   }
@@ -105,6 +118,7 @@ export function buildAssertionRegister(doc: ClientAccountDocument): AccountAsser
       allocationRule: null,
       actionType: credit.eventType,
       dateRole: credit.dateRole,
+      sourceComponents: null,
     })
   }
   for (const note of doc.sourceNotes) {
@@ -125,6 +139,7 @@ export function buildAssertionRegister(doc: ClientAccountDocument): AccountAsser
       allocationRule: null,
       actionType: note.topic,
       dateRole: null,
+      sourceComponents: null,
     })
   }
   return assertions
@@ -135,17 +150,17 @@ export function clientAccountPlainText(doc: ClientAccountDocument): string {
     doc.clientDisplayName,
     doc.reportTitle,
     doc.asOf,
-    heroDirectionText(doc.clientDisplayName, doc.closingDirection),
+    heroDirectionText(doc.clientDisplayName, doc.closingDirection, doc.reportLanguage, doc.hebrewOwesForm),
     fmt(doc.closingDueToJj),
     fmt(doc.openingDueToJj),
   ]
   for (const property of doc.properties) {
-    parts.push(property.propertyName, balanceDirectionText(doc.clientDisplayName, property.direction), fmt(property.amountDueToJj))
+    parts.push(property.propertyName, balanceDirectionText(doc.clientDisplayName, property.direction, doc.reportLanguage, 'balance'), fmt(property.amountDueToJj))
     for (const unit of property.units) {
       if (unit.note) parts.push(unit.title, unit.note)
     }
     for (const line of [...property.lines, ...property.units.flatMap((unit) => unit.lines)]) {
-      parts.push(line.section, line.clientText, line.monthLabel, line.paymentMonthLabel || '', line.directionText, fmt(line.amount))
+      parts.push(line.section, line.clientText, line.monthLabel, line.paymentMonthLabel || '', line.directionText, fmt(line.amount), line.clientChargeDefaulted ? term('chargeDefaulted', doc.reportLanguage) : '')
     }
     for (const summary of property.summaries) {
       parts.push(

@@ -39,6 +39,14 @@ export interface LedgerRow {
   readonly clientCharge: number | null
   readonly reviewStatus: string | null
   readonly isDeleted: boolean
+  /**
+   * Presentation tag. Rows that share a non-empty key and the same
+   * displayGroupLabel become one client line. Omitted rows are never merged.
+   */
+  readonly displayGroupKey?: string | null
+  readonly displayGroupLabel?: string | null
+  /** Client-facing wording for this row when it should not use the generated description. */
+  readonly clientLabel?: string | null
 }
 
 export interface CertifiedAccountLine {
@@ -124,16 +132,31 @@ export interface CompositionInput {
   readonly creditLabels?: { readonly noncash?: string; readonly cash?: string }
   readonly ownerRentMonthsByRowId?: Readonly<Record<string, readonly { year: number; month: number }[]>>
   readonly descriptionByRowId?: Readonly<Record<string, string>>
+  /** Explicit presentation groups. Amounts stay the sum of the named sources; nothing else is merged. */
+  readonly displayGroups?: readonly ClientDisplayGroup[]
   readonly historicalSourceNamesByPropertyKey?: Readonly<Record<string, readonly string[]>>
   readonly purchaseSupplementsByPropertyKey?: Readonly<Record<string, readonly PurchaseSupplement[]>>
   readonly strLumpDescription?: string
   readonly renovationNoteByPropertyKey?: Readonly<Record<string, string>>
+  /** Hebrew verb for “owes JJ”. Omitted means the masculine default. Presentation only. */
+  readonly hebrewOwesForm?: 'masculine' | 'feminine'
 }
 
 export interface PurchaseSupplement {
   readonly amount: number
   readonly monthLabel: string
   readonly description: string
+}
+
+/** One client row that stands in for specific ledger rows. It does not add a new charge. */
+export interface ClientDisplayGroup {
+  readonly sourceIds: readonly string[]
+  readonly clientText: string
+}
+
+export interface DisplaySourceComponent {
+  readonly sourceId: string
+  readonly amount: number
 }
 
 export interface DisplayLine {
@@ -152,6 +175,13 @@ export interface DisplayLine {
   readonly evidence: EvidenceStatus
   readonly countedIn: string
   readonly allocationRule?: string | null
+  /** Present only when this row is a display group. The line amount is their sum, counted once. */
+  readonly sourceComponents?: readonly DisplaySourceComponent[]
+  /**
+   * True when a source row had no client_charge and the report used amount_eur.
+   * A stored client charge of 0 is not a default.
+   */
+  readonly clientChargeDefaulted: boolean
 }
 
 export interface ComponentSummary {
@@ -322,4 +352,6 @@ export interface ClientAccountDocument {
   readonly settlementBridge: SettlementBridge
   readonly sourceNotes: readonly SourceNote[]
   readonly omittedNetZeroSourceIds: readonly string[]
+  /** Hebrew verb for “owes JJ”. Omitted means the masculine default. Presentation only. */
+  readonly hebrewOwesForm?: 'masculine' | 'feminine'
 }

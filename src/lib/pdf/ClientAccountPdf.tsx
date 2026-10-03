@@ -6,7 +6,7 @@
 import React from 'react'
 import { Document, Page, Text, View, Font } from '@react-pdf/renderer'
 import { fmt } from './formatters'
-import { balanceDirectionText, heroDirectionText } from '../report/clientAccount/presentation'
+import { balanceDirectionText, finalOpenBalanceDisplay, heroDirectionText, propertyBalanceResultLabel, propertyBridgeTitle, propertyPaymentsNote } from '../report/clientAccount/presentation'
 import type { ReportLanguage } from '../report/clientAccount/presentation'
 import { SECTION, term } from '../report/clientAccount/terminology'
 import type { ClientAccountDocument, ClosingDirection, PropertyAccount } from '../report/clientAccount/types'
@@ -22,6 +22,7 @@ import {
   DetailSection,
   DetailTable,
   MonthlyStrTable,
+  SettlementClosingBridge,
   Phrase,
   PropertyHeader,
   ReportFooter,
@@ -61,7 +62,8 @@ function directionOf(signed: number): ClosingDirection {
 /**
  * Direction label for the page-1 "property balances" total row. The amount is
  * printed unsigned (fmt), so the label carries the direction: a negative
- * due_to_jj total is a credit to the client, never "settled".
+ * due_to_jj total is a credit to the client (JJ חייבת), never "settled".
+ * Property and movement rows are not multiplied by -1.
  */
 export function propertyTotalDirection(doc: ClientAccountDocument): ClosingDirection {
   const ownerLines = doc.ownerLevelObligations ?? []
@@ -74,31 +76,42 @@ function PropertyPages({
   property,
   clientName,
   cutoff,
+  periodStart,
   language,
   isLast,
+  bridgeTitle,
+  bridgeNote,
+  resultLabel,
+  finalOpen,
 }: {
   property: PropertyAccount
   clientName: string
   cutoff: string
+  periodStart: string | null
   language: ReportLanguage
   isLast: boolean
+  bridgeTitle: string
+  bridgeNote: string | null
+  resultLabel: string
+  finalOpen: { label: string; amount: number; direction: ClosingDirection } | null
 }) {
   const by = (section: string) => property.lines.filter((line) => line.section === section)
   const purchase = property.summaries.find((item) => item.kind === 'purchase')
   const renovation = property.summaries.find((item) => item.kind === 'renovation')
+  const beforePaymentsLabel = resultLabel === term('propertyBalanceBeforePayments', language) ? resultLabel : null
   const footer = <ReportFooter clientName={clientName} cutoff={cutoff} language={language} />
   return (
     <>
       <Page size="A4" style={s.page}>
         <ContinuationTitle title={property.propertyName} language={language} />
-        <PropertyHeader title={property.propertyName} subtitle={term('propertyAccount', language)} cutoff={cutoff} language={language} />
+        <PropertyHeader title={property.propertyName} subtitle={term('propertyAccount', language)} cutoff={cutoff} periodStart={periodStart} language={language} />
         <BalanceCard
           direction={property.direction}
           amount={property.amountDueToJj}
-          label={balanceDirectionText(clientName, property.direction, language)}
+          label={beforePaymentsLabel ?? balanceDirectionText(clientName, property.direction, language, 'balance')}
           language={language}
         />
-        <CategorySummary property={property} clientName={clientName} language={language} />
+        <CategorySummary property={property} clientName={clientName} language={language} closingTitle={beforePaymentsLabel} />
         <DetailSection title={term('purchase', language)} lines={by(SECTION.purchase)} language={language} summary={purchase} />
         <DetailSection title={term('renovation', language)} lines={by(SECTION.renovation)} language={language} summary={renovation} />
         <DetailSection title={term('setup', language)} lines={by(SECTION.setup)} language={language} />
@@ -106,11 +119,12 @@ function PropertyPages({
         {/* The monthly summary stays with the property's closing area (remaining sections + bridge + status)
             instead of leaving the bridge alone on a trailing page. */}
         {property.certifiedMonthlyStr ? <MonthlyStrTable section={property.certifiedMonthlyStr} language={language} minPresenceAhead={310} /> : null}
+        <DetailSection title={SECTION.strExpenses} lines={by(SECTION.strExpenses)} language={language} />
         <DetailSection title={term('ownerTransfers', language)} lines={by(SECTION.ownerTransfers)} language={language} />
         <DetailSection title={term('operatingExpenses', language)} lines={[...by(SECTION.propertyExpenses), ...by(SECTION.recurring)]} language={language} />
         <DetailSection title={term('repairs', language)} lines={by(SECTION.repairs)} language={language} />
         {property.units.length === 0 ? (
-          <ClosingBlock property={property} clientName={clientName} language={language} documentNoteCutoff={isLast ? cutoff : undefined} />
+          <ClosingBlock property={property} clientName={clientName} language={language} documentNoteCutoff={isLast ? cutoff : undefined} bridgeTitle={bridgeTitle} bridgeNote={bridgeNote} resultLabel={resultLabel} finalOpen={isLast ? finalOpen : null} />
         ) : null}
         {footer}
       </Page>
@@ -128,7 +142,7 @@ function PropertyPages({
             description={<Desc text={description} language={language} bold />}
             direction={(
               <View style={s.direction}>
-                <Phrase text={balanceDirectionText(clientName, unitDirection, language)} language={language} color={ink(unitDirection)} bold />
+                <Phrase text={balanceDirectionText(clientName, unitDirection, language, 'balance')} language={language} color={ink(unitDirection)} bold />
               </View>
             )}
             amount={<Text style={[s.amount, s.bold, { color: ink(unitDirection) }]}>{fmt(Math.abs(unit.balanceDueToJj))}</Text>}
@@ -144,7 +158,7 @@ function PropertyPages({
         return (
           <Page key={unit.title} size="A4" style={s.page}>
             <ContinuationTitle title={unit.title} language={language} />
-            <PropertyHeader title={unit.title} subtitle={term('unitDetail', language)} cutoff={cutoff} language={language} />
+            <PropertyHeader title={unit.title} subtitle={term('unitDetail', language)} cutoff={cutoff} periodStart={periodStart} language={language} />
             {!longTerm && unit.note ? (
               <View style={s.noteBox}>
                 <RtlLine text={unit.note} pack="start" style={{ color: colors.text, fontSize: 9 }} />
@@ -193,7 +207,7 @@ function PropertyPages({
               )
             })}
             {longTerm || lastUnit ? (
-              <ClosingBlock property={property} clientName={clientName} language={language} documentNoteCutoff={isLast && lastUnit ? cutoff : undefined} />
+              <ClosingBlock property={property} clientName={clientName} language={language} documentNoteCutoff={isLast && lastUnit ? cutoff : undefined} bridgeTitle={bridgeTitle} bridgeNote={bridgeNote} resultLabel={resultLabel} finalOpen={isLast && lastUnit ? finalOpen : null} />
             ) : null}
             {footer}
           </Page>
@@ -208,6 +222,7 @@ export function ClientAccountPdf({ doc }: { doc: ClientAccountDocument }) {
   const language = doc.reportLanguage
   const he = language === 'he'
   const cutoff = cutoffLabel(doc.asOf)
+  const periodStart = doc.period ? cutoffLabel(doc.period.start) : null
   const ownerLines = doc.ownerLevelObligations ?? []
   const propertyTotal = doc.properties.reduce((sum, property) => sum + property.amountDueToJj, 0)
   const totalDirection = propertyTotalDirection(doc)
@@ -216,13 +231,13 @@ export function ClientAccountPdf({ doc }: { doc: ClientAccountDocument }) {
     <Document title={doc.reportTitle} author="JJ Property">
       <Page size="A4" style={s.page}>
         <View style={s.continuedSlot} />
-        <ReportHeader title={term('settlementSummary', language)} clientName={name} cutoff={cutoff} language={language} />
+        <ReportHeader title={term('settlementSummary', language)} clientName={name} cutoff={cutoff} periodStart={periodStart} language={language} />
 
         <BalanceCard
           hero
           direction={doc.closingDirection}
           amount={doc.closingDueToJj}
-          label={heroDirectionText(name, doc.closingDirection, language)}
+          label={heroDirectionText(name, doc.closingDirection, language, doc.hebrewOwesForm)}
           language={language}
         />
 
@@ -238,7 +253,7 @@ export function ClientAccountPdf({ doc }: { doc: ClientAccountDocument }) {
             description={<Desc text={property.propertyName} language={language} />}
             direction={(
               <View style={s.direction}>
-                <Phrase text={balanceDirectionText(name, property.direction, language)} language={language} color={ink(property.direction)} />
+                <Phrase text={balanceDirectionText(name, property.direction, language, 'balance')} language={language} color={ink(property.direction)} />
               </View>
             )}
             amount={<Text style={[s.amount, { color: ink(property.direction) }]}>{fmt(Math.abs(property.amountDueToJj))}</Text>}
@@ -251,7 +266,7 @@ export function ClientAccountPdf({ doc }: { doc: ClientAccountDocument }) {
           description={<Desc text={term('propertyBalances', language)} language={language} bold style={{ color: colors.navy }} />}
           direction={(
             <View style={s.direction}>
-              <Phrase text={balanceDirectionText(name, totalDirection, language)} language={language} color={colors.navy} bold />
+              <Phrase text={balanceDirectionText(name, totalDirection, language, 'balance')} language={language} color={colors.navy} bold />
             </View>
           )}
           amount={<Text style={[s.amount, s.bold, { color: colors.navy }]}>{fmt(ownerLines.length > 0 ? propertyTotal : doc.openingDueToJj)}</Text>}
@@ -278,7 +293,7 @@ export function ClientAccountPdf({ doc }: { doc: ClientAccountDocument }) {
             description={<Desc text={term('certifiedOpening', language)} language={language} bold style={{ color: colors.navy }} />}
             direction={(
               <View style={s.direction}>
-                <Phrase text={balanceDirectionText(name, openingDirection, language)} language={language} color={colors.navy} bold />
+                <Phrase text={balanceDirectionText(name, openingDirection, language, 'balance')} language={language} color={colors.navy} bold />
               </View>
             )}
             amount={<Text style={[s.amount, s.bold, { color: colors.navy }]}>{fmt(doc.openingDueToJj)}</Text>}
@@ -328,6 +343,8 @@ export function ClientAccountPdf({ doc }: { doc: ClientAccountDocument }) {
           </View>
         ) : null}
 
+        <SettlementClosingBridge doc={doc} />
+
         <ReportFooter clientName={name} cutoff={cutoff} language={language} />
       </Page>
       {doc.properties.map((property, index) => (
@@ -336,8 +353,13 @@ export function ClientAccountPdf({ doc }: { doc: ClientAccountDocument }) {
           property={property}
           clientName={name}
           cutoff={cutoff}
+          periodStart={periodStart}
           language={language}
           isLast={index === doc.properties.length - 1}
+          bridgeTitle={propertyBridgeTitle(doc)}
+          bridgeNote={propertyPaymentsNote(doc, fmt(Math.abs(doc.closingDueToJj)))}
+          resultLabel={propertyBalanceResultLabel(doc)}
+          finalOpen={finalOpenBalanceDisplay(doc)}
         />
       ))}
     </Document>

@@ -10,12 +10,15 @@ import {
   balanceDirectionText,
   completedTransferText,
   propertyLayerSummaries,
+  periodHeaderText,
+  settlementClosingDisplay,
   tableFlexDirection,
 } from '../../report/clientAccount/presentation'
 import type { ReportLanguage } from '../../report/clientAccount/presentation'
 import { TERMS, term } from '../../report/clientAccount/terminology'
 import type {
   CertifiedStrMonthlySection,
+  ClientAccountDocument,
   ClosingDirection,
   ComponentSummary,
   DisplayLine,
@@ -98,13 +101,25 @@ export function DateColumn({ line, language }: { line: Pick<DisplayLine, 'monthL
   )
 }
 
-export function CutoffLine({ cutoff, language, style }: { cutoff: string; language: ReportLanguage; style?: StyleProp }) {
+export function CutoffLine({ cutoff, periodStart, language, style }: { cutoff: string; periodStart?: string | null; language: ReportLanguage; style?: StyleProp }) {
   const textStyle = [s.meta, ...styleList(style)]
-  if (language === 'en') return <Text style={textStyle}>{`Through ${cutoff} inclusive.`}</Text>
+  if (language === 'en') return <Text style={textStyle}>{periodHeaderText(cutoff, periodStart ?? null, language)}</Text>
+  if (!periodStart) {
+    return (
+      <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
+        <Text style={textStyle}>עד תאריך</Text>
+        <Text style={textStyle}>:</Text>
+        <Text style={[...textStyle, { marginHorizontal: 4 }]}>{cutoff}</Text>
+        <Text style={textStyle}>כולל</Text>
+        <Text style={textStyle}>.</Text>
+      </View>
+    )
+  }
   return (
     <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
+      <Text style={textStyle}>מתאריך</Text>
+      <Text style={[...textStyle, { marginHorizontal: 4 }]}>{periodStart}</Text>
       <Text style={textStyle}>עד תאריך</Text>
-      <Text style={textStyle}>:</Text>
       <Text style={[...textStyle, { marginHorizontal: 4 }]}>{cutoff}</Text>
       <Text style={textStyle}>כולל</Text>
       <Text style={textStyle}>.</Text>
@@ -123,7 +138,7 @@ export function Wordmark() {
   )
 }
 
-export function ReportHeader({ title, clientName, cutoff, language }: { title: string; clientName: string; cutoff: string; language: ReportLanguage }) {
+export function ReportHeader({ title, clientName, cutoff, periodStart = null, language }: { title: string; clientName: string; cutoff: string; periodStart?: string | null; language: ReportLanguage }) {
   return (
     <View style={s.header}>
       <View style={s.headerRow}>
@@ -135,7 +150,7 @@ export function ReportHeader({ title, clientName, cutoff, language }: { title: s
             <View style={{ width: 4 }} />
             <Text style={s.subtitle}>{clientName}</Text>
           </View>
-          <CutoffLine cutoff={cutoff} language={language} />
+          <CutoffLine cutoff={cutoff} periodStart={periodStart} language={language} />
         </View>
         <Wordmark />
       </View>
@@ -144,7 +159,7 @@ export function ReportHeader({ title, clientName, cutoff, language }: { title: s
   )
 }
 
-export function PropertyHeader({ title, subtitle, cutoff, language }: { title: string; subtitle: string; cutoff: string; language: ReportLanguage }) {
+export function PropertyHeader({ title, subtitle, cutoff, periodStart = null, language }: { title: string; subtitle: string; cutoff: string; periodStart?: string | null; language: ReportLanguage }) {
   return (
     <View style={s.header} wrap={false}>
       <View style={s.headerRow}>
@@ -155,7 +170,7 @@ export function PropertyHeader({ title, subtitle, cutoff, language }: { title: s
         <View style={{ alignItems: 'flex-start' }}>
           <Wordmark />
           <View style={{ marginTop: 3 }}>
-            <CutoffLine cutoff={cutoff} language={language} />
+            <CutoffLine cutoff={cutoff} periodStart={periodStart} language={language} />
           </View>
         </View>
       </View>
@@ -288,9 +303,16 @@ export function DetailTable({
             tint={zebra && (startIndex + index) % 2 === 1}
             style={monthBreak ? s.rowMonthBreak : undefined}
             date={<DateColumn line={line} language={language} />}
-            description={language === 'he'
-              ? <RtlLine text={line.clientText} pack="start" grow />
-              : <Text style={[s.desc, { textAlign: 'left' }]}>{line.clientText}</Text>}
+            description={(
+              <View style={[s.desc, { alignItems: language === 'he' ? 'flex-end' : 'flex-start' }]}>
+                {language === 'he'
+                  ? <RtlLine text={line.clientText} pack="start" grow />
+                  : <Text style={{ textAlign: 'left' }}>{line.clientText}</Text>}
+                {line.clientChargeDefaulted ? (
+                  <Text style={{ fontSize: 7, color: colors.muted }}>{term('chargeDefaulted', language)}</Text>
+                ) : null}
+              </View>
+            )}
             direction={(
               <View style={s.direction}>
                 <Phrase text={line.directionText} language={language} color={neutral ? colors.muted : ink(amountDirection)} />
@@ -384,7 +406,7 @@ function layerStateLabel(state: 'closed' | 'open' | 'informational', language: R
   return term('open', language)
 }
 
-export function CategorySummary({ property, clientName, language }: { property: PropertyAccount; clientName: string; language: ReportLanguage }) {
+export function CategorySummary({ property, clientName, language, closingTitle = null }: { property: PropertyAccount; clientName: string; language: ReportLanguage; closingTitle?: string | null }) {
   const layers = propertyLayerSummaries(property, language)
   const flex = tableFlexDirection(language)
   return (
@@ -404,15 +426,19 @@ export function CategorySummary({ property, clientName, language }: { property: 
         </View>
         {layers.map((layer) => {
           const closing = layer.key === 'closing'
+          const title = closing && closingTitle ? closingTitle : layer.title
+          const status = closing && closingTitle ? '' : layerStateLabel(layer.state, language)
           const color = closing || layer.state !== 'closed' ? ink(layer.direction) : colors.muted
           return (
             <View key={layer.key} style={[s.row, { flexDirection: flex }, closing ? s.rowTotal : {}]} wrap={false}>
-              <Text style={[s.stateText, { color }]}>{layerStateLabel(layer.state, language)}</Text>
-              <Desc text={layer.title} language={language} bold={closing} />
+              <Text style={[s.stateText, { color }]}>{status}</Text>
+              <Desc text={title} language={language} bold={closing} />
               <Text style={[s.figure, { color: colors.muted }]}>{closing ? '' : fmt(layer.charges)}</Text>
               <Text style={[s.figure, { color: colors.muted }]}>{closing ? '' : fmt(layer.credits)}</Text>
               <View style={s.direction}>
-                <Phrase text={balanceDirectionText(clientName, layer.direction, language)} language={language} color={color} bold={closing} />
+                {closing && closingTitle ? null : (
+                  <Phrase text={balanceDirectionText(clientName, layer.direction, language, closing ? 'balance' : 'movement')} language={language} color={color} bold={closing} />
+                )}
               </View>
               <View style={s.gap} />
               <Text style={[s.amount, { color: ink(layer.direction) }, closing ? s.bold : {}]}>{fmt(Math.abs(layer.balance))}</Text>
@@ -470,9 +496,51 @@ export function MonthlyStrTable({ section, language, minPresenceAhead }: { secti
   )
 }
 
+/** Client closing bridge. Renders the existing settlement steps; the last row is the result. */
+export function SettlementClosingBridge({ doc }: { doc: ClientAccountDocument }) {
+  const language = doc.reportLanguage
+  const hasClientMovement = doc.settlementBridge.steps.some((step) => step.kind === 'payment' || step.kind === 'credit' || step.kind === 'cash-allocation')
+  if (!hasClientMovement) return null
+  const rows = settlementClosingDisplay(doc)
+  const result = rows.find((row) => row.result)
+  const movements = rows.filter((row) => !row.result)
+  if (!result) return null
+  const sum = movements.reduce((total, row) => total + row.signedDueToJj, 0)
+  if (Math.abs(sum - result.signedDueToJj) > 0.02) {
+    throw new Error(`settlement closing display ${sum} does not equal ${result.signedDueToJj}.`)
+  }
+  const flex = tableFlexDirection(language)
+  const he = language === 'he'
+  return (
+    <View style={s.card} wrap={false}>
+      <View style={s.cardHead}>
+        <Text style={s.cardTitle}>{term('closingBridge', language)}</Text>
+      </View>
+      <View style={s.cardBody}>
+        {rows.map((row) => {
+          const direction: ClosingDirection = row.signedDueToJj > 0 ? 'client_owes_jj' : row.signedDueToJj < 0 ? 'jj_owes_client' : 'settled'
+          const sign = row.result || row.signedDueToJj >= 0 ? '' : '−'
+          return (
+            <View key={`${row.label}-${row.signedDueToJj}-${row.result ? 'result' : 'step'}`} style={[s.row, row.result ? s.rowTotal : {}, { flexDirection: flex }]}>
+              <Text style={[s.sign, { color: ink(direction) }]}>{sign}</Text>
+              <View style={[s.desc, { alignItems: he ? 'flex-end' : 'flex-start' }]}>
+                {he
+                  ? <RtlLine text={row.label} pack="end" style={{ fontSize: 9, color: ink(direction), fontWeight: row.result ? 'bold' : 'normal' }} />
+                  : <Desc text={row.label} language={language} bold={row.result} />}
+              </View>
+              <View style={s.gap} />
+              <Text style={[s.amount, row.result ? s.bold : {}, { color: ink(direction) }]}>{fmt(Math.abs(row.signedDueToJj))}</Text>
+            </View>
+          )
+        })}
+      </View>
+    </View>
+  )
+}
+
 // ---------- Closing bridge & status ----------
 
-export function ClosingBridge({ property, clientName, language }: { property: PropertyAccount; clientName: string; language: ReportLanguage }) {
+export function ClosingBridge({ property, clientName, language, title, resultLabel }: { property: PropertyAccount; clientName: string; language: ReportLanguage; title?: string; resultLabel?: string }) {
   const flex = tableFlexDirection(language)
   const sum = property.bridge.reduce((total, step) => total + step.signedDueToJj, 0)
   if (Math.abs(sum - property.amountDueToJj) > 0.02) {
@@ -482,7 +550,7 @@ export function ClosingBridge({ property, clientName, language }: { property: Pr
   return (
     <View style={s.card} wrap={false}>
       <View style={s.cardHead}>
-        <Text style={s.cardTitle}>{term('closingBridge', language)}</Text>
+        <Text style={s.cardTitle}>{title || term('closingBridge', language)}</Text>
       </View>
       <View style={s.cardBody}>
         {property.bridge.map((step) => {
@@ -503,9 +571,9 @@ export function ClosingBridge({ property, clientName, language }: { property: Pr
         })}
         <View style={[s.row, s.rowTotal, { flexDirection: flex }]}>
           <Text style={[s.sign, { color: resultColor }]}>=</Text>
-          <Desc text={term('propertyBalance', language)} language={language} bold />
+          <Desc text={resultLabel || term('propertyBalance', language)} language={language} bold />
           <View style={s.direction}>
-            <Phrase text={balanceDirectionText(clientName, property.direction, language)} language={language} color={resultColor} bold />
+            <Phrase text={balanceDirectionText(clientName, property.direction, language, 'balance')} language={language} color={resultColor} bold />
           </View>
           <View style={s.gap} />
           <Text style={[s.amount, s.bold, { color: resultColor }]}>{fmt(Math.abs(property.amountDueToJj))}</Text>
@@ -526,26 +594,30 @@ export function StateChip({ open, language }: { open: boolean; language: ReportL
   )
 }
 
-export function OpenClosedStatus({ property, clientName, language }: { property: PropertyAccount; clientName: string; language: ReportLanguage }) {
+export function OpenClosedStatus({ property, clientName, language, finalOpen }: { property: PropertyAccount; clientName: string; language: ReportLanguage; finalOpen?: { label: string; amount: number; direction: ClosingDirection } | null }) {
   const he = language === 'he'
   return (
     <View wrap={false}>
       <SectionHeader title={term('openClosed', language)} language={language} />
       {property.statusLines.map((status) => {
-        const open = status.state !== 'closed'
-        const color = open ? ink(status.direction) : colors.muted
+        const replacement = finalOpen && status.label === term('propertyBalance') ? finalOpen : null
+        const label = replacement ? replacement.label : status.label
+        const amount = replacement ? replacement.amount : status.amount
+        const direction = replacement ? replacement.direction : status.direction
+        const open = replacement ? replacement.direction !== 'settled' : status.state !== 'closed'
+        const color = open ? ink(direction) : colors.muted
         return (
           <TableRow
-            key={status.label}
+            key={label}
             language={language}
             date={<View style={[s.month, { alignItems: he ? 'flex-end' : 'flex-start' }]}><StateChip open={open} language={language} /></View>}
-            description={<Desc text={status.label} language={language} muted={!open} />}
+            description={<Desc text={label} language={language} muted={!open} />}
             direction={(
               <View style={s.direction}>
-                <Phrase text={balanceDirectionText(clientName, status.direction, language)} language={language} color={color} />
+                <Phrase text={balanceDirectionText(clientName, direction, language, 'balance')} language={language} color={color} />
               </View>
             )}
-            amount={<Text style={[s.amount, { color }]}>{fmt(status.amount)}</Text>}
+            amount={<Text style={[s.amount, { color }]}>{fmt(amount)}</Text>}
           />
         )
       })}
@@ -554,11 +626,20 @@ export function OpenClosedStatus({ property, clientName, language }: { property:
 }
 
 /** Bridge, open/closed status and (on the last page) the document note move as one block — never orphaned. */
-export function ClosingBlock({ property, clientName, language, documentNoteCutoff }: { property: PropertyAccount; clientName: string; language: ReportLanguage; documentNoteCutoff?: string }) {
+export function ClosingBlock({ property, clientName, language, documentNoteCutoff, bridgeTitle, bridgeNote, resultLabel, finalOpen }: { property: PropertyAccount; clientName: string; language: ReportLanguage; documentNoteCutoff?: string; bridgeTitle?: string; bridgeNote?: string | null; resultLabel?: string; finalOpen?: { label: string; amount: number; direction: ClosingDirection } | null }) {
   return (
     <View wrap={false}>
-      <ClosingBridge property={property} clientName={clientName} language={language} />
-      <OpenClosedStatus property={property} clientName={clientName} language={language} />
+      <ClosingBridge property={property} clientName={clientName} language={language} title={bridgeTitle} resultLabel={resultLabel} />
+      {bridgeNote ? (
+        <View style={s.documentNote} wrap={false}>
+          {bridgeNote.split(/(?<=\.)\s+/).map((line) => (
+            language === 'he'
+              ? <RtlLine key={line} text={line} style={s.note} />
+              : <Text key={line} style={s.note}>{line}</Text>
+          ))}
+        </View>
+      ) : null}
+      <OpenClosedStatus property={property} clientName={clientName} language={language} finalOpen={finalOpen} />
       {documentNoteCutoff ? <DocumentNote cutoff={documentNoteCutoff} language={language} /> : null}
     </View>
   )

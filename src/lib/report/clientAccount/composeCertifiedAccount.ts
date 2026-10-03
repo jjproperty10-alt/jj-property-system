@@ -23,13 +23,14 @@ import {
   type DescriptionRole,
   type ReportLanguage,
 } from './presentation'
-import { BRIDGE, REPAIR_SUBCATEGORIES, SECTION, STATUS_LABEL, TERMS, UNIT_TITLE_SUFFIX, term } from './terminology'
+import { BRIDGE, REPAIR_SUBCATEGORIES, SECTION, STATUS_LABEL, TERMS, UNIT_TITLE_SUFFIX, displayWhitelistViolations, term } from './terminology'
 import type {
   AccountUnit,
   BridgeStep,
   CertifiedAccountLine,
   CertifiedCreditInput,
   ClientAccountDocument,
+  ClientDisplayGroup,
   ComponentSummary,
   CompositionInput,
   CreditPresentation,
@@ -64,8 +65,20 @@ function text(meta: Readonly<Record<string, unknown>>, key: string): string | nu
   return typeof value === 'string' && value.trim() !== '' ? value : null
 }
 
-function face(row: LedgerRow): number {
-  return roundEur(row.clientCharge == null ? row.amountEur : row.clientCharge)
+/**
+ * Owner-facing charge for one ledger row.
+ * COALESCE(client_charge, amount_eur): a non-null clientCharge, including 0, is used as stored.
+ * Null is the only default, and it is flagged. This does not change the sign of the row.
+ */
+export interface FacedCharge {
+  readonly amount: number
+  readonly clientChargeDefaulted: boolean
+}
+
+export function face(row: LedgerRow): FacedCharge {
+  const clientChargeDefaulted = row.clientCharge == null
+  const raw = clientChargeDefaulted ? row.amountEur : row.clientCharge
+  return { amount: roundEur(raw), clientChargeDefaulted }
 }
 
 function payerIs(row: LedgerRow, name: string): boolean {
@@ -96,13 +109,23 @@ function reportScope(input: CompositionInput): { reportType: 'full_account' | 'p
 interface Chunk {
   readonly rows: readonly LedgerRow[]
   readonly amount: number
+  /** True when any source row used amountEur because clientCharge was null. */
+  readonly clientChargeDefaulted: boolean
+}
+
+function chunkOf(rows: readonly LedgerRow[], amount: number): Chunk {
+  return {
+    rows,
+    amount,
+    clientChargeDefaulted: rows.some((row) => face(row).clientChargeDefaulted),
+  }
 }
 
 function collapse(rows: readonly LedgerRow[], omitted: string[]): Chunk[] {
   const groups = new Map<string, LedgerRow[]>()
   const order: string[] = []
   for (const row of rows) {
-    const key = `${row.date.slice(0, 10)}|${row.subcategory || ''}|${Math.abs(face(row)).toFixed(2)}`
+    const key = `${row.date.slice(0, 10)}|${row.subcategory || ''}|${Math.abs(face(row).amount).toFixed(2)}`
     const list = groups.get(key)
     if (list) list.push(row)
     else {
@@ -113,12 +136,12 @@ function collapse(rows: readonly LedgerRow[], omitted: string[]): Chunk[] {
   const chunks: Chunk[] = []
   for (const key of order) {
     const group = groups.get(key) || []
-    const amount = roundEur(group.reduce((sum, row) => sum + face(row), 0))
+    const amount = roundEur(group.reduce((sum, row) => sum + face(row).amount, 0))
     if (sameMoney(amount, 0)) {
       if (group.length > 1) for (const row of group) omitted.push(row.id)
       continue
     }
-    chunks.push({ rows: group, amount })
+    chunks.push(chunkOf(group, amount))
   }
   return chunks
 }
@@ -139,6 +162,14 @@ function lineFrom(
   const described = clientDescription(sample.subcategory, sample.description, role)
   const range = described.match(/\d{1,2}\.\d{1,2}\.\d{2,4}\s*[–-]\s*\d{1,2}\.\d{1,2}\.\d{2,4}/)
   const description = range ? described.replace(range[0], '').replace(/\s+/g, ' ').trim() : described
+  const labels = chunk.rows.map((row) => (row.clientLabel || '').trim())
+  if (labels.some((label) => label !== labels[0])) {
+    throw new ClientAccountBlock('BLOCKED_PRESENTATION', 'Rows shown as one line do not share a client label.')
+  }
+  const clientOverride = labels[0]
+  if (clientOverride && displayWhitelistViolations(clientOverride).length > 0) {
+    throw new ClientAccountBlock('BLOCKED_PRESENTATION', 'A client label uses wording that is not for the client.')
+  }
   const directionText = role === 'owner-transfer'
     ? completedTransferText(language)
     : effect === 'credit'
@@ -149,7 +180,7 @@ function lineFrom(
   return {
     propertyName,
     section,
-    clientText: description || described,
+    clientText: clientOverride || description || described,
     monthLabel: monthOverride || (range ? range[0].replace(/\s+/g, '') : monthLabelForRow(sample.date, sample.description, language)),
     paymentMonthLabel: null,
     statusLabel: null,
@@ -160,6 +191,7 @@ function lineFrom(
     traceSourceId: sample.id,
     evidence,
     countedIn,
+    clientChargeDefaulted: chunk.clientChargeDefaulted,
   }
 }
 
@@ -338,6 +370,7 @@ function strCreditLines(
       traceSourceId: null,
       evidence: 'owner-certified' as const,
       countedIn: 'str-credit',
+      clientChargeDefaulted: false,
     }))
   }
   return [{
@@ -354,6 +387,7 @@ function strCreditLines(
     traceSourceId: null,
     evidence: 'owner-certified',
     countedIn: 'str-credit',
+    clientChargeDefaulted: false,
   }]
 }
 
@@ -442,13 +476,13 @@ function composeProperty(
 
   if (saleContract.length === 1) {
     const price = roundEur(saleContract[0].amountEur)
-    lines.push(show(SECTION.purchase, { rows: saleContract, amount: price }, 'reference', 'purchase-price'))
+    lines.push(show(SECTION.purchase, chunkOf(saleContract, price), 'reference', 'purchase-price'))
     const payments = collapse(purchasePayments, omitted)
     for (const chunk of payments) lines.push(show(SECTION.purchase, chunk, 'credit', 'purchase-payment', 'proven', undefined, 'purchase-payment'))
     const costs = collapse(closingCosts, omitted)
     for (const chunk of costs) lines.push(show(SECTION.purchase, chunk, 'charge', 'purchase-cost'))
     const accepted = num(meta, 'accepted_purchase_payments')
-    const paidRows = roundEur(purchasePayments.reduce((sum, row) => sum + face(row), 0))
+    const paidRows = roundEur(purchasePayments.reduce((sum, row) => sum + face(row).amount, 0))
     let paid = paidRows
     if (accepted != null) {
       const approved = roundEur(accepted - paidRows)
@@ -479,12 +513,13 @@ function composeProperty(
             traceSourceId: null,
             evidence: 'owner-certified',
             countedIn: 'purchase-payment',
+            clientChargeDefaulted: false,
           })
         }
         paid = accepted
       }
     }
-    const costSum = roundEur(closingCosts.reduce((sum, row) => sum + face(row), 0))
+    const costSum = roundEur(closingCosts.reduce((sum, row) => sum + face(row).amount, 0))
     const remaining = roundEur(price + costSum - paid)
     const pricePayments = costSum > 0 && sameMoney(remaining, 0) && sameMoney(paid, roundEur(price + costSum))
       ? price
@@ -530,11 +565,11 @@ function composeProperty(
 
   if (renoContract.length === 1) {
     const agreed = roundEur(renoContract[0].amountEur)
-    lines.push(show(SECTION.renovation, { rows: renoContract, amount: agreed }, 'reference', 'renovation-contract'))
+    lines.push(show(SECTION.renovation, chunkOf(renoContract, agreed), 'reference', 'renovation-contract'))
     for (const chunk of collapse(renoPayments, omitted)) lines.push(show(SECTION.renovation, chunk, 'credit', 'renovation-payment', 'proven', undefined, 'renovation-payment'))
     for (const chunk of collapse(renoExtras, omitted)) lines.push(show(SECTION.renovation, chunk, 'charge', 'renovation-extra'))
-    const paid = roundEur(renoPayments.reduce((sum, row) => sum + face(row), 0))
-    const extras = roundEur(renoExtras.reduce((sum, row) => sum + face(row), 0))
+    const paid = roundEur(renoPayments.reduce((sum, row) => sum + face(row).amount, 0))
+    const extras = roundEur(renoExtras.reduce((sum, row) => sum + face(row).amount, 0))
     const remaining = roundEur(agreed - paid + extras)
     due = roundEur(due + remaining)
     pushStep(steps, BRIDGE.renovationBalance, remaining, language, clientName)
@@ -583,7 +618,7 @@ function composeProperty(
     ...operatingPool.filter((row) => row.id === fireKitId || (setupThrough != null && row.date.slice(0, 10) <= setupThrough)),
   ]
   if (setupExpected != null) {
-    const setupSum = roundEur(setupRows.reduce((sum, row) => sum + face(row), 0))
+    const setupSum = roundEur(setupRows.reduce((sum, row) => sum + face(row).amount, 0))
     if (!sameMoney(setupSum, setupExpected)) {
       throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `${cert.propertyName}: setup lines ${setupSum} do not equal certified ${setupExpected}.`)
     }
@@ -604,9 +639,9 @@ function composeProperty(
   const staffRows = visible.filter((row) => row.subcategory === 'Staff Accommodation Rent')
   let ltrRows = incomeRows
   if (rentalCredit != null) {
-    const tenantSum = roundEur(incomeRows.reduce((sum, row) => sum + face(row), 0))
+    const tenantSum = roundEur(incomeRows.reduce((sum, row) => sum + face(row).amount, 0))
     if (!sameMoney(tenantSum, rentalCredit)) {
-      const withStaff = roundEur(tenantSum + staffRows.reduce((sum, row) => sum + face(row), 0))
+      const withStaff = roundEur(tenantSum + staffRows.reduce((sum, row) => sum + face(row).amount, 0))
       if (!sameMoney(withStaff, rentalCredit)) {
         throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `${cert.propertyName}: rental receipts ${withStaff} do not equal certified ${rentalCredit}.`)
       }
@@ -624,7 +659,7 @@ function composeProperty(
   const airbnbCleaning = operatingPool.filter((row) => row.category === 'Airbnb' && row.subcategory === 'Cleaning')
   let strExpenseRows: LedgerRow[] = []
   if (strOpexExpected != null) {
-    const opex = roundEur(airbnbExpenses.reduce((sum, row) => sum + face(row), 0))
+    const opex = roundEur(airbnbExpenses.reduce((sum, row) => sum + face(row).amount, 0))
     if (!sameMoney(opex, strOpexExpected)) {
       throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `${cert.propertyName}: STR expenses ${opex} do not equal certified ${strOpexExpected}.`)
     }
@@ -633,7 +668,7 @@ function composeProperty(
   } else if (strOpexInclusiveExpected != null) {
     const inclusive = [...airbnbExpenses, ...airbnbCleaning.filter((row) => !used.has(row.id))]
       .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
-    const opex = roundEur(inclusive.reduce((sum, row) => sum + face(row), 0))
+    const opex = roundEur(inclusive.reduce((sum, row) => sum + face(row).amount, 0))
     if (!sameMoney(opex, strOpexInclusiveExpected)) {
       throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `${cert.propertyName}: STR expenses ${opex} do not equal certified ${strOpexInclusiveExpected}.`)
     }
@@ -645,7 +680,7 @@ function composeProperty(
     ? operatingPool.filter((row) => !used.has(row.id) && row.date.slice(0, 10) >= from)
     : []
   if (recurringExpected != null) {
-    const recurringSum = roundEur(recurringRows.reduce((sum, row) => sum + face(row), 0))
+    const recurringSum = roundEur(recurringRows.reduce((sum, row) => sum + face(row).amount, 0))
     if (!sameMoney(recurringSum, recurringExpected)) {
       throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `${cert.propertyName}: recurring charges ${recurringSum} do not equal certified ${recurringExpected}.`)
     }
@@ -654,7 +689,7 @@ function composeProperty(
 
   const generalExpenses = operatingPool.filter((row) => !used.has(row.id) && !strExpenseRows.includes(row) && !recurringRows.includes(row) && row.category !== 'Airbnb')
   if (chargeExpected != null) {
-    const chargeSum = roundEur(generalExpenses.reduce((sum, row) => sum + face(row), 0))
+    const chargeSum = roundEur(generalExpenses.reduce((sum, row) => sum + face(row).amount, 0))
     if (!sameMoney(chargeSum, chargeExpected)) {
       throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `${cert.propertyName}: operating charges ${chargeSum} do not equal certified ${chargeExpected}.`)
     }
@@ -680,7 +715,7 @@ function composeProperty(
     throw new ClientAccountBlock('BLOCKED_ACCOUNTING', message.replace(/^BLOCKED_ACCOUNTING:\s*/, ''))
   }
   const rentSum = roundEur(rentViews.reduce((sum, view) => sum + view.amount, 0))
-  const rentFace = roundEur(ltrRows.reduce((sum, row) => sum + Math.abs(face(row)), 0))
+  const rentFace = roundEur(ltrRows.reduce((sum, row) => sum + Math.abs(face(row).amount), 0))
   if (!sameMoney(rentSum, rentFace)) {
     throw new ClientAccountBlock('BLOCKED_ACCOUNTING', `${cert.propertyName}: rent allocation ${rentSum} does not equal receipts ${rentFace}.`)
   }
@@ -699,6 +734,7 @@ function composeProperty(
     evidence: 'proven' as const,
     countedIn: 'rent-income',
     allocationRule: view.allocationRule,
+    clientChargeDefaulted: view.sourceIds.some((id) => ltrRows.some((row) => row.id === id && row.clientCharge == null)),
   }))
   const ownerLines = ownerChunks.map((chunk) => show(SECTION.ownerTransfers, chunk, 'charge', 'owner-payment', 'proven', undefined, 'owner-transfer'))
   const expenseLines = [
@@ -724,7 +760,11 @@ function composeProperty(
   const strLines = strCredit == null ? [] : strCreditLines(language, clientName, cert.propertyName, strCredit, input.strMonthsByPropertyKey?.[cert.propertyKey], lumpLabel)
     .map((line, _index, all) => (
       all.length === 1 && line.monthLabel === undatedLabel(language)
-        ? { ...line, sourceIds: strTrackedCleaning.map((row) => row.id) }
+        ? {
+          ...line,
+          sourceIds: strTrackedCleaning.map((row) => row.id),
+          clientChargeDefaulted: strTrackedCleaning.some((row) => row.clientCharge == null),
+        }
         : line
     ))
   const strExpenseLines = strExpenseChunks.map((chunk) => show(SECTION.strExpenses, chunk, 'charge', 'str-expense'))
@@ -789,6 +829,7 @@ function composeProperty(
       traceSourceId: null,
       evidence: 'owner-certified',
       countedIn: 'undated-certified-charge',
+      clientChargeDefaulted: false,
     })
     pushStep(steps, undatedChargeLabel, residual, language, clientName)
     due = roundEur(due + residual)
@@ -905,6 +946,127 @@ function settlementBridgeOf(
   }
 }
 
+/**
+ * Display-group rule (any client):
+ * Rows merge into one client line only when they carry the same non-empty
+ * `displayGroupKey` and the same `displayGroupLabel`. The key is a presentation
+ * tag on the row, not a hard-coded id list and not a subcategory. One tagged
+ * row stays a normal line. Rows with no tag are never merged. The composer
+ * still requires the tagged rows to be the same section, effect, count, month,
+ * direction and property before it will show them as one line.
+ */
+export function displayGroupsFromRowTags(rows: readonly LedgerRow[]): ClientDisplayGroup[] {
+  const byKey = new Map<string, LedgerRow[]>()
+  for (const row of rows) {
+    const key = row.displayGroupKey?.trim()
+    if (!key) continue
+    const list = byKey.get(key) ?? []
+    list.push(row)
+    byKey.set(key, list)
+  }
+  const groups: ClientDisplayGroup[] = []
+  for (const [key, members] of Array.from(byKey.entries())) {
+    if (members.length < 2) continue
+    const label = (members[0].displayGroupLabel || '').trim()
+    if (!label || members.some((row) => (row.displayGroupLabel || '').trim() !== label)) {
+      throw new ClientAccountBlock('BLOCKED_PRESENTATION', `Display group "${key}" needs one client wording.`)
+    }
+    if (displayWhitelistViolations(label).length > 0) {
+      throw new ClientAccountBlock('BLOCKED_PRESENTATION', 'A display group uses wording that is not for the client.')
+    }
+    groups.push({ sourceIds: members.map((row) => row.id), clientText: label })
+  }
+  return groups
+}
+
+function combineDisplayGroups(
+  explicit: CompositionInput['displayGroups'],
+  tagged: readonly ClientDisplayGroup[],
+): ClientDisplayGroup[] {
+  const listed = explicit ?? []
+  const explicitIds = new Set(listed.flatMap((group) => [...group.sourceIds]))
+  for (const group of tagged) {
+    if (group.sourceIds.some((id) => explicitIds.has(id))) {
+      throw new ClientAccountBlock('BLOCKED_PRESENTATION', 'A display-group tag repeats an explicit display group.')
+    }
+  }
+  return [...listed, ...tagged]
+}
+
+function groupLines(lines: readonly DisplayLine[], groups: readonly ClientDisplayGroup[]): DisplayLine[] {
+  let current = [...lines]
+  for (const group of groups) {
+    const wanted = [...group.sourceIds]
+    if (wanted.length < 2 || new Set(wanted).size !== wanted.length) {
+      throw new ClientAccountBlock('BLOCKED_PRESENTATION', 'A display group must name distinct sources.')
+    }
+    const indexes = current.flatMap((line, index) => (line.sourceIds.some((id) => wanted.includes(id)) ? [index] : []))
+    if (indexes.length === 0) {
+      throw new ClientAccountBlock('BLOCKED_PRESENTATION', 'A display group source is not on the account.')
+    }
+    const hits = indexes.map((index) => current[index])
+    const found = hits.flatMap((line) => [...line.sourceIds])
+    const sameSet = found.length === wanted.length && wanted.every((id) => found.includes(id))
+    const sameRow = hits.every((line) => (
+      line.section === hits[0].section
+      && line.effect === hits[0].effect
+      && line.countedIn === hits[0].countedIn
+      && line.monthLabel === hits[0].monthLabel
+      && line.directionText === hits[0].directionText
+      && line.propertyName === hits[0].propertyName
+      && line.sourceIds.length === 1
+    ))
+    if (!sameSet || !sameRow) {
+      throw new ClientAccountBlock('BLOCKED_PRESENTATION', 'A display group does not match its displayed sources.')
+    }
+    if (displayWhitelistViolations(group.clientText).length > 0) {
+      throw new ClientAccountBlock('BLOCKED_PRESENTATION', 'A display group uses wording that is not for the client.')
+    }
+    const components = wanted.map((id) => ({ sourceId: id, amount: hits.find((line) => line.sourceIds[0] === id)!.amount }))
+    const amount = roundEur(components.reduce((sum, component) => sum + component.amount, 0))
+    const merged: DisplayLine = {
+      ...hits[0],
+      clientText: group.clientText,
+      amount,
+      sourceIds: wanted,
+      traceSourceId: wanted[0],
+      sourceComponents: components,
+      clientChargeDefaulted: hits.some((line) => line.clientChargeDefaulted),
+    }
+    const drop = new Set(indexes)
+    const next: DisplayLine[] = []
+    current.forEach((line, index) => {
+      if (index === indexes[0]) next.push(merged)
+      else if (!drop.has(index)) next.push(line)
+    })
+    current = next
+  }
+  return current
+}
+
+function groupsTouching(lines: readonly DisplayLine[], groups: readonly ClientDisplayGroup[]): ClientDisplayGroup[] {
+  return groups.filter((group) => group.sourceIds.some((id) => lines.some((line) => line.sourceIds.includes(id))))
+}
+
+function applyDisplayGroups(property: PropertyAccount, groups: CompositionInput['displayGroups']): PropertyAccount {
+  if (!groups || groups.length === 0) return property
+  const onAccount = [
+    ...groupsTouching(property.lines, groups),
+    ...property.units.flatMap((unit) => groupsTouching(unit.lines, groups)),
+  ]
+  const placed = new Set(onAccount.flatMap((group) => [...group.sourceIds]))
+  for (const group of groups) {
+    if (group.sourceIds.some((id) => !placed.has(id))) {
+      throw new ClientAccountBlock('BLOCKED_PRESENTATION', 'A display group source is not on the account.')
+    }
+  }
+  return {
+    ...property,
+    lines: groupLines(property.lines, groupsTouching(property.lines, groups)),
+    units: property.units.map((unit) => ({ ...unit, lines: groupLines(unit.lines, groupsTouching(unit.lines, groups)) })),
+  }
+}
+
 function withOwnerDescriptions(property: PropertyAccount, descriptions: CompositionInput['descriptionByRowId']): PropertyAccount {
   if (!descriptions) return property
   const apply = (line: DisplayLine): DisplayLine => {
@@ -933,9 +1095,13 @@ export function composeCertifiedClientAccount(input: CompositionInput): ClientAc
   }
   const omitted: string[] = []
   const events = admitSettlementEvents(ordered)
+  const displayGroups = combineDisplayGroups(input.displayGroups, displayGroupsFromRowTags(rows))
   const properties = [...input.lines]
     .sort((a, b) => a.lineOrder - b.lineOrder)
-    .map((line) => withOwnerDescriptions(composeProperty(ordered, line, includeDeleted, omitted, period, events), input.descriptionByRowId))
+    .map((line) => applyDisplayGroups(
+      withOwnerDescriptions(composeProperty(ordered, line, includeDeleted, omitted, period, events), input.descriptionByRowId),
+      displayGroups,
+    ))
   const propertyOpening = roundEur(properties.reduce((sum, property) => sum + property.amountDueToJj, 0))
   const ownerLevel = ownerLevelLines(input)
   const ownerLevelTotal = roundEur(ownerLevel.reduce((sum, line) => sum + line.amountDueToJj, 0))
@@ -1049,6 +1215,7 @@ export function composeCertifiedClientAccount(input: CompositionInput): ClientAc
     settlementBridge,
     sourceNotes: properties.flatMap((property) => property.sourceNotes),
     omittedNetZeroSourceIds: omitted,
+    hebrewOwesForm: input.hebrewOwesForm,
   }
 }
 
