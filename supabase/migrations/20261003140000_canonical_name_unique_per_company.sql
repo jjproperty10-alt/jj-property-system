@@ -33,6 +33,12 @@
 -- 20260930220000 (Slice A) is not in the repo or live and is not required.
 -- Company id is never hard-coded and is never chosen by canonical_name.
 -- New inserts take access.resolve_verified_operating_company.
+--
+-- Backfill evidence is docs/planning/canonical_name_company_evidence_2026-10-03.md.
+-- Before any UPDATE, a row with no qualifying link raises BLOCKED_BY_EVIDENCE.
+-- The exception is an explicit list this migration does not create or fill:
+-- access.canonical_name_backfill_approved_ids (source_table text, row_id uuid).
+-- source_table is entity_registry or entities, with no schema prefix.
 
 BEGIN;
 
@@ -45,6 +51,11 @@ DECLARE
   entities_updated bigint;
   registry_indexdef text;
   entities_indexdef text;
+  evidence_source text;
+  evidence_key text;
+  lock_target record;
+  fk_link record;
+  bridge_ready boolean;
   expected_registry_indexdef constant text := 'CREATE UNIQUE INDEX entity_registry_canonical_name_key ON public.entity_registry USING btree (canonical_name)';
   expected_entities_indexdef constant text := 'CREATE UNIQUE INDEX entities_canonical_name_key ON public.entities USING btree (canonical_name)';
   expected_registry_new_indexdef constant text := 'CREATE UNIQUE INDEX entity_registry_operating_company_id_canonical_name_key ON public.entity_registry USING btree (operating_company_id, canonical_name)';
@@ -197,6 +208,21 @@ BEGIN
   -- returned by access.resolve_verified_operating_company(NULL, false).
   -- The UUID is not hard-coded. The row name is not read.
   -- APPLYING THIS BLOCK REQUIRES YOSSI'S EXPLICIT APPROVAL FOR THE BACKFILL.
+  --
+  -- The UPDATE below does not run while any existing row is in the
+  -- no-evidence class. Evidence rules match
+  -- docs/planning/canonical_name_company_evidence_2026-10-03.md.
+  -- A qualifying link is a single-column foreign key to or from
+  -- public.property_definitions, public.contacts, or a lifecycle table that
+  -- has operating_company_id uuid, where that linked row's
+  -- operating_company_id is the sole active company. For entity_registry
+  -- only, an approved registry.property_external_identities row with
+  -- source_system app.entity_registry pointing at such a property_definitions
+  -- row is also a link. Name equality is not a link.
+  -- access.canonical_name_backfill_approved_ids may list the rows that have
+  -- no link. This migration does not create or fill that list. A missing
+  -- list approves nothing. A list with any other column types raises
+  -- BLOCKED_BY_EVIDENCE.
   -- ===========================================================================
   SELECT count(*) INTO registry_count FROM public.entity_registry;
   SELECT count(*) INTO entities_count FROM public.entities;
@@ -206,6 +232,333 @@ BEGIN
      OR (SELECT count(*) FROM registry.companies WHERE status = 'active') <> 1 THEN
     RAISE EXCEPTION 'BLOCKED_BY_COMPANY_CONTEXT';
   END IF;
+
+  IF to_regclass('access.canonical_name_backfill_approved_ids') IS NOT NULL
+     AND (
+       SELECT count(*)
+       FROM pg_attribute AS attribute
+       JOIN pg_class AS relation ON relation.oid = attribute.attrelid
+       JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+       WHERE namespace.nspname = 'access'
+         AND relation.relname = 'canonical_name_backfill_approved_ids'
+         AND attribute.attnum > 0
+         AND NOT attribute.attisdropped
+         AND (
+           (attribute.attname = 'source_table' AND attribute.atttypid = 'text'::regtype)
+           OR (attribute.attname = 'row_id' AND attribute.atttypid = 'uuid'::regtype)
+         )
+     ) <> 2 THEN
+    RAISE EXCEPTION 'BLOCKED_BY_EVIDENCE';
+  END IF;
+
+  FOR lock_target IN
+    SELECT namespace.nspname AS schema_name, relation.relname AS table_name
+    FROM pg_class AS relation
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE relation.relkind IN ('r', 'p')
+      AND (
+        (namespace.nspname = 'public' AND relation.relname IN ('property_definitions', 'contacts'))
+        OR namespace.nspname = 'lifecycle'
+        OR (namespace.nspname, relation.relname) IN (
+          ('registry', 'property_external_identities'),
+          ('access', 'canonical_name_backfill_approved_ids')
+        )
+      )
+    ORDER BY namespace.nspname, relation.relname
+  LOOP
+    EXECUTE format(
+      'LOCK TABLE %I.%I IN SHARE ROW EXCLUSIVE MODE',
+      lock_target.schema_name,
+      lock_target.table_name
+    );
+  END LOOP;
+
+  CREATE TEMP TABLE canon_row_evidence (
+    source_table text NOT NULL,
+    row_id uuid NOT NULL,
+    linked boolean NOT NULL DEFAULT false,
+    PRIMARY KEY (source_table, row_id)
+  ) ON COMMIT DROP;
+
+  FOR evidence_source IN
+    SELECT source_name
+    FROM (VALUES ('entity_registry'), ('entities')) AS source_names(source_name)
+  LOOP
+    evidence_key := NULL;
+    SELECT column_attr.attname
+      INTO evidence_key
+    FROM pg_constraint AS primary_key
+    JOIN pg_class AS relation ON relation.oid = primary_key.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    JOIN pg_attribute AS column_attr
+      ON column_attr.attrelid = relation.oid
+     AND column_attr.attnum = primary_key.conkey[1]
+     AND NOT column_attr.attisdropped
+    WHERE namespace.nspname = 'public'
+      AND relation.relname = evidence_source
+      AND primary_key.contype = 'p'
+      AND cardinality(primary_key.conkey) = 1
+      AND column_attr.atttypid = 'uuid'::regtype;
+
+    IF evidence_key IS NULL THEN
+      RAISE EXCEPTION 'BLOCKED_BY_EVIDENCE';
+    END IF;
+
+    EXECUTE format(
+      'INSERT INTO pg_temp.canon_row_evidence (source_table, row_id) SELECT %L, entity_row.%I FROM public.%I AS entity_row',
+      evidence_source,
+      evidence_key,
+      evidence_source
+    );
+  END LOOP;
+
+  FOR fk_link IN
+    SELECT
+      CASE
+        WHEN src_namespace.nspname = 'public' AND src_relation.relname IN ('entity_registry', 'entities')
+          THEN src_relation.relname
+        ELSE dst_relation.relname
+      END AS source_table,
+      CASE
+        WHEN src_namespace.nspname = 'public' AND src_relation.relname IN ('entity_registry', 'entities')
+          THEN src_column.attname
+        ELSE dst_column.attname
+      END AS entity_column,
+      CASE
+        WHEN src_namespace.nspname = 'public' AND src_relation.relname IN ('entity_registry', 'entities')
+          THEN dst_namespace.nspname
+        ELSE src_namespace.nspname
+      END AS carrier_schema,
+      CASE
+        WHEN src_namespace.nspname = 'public' AND src_relation.relname IN ('entity_registry', 'entities')
+          THEN dst_relation.relname
+        ELSE src_relation.relname
+      END AS carrier_table,
+      CASE
+        WHEN src_namespace.nspname = 'public' AND src_relation.relname IN ('entity_registry', 'entities')
+          THEN dst_column.attname
+        ELSE src_column.attname
+      END AS carrier_column
+    FROM pg_constraint AS fk
+    JOIN pg_class AS src_relation ON src_relation.oid = fk.conrelid
+    JOIN pg_namespace AS src_namespace ON src_namespace.oid = src_relation.relnamespace
+    JOIN pg_class AS dst_relation ON dst_relation.oid = fk.confrelid
+    JOIN pg_namespace AS dst_namespace ON dst_namespace.oid = dst_relation.relnamespace
+    JOIN pg_attribute AS src_column
+      ON src_column.attrelid = src_relation.oid
+     AND src_column.attnum = fk.conkey[1]
+     AND NOT src_column.attisdropped
+    JOIN pg_attribute AS dst_column
+      ON dst_column.attrelid = dst_relation.oid
+     AND dst_column.attnum = fk.confkey[1]
+     AND NOT dst_column.attisdropped
+    WHERE fk.contype = 'f'
+      AND cardinality(fk.conkey) = 1
+      AND cardinality(fk.confkey) = 1
+      AND src_relation.relkind IN ('r', 'p')
+      AND dst_relation.relkind IN ('r', 'p')
+      AND (
+        (
+          src_namespace.nspname = 'public'
+          AND src_relation.relname IN ('entity_registry', 'entities')
+          AND (
+            (dst_namespace.nspname = 'public' AND dst_relation.relname IN ('property_definitions', 'contacts'))
+            OR dst_namespace.nspname = 'lifecycle'
+          )
+          AND EXISTS (
+            SELECT 1
+            FROM pg_attribute AS company_column
+            WHERE company_column.attrelid = dst_relation.oid
+              AND company_column.attname = 'operating_company_id'
+              AND company_column.attnum > 0
+              AND NOT company_column.attisdropped
+              AND company_column.atttypid = 'uuid'::regtype
+          )
+        )
+        OR (
+          dst_namespace.nspname = 'public'
+          AND dst_relation.relname IN ('entity_registry', 'entities')
+          AND (
+            (src_namespace.nspname = 'public' AND src_relation.relname IN ('property_definitions', 'contacts'))
+            OR src_namespace.nspname = 'lifecycle'
+          )
+          AND EXISTS (
+            SELECT 1
+            FROM pg_attribute AS company_column
+            WHERE company_column.attrelid = src_relation.oid
+              AND company_column.attname = 'operating_company_id'
+              AND company_column.attnum > 0
+              AND NOT company_column.attisdropped
+              AND company_column.atttypid = 'uuid'::regtype
+          )
+        )
+      )
+  LOOP
+    evidence_key := NULL;
+    SELECT column_attr.attname
+      INTO evidence_key
+    FROM pg_constraint AS primary_key
+    JOIN pg_class AS relation ON relation.oid = primary_key.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    JOIN pg_attribute AS column_attr
+      ON column_attr.attrelid = relation.oid
+     AND column_attr.attnum = primary_key.conkey[1]
+     AND NOT column_attr.attisdropped
+    WHERE namespace.nspname = 'public'
+      AND relation.relname = fk_link.source_table
+      AND primary_key.contype = 'p'
+      AND cardinality(primary_key.conkey) = 1
+      AND column_attr.atttypid = 'uuid'::regtype;
+
+    IF evidence_key IS NULL THEN
+      RAISE EXCEPTION 'BLOCKED_BY_EVIDENCE';
+    END IF;
+
+    EXECUTE format(
+      'UPDATE pg_temp.canon_row_evidence AS evidence
+       SET linked = true
+       FROM public.%I AS entity_row
+       JOIN %I.%I AS carrier_row
+         ON carrier_row.%I IS NOT DISTINCT FROM entity_row.%I
+       WHERE evidence.source_table = %L
+         AND evidence.row_id IS NOT DISTINCT FROM entity_row.%I
+         AND carrier_row.operating_company_id = $1',
+      fk_link.source_table,
+      fk_link.carrier_schema,
+      fk_link.carrier_table,
+      fk_link.carrier_column,
+      fk_link.entity_column,
+      fk_link.source_table,
+      evidence_key
+    ) USING sole_company;
+  END LOOP;
+
+  SELECT
+    to_regclass('registry.property_external_identities') IS NOT NULL
+    AND to_regclass('public.property_definitions') IS NOT NULL
+    AND EXISTS (
+      SELECT 1
+      FROM pg_attribute AS attribute
+      JOIN pg_class AS relation ON relation.oid = attribute.attrelid
+      JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+      WHERE namespace.nspname = 'registry'
+        AND relation.relname = 'property_external_identities'
+        AND attribute.attnum > 0
+        AND NOT attribute.attisdropped
+        AND (
+          (attribute.attname = 'source_system' AND attribute.atttypid = 'text'::regtype)
+          OR (attribute.attname = 'external_id' AND attribute.atttypid = 'text'::regtype)
+          OR (attribute.attname = 'mapping_status' AND attribute.atttypid = 'text'::regtype)
+          OR (attribute.attname = 'canonical_property_id' AND attribute.atttypid = 'uuid'::regtype)
+        )
+    )
+    AND (
+      SELECT count(*)
+      FROM pg_attribute AS attribute
+      JOIN pg_class AS relation ON relation.oid = attribute.attrelid
+      JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+      WHERE namespace.nspname = 'registry'
+        AND relation.relname = 'property_external_identities'
+        AND attribute.attnum > 0
+        AND NOT attribute.attisdropped
+        AND (
+          (attribute.attname = 'source_system' AND attribute.atttypid = 'text'::regtype)
+          OR (attribute.attname = 'external_id' AND attribute.atttypid = 'text'::regtype)
+          OR (attribute.attname = 'mapping_status' AND attribute.atttypid = 'text'::regtype)
+          OR (attribute.attname = 'canonical_property_id' AND attribute.atttypid = 'uuid'::regtype)
+        )
+    ) = 4
+    AND EXISTS (
+      SELECT 1
+      FROM pg_attribute AS attribute
+      JOIN pg_class AS relation ON relation.oid = attribute.attrelid
+      JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+      WHERE namespace.nspname = 'public'
+        AND relation.relname = 'property_definitions'
+        AND attribute.attnum > 0
+        AND NOT attribute.attisdropped
+        AND (
+          (attribute.attname = 'property_id' AND attribute.atttypid = 'uuid'::regtype)
+          OR (attribute.attname = 'operating_company_id' AND attribute.atttypid = 'uuid'::regtype)
+        )
+    )
+    AND (
+      SELECT count(*)
+      FROM pg_attribute AS attribute
+      JOIN pg_class AS relation ON relation.oid = attribute.attrelid
+      JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+      WHERE namespace.nspname = 'public'
+        AND relation.relname = 'property_definitions'
+        AND attribute.attnum > 0
+        AND NOT attribute.attisdropped
+        AND (
+          (attribute.attname = 'property_id' AND attribute.atttypid = 'uuid'::regtype)
+          OR (attribute.attname = 'operating_company_id' AND attribute.atttypid = 'uuid'::regtype)
+        )
+    ) = 2
+    INTO bridge_ready;
+
+  IF bridge_ready THEN
+    evidence_key := NULL;
+    SELECT column_attr.attname
+      INTO evidence_key
+    FROM pg_constraint AS primary_key
+    JOIN pg_class AS relation ON relation.oid = primary_key.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    JOIN pg_attribute AS column_attr
+      ON column_attr.attrelid = relation.oid
+     AND column_attr.attnum = primary_key.conkey[1]
+     AND NOT column_attr.attisdropped
+    WHERE namespace.nspname = 'public'
+      AND relation.relname = 'entity_registry'
+      AND primary_key.contype = 'p'
+      AND cardinality(primary_key.conkey) = 1
+      AND column_attr.atttypid = 'uuid'::regtype;
+
+    IF evidence_key IS NULL THEN
+      RAISE EXCEPTION 'BLOCKED_BY_EVIDENCE';
+    END IF;
+
+    EXECUTE format(
+      $bridge_update$
+      UPDATE pg_temp.canon_row_evidence AS evidence
+      SET linked = true
+      FROM public.entity_registry AS entity_row
+      JOIN registry.property_external_identities AS bridge
+        ON bridge.source_system = 'app.entity_registry'
+       AND bridge.mapping_status = 'approved'
+       AND bridge.canonical_property_id IS NOT NULL
+       AND lower(bridge.external_id) = lower(entity_row.%I::text)
+      JOIN public.property_definitions AS definition
+        ON definition.property_id = bridge.canonical_property_id
+      WHERE evidence.source_table = 'entity_registry'
+        AND evidence.row_id IS NOT DISTINCT FROM entity_row.%I
+        AND definition.operating_company_id = $1
+      $bridge_update$,
+      evidence_key,
+      evidence_key
+    ) USING sole_company;
+  END IF;
+
+  IF to_regclass('access.canonical_name_backfill_approved_ids') IS NULL THEN
+    IF EXISTS (SELECT 1 FROM pg_temp.canon_row_evidence WHERE NOT linked) THEN
+      RAISE EXCEPTION 'BLOCKED_BY_EVIDENCE';
+    END IF;
+  ELSIF EXISTS (
+    SELECT 1
+    FROM pg_temp.canon_row_evidence AS evidence
+    WHERE NOT evidence.linked
+      AND NOT EXISTS (
+        SELECT 1
+        FROM access.canonical_name_backfill_approved_ids AS approved
+        WHERE approved.source_table = evidence.source_table
+          AND approved.row_id = evidence.row_id
+      )
+  ) THEN
+    RAISE EXCEPTION 'BLOCKED_BY_EVIDENCE';
+  END IF;
+
+  DROP TABLE pg_temp.canon_row_evidence;
 
   UPDATE public.entity_registry
   SET operating_company_id = sole_company

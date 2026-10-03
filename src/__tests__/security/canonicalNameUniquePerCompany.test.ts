@@ -11,6 +11,7 @@ describe('canonical name unique per company draft', () => {
   const migration = read('supabase/migrations/20261003140000_canonical_name_unique_per_company.sql')
   const rollback = read('supabase/rollbacks/20261003140000_canonical_name_unique_per_company_rollback.sql')
   const matrix = read('supabase/tests/20261003140000_canonical_name_unique_per_company_matrix.sql')
+  const evidence = read('docs/planning/canonical_name_company_evidence_2026-10-03.md')
 
   test('fail-closes on index text and does not hard-code a company', () => {
     for (const file of [migration, rollback, matrix]) {
@@ -24,8 +25,18 @@ describe('canonical name unique per company draft', () => {
     expect(migration).toContain('BLOCKED_BY_HISTORY')
     expect(migration).toContain('BLOCKED_BY_INDEXDEF')
     expect(migration).toContain('BLOCKED_BY_COMPANY_CONTEXT')
+    expect(migration).toContain('BLOCKED_BY_EVIDENCE')
+    expect(migration).toContain('access.canonical_name_backfill_approved_ids')
+    expect(migration).not.toContain('INSERT INTO access.canonical_name_backfill_approved_ids')
+    expect(migration).not.toContain('CREATE TABLE access.canonical_name_backfill_approved_ids')
+    expect(migration).toContain("bridge.source_system = 'app.entity_registry'")
     expect(migration).toContain('access.resolve_verified_operating_company(NULL, false)')
     expect(migration).toContain('APPLYING THIS BLOCK REQUIRES YOSSI')
+    expect(evidence).toContain('BEGIN READ ONLY;')
+    expect(evidence).toContain('ROLLBACK;')
+    expect(evidence).toContain('access.canonical_name_backfill_approved_ids')
+    expect(evidence).toContain("source_system = 'app.entity_registry'")
+    expect(evidence).toContain('name_match_inside_no_evidence')
     expect(migration).toContain(
       'CREATE UNIQUE INDEX entity_registry_canonical_name_key ON public.entity_registry USING btree (canonical_name)',
     )
@@ -43,6 +54,9 @@ describe('canonical name unique per company draft', () => {
     expect(rollback).toContain('CREATE UNIQUE INDEX entities_canonical_name_key')
     expect(rollback).toContain('DROP COLUMN operating_company_id')
     expect(rollback).toContain('BLOCKED_BY_ROLLBACK: canonical_name collision')
+    expect(matrix).toContain('no_evidence_refuses')
+    expect(matrix).toContain('approved_ids_allow_backfill')
+    expect(matrix).toContain('approved_list_shape_refuses')
     expect(matrix).toContain('zero_active_refuses')
     expect(matrix).toContain('two_active_refuses')
     expect(matrix).toContain('same_name_two_companies')

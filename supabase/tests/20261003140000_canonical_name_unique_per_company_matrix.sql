@@ -118,6 +118,122 @@ $canon_run$;
 END
 $indexdef$;
 
+DO $bad_list$
+BEGIN
+  BEGIN
+    CREATE TABLE access.canonical_name_backfill_approved_ids (
+      source_table text NOT NULL,
+      row_id text NOT NULL
+    );
+    EXECUTE $canon_run$
+@@MIGRATION@@
+$canon_run$;
+    INSERT INTO canon_matrix VALUES ('approved_list_shape_refuses', false, 'applied');
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO canon_matrix VALUES (
+      'approved_list_shape_refuses',
+      SQLERRM = 'BLOCKED_BY_EVIDENCE',
+      SQLERRM
+    );
+  END;
+
+  INSERT INTO canon_matrix VALUES (
+    'approved_list_shape_wrote_nothing',
+    to_regclass('access.canonical_name_backfill_approved_ids') IS NULL
+      AND to_regclass('public.entity_registry_operating_company_id_canonical_name_key') IS NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM pg_attribute AS attribute
+        JOIN pg_class AS relation ON relation.oid = attribute.attrelid
+        JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+        WHERE namespace.nspname = 'public'
+          AND relation.relname IN ('entity_registry', 'entities')
+          AND attribute.attname = 'operating_company_id'
+          AND attribute.attnum > 0
+          AND NOT attribute.attisdropped
+      ),
+    'clean'
+  );
+END
+$bad_list$;
+
+DO $no_evidence$
+BEGIN
+  BEGIN
+    INSERT INTO public.entity_registry (canonical_name, entity_type)
+    VALUES ('Unlinked Evidence', 'person');
+    EXECUTE $canon_run$
+@@MIGRATION@@
+$canon_run$;
+    INSERT INTO canon_matrix VALUES ('no_evidence_refuses', false, 'applied');
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO canon_matrix VALUES (
+      'no_evidence_refuses',
+      SQLERRM = 'BLOCKED_BY_EVIDENCE',
+      SQLERRM
+    );
+  END;
+
+  INSERT INTO canon_matrix VALUES (
+    'no_evidence_wrote_nothing',
+    (SELECT count(*) FROM public.entity_registry WHERE canonical_name = 'Unlinked Evidence') = 0
+      AND to_regclass('public.entity_registry_operating_company_id_canonical_name_key') IS NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM pg_attribute AS attribute
+        JOIN pg_class AS relation ON relation.oid = attribute.attrelid
+        JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+        WHERE namespace.nspname = 'public'
+          AND relation.relname IN ('entity_registry', 'entities')
+          AND attribute.attname = 'operating_company_id'
+          AND attribute.attnum > 0
+          AND NOT attribute.attisdropped
+      ),
+    'clean'
+  );
+END
+$no_evidence$;
+
+DO $approved_ids$
+DECLARE
+  sole uuid;
+  approved_row uuid;
+BEGIN
+  BEGIN
+    SELECT id INTO sole FROM canon_ids WHERE label = 'sole';
+    INSERT INTO public.entities (canonical_name)
+    VALUES ('Unlinked Approved')
+    RETURNING id INTO approved_row;
+    CREATE TABLE access.canonical_name_backfill_approved_ids (
+      source_table text NOT NULL,
+      row_id uuid NOT NULL,
+      PRIMARY KEY (source_table, row_id)
+    );
+    INSERT INTO access.canonical_name_backfill_approved_ids (source_table, row_id)
+    VALUES ('entities', approved_row);
+    EXECUTE $canon_run$
+@@MIGRATION@@
+$canon_run$;
+    IF (SELECT operating_company_id FROM public.entities WHERE id = approved_row) IS DISTINCT FROM sole
+       OR EXISTS (
+         SELECT 1 FROM public.entity_registry WHERE operating_company_id IS DISTINCT FROM sole
+       )
+       OR EXISTS (
+         SELECT 1 FROM public.entities WHERE operating_company_id IS DISTINCT FROM sole
+       ) THEN
+      RAISE EXCEPTION 'APPROVED_PATH_DID_NOT_BACKFILL';
+    END IF;
+    RAISE EXCEPTION 'MATRIX_ROLLBACK_APPROVED_PATH';
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO canon_matrix VALUES (
+      'approved_ids_allow_backfill',
+      SQLERRM = 'MATRIX_ROLLBACK_APPROVED_PATH',
+      SQLERRM
+    );
+  END;
+END
+$approved_ids$;
+
 DO $apply$
 BEGIN
   EXECUTE $canon_run$
