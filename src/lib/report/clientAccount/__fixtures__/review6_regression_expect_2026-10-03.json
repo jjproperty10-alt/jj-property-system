@@ -1,0 +1,572 @@
+{
+ "_about": "Derived regression expectation for the Orit Rob REVIEW-6 client report on the general template. Non-secret, derived from (a) REVIEW-6 document.json sha256 6724c8c7... and REVIEW-6 PDF sha256 0129011a..., (b) the engine run on cursor/presentation-tags-s1-b8c9 @ 60ea8629 with read-only Production fixtures (03.10.2026 ~20:55 Bucharest). Not the raw document.json.",
+ "sources": {
+  "review6_document_sha256": "6724c8c789030b1c2b6eaba421bd83886bbf074cd071e96c86620ef85681aa85",
+  "review6_pdf_sha256": "0129011a119924d0b45b45f7482a88fef266977c0694e712397fa9d6cb916e4e",
+  "review6_pdf_pages": 3,
+  "engine_branch": "cursor/presentation-tags-s1-b8c9",
+  "engine_commit": "60ea8629be20a94f52cb8456ad77ba739841617f",
+  "certification_id": "d633e42d-e609-4f9d-97b9-69e71d276440",
+  "str_certification_id": "9b6adeb5-cfe1-4980-8004-f37aff7c69fa",
+  "entity_id": "92ed1f7e-f7df-4529-b118-4aa63b2b15b2",
+  "property_key": "c74e3ff2-cf7c-477a-8dad-ac11e45540ba"
+ },
+ "adapter": {
+  "clientSlug": "orit-rob",
+  "reportType": "period_account",
+  "period": {
+   "start": "2026-04-01",
+   "end": "2026-08-31"
+  },
+  "asOf": "2026-08-31",
+  "hebrewOwesForm": "feminine",
+  "language": "he"
+ },
+ "figures": {
+  "openingDueToJj": 3322.52,
+  "closingDueToJj": 552.52,
+  "closingDirection": "client_owes_jj",
+  "propertyAmountDueToJj": 3322.52,
+  "propertyDirection": "client_owes_jj",
+  "creditsTotal": 0,
+  "paymentsTotal": 2770,
+  "cashAllocationSignedTotal": 0,
+  "strTotalOwnerNet": 3391,
+  "lineCount": 27,
+  "lineAmountSum": 6713.52
+ },
+ "credits": [
+  {
+   "label": "תשלום כללי",
+   "monthLabel": "אפריל 2026",
+   "dateLabel": "28.04.2026",
+   "effectiveDate": "2026-04-28",
+   "amount": 1770,
+   "eventId": "3c860d63-4631-4fa5-8182-814d828a8381",
+   "sourceTransactionId": "5288d1df-6ddd-40f0-873b-9f4559f1c8a3",
+   "eventType": "include_transaction_in_settlement",
+   "dateRole": "cash-receipt"
+  },
+  {
+   "label": "תשלום כללי",
+   "monthLabel": "מאי 2026",
+   "dateLabel": "06.05.2026",
+   "effectiveDate": "2026-05-06",
+   "amount": 1000,
+   "eventId": "33b3c355-1c4f-463b-8b67-9f5e3140712a",
+   "sourceTransactionId": "7c9b80e6-88cf-4713-a870-d7e985978aaf",
+   "eventType": "include_transaction_in_settlement",
+   "dateRole": "cash-receipt"
+  }
+ ],
+ "settlementBridge": [
+  {
+   "kind": "property-balance",
+   "label": "יתרה לפני תשלומים וזיכויים",
+   "signedDueToJj": 3322.52,
+   "eventId": null,
+   "sourceTransactionId": null,
+   "dateLabel": null
+  },
+  {
+   "kind": "payment",
+   "label": "תשלום כללי",
+   "signedDueToJj": -1770,
+   "eventId": "3c860d63-4631-4fa5-8182-814d828a8381",
+   "sourceTransactionId": "5288d1df-6ddd-40f0-873b-9f4559f1c8a3",
+   "dateLabel": "28.04.2026"
+  },
+  {
+   "kind": "payment",
+   "label": "תשלום כללי",
+   "signedDueToJj": -1000,
+   "eventId": "33b3c355-1c4f-463b-8b67-9f5e3140712a",
+   "sourceTransactionId": "7c9b80e6-88cf-4713-a870-d7e985978aaf",
+   "dateLabel": "06.05.2026"
+  },
+  {
+   "kind": "closing",
+   "label": "יתרת סגירה",
+   "signedDueToJj": 552.52,
+   "eventId": null,
+   "sourceTransactionId": null,
+   "dateLabel": null
+  }
+ ],
+ "propertyBridge": [
+  {
+   "label": "ציוד והכנת הנכס להשכרה קצרה",
+   "signedDueToJj": 6264.17,
+   "directionText": "לתשלום ל־JJ."
+  },
+  {
+   "label": "הכנסות",
+   "signedDueToJj": -3391,
+   "directionText": "זיכוי לאורית רוב."
+  },
+  {
+   "label": "הוצאות שכירות קצרה",
+   "signedDueToJj": 266,
+   "directionText": "לתשלום ל־JJ."
+  },
+  {
+   "label": "הוצאות הנכס",
+   "signedDueToJj": 183.35,
+   "directionText": "לתשלום ל־JJ."
+  }
+ ],
+ "statusLines": [
+  {
+   "label": "יתרת הנכס",
+   "state": "open",
+   "amount": 3322.52,
+   "direction": "client_owes_jj"
+  }
+ ],
+ "strMonths": [
+  {
+   "monthStart": "2026-06-01",
+   "monthLabel": "יוני 2026",
+   "reservationCount": 3,
+   "nights": 20,
+   "reservationCountLabel": "3",
+   "nightsLabel": "20",
+   "ownerNet": 1470.18,
+   "componentReconciliationStatus": "complete"
+  },
+  {
+   "monthStart": "2026-07-01",
+   "monthLabel": "יולי 2026",
+   "reservationCount": 2,
+   "nights": 11,
+   "reservationCountLabel": "2",
+   "nightsLabel": "11",
+   "ownerNet": 638.5,
+   "componentReconciliationStatus": "complete"
+  },
+  {
+   "monthStart": "2026-08-01",
+   "monthLabel": "אוגוסט 2026",
+   "reservationCount": 2,
+   "nights": 19,
+   "reservationCountLabel": "2",
+   "nightsLabel": "19",
+   "ownerNet": 1282.32,
+   "componentReconciliationStatus": "complete"
+  }
+ ],
+ "lines": [
+  {
+   "section": "ציוד והכנת הנכס להשכרה קצרה",
+   "clientText": "ריהוט",
+   "monthLabel": "אפריל 2026",
+   "amount": 270,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "setup",
+   "sourceIds": [
+    "803f1f27-54a8-42e1-83e5-fdffe7e9ccfa"
+   ]
+  },
+  {
+   "section": "ציוד והכנת הנכס להשכרה קצרה",
+   "clientText": "עיצוב",
+   "monthLabel": "מאי 2026",
+   "amount": 503.91,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "setup",
+   "sourceIds": [
+    "95cff1ad-722f-46e3-bea6-29407f71bc20"
+   ]
+  },
+  {
+   "section": "ציוד והכנת הנכס להשכרה קצרה",
+   "clientText": "ריהוט",
+   "monthLabel": "מאי 2026",
+   "amount": 1500,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "setup",
+   "sourceIds": [
+    "9982811e-7f8a-4c42-ad07-117fc0dd6454"
+   ]
+  },
+  {
+   "section": "ציוד והכנת הנכס להשכרה קצרה",
+   "clientText": "וילונות",
+   "monthLabel": "מאי 2026",
+   "amount": 248.5,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "setup",
+   "sourceIds": [
+    "8e538a41-d56f-4fc2-8551-75412e107a4f"
+   ]
+  },
+  {
+   "section": "ציוד והכנת הנכס להשכרה קצרה",
+   "clientText": "מצעים ומגבות",
+   "monthLabel": "מאי 2026",
+   "amount": 620,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "setup",
+   "sourceIds": [
+    "f10ed44d-580b-4049-a475-7a8d0d711519"
+   ]
+  },
+  {
+   "section": "ציוד והכנת הנכס להשכרה קצרה",
+   "clientText": "תמונות",
+   "monthLabel": "מאי 2026",
+   "amount": 188.26,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "setup",
+   "sourceIds": [
+    "a2dacbcb-2ad7-4ee8-8e9a-d93205074395"
+   ]
+  },
+  {
+   "section": "ציוד והכנת הנכס להשכרה קצרה",
+   "clientText": "5 גופי תאורה",
+   "monthLabel": "מאי 2026",
+   "amount": 225,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "setup",
+   "sourceIds": [
+    "c4f460e0-127f-40d3-89ab-48cfc986d0e0"
+   ]
+  },
+  {
+   "section": "ציוד והכנת הנכס להשכרה קצרה",
+   "clientText": "עיצוב",
+   "monthLabel": "מאי 2026",
+   "amount": 185,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "setup",
+   "sourceIds": [
+    "2e198133-6825-4ca9-b646-55e8f3e7f862"
+   ]
+  },
+  {
+   "section": "ציוד והכנת הנכס להשכרה קצרה",
+   "clientText": "שכפול מפתח",
+   "monthLabel": "מאי 2026",
+   "amount": 14,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "setup",
+   "sourceIds": [
+    "4e29968b-54b9-4927-80f0-7b852a743783"
+   ]
+  },
+  {
+   "section": "ציוד והכנת הנכס להשכרה קצרה",
+   "clientText": "התקנת גופי תאורה תמונות ווילונות",
+   "monthLabel": "מאי 2026",
+   "amount": 180,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "setup",
+   "sourceIds": [
+    "640f8eae-608a-40ac-8266-266f3dcdf96e"
+   ]
+  },
+  {
+   "section": "ציוד והכנת הנכס להשכרה קצרה",
+   "clientText": "ביטוח הנכס",
+   "monthLabel": "מאי 2026",
+   "amount": 320,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "setup",
+   "sourceIds": [
+    "9ac11bbc-6abc-4b94-bf71-b6faef2819ff"
+   ]
+  },
+  {
+   "section": "ציוד והכנת הנכס להשכרה קצרה",
+   "clientText": "מגבות",
+   "monthLabel": "מאי 2026",
+   "amount": 70,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "setup",
+   "sourceIds": [
+    "474df7af-413e-4cce-95b6-1992344062af"
+   ]
+  },
+  {
+   "section": "ציוד והכנת הנכס להשכרה קצרה",
+   "clientText": "ציוד לנכס",
+   "monthLabel": "מאי 2026",
+   "amount": 15.99,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "setup",
+   "sourceIds": [
+    "2dc66ccb-fe42-460e-9f05-b9efc7458987"
+   ]
+  },
+  {
+   "section": "ציוד והכנת הנכס להשכרה קצרה",
+   "clientText": "צילום",
+   "monthLabel": "מאי 2026",
+   "amount": 350,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "setup",
+   "sourceIds": [
+    "35eb9ec1-657a-493b-b73c-d9bb660d44f9"
+   ]
+  },
+  {
+   "section": "ציוד והכנת הנכס להשכרה קצרה",
+   "clientText": "עיצוב",
+   "monthLabel": "מאי 2026",
+   "amount": 274.11,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "setup",
+   "sourceIds": [
+    "3fb932c9-fb07-4eee-a0ea-8d1f2fc1a2f5"
+   ]
+  },
+  {
+   "section": "ציוד והכנת הנכס להשכרה קצרה",
+   "clientText": "מצעים ומגבות",
+   "monthLabel": "מאי 2026",
+   "amount": 50,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "setup",
+   "sourceIds": [
+    "a1477349-a032-41ad-9beb-5f63ce23ce93"
+   ]
+  },
+  {
+   "section": "ציוד והכנת הנכס להשכרה קצרה",
+   "clientText": "עיצוב",
+   "monthLabel": "מאי 2026",
+   "amount": 68.03,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "setup",
+   "sourceIds": [
+    "a3d03b50-8052-4990-9df3-704f0a52b457"
+   ]
+  },
+  {
+   "section": "ציוד והכנת הנכס להשכרה קצרה",
+   "clientText": "חומרי הכנה וניקיון יסודי",
+   "monthLabel": "מאי 2026",
+   "amount": 181.08,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "setup",
+   "sourceIds": [
+    "bbdaca28-734d-43b5-88b8-4b7ff61390dc",
+    "2e5dcf81-edaa-4e7a-81b6-869f0c132892"
+   ]
+  },
+  {
+   "section": "ציוד והכנת הנכס להשכרה קצרה",
+   "clientText": "מוצרי חשמל וציוד",
+   "monthLabel": "מאי 2026",
+   "amount": 280.29,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "setup",
+   "sourceIds": [
+    "db6e1f74-4163-4418-b213-a2a9642599ab"
+   ]
+  },
+  {
+   "section": "ציוד והכנת הנכס להשכרה קצרה",
+   "clientText": "טיפול במזגן",
+   "monthLabel": "מאי 2026",
+   "amount": 120,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "setup",
+   "sourceIds": [
+    "efba5f73-7152-4b2e-aa01-3948b9d64a8a"
+   ]
+  },
+  {
+   "section": "ציוד והכנת הנכס להשכרה קצרה",
+   "clientText": "הכנת הנכס להשכרה",
+   "monthLabel": "מאי 2026",
+   "amount": 600,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "setup",
+   "sourceIds": [
+    "f78166bb-a327-4939-a234-a18b33d4b8ec"
+   ]
+  },
+  {
+   "section": "הוצאות השכרה קצרה",
+   "clientText": "אינטרנט",
+   "monthLabel": "יוני 2026",
+   "amount": 30,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "str-expense",
+   "sourceIds": [
+    "ea40cecb-a784-42b9-86a1-96cd345c736b"
+   ]
+  },
+  {
+   "section": "הוצאות השכרה קצרה",
+   "clientText": "אינטרנט",
+   "monthLabel": "יולי 2026",
+   "amount": 30,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "str-expense",
+   "sourceIds": [
+    "393f913c-64a6-4859-9dcf-d22c3cec6c52"
+   ]
+  },
+  {
+   "section": "הוצאות השכרה קצרה",
+   "clientText": "אינטרנט",
+   "monthLabel": "אוגוסט 2026",
+   "amount": 30,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "str-expense",
+   "sourceIds": [
+    "f64c3d1f-2ad5-494a-a574-8fb3372268b9"
+   ]
+  },
+  {
+   "section": "הוצאות השכרה קצרה",
+   "clientText": "תוכנת ניהול הזמנות",
+   "monthLabel": "אוגוסט 2026",
+   "amount": 120,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "str-expense",
+   "sourceIds": [
+    "bbf529e8-c126-460e-8803-d491e59963e1"
+   ]
+  },
+  {
+   "section": "הוצאות השכרה קצרה",
+   "clientText": "שירותי אירוח",
+   "monthLabel": "אוגוסט 2026",
+   "amount": 56,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "str-expense",
+   "sourceIds": [
+    "e52afd09-61ed-4557-bc5c-e41a90ab3df2"
+   ]
+  },
+  {
+   "section": "הוצאות הנכס",
+   "clientText": "חשמל",
+   "monthLabel": "אוגוסט 2026",
+   "amount": 183.35,
+   "effect": "charge",
+   "directionText": "לתשלום ל־JJ.",
+   "countedIn": "operating-charge",
+   "sourceIds": [
+    "dc4e1b6f-18fe-4c79-a5d2-5c90573bf6f9"
+   ]
+  }
+ ],
+ "grouping": {
+  "orit-preparation": {
+   "clientText": "חומרי הכנה וניקיון יסודי",
+   "amount": 181.08,
+   "sourceIds": [
+    "bbdaca28-734d-43b5-88b8-4b7ff61390dc",
+    "2e5dcf81-edaa-4e7a-81b6-869f0c132892"
+   ],
+   "approvalRef": "REVIEW-6 sha 0129011a"
+  },
+  "electricity_label": {
+   "sourceId": "dc4e1b6f-18fe-4c79-a5d2-5c90573bf6f9",
+   "clientText": "חשמל",
+   "amount": 183.35,
+   "clientChargeDefaulted": true
+  }
+ },
+ "pdfKeyTextLines_REVIEW6": {
+  "אורית רוב חייבת ל־ JJ.": [
+   "אורית רוב חייבת ל־ JJ."
+  ],
+  "€552.52": [
+   "€552.52",
+   "€552.52 יתרה לתשלום ל־ JJ",
+   "היתרה הסופית לתשלום היא €552.52."
+  ],
+  "יתרת הנכס לפני תשלומים כלליים": [
+   "€3,322.52 יתרת הנכס לפני תשלומים כלליים",
+   "€3,322.52 יתרת הנכס לפני תשלומים כלליים",
+   "€3,322.52 יתרת הנכס לפני תשלומים כלליים"
+  ],
+  "גשר סגירה": [
+   "גשר סגירה"
+  ],
+  "תשלום אפריל 2026": [
+   "€1,770.00 תשלום אפריל 2026 −"
+  ],
+  "תשלום מאי 2026": [
+   "€1,000.00 תשלום מאי 2026 −"
+  ],
+  "יתרה לתשלום ל־ JJ": [
+   "€552.52 יתרה לתשלום ל־ JJ"
+  ],
+  "חומרי הכנה וניקיון יסודי": [
+   "€181.08 לתשלום ל־ JJ. חומרי הכנה וניקיון יסודי מאי 2026"
+  ],
+  "זיכוי הכנסות מהשכרה קצרת טווח": [
+   "זיכוי הכנסות מהשכרה קצרת טווח"
+  ],
+  "סיכום חודשי מאושר — לפי חודש הצ׳ק־אין": [
+   "סיכום חודשי מאושר — לפי חודש הצ׳ק־אין"
+  ],
+  "זיכויים ברמת ההתחשבנות הכוללת": [
+   "זיכויים ברמת ההתחשבנות הכוללת"
+  ]
+ },
+ "expectedDifferencesVsReview6": [
+  {
+   "field": "properties[0].lines[*].clientChargeDefaulted",
+   "review6": "absent",
+   "engine": "false on 26 lines, true on line 26 (dc4e1b6f electricity, client_charge NULL -> amount_eur 183.35)",
+   "why": "approved rule: COALESCE(client_charge, amount_eur), report flags the default"
+  },
+  {
+   "field": "PDF page 1 and page 2 header",
+   "review6": "עד תאריך: 31.08.2026 כולל.",
+   "engine": "מתאריך 01.04.2026 עד תאריך 31.08.2026 כולל.",
+   "why": "period account now prints the period start (spec G21); presentation only"
+  },
+  {
+   "field": "PDF electricity row",
+   "review6": "(no flag)",
+   "engine": "extra caption line 'לא נרשם חיוב נפרד' under the 183.35 row",
+   "why": "rendering of clientChargeDefaulted (terminology.chargeDefaulted)"
+  }
+ ],
+ "result_03_10": {
+  "document_field_diffs": 27,
+  "of_which_only_clientChargeDefaulted": 27,
+  "figures_diffs": 0,
+  "label_diffs": 0,
+  "grouping_diffs": 0,
+  "bridge_diffs": 0,
+  "wording_diffs_in_document": 0,
+  "pdf_text_diffs": 3,
+  "pdf_pages_engine": 3
+ }
+}

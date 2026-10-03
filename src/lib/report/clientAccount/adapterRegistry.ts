@@ -44,8 +44,9 @@ export const ADAPTER_REGISTRY: readonly AdapterRegistryEntry[] = [
   {
     contactId: '3997b50d-63af-4c6c-bdce-e5060ecfb48a',
     contactName: 'Uriel',
-    status: 'pending-adapter',
-    note: 'Approved figures are recorded. No adapter yet.',
+    status: 'adapter-present',
+    clientSlug: 'uriel',
+    note: 'Neer stays inside this report; that placement is pending Yossi. Garden and Sharon credit wording default to the 15:38 labels and are pending Yossi.',
   },
   { contactId: '0a22ccfe-44d6-4492-ad02-e6577f406124', contactName: 'Vard', status: 'no-cert' },
   { contactId: '4b5f6044-1b32-4d8a-99a3-12f5c32ae341', contactName: 'Yogev', status: 'no-cert' },

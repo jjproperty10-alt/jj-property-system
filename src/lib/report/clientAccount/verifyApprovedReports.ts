@@ -9,6 +9,10 @@ import { join } from 'path'
 import type { CertifiedClientSettlementAvailable } from '../../finance/certifiedClientSettlementTypes'
 import { ADAPTER_REGISTRY } from './adapterRegistry'
 import { oritRobAdapter } from './adapters/oritRob'
+import { urielAdapter } from './adapters/uriel'
+import { URIEL_GARDEN_2_LABEL, URIEL_SHARON_CREDIT_LABEL } from './presentationTags'
+import { renderUrielFixture } from './urielFixtureReport'
+import { urielEngineNotes, type UrielEngineNote } from './__fixtures__/urielOpenItems'
 import {
   APPROVED_FIGURES,
   type ApprovedBridgeRow,
@@ -17,7 +21,7 @@ import {
   type ApprovedPendingDecisionFigures,
   type ApprovedRenderableFigures,
 } from './__fixtures__/approvedFigures'
-import { buildClientAccountReport } from './buildClientAccountReport'
+import { buildClientAccountReport, type ClientAccountReport } from './buildClientAccountReport'
 import { compositionFromCertifiedSettlement, type RawTransactionRow } from './certifiedSource'
 import { ClientAccountBlock } from './composeCertifiedAccount'
 import { clientAccountPlainText } from './gates'
@@ -43,7 +47,19 @@ export interface ClientVerifySummary {
     readonly paid: FigureCheck
     readonly balance: FigureCheck
     readonly direction: FigureCheck
+    readonly credit?: FigureCheck
+    readonly certificationId?: FigureCheck
   }
+  readonly properties?: readonly {
+    readonly propertyName: string
+    readonly amountDueToJj: FigureCheck
+    readonly direction: FigureCheck
+  }[]
+  readonly gates?: { readonly status: string; readonly count: number }
+  readonly openItems?: readonly UrielEngineNote[]
+  readonly pendingDescriptions?: readonly UrielEngineNote[]
+  readonly pendingWording?: readonly { readonly constant: string; readonly wording: string; readonly status: string }[]
+  readonly neer?: string
   readonly text?: {
     readonly propertyLine: string
     readonly heroDirection: string
@@ -140,7 +156,7 @@ function settlementFrom(input: CompositionInput): CertifiedClientSettlementAvail
   }
 }
 
-function oritDocument(): ClientAccountDocument {
+function oritReport(): ClientAccountReport {
   const source = oritReview6Fixture({ group: false, electricityLabel: false })
   const rows = source.rows.map(rawFrom)
   const settlement = settlementFrom(source)
@@ -161,12 +177,18 @@ function oritDocument(): ClientAccountDocument {
   if (composition.status !== 'ready') {
     throw new ClientAccountBlock(composition.code === 'BLOCKED_PRESENTATION' ? 'BLOCKED_PRESENTATION' : 'BLOCKED_ACCOUNTING', composition.reason)
   }
-  return buildClientAccountReport(composition.input).document
+  return buildClientAccountReport(composition.input)
 }
 
 function paidOf(doc: ClientAccountDocument): number {
   return doc.settlementBridge.steps
     .filter((step) => step.kind === 'payment')
+    .reduce((sum, step) => sum + Math.abs(step.signedDueToJj), 0)
+}
+
+function creditOf(doc: ClientAccountDocument): number {
+  return doc.settlementBridge.steps
+    .filter((step) => step.kind === 'credit')
     .reduce((sum, step) => sum + Math.abs(step.signedDueToJj), 0)
 }
 
@@ -182,17 +204,27 @@ function renderableSummary(approved: ApprovedRenderableFigures): VerifiedClient 
   if (approved.gender === 'feminine' && !approved.heroDirection.includes('חייבת')) {
     mismatches.push('Approved client direction is not the feminine form.')
   }
+  if (approved.gender === 'masculine' && !approved.heroDirection.includes('חייב ל־JJ')) {
+    mismatches.push('Approved client direction is not the masculine form.')
+  }
 
-  let document: ClientAccountDocument | null = null
+  let report: ClientAccountReport | null = null
+  let certificationId: string | null = null
   try {
-    if (approved.clientSlug !== oritRobAdapter.clientSlug) {
+    if (approved.clientSlug === oritRobAdapter.clientSlug) {
+      report = oritReport()
+    } else if (approved.clientSlug === urielAdapter.clientSlug) {
+      const rendered = renderUrielFixture()
+      report = rendered.report
+      certificationId = rendered.certificationId
+    } else {
       throw new ClientAccountBlock('BLOCKED_PRESENTATION', `No fixture adapter for ${approved.clientSlug}.`)
     }
-    document = oritDocument()
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err)
     mismatches.push(reason)
   }
+  const document = report ? report.document : null
 
   if (!document) {
     return {
@@ -212,12 +244,40 @@ function renderableSummary(approved: ApprovedRenderableFigures): VerifiedClient 
 
   const gross = document.openingDueToJj
   const paid = paidOf(document)
+  const credit = creditOf(document)
   const balance = document.closingDueToJj
   const direction = document.closingDirection
   if (!sameMoney(gross, approved.gross)) mismatches.push(`gross ${gross} != ${approved.gross}`)
   if (!sameMoney(paid, approved.paid)) mismatches.push(`paid ${paid} != ${approved.paid}`)
+  if (approved.credit != null && !sameMoney(credit, approved.credit)) mismatches.push(`credit ${credit} != ${approved.credit}`)
   if (!sameMoney(balance, approved.balance)) mismatches.push(`balance ${balance} != ${approved.balance}`)
   if (direction !== approved.direction) mismatches.push(`direction ${direction} != ${approved.direction}`)
+  if (approved.certPrefix && (certificationId == null || !certificationId.startsWith(approved.certPrefix))) {
+    mismatches.push(`certification ${certificationId ?? 'missing'} != ${approved.certPrefix}`)
+  }
+  if (report && report.gates.status !== 'pass') mismatches.push(`gates ${report.gates.status}`)
+  if (report && report.gates.gates.length === 0) mismatches.push('gates did not run')
+  const propertyChecks = approved.properties?.map((expected, index) => {
+    const actual = document.properties[index]
+    const amount = actual ? actual.amountDueToJj : null
+    const actualDirection = actual ? actual.direction : null
+    if (!actual || actual.propertyName !== expected.propertyName || amount == null || !sameMoney(amount, expected.amountDueToJj) || actualDirection !== expected.direction) {
+      mismatches.push(`property ${expected.propertyName} ${amount} ${actualDirection}`)
+    }
+    return {
+      propertyName: expected.propertyName,
+      amountDueToJj: { expected: expected.amountDueToJj, actual: amount },
+      direction: { expected: expected.direction, actual: actualDirection },
+    }
+  })
+  if (approved.monthlyStrProperty) {
+    for (let i = 0; i < document.properties.length; i += 1) {
+      const property = document.properties[i]
+      const admitted = property.certifiedMonthlyStr != null
+      const expected = property.propertyName === approved.monthlyStrProperty
+      if (admitted !== expected) mismatches.push(`monthly STR ${property.propertyName} admitted ${admitted}`)
+    }
+  }
 
   const propertyLine = propertyBridgeTitle(document)
   if (propertyLine !== approved.propertyLine) mismatches.push(`property line ${propertyLine}`)
@@ -238,7 +298,12 @@ function renderableSummary(approved: ApprovedRenderableFigures): VerifiedClient 
     })
   }
 
-  const pdfLines = [approved.propertyLine, approved.heroDirection, ...approved.bridge.map((row) => row.label)]
+  const pdfLines = [
+    approved.propertyLine,
+    approved.heroDirection,
+    ...approved.bridge.map((row) => row.label),
+    ...(approved.keyLines || []),
+  ]
   const pageText = [
     clientAccountPlainText(document),
     propertyLine,
@@ -264,7 +329,12 @@ function renderableSummary(approved: ApprovedRenderableFigures): VerifiedClient 
         paid: { expected: approved.paid, actual: paid },
         balance: { expected: approved.balance, actual: balance },
         direction: { expected: approved.direction, actual: direction },
+        ...(approved.credit != null ? { credit: { expected: approved.credit, actual: credit } } : {}),
+        ...(approved.certPrefix ? { certificationId: { expected: approved.certPrefix, actual: certificationId } } : {}),
       },
+      ...(propertyChecks ? { properties: propertyChecks } : {}),
+      ...(report ? { gates: { status: report.gates.status, count: report.gates.gates.length } } : {}),
+      ...(approved.clientSlug === urielAdapter.clientSlug ? urielNotes(document) : {}),
       text: {
         propertyLine,
         heroDirection: hero,
@@ -274,6 +344,19 @@ function renderableSummary(approved: ApprovedRenderableFigures): VerifiedClient 
       },
       mismatches,
     },
+  }
+}
+
+function urielNotes(document: ClientAccountDocument): Pick<ClientVerifySummary, 'openItems' | 'pendingDescriptions' | 'pendingWording' | 'neer'> {
+  const notes = urielEngineNotes(document)
+  return {
+    neer: notes.neer,
+    openItems: notes.openItems,
+    pendingDescriptions: notes.pendingDescriptions,
+    pendingWording: [
+      { constant: 'URIEL_GARDEN_2_LABEL', wording: URIEL_GARDEN_2_LABEL, status: 'PENDING Yossi. Default is the 15:38 label.' },
+      { constant: 'URIEL_SHARON_CREDIT_LABEL', wording: URIEL_SHARON_CREDIT_LABEL, status: 'PENDING Yossi. Default is the 15:38 label.' },
+    ],
   }
 }
 
@@ -370,6 +453,30 @@ export function summaryMarkdown(summary: ClientVerifySummary): string {
       `| Balance | ${money(summary.figures.balance.expected)} | ${money(summary.figures.balance.actual)} |`,
       `| Direction | ${summary.figures.direction.expected} | ${summary.figures.direction.actual ?? '—'} |`,
     )
+    if (summary.figures.credit) lines.push(`| Sharon credit | ${money(summary.figures.credit.expected)} | ${money(summary.figures.credit.actual)} |`)
+    if (summary.figures.certificationId) {
+      lines.push(`| Certification | ${summary.figures.certificationId.expected} | ${summary.figures.certificationId.actual ?? '—'} |`)
+    }
+  }
+  if (summary.properties) {
+    lines.push('', '| Property | Approved | Rendered | Direction |', '| --- | --- | --- | --- |')
+    for (const property of summary.properties) {
+      lines.push(`| ${property.propertyName} | ${money(property.amountDueToJj.expected)} | ${money(property.amountDueToJj.actual)} | ${property.direction.actual ?? '—'} |`)
+    }
+  }
+  if (summary.gates) lines.push('', `Gates: ${summary.gates.status} (${summary.gates.count}).`)
+  if (summary.neer) lines.push('', summary.neer)
+  if (summary.pendingWording) {
+    lines.push('', 'Pending wording (Yossi):')
+    for (const item of summary.pendingWording) lines.push(`- ${item.constant} = ${item.wording}. ${item.status}`)
+  }
+  if (summary.pendingDescriptions) {
+    lines.push('', 'Pending descriptions (no approval on record; raw or default labels):')
+    for (const item of summary.pendingDescriptions) lines.push(`- ${item.id}: ${item.engineToday}`)
+  }
+  if (summary.openItems) {
+    lines.push('', 'Open items (engine behaviour is unchanged):')
+    for (const item of summary.openItems) lines.push(`- ${item.title} (${item.id}): ${item.engineToday}`)
   }
   if (summary.certs) {
     lines.push('', '| Cert | As of | Balance |', '| --- | --- | --- |')

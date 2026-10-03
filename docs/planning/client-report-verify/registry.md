@@ -17,6 +17,6 @@ Contacts are the distinct rows of `v_contact_settlement`. Unknown certification 
 | Sharon | no-cert |  |
 | Tamir | pending-adapter |  |
 | Tom | no-cert |  |
-| Uriel | pending-adapter |  |
+| Uriel | adapter-present | uriel |
 | Vard | no-cert |  |
 | Yogev | no-cert |  |

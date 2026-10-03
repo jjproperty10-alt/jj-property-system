@@ -1,28 +1,213 @@
 {
   "clientSlug": "uriel",
   "contactName": "Uriel",
-  "rendered": false,
+  "rendered": true,
   "match": true,
-  "status": "pending-adapter",
+  "status": "renderable",
   "approvalRef": "cert ad2ba8fd v3",
-  "note": "Expected figures only, matching the 15:38 PDF. No adapter yet.",
   "figures": {
     "gross": {
       "expected": 117901.54,
-      "actual": null
+      "actual": 117901.54
     },
     "paid": {
-      "expected": 69000,
-      "actual": null
+      "expected": 14000,
+      "actual": 14000
     },
     "balance": {
       "expected": 48901.54,
-      "actual": null
+      "actual": 48901.54
     },
     "direction": {
       "expected": "client_owes_jj",
-      "actual": null
+      "actual": "client_owes_jj"
+    },
+    "credit": {
+      "expected": 55000,
+      "actual": 55000
+    },
+    "certificationId": {
+      "expected": "ad2ba8fd",
+      "actual": "ad2ba8fd-d3b1-4877-8cbf-38770aa1c8bf"
     }
   },
-  "mismatches": []
+  "properties": [
+    {
+      "propertyName": "Uriel Kamares",
+      "amountDueToJj": {
+        "expected": -7343.22,
+        "actual": -7343.22
+      },
+      "direction": {
+        "expected": "jj_owes_client",
+        "actual": "jj_owes_client"
+      }
+    },
+    {
+      "propertyName": "Uriel Oroklini 2 Bed",
+      "amountDueToJj": {
+        "expected": 209.37,
+        "actual": 209.37
+      },
+      "direction": {
+        "expected": "client_owes_jj",
+        "actual": "client_owes_jj"
+      }
+    },
+    {
+      "propertyName": "Uriel Studio Kitty",
+      "amountDueToJj": {
+        "expected": 4089,
+        "actual": 4089
+      },
+      "direction": {
+        "expected": "client_owes_jj",
+        "actual": "client_owes_jj"
+      }
+    },
+    {
+      "propertyName": "Uriel Sharon English Metro",
+      "amountDueToJj": {
+        "expected": 40850,
+        "actual": 40850
+      },
+      "direction": {
+        "expected": "client_owes_jj",
+        "actual": "client_owes_jj"
+      }
+    },
+    {
+      "propertyName": "Uriel Debenhams",
+      "amountDueToJj": {
+        "expected": 3805.25,
+        "actual": 3805.25
+      },
+      "direction": {
+        "expected": "client_owes_jj",
+        "actual": "client_owes_jj"
+      }
+    },
+    {
+      "propertyName": "Uriel Kokkines",
+      "amountDueToJj": {
+        "expected": 15125.63,
+        "actual": 15125.63
+      },
+      "direction": {
+        "expected": "client_owes_jj",
+        "actual": "client_owes_jj"
+      }
+    },
+    {
+      "propertyName": "Apartment Neer Yoav Dekelia",
+      "amountDueToJj": {
+        "expected": 44610.08,
+        "actual": 44610.08
+      },
+      "direction": {
+        "expected": "client_owes_jj",
+        "actual": "client_owes_jj"
+      }
+    },
+    {
+      "propertyName": "Uriel Duplex",
+      "amountDueToJj": {
+        "expected": 16555.43,
+        "actual": 16555.43
+      },
+      "direction": {
+        "expected": "client_owes_jj",
+        "actual": "client_owes_jj"
+      }
+    }
+  ],
+  "gates": {
+    "status": "pass",
+    "count": 15
+  },
+  "neer": "Apartment Neer Yoav Dekelia stays inside the Uriel report at 44610.08 client_owes_jj. Placement is pending Yossi.",
+  "openItems": [
+    {
+      "id": "charge-defaulted-caption",
+      "title": "No separate charge caption",
+      "engineToday": "The engine prints \"לא נרשם חיוב נפרד\" on 185 lines whose client_charge is null (clientChargeDefaulted). The caption is not hidden."
+    },
+    {
+      "id": "d3d31222-a746-4b3e-af22-40db870bb5d6",
+      "title": "Cross-entity Efi Dekelia label",
+      "engineToday": "Row d3d31222-a746-4b3e-af22-40db870bb5d6 stays on the raw label. Presentation tags are applied to admitted rows only, not to linked Efi rows. Rendered: דומיניק | יולי 2025 | 320.00 | לתשלום ל־JJ.."
+    },
+    {
+      "id": "3d7fdff5-9ec6-4a26-b2f8-00cdef0c2c6b",
+      "title": "Duplex 1,500 rent line",
+      "engineToday": "Row 3d7fdff5-9ec6-4a26-b2f8-00cdef0c2c6b is not one 1,500 line. The engine allocates it to three 500.00 rent lines. Rendered: שכירות | אפריל 2026 paid יוני 2026 | 500.00 | שולם באיחור; שכירות | מאי 2026 paid יוני 2026 | 500.00 | שולם באיחור; שכירות | יוני 2026 | 500.00 | שולם."
+    },
+    {
+      "id": "ba646d2d-9122-4909-ae02-8a67739a0172",
+      "title": "Kamares 1,800 date display",
+      "engineToday": "Additional receipt ba646d2d-9122-4909-ae02-8a67739a0172 stays one June 2026 line. It is not split across March and April. Rendered: שכירות | יוני 2026 | 1800.00 | שולם."
+    }
+  ],
+  "pendingDescriptions": [
+    {
+      "id": "37630a81-f33c-4070-90f6-4c8db8888d2e",
+      "title": "Description pending an approval on record",
+      "engineToday": "No presentation tag. Raw or default label. Rendered: בטון ומשאבה | דצמבר 2024 | 4500.00 | לתשלום ל־JJ.."
+    },
+    {
+      "id": "8d149fbf-3654-4d79-9007-4bd6f16dd90a",
+      "title": "Description pending an approval on record",
+      "engineToday": "No presentation tag. Raw or default label. Rendered: חוזה שיפוץ | נובמבר 2025 | 3800.00 | רשום.."
+    },
+    {
+      "id": "e8503b83-4066-4fcd-8f4e-07d0f635d90e",
+      "title": "Description pending an approval on record",
+      "engineToday": "No presentation tag. Raw or default label. Rendered: תנור אובן | דצמבר 2025 | 240.00 | לתשלום ל־JJ.."
+    },
+    {
+      "id": "226c1b1b-bfeb-48b1-82cb-b462c41f929a",
+      "title": "Description pending an approval on record",
+      "engineToday": "No presentation tag. Raw or default label. Rendered: +מקרר וכיריים | יוני 2025 | 1230.00 | לתשלום ל־JJ.."
+    }
+  ],
+  "pendingWording": [
+    {
+      "constant": "URIEL_GARDEN_2_LABEL",
+      "wording": "עבודת גינה נוספת",
+      "status": "PENDING Yossi. Default is the 15:38 label."
+    },
+    {
+      "constant": "URIEL_SHARON_CREDIT_LABEL",
+      "wording": "זיכוי שרון — ללא מזומן",
+      "status": "PENDING Yossi. Default is the 15:38 label."
+    }
+  ],
+  "text": {
+    "propertyLine": "יתרת הנכס לפני תשלומים כלליים",
+    "heroDirection": "אוריאל חייב ל־JJ.",
+    "jjOwesDirection": "JJ חייבת לאוריאל.",
+    "bridge": [
+      {
+        "label": "יתרת הנכס לפני תשלומים כלליים",
+        "signedDueToJj": 117901.54
+      },
+      {
+        "label": "זיכוי שרון — ללא מזומן",
+        "signedDueToJj": -55000
+      },
+      {
+        "label": "תשלום אוגוסט 2026",
+        "signedDueToJj": -14000
+      },
+      {
+        "label": "יתרה לתשלום ל־JJ",
+        "signedDueToJj": 48901.54
+      }
+    ],
+    "plainTextMissing": []
+  },
+  "mismatches": [],
+  "pdf": {
+    "missing": []
+  }
 }

@@ -28,6 +28,19 @@ export interface PresentationTag {
 const ORIT = 'orit-rob'
 const ORIT_PREPARATION = 'orit-preparation'
 const ORIT_PREPARATION_LABEL = 'חומרי הכנה וניקיון יסודי'
+const URIEL = 'uriel'
+
+/**
+ * TODO(Yossi): garden_2 wording is pending. Default is the 15:38 label.
+ * The other candidate on record is עבודת גינון נוספת.
+ */
+export const URIEL_GARDEN_2_LABEL = 'עבודת גינה נוספת'
+
+/**
+ * TODO(Yossi): Sharon credit wording is pending. Default is the 15:38 label.
+ * The other candidate on record is זיכוי שרון — ללא העברת כסף.
+ */
+export const URIEL_SHARON_CREDIT_LABEL = 'זיכוי שרון — ללא מזומן'
 
 export const PRESENTATION_TAGS: Readonly<Record<string, PresentationTag>> = {
   'bbdaca28-734d-43b5-88b8-4b7ff61390dc': {
@@ -46,6 +59,11 @@ export const PRESENTATION_TAGS: Readonly<Record<string, PresentationTag>> = {
     client: ORIT,
     clientLabel: 'חשמל',
     approvalRef: ORIT_ELECTRICITY_DISPLAY_APPROVAL,
+  },
+  '49d7a85f-9b32-429e-8c5e-297747f66586': {
+    client: URIEL,
+    clientLabel: 'ציוד כללי',
+    approvalRef: 'Yossi 30.09.2026. Display label only. The ledger row is unchanged.',
   },
 }
 

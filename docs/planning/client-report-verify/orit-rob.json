@@ -23,6 +23,10 @@
       "actual": "client_owes_jj"
     }
   },
+  "gates": {
+    "status": "pass",
+    "count": 15
+  },
   "text": {
     "propertyLine": "יתרת הנכס לפני תשלומים כלליים",
     "heroDirection": "אורית רוב חייבת ל־JJ.",

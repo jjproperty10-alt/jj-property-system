@@ -13,6 +13,8 @@ Approval: 0129011a119924d0b45b45f7482a88fef266977c0694e712397fa9d6cb916e4e
 | Balance | 552.52 | 552.52 |
 | Direction | client_owes_jj | client_owes_jj |
 
+Gates: pass (15).
+
 Property line: יתרת הנכס לפני תשלומים כלליים
 Hero: אורית רוב חייבת ל־JJ.
 JJ owes form: JJ חייבת לאורית רוב.

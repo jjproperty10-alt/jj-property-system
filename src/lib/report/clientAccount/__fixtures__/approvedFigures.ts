@@ -3,11 +3,11 @@
  * against this file. It does not read the database.
  *
  * Orit: REVIEW-6, render-summary sha 0129011a….
- * Uriel: cert ad2ba8fd version 3, the 15:38 PDF. No adapter yet.
+ * Uriel: cert ad2ba8fd version 3. Sharon credit and the general payment are separate.
  * Tamir: two applied certs, pending cumulative vs separate. The unapproved
  * draft reader is not used.
  */
-import { REVIEW6_RENDER_SHA } from '../presentationTags'
+import { REVIEW6_RENDER_SHA, URIEL_GARDEN_2_LABEL, URIEL_SHARON_CREDIT_LABEL } from '../presentationTags'
 
 export type ApprovedDirection = 'client_owes_jj' | 'jj_owes_client' | 'settled'
 
@@ -32,6 +32,19 @@ export interface ApprovedRenderableFigures {
   /** Engine wording when the balance is JJ owes this client. Feminine subject. */
   readonly jjOwesDirection: string
   readonly bridge: readonly ApprovedBridgeRow[]
+  /** Non-cash settlement credit, separate from cash payments. */
+  readonly credit?: number
+  readonly certPrefix?: string
+  readonly properties?: readonly ApprovedPropertyFigure[]
+  /** The only property that carries an admitted monthly STR section. */
+  readonly monthlyStrProperty?: string
+  readonly keyLines?: readonly string[]
+}
+
+export interface ApprovedPropertyFigure {
+  readonly propertyName: string
+  readonly amountDueToJj: number
+  readonly direction: ApprovedDirection
 }
 
 /** Expected figures only. The harness does not render these. */
@@ -92,16 +105,39 @@ export const ORIT_APPROVED: ApprovedRenderableFigures = {
   ],
 }
 
-export const URIEL_APPROVED: ApprovedPendingAdapterFigures = {
-  kind: 'pending-adapter',
+export const URIEL_APPROVED: ApprovedRenderableFigures = {
+  kind: 'renderable',
   clientSlug: 'uriel',
   contactName: 'Uriel',
   approvalRef: 'cert ad2ba8fd v3',
   gross: 117901.54,
-  paid: 69000,
+  credit: 55000,
+  paid: 14000,
   balance: 48901.54,
   direction: 'client_owes_jj',
-  note: 'Expected figures only, matching the 15:38 PDF. No adapter yet.',
+  gender: 'masculine',
+  propertyLine: PROPERTY_LINE,
+  heroDirection: 'אוריאל חייב ל־JJ.',
+  jjOwesDirection: 'JJ חייבת לאוריאל.',
+  certPrefix: 'ad2ba8fd',
+  monthlyStrProperty: 'Apartment Neer Yoav Dekelia',
+  keyLines: [URIEL_GARDEN_2_LABEL, URIEL_SHARON_CREDIT_LABEL],
+  bridge: [
+    { label: PROPERTY_LINE, signedDueToJj: 117901.54 },
+    { label: URIEL_SHARON_CREDIT_LABEL, signedDueToJj: -55000 },
+    { label: 'תשלום אוגוסט 2026', signedDueToJj: -14000 },
+    { label: 'יתרה לתשלום ל־JJ', signedDueToJj: 48901.54 },
+  ],
+  properties: [
+    { propertyName: 'Uriel Kamares', amountDueToJj: -7343.22, direction: 'jj_owes_client' },
+    { propertyName: 'Uriel Oroklini 2 Bed', amountDueToJj: 209.37, direction: 'client_owes_jj' },
+    { propertyName: 'Uriel Studio Kitty', amountDueToJj: 4089, direction: 'client_owes_jj' },
+    { propertyName: 'Uriel Sharon English Metro', amountDueToJj: 40850, direction: 'client_owes_jj' },
+    { propertyName: 'Uriel Debenhams', amountDueToJj: 3805.25, direction: 'client_owes_jj' },
+    { propertyName: 'Uriel Kokkines', amountDueToJj: 15125.63, direction: 'client_owes_jj' },
+    { propertyName: 'Apartment Neer Yoav Dekelia', amountDueToJj: 44610.08, direction: 'client_owes_jj' },
+    { propertyName: 'Uriel Duplex', amountDueToJj: 16555.43, direction: 'client_owes_jj' },
+  ],
 }
 
 export const TAMIR_APPROVED: ApprovedPendingDecisionFigures = {
