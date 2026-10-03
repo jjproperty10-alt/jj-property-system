@@ -97,3 +97,133 @@ Repo search found no cron, webhook, or script that calls `createServiceClient()`
 | `src/lib/statements/statementLifecycleActions.ts` | action | schema statements, rpc add_draft_line, rpc create_statement_draft, rpc remove_draft_line, rpc send_statement, rpc set_draft_status | authenticateStatementUser (staff row, no membership) | Staff lookup did not require company membership, and the staff row was read with the service client. | Draft: await createServiceClient(), which now requires staff and membership first. |
 | `src/lib/transactions/correctionWorkspaceActions.ts` | action | schema statements, correction_applied_transactions, correction_cases, transaction_exclusions, transactions | authenticateStatementUser (staff row, no membership) | Staff lookup did not require company membership, and the staff row was read with the service client. | Draft: await createServiceClient(), which now requires staff and membership first. |
 | `src/lib/transactions/resolveBoundCorrectionSeries.ts` | user-reachable library | schema lifecycle/statements, management_relationship, statement_series | none in this file | An authenticated caller who reached this function could read company rows with no staff or membership check. | Draft: await createServiceClient(), which now requires staff and membership first. |
+
+## Fail-closed test results
+
+Recorded from the suites on this draft. Nothing was applied to a database. A domain test that mocks `createServiceClient` does not prove the staff and membership guard, so those tests are not listed as coverage.
+
+`serviceClientFailClosed` is `src/__tests__/security/serviceClientFailClosed.test.ts` (6 cases). The throwaway file is `src/__tests__/security/directServiceClientsCompanyGate.throwaway.test.ts` (14 cases). The throwaway suite runs only when `JJ_THROWAWAY_PG` points at local throwaway Postgres. The default Jest run leaves it skipped. Both suites passed on this draft: the 6 cases inside Jest, and the 14 cases against throwaway Postgres. No Supabase project was contacted.
+
+### serviceClientFailClosed (6)
+
+1. **Factory source.** In `createServiceClient`, `await requireStaffCompanyPermission()` appears before `rawServiceClient()`. Every production caller (more than 40 files, tests excluded) uses `await createServiceClient()` on a non-comment line. This scan is what covers a reader that no direct test calls.
+2. **No staff role.** `createServiceClient()` throws `BLOCKED_BY_MISSING_PERMISSION`. No new `createClient` call uses the service key.
+3. **Membership false.** `createServiceClient()` throws `BLOCKED_BY_MISSING_PERMISSION`. The factory is the only call.
+4. **Membership null.** Same throw. The factory is the only call.
+5. **Unauthenticated.** Session user is null. `createServiceClient()` throws `BLOCKED_BY_MISSING_PERMISSION`. No new `createClient` call uses the service key.
+6. **`resolveFrameUser()`.** With no staff role it resolves to null and opens no service connection. This is the direct runtime case for `src/lib/nav/resolveFrameUser.ts`.
+
+Cases 2–5 call the factory, not each reader. A reader that only obtains company data through that factory hits the same refusal, because the permission await is before `rawServiceClient()`.
+
+### Throwaway Postgres (14)
+
+Local throwaway database only. The three data paths are CEO `fetchAll` (`src/app/(app)/page.tsx`), `fetchOwnershipForProperty` (`src/lib/ownership/ownershipService.ts`), and `loadFinanceDecision` (the decision page). That load calls `computeFinancialPosition` and `evaluateDecision`. Both call `evaluateClaim`. `logDecision` is the execute action and is not called by this load.
+
+1. **One active company.** The resolver returns company A. CEO returns the four views. Ownership is 50, not 100. The decision load returns a position. Reads sent are the four `v_*` views, then `entity_registry` and `partnership_ownership`, then `claim_templates` and `v_cashbox_audit` among the decision reads.
+2. **Zero active companies.** The three paths return no data and send no read.
+3. **Sole company inactive.** The three paths return no data and send no read.
+4. **Second active company.** Every company-wide relation is refused with `BLOCKED_BY_COMPANY_CONTEXT` before it is sent. The three paths return no data and send no read.
+5. **Unlisted relation.** `transactions` and `position_score_deltas` throw `BLOCKED_BY_UNGATED_RELATION` even when the resolver would allow the company. Nothing is sent.
+6. **Resolver finding.** `access.resolve_service_read_company` does not mention `is_company_member` or `user_roles`. A user id is refused for a member and for a non-member, as `service_role` and as `authenticated`.
+7. **Staff and member.** The three paths return data. The session mock records no `schema()` call.
+8. **Public membership wrapper.** `requireStaffCompanyPermission.ts` does not contain `schema('access')` or `schema("access")`. `public.is_company_member` is not security definer, and its body calls `access.is_company_member`. `fetchAll` returns no error and records no `schema()` call.
+9. **Staff, not a member.** `BLOCKED_BY_MISSING_PERMISSION`. No data and no relation read. No `schema()` call.
+10. **Member, not staff.** Same closed result.
+11. **Inactive staff.** Same closed result. The user is also a company member.
+12. **RPC error.** `EXECUTE` on `public.require_jj_staff(text[])` is revoked from `authenticated` for the case, then granted again. Same closed result.
+13. **Unauthenticated.** Same closed result.
+14. **`finance.is_active_jj_staff`.** The installed body is the migration body (it reads `jj_staff_config` and `is_active`). It is true only for active staff. The app does not call this helper. `finance` is not a PostgREST schema.
+
+The same three paths are also driven with mocks, not throwaway Postgres, by `directServiceClientsCompanyGate.behavior.test.ts` (one company, resolver throw / null / undefined / empty, staff+non-member, member+non-staff, inactive staff, RPC error, unauthenticated) and by `directServiceClientsCompanyGate.serviceKey.test.ts` (missing service key does not use the anon key; null or undefined company id returns no dashboard data, throws from ownership, and sends no read; the decision path is blocked before a relation read).
+
+### Coverage of the 70 user-reachable readers
+
+User-reachable is 6 page/route + 16 action + 48 library. The factory source scan (case 1) plus the factory refusals (cases 2–5) apply to all 70. A row below names a direct test only when that test imports the reader, or the page that calls it, and runs it. `loadFinanceDecision` does not call `logDecision`.
+
+Where the direct-test cell says "No direct test", the factory guard is the coverage: case 1 requires `await createServiceClient()` on every non-comment production call, and `createServiceClient` awaits `requireStaffCompanyPermission()` before `rawServiceClient()`. Cases 2–5 show that factory throws `BLOCKED_BY_MISSING_PERMISSION` for no staff role, membership false, membership null, and an unauthenticated session, and the no-staff and unauthenticated cases open no service connection. "No test file names this module" means no test file contains that module path or its basename as an import. That absence does not leave the reader unguarded.
+
+### page/route (6)
+
+| Path | Direct test |
+|---|---|
+| `src/app/(app)/finance/external-partner/avi/operations/page.tsx` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/app/(app)/owners/[slug]/page.tsx` | No direct test. Factory scan (case 1) plus factory cases 2–5. No test file names this module. |
+| `src/app/(app)/owners/[slug]/report/pdf/route.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/app/(app)/owners/[slug]/statement/ltr/page.tsx` | No direct test. Factory scan (case 1) plus factory cases 2–5. No test file names this module. |
+| `src/app/(app)/owners/new/page.tsx` | No direct test. Factory scan (case 1) plus factory cases 2–5. No test file names this module. |
+| `src/app/(app)/page.tsx` | behavior `fetchAll`; serviceKey CEO page; throwaway `fetchAll` |
+
+### action (16)
+
+| Path | Direct test |
+|---|---|
+| `src/lib/auth/reportAuthorization.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/legacy/staffRentalContracts.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/legacy/staffViewActions.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/owners/billingActions.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/owners/brokerageActions.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/owners/createOwnerAction.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. No test file names this module. |
+| `src/lib/owners/depositActions.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/owners/managementFeeActions.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/owners/rentalContractActions.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/owners/rentObligationActions.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/owners/serviceEngagementActions.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/owners/tenantChargeActions.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/owners/tenantSettlementActions.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. No test file names this module. |
+| `src/lib/owners/utilityActions.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/statements/statementLifecycleActions.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. No test file names this module. |
+| `src/lib/transactions/correctionWorkspaceActions.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+
+### user-reachable library (48)
+
+| Path | Direct test |
+|---|---|
+| `src/lib/ceo/companyDataService.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/dal/resolvePrincipal.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/executive/executiveBriefService.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. No test file names this module. |
+| `src/lib/finance/certifiedClientSettlementAdapter.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/finance/computeFinancialPosition.ts` | `loadFinanceDecision` in behavior, serviceKey, and throwaway; source `.from()` check in `directServiceClientsCompanyGate.test.ts` |
+| `src/lib/finance/evaluateClaim.ts` | called from `computeFinancialPosition` and `evaluateDecision` during that load; source `.from()` check in `directServiceClientsCompanyGate.test.ts` |
+| `src/lib/finance/evaluateDecision.ts` | `loadFinanceDecision` in behavior, serviceKey, and throwaway (it calls `evaluateClaim`); source `.from()` check in `directServiceClientsCompanyGate.test.ts` |
+| `src/lib/finance/logDecision.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. No test file names this module. |
+| `src/lib/finance/ownerLevelPaymentAdapter.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. No test file names this module. |
+| `src/lib/identity/identityResolverService.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/identity/partyResolverService.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/identity/propertyResolverService.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. No test file names this module. |
+| `src/lib/lifecycle/partnerAuthService.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/lifecycle/partnerStatementService.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/lifecycle/timelineService.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/money/moneyPositionService.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. No test file names this module. |
+| `src/lib/nav/resolveFrameUser.ts` | serviceClientFailClosed case 6 (`resolveFrameUser`) |
+| `src/lib/owners/depositAdapter.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/owners/managementFeeAdapter.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/owners/ownerAuditAdapter.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/owners/ownerFinancialAdapter.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/owners/ownerPortfolioAdapter.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/owners/ownerReservationAdapter.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/owners/ownerServiceEngagementAdapter.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/owners/ownerSettlementAdapter.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/owners/ownerStrAuditAdapter.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/owners/ownerStrCockpit.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/owners/ownerWorkspaceService.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/owners/rentalContractAdapter.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. No test file names this module. |
+| `src/lib/owners/rentPositionAdapter.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/owners/strStatementPdfScopeServer.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. No test file names this module. |
+| `src/lib/owners/tenantChargeAdapter.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/ownership/orchestrator.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/ownership/ownershipService.ts` | behavior, serviceKey, throwaway, and the ownership describe in `directServiceClientsCompanyGate.test.ts` |
+| `src/lib/partner-settlement/adapters/cashboxReader.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/partner-settlement/adapters/ownerScopeReader.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/partner-settlement/adapters/ownershipReader.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/partner-settlement/adapters/propertyReader.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/partner-settlement/adapters/receivablesReader.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/partner-settlement/adapters/transactionsReader.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/partner-settlement/external-partner/externalPartnerTransactionsSource.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/partner-settlement/partnerReportBService.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/report/fetchReport.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/report/str/ownerStrStatementService.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/statements/statementAuthService.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/statements/statementBuilderService.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. No test file names this module. |
+| `src/lib/statements/statementContextResolver.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+| `src/lib/transactions/resolveBoundCorrectionSeries.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
+
