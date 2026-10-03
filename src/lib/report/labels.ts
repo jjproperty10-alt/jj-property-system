@@ -221,7 +221,7 @@ const L = {
                           he: 'פירוט פעילות תומך — אינו יתרת ההתחשבנות הסופית' },
   certOwnerOwesJj:      { en: '{owner} owes JJ',                           he: '{owner} חייב ל-JJ' },
   certPayableToJjByOwner: { en: 'Payable to JJ by {owner}',                 he: 'לתשלום ל-JJ על ידי {owner}' },
-  certJjOwesOwner:      { en: 'JJ owes {owner}',                           he: 'JJ חייב ל-{owner}' },
+  certJjOwesOwner:      { en: 'JJ owes {owner}',                           he: 'JJ חייבת ל-{owner}' },
   certPayableToOwnerByJj: { en: 'Payable to {owner} by JJ',                 he: 'לתשלום ל-{owner} על ידי JJ' },
   certDefaultOwner:     { en: 'The client',                                he: 'הלקוח' },
   certCutoffLabel:      { en: 'Report cutoff',                             he: 'מועד חתך הדוח' },

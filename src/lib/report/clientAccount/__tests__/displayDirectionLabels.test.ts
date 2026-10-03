@@ -2,6 +2,7 @@ import { propertyTotalDirection } from '../../../pdf/ClientAccountPdf'
 import { certifiedDirectionCopy } from '../../../pdf/CertifiedSettlementPdf'
 import type { ClientAccountDocument } from '../types'
 import type { CertifiedClientSettlementAvailable } from '../../../finance/certifiedClientSettlementTypes'
+import { tFill } from '../../labels'
 
 // Approved display rule (Yossi): positive = JJ owes the owner, negative = the owner owes JJ.
 // Internal due_to_jj is the opposite sign, so a negative due_to_jj must read as a credit
@@ -41,7 +42,8 @@ describe('certified cover direction copy', () => {
   test('JJ owes the client: hero says payable to the client by JJ (he)', () => {
     const c = certifiedDirectionCopy(dto('jj_owes_client'), 'he', 'תמיר')
     expect(line(c.heroPrefix, c.heroSuffix)).toBe('לתשלום לתמיר על ידי JJ')
-    expect(line(c.directionPrefix, c.directionSuffix)).toBe('JJ חייב לתמיר')
+    expect(line(c.directionPrefix, c.directionSuffix)).toBe('JJ חייבת לתמיר')
+    expect(tFill('certJjOwesOwner', 'he', { owner: 'תמיר' })).toBe('JJ חייבת ל-תמיר')
     expect(c.totalLabel).toContain('על ידי JJ')
   })
   test('JJ owes the client: hero says payable to the client by JJ (en)', () => {

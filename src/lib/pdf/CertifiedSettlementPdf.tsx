@@ -160,7 +160,7 @@ export function certifiedDirectionCopy(
     return {
       heroPrefix: lang === 'he' ? `לתשלום ל${owner} על ידי` : `Payable to ${owner} by`,
       directionPrefix: '',
-      directionSuffix: lang === 'he' ? `חייב ל${owner}` : `owes ${owner}`,
+      directionSuffix: lang === 'he' ? `חייבת ל${owner}` : `owes ${owner}`,
       totalLabel: tFill('certPayableToOwnerByJj', lang, { owner }),
     }
   }
