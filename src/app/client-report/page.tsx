@@ -26,8 +26,8 @@
 // ============================================================
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
 import { readStaffView } from '@/lib/legacy/staffViewActions'
+import { readContactOpeningBalances } from '@/lib/staff/restrictedStaffActions'
 import Link from 'next/link'
 import {
   RefreshCw, FileText, User, Building2, ArrowLeft,
@@ -401,41 +401,23 @@ async function fetchOpeningBalances(
   const result = new Map<string, OpeningBalanceEntry>()
   if (!contactId || propertyNames.length === 0) return result
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
-    .from('contact_opening_balances')
-    .select('id, property_name, balance_eur, as_of_date')
-    .eq('contact_id', contactId)
-    .in('property_name', propertyNames)
-    .lte('as_of_date', asOfDate)
-    .eq('is_voided', false)
-    .order('as_of_date', { ascending: false })
-
-  if (error) {
-    console.error('[CR opening balance] fetch error:', error)
-  }
-
-  // For each property, take the most recent row (already ordered DESC)
-  const seen = new Set<string>()
-  for (const row of (data ?? [])) {
-    if (!seen.has(row.property_name)) {
-      seen.add(row.property_name)
-      result.set(row.property_name, {
-        balance_eur: parseFloat(row.balance_eur),
-        as_of_date:  row.as_of_date,
-        id:          row.id,
-        source:      'db',
-      })
+  const loaded = await readContactOpeningBalances({ contactId, propertyNames, asOfDate })
+  if (!loaded.ok) {
+    console.error('[CR opening balance] fetch error:', loaded.error)
+    for (const propertyName of propertyNames) {
+      result.set(propertyName, { balance_eur: 0, as_of_date: null, id: null, source: 'default' })
     }
+    return result
   }
 
-  // Properties with no DB row → default to 0
-  for (const p of propertyNames) {
-    if (!result.has(p)) {
-      result.set(p, { balance_eur: 0, as_of_date: null, id: null, source: 'default' })
-    }
+  for (const entry of loaded.entries) {
+    result.set(entry.property_name, {
+      balance_eur: entry.balance_eur,
+      as_of_date: entry.as_of_date,
+      id: entry.id,
+      source: entry.source,
+    })
   }
-
   return result
 }
 

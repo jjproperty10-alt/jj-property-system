@@ -408,51 +408,9 @@ export async function getEntityTransactionCount(entityId: string): Promise<numbe
   return count ?? 0
 }
 
-// ─── Contacts ─────────────────────────────────────────────────────────────────
-
-export async function getContactLinks(propertyName: string): Promise<ContactLink[]> {
-  const { data, error } = await supabase
-    .from('contact_properties')
-    .select('*, contact:contacts(id, name, type)')
-    .eq('property_name', propertyName)
-  if (error) throw error
-  return (data ?? []).filter((r: ContactLink) => r.is_deleted !== true)
-}
-
-export async function searchContacts(query: string): Promise<Contact[]> {
-  const { data, error } = await supabase
-    .from('contacts')
-    .select('id, name, type')
-    .ilike('name', `%${query}%`)
-    .limit(10)
-  if (error) throw error
-  return (data ?? []).filter((c: Contact & { is_deleted?: boolean }) => c.is_deleted !== true)
-}
-
-export async function addContactLink(
-  contactId: string,
-  propertyName: string,
-  role: string,
-  status: string
-): Promise<void> {
-  const { error } = await supabase
-    .from('contact_properties')
-    .insert({
-      contact_id: contactId,
-      property_name: propertyName,
-      relationship_role: role,
-      confirmation_status: status,
-    })
-  if (error) throw error
-}
-
-export async function removeContactLink(linkId: string): Promise<void> {
-  const { error } = await supabase
-    .from('contact_properties')
-    .update({ is_deleted: true })
-    .eq('id', linkId)
-  if (error) throw error
-}
+// Contacts, contact_properties, and partnership_capital writes/reads that the
+// staff RLS drafts restrict live in src/lib/staff/restrictedStaffActions.ts.
+// They verify an active staff session before opening the service role.
 
 export async function getAccountingRules(): Promise<AccountingRule[]> {
   const { data, error } = await supabase
@@ -703,21 +661,3 @@ export async function getJJPropertyNetPosition(
   }
 }
 
-export async function upsertPartnershipCapital(row: {
-  property_name: string
-  partner_name: string
-  ownership_percent: number
-  entry_date: string | null
-  jj_original_acquisition_cost: number | null
-  partner_entry_valuation: number | null
-  amount_paid_by_partner: number
-  notes: string | null
-}): Promise<void> {
-  const { error } = await supabase
-    .from('partnership_capital')
-    .upsert(
-      { ...row, updated_at: new Date().toISOString() },
-      { onConflict: 'property_name,partner_name' }
-    )
-  if (error) throw error
-}

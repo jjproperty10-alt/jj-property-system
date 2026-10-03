@@ -14,10 +14,15 @@
 --   * revokes INSERT/UPDATE/DELETE (and TRUNCATE/REFERENCES/TRIGGER) from
 --     anon and authenticated; service_role keeps its table grants
 --   * adds public.admin_manage_user_role(), SECURITY DEFINER, search_path ''
---   * adds a BEFORE INSERT/UPDATE trigger that blocks self-escalation even
---     when the writer bypasses RLS
--- It does not replace finance.is_active_jj_admin(), finance.is_active_jj_staff(),
--- or public.require_jj_staff().
+--   * adds a BEFORE INSERT/UPDATE/DELETE trigger that blocks self-escalation
+--     even when the writer bypasses RLS
+--   * a caller who is not an active superadmin cannot grant superadmin, and
+--     cannot demote, deactivate, delete, or otherwise modify a superadmin row
+-- finance.is_active_jj_admin() stays true for an active ceo. That check is no
+-- longer enough to touch a superadmin row. No app path writes user_roles;
+-- the reads are service-role selects. This draft does not replace
+-- finance.is_active_jj_admin(), finance.is_active_jj_staff(), or
+-- public.require_jj_staff().
 --
 -- Repo bodies (not restated here):
 --   finance.is_active_jj_admin()  supabase/migrations/20260924180000_employee_config_staff_and_definer_search_path.sql
@@ -92,11 +97,31 @@ SET search_path = ''
 AS $$
 DECLARE
   actor uuid;
+  caller_is_superadmin boolean;
 BEGIN
   actor := auth.uid();
 
   IF actor IS NULL THEN
+    IF TG_OP = 'DELETE' THEN
+      RETURN OLD;
+    END IF;
     RETURN NEW;
+  END IF;
+
+  caller_is_superadmin := EXISTS (
+    SELECT 1
+    FROM public.user_roles AS role_row
+    WHERE role_row.user_id = actor
+      AND role_row.is_active IS TRUE
+      AND role_row.role = 'superadmin'
+  );
+
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.role = 'superadmin' AND NOT caller_is_superadmin THEN
+      RAISE EXCEPTION 'BLOCKED_BY_SUPERADMIN_PROTECT'
+        USING ERRCODE = '42501';
+    END IF;
+    RETURN OLD;
   END IF;
 
   IF TG_OP = 'INSERT' THEN
@@ -116,6 +141,19 @@ BEGIN
     END IF;
   END IF;
 
+  IF NOT caller_is_superadmin THEN
+    IF TG_OP = 'INSERT' AND NEW.role = 'superadmin' THEN
+      RAISE EXCEPTION 'BLOCKED_BY_SUPERADMIN_PROTECT'
+        USING ERRCODE = '42501';
+    END IF;
+    IF TG_OP = 'UPDATE'
+       AND (OLD.role = 'superadmin' OR NEW.role = 'superadmin')
+    THEN
+      RAISE EXCEPTION 'BLOCKED_BY_SUPERADMIN_PROTECT'
+        USING ERRCODE = '42501';
+    END IF;
+  END IF;
+
   RETURN NEW;
 END;
 $$;
@@ -124,7 +162,7 @@ REVOKE ALL ON FUNCTION public.user_roles_block_self_escalation() FROM PUBLIC, an
 GRANT EXECUTE ON FUNCTION public.user_roles_block_self_escalation() TO authenticated, service_role;
 
 CREATE TRIGGER user_roles_block_self_escalation
-  BEFORE INSERT OR UPDATE ON public.user_roles
+  BEFORE INSERT OR UPDATE OR DELETE ON public.user_roles
   FOR EACH ROW
   EXECUTE FUNCTION public.user_roles_block_self_escalation();
 
@@ -181,15 +219,19 @@ BEGIN
     RAISE EXCEPTION 'BLOCKED_BY_SELF_ESCALATION';
   END IF;
 
+  caller_is_superadmin := EXISTS (
+    SELECT 1
+    FROM public.user_roles AS role_row
+    WHERE role_row.user_id = actor
+      AND role_row.is_active IS TRUE
+      AND role_row.role = 'superadmin'
+  );
+
+  IF row_exists AND existing_role = 'superadmin' AND NOT caller_is_superadmin THEN
+    RAISE EXCEPTION 'BLOCKED_BY_SUPERADMIN_PROTECT';
+  END IF;
+
   IF p_role = 'superadmin' AND (NOT row_exists OR existing_role IS DISTINCT FROM 'superadmin') THEN
-    SELECT EXISTS (
-      SELECT 1
-      FROM public.user_roles AS role_row
-      WHERE role_row.user_id = actor
-        AND role_row.is_active IS TRUE
-        AND role_row.role = 'superadmin'
-    )
-    INTO caller_is_superadmin;
     IF NOT caller_is_superadmin THEN
       RAISE EXCEPTION 'BLOCKED_BY_SUPERADMIN_GRANT';
     END IF;

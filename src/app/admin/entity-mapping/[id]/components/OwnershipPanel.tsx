@@ -17,9 +17,9 @@ import {
   PartnershipCapital,
   closeOwnershipRow,
   getPartnershipCapital,
-  upsertPartnershipCapital,
   EUR,
 } from '@/lib/entity-registry'
+import { upsertPartnershipCapital } from '@/lib/staff/restrictedStaffActions'
 
 interface Props {
   entityId: string
@@ -157,7 +157,7 @@ export default function OwnershipPanel({ entityId, canonicalName, ownershipRows,
     if (!draft) return
     setSaving(true); setCapitalErr(null)
     try {
-      await upsertPartnershipCapital({
+      const saved = await upsertPartnershipCapital({
         property_name:                canonicalName,
         partner_name:                 partnerName,
         ownership_percent:            ownershipPct,
@@ -167,6 +167,7 @@ export default function OwnershipPanel({ entityId, canonicalName, ownershipRows,
         amount_paid_by_partner:       toNumOrNull(draft.amount_paid_by_partner) ?? 0,
         notes:                        draft.notes || null,
       })
+      if (!saved.ok) throw new Error(saved.error)
       await loadCapital()
       setEditing(null); setDraft(null)
       setSavedPartner(partnerName)

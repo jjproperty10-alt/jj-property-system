@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
 import { countStaffRentalContracts } from '@/lib/legacy/staffRentalContracts'
+import { countStaffContacts } from '@/lib/staff/restrictedStaffActions'
 import { PageShell, WorkspaceHeader } from '@/components/ds'
 import { Settings2, Users, Database, RefreshCw, CheckCircle, AlertCircle, KeyRound, Eye, EyeOff } from 'lucide-react'
 
@@ -31,7 +32,7 @@ export default function SettingsPage() {
       supabase.from('transactions').select('id', { count: 'exact', head: true }),
       supabase.from('properties').select('id', { count: 'exact', head: true }),
       countStaffRentalContracts(),
-      supabase.from('contacts').select('id', { count: 'exact', head: true }),
+      countStaffContacts(),
       supabase.from('property_ownership').select('id', { count: 'exact', head: true }),
     ])
     setEmployees((empRes.data ?? []) as EmployeeConfig[])
