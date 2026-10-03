@@ -52,7 +52,27 @@ export interface CreateOwnerInput {
 
 export type CreateOwnerResult =
   | { ok: true; entityId: string; slug: string }
-  | { ok: false; error: 'unauthenticated' | 'unauthorized' | 'validation' | 'duplicate_blocked' | 'db_error'; message: string }
+  | { ok: false; error: 'unauthenticated' | 'unauthorized' | 'validation' | 'duplicate_blocked' | 'company_context' | 'db_error'; message: string }
+
+// ─────────────────────────────────────────────────────────────
+// Company context (20261003130000)
+// ─────────────────────────────────────────────────────────────
+// lifecycle.create_owner_draft decides the operating company itself:
+// from the selected property_definitions (by UUID) or, with no property,
+// from the sole active company. The client never supplies a company UUID.
+// When the company cannot be verified the RPC fails closed with one of
+// these codes; surface them as a company_context error, not a generic
+// db_error, so nothing is retried with a guessed company.
+
+const OWNER_DRAFT_COMPANY_ERRORS = [
+  'BLOCKED_BY_COMPANY_CONTEXT',
+  'BLOCKED_BY_PARENT_COMPANY',
+] as const
+
+function ownerDraftCompanyError(message: string | null | undefined): string | null {
+  if (!message) return null
+  return OWNER_DRAFT_COMPANY_ERRORS.find((code) => message.includes(code)) ?? null
+}
 
 // ─────────────────────────────────────────────────────────────
 // Auth helpers (same pattern as reportAuthorization.ts)
@@ -234,6 +254,17 @@ export async function createOwnerAction(input: CreateOwnerInput): Promise<Create
 
     if (error) {
       console.error('[createOwnerAction] RPC error:', error)
+      const companyCode = ownerDraftCompanyError(error.message)
+      if (companyCode) {
+        return {
+          ok: false,
+          error: 'company_context',
+          message:
+            companyCode === 'BLOCKED_BY_PARENT_COMPANY'
+              ? 'The selected properties do not belong to one active company. Select properties from a single company.'
+              : 'The company for this owner could not be verified. Select at least one property, or ask an admin to resolve the company context.',
+        }
+      }
       return { ok: false, error: 'db_error', message: error.message ?? 'Database error' }
     }
 
