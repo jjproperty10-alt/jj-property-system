@@ -17,4 +17,10 @@ UNION ALL SELECT 'owner_postgres', (SELECT pg_get_userbyid(relowner)='postgres' 
 UNION ALL SELECT 'acl_unchanged', (SELECT relacl::text='{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}' FROM pg_class WHERE oid='public.v_contact_settlement'::regclass)
 UNION ALL SELECT 'not_security_invoker', (SELECT reloptions IS NULL FROM pg_class WHERE oid='public.v_contact_settlement'::regclass)
 UNION ALL SELECT 'summary_definition_unchanged', md5(pg_get_viewdef('public.v_contact_settlement_summary'::regclass,true))='edd2b35127b5299e4f6b66c62abac7b7'
-UNION ALL SELECT 'no_data_changed', (SELECT count(*) FROM public.transactions WHERE is_deleted)=2 AND (SELECT count(*) FROM public.transaction_exclusions WHERE is_active)=1;
+UNION ALL SELECT 'no_data_changed', (SELECT count(*) FROM public.transactions WHERE is_deleted)=2 AND (SELECT count(*) FROM public.transaction_exclusions WHERE is_active)=1
+UNION ALL SELECT 'shared_view_present', to_regclass('public.v_canonical_transaction_inclusion') IS NOT NULL
+UNION ALL SELECT 'decision_table_not_created', to_regclass('finance.canonical_inclusion_decisions') IS NULL
+UNION ALL SELECT 'certified_row_once_in_shared_view', (SELECT count(*) FROM public.v_canonical_transaction_inclusion WHERE id='00000000-0000-0000-0000-000000000001')=1
+UNION ALL SELECT 'certified_row_once_in_settlement', (SELECT count(*) FROM public.v_contact_settlement WHERE transaction_id='00000000-0000-0000-0000-000000000001')=1
+UNION ALL SELECT 'canonical_not_public', NOT has_table_privilege('anon','public.v_canonical_transaction_inclusion','SELECT')
+UNION ALL SELECT 'inclusion_fn_not_public', NOT has_function_privilege('anon','public.canonical_inclusion_decided(uuid)','EXECUTE');

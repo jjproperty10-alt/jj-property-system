@@ -5,14 +5,32 @@ This note is for JJ Manager before any apply. It does not authorise a restore.
 
 ## Sign convention
 
-**Positive = the owner owes JJ. Negative = JJ owes the owner.** This is the view logic.
+Two signs. They are opposites. Every amount below names which one it is.
 
-`v_contact_settlement_summary.net_jj_settlement` = Σ `settlement_amount` where `settlement_effect = 'INCREASES'` − Σ `settlement_amount` where `settlement_effect = 'REDUCES'`. `DEAL_ONLY` and `NO_EFFECT` count as 0.
+**View sign** (`v_contact_settlement` / `net_jj_settlement`): positive = the owner owes JJ. Negative = JJ owes the owner. This is the stored view. This draft does not flip it.
+
+**Display sign** (approved rule): positive = JJ owes the owner. Negative = the owner owes JJ. Display amount = −(view amount). Screens use `mapContactSettlementToDisplay` in `src/lib/owners/contactSettlementDisplay.ts`. The Hebrew sentence is `JJ חייבת ל-{owner}` when JJ owes, `{owner} חייב/חייבת ל-JJ` when the owner owes, and `היתרה אפס` at zero.
+
+This total is `net_jj_settlement`.
+
+`net_jj_settlement` = Σ `settlement_amount` where `settlement_effect = 'INCREASES'` − Σ `settlement_amount` where `settlement_effect = 'REDUCES'`. `DEAL_ONLY` and `NO_EFFECT` count as 0.
 
 - `INCREASES` is money the JJ side (Yossi, Jacob, JJ, Anastasia) paid out for or to the owner: Bank Payment to Owner, Management Fee (non-Airbnb), Client Sale Expenses / Sale Tax, purchase capital, and operational expenses paid by the JJ side on a mapped property.
 - `REDUCES` is money the JJ side took in for the owner: Platform Income, Rent, Tenant Payment, Staff Accommodation Rent, and Client/Owner → JJ payments.
 
-Neither view has a `COMMENT`. The reading is the CASE classes in the captured view. Delta below = draft − live.
+The view also classifies Sale and Purchase rows. `Purchase Contract`, `Sale Contract`, and `Renovation Contract` are `NO_EFFECT`, and the view's filter drops `NO_EFFECT`, so those contract rows are not in the output. Rows that are in the output include purchase capital (`category = Purchase`, subcategory other than `Purchase Contract`, payer not Client/Owner; amount `COALESCE(client_charge, amount_eur)`) and `Client Sale Expenses` / `Sale Tax`. The repo does not list those production rows or their amounts. Read-only:
+
+```sql
+SELECT contact_name, property_name, transaction_id, date, category, subcategory,
+       payer, payee, amount_eur, client_charge, settlement_class, settlement_effect,
+       settlement_amount
+FROM public.v_contact_settlement
+WHERE category IN ('Sale', 'Purchase')
+   OR subcategory IN ('Client Sale Expenses', 'Sale Tax')
+ORDER BY contact_name, date, transaction_id;
+```
+
+Neither view has a `COMMENT`. The reading is the CASE classes in the captured view. Delta below = draft − live, in the view sign.
 
 ## Source
 
@@ -22,7 +40,11 @@ Live definitions at that read: `v_contact_settlement` md5 `84b5a9448d4b8547b3616
 
 **Current / live** = `v_contact_settlement_summary` as it stands (the view `main` still has; this draft is not applied).
 
-**Draft** = the body of migration `20261003120000`, summed with the same `net_jj_settlement` CASE over `v_certified_ledger_transactions`.
+**Draft SQL** = migration `20261003120000` as written. It reads `public.v_canonical_transaction_inclusion`. That view applies the certified predicate, plus any future `finance.canonical_inclusion_decisions` row. This draft does not create that table and inserts no decision row, so the draft SQL figures equal the certified predicate.
+
+**Confirmed plan** = those draft figures, plus decision rows for pair 1 side A `cfb1b60c`, pair 2 side A `20eaeb18`, pair 4 side A `dc3d60fb`, and Uriel `ba646d2d` (1,800). The ids are not in the view. Choosing the canonical id does not by itself add the amount. Pair 5 side A `10622dde` is the canonical id and is held pending proof, so its 1,900.52 is not in the confirmed balance. Pair 3 stays held. Side B stays out. The 975 Kamares tenant payment of 2026-08-13 is not an include row.
+
+**Read** for every total in this note: 2026-10-03 18:00 Europe/Bucharest (the read recorded as about 18:00). **All 16** means Efi, Ilan & Ilana, Liora, Liron and Alon, Miranta, Ofri, Oren, Orit Rob, Oshrit, Roni, Sharon, Tamir, Tom, Uriel, Vard, Yogev. **Total (6)** means Liron and Alon, Ofri, Tamir, Tom, Uriel, Yogev.
 
 ## (a) Every contact
 
@@ -48,7 +70,9 @@ Row counts are in brackets. The six changed contacts match the earlier six-conta
 | Yogev | `4b5f6044-1b32-4d8a-99a3-12f5c32ae341` | −54,130.83 (34) | −54,261.97 (33) | −131.14 | 1 |
 | **All 16** | | **−548,062.15 (1,400)** | **−538,360.70 (1,385)** | **+9,701.45** | **15** |
 
-The six-contact subtotal remains −396,391.49 live and −386,690.04 draft. The other ten contribute 0 to the delta. 1,400 − 1,385 = 15.
+Scope of the All 16 total: the 16 names listed under Source, read 2026-10-03 18:00 Europe/Bucharest. View sign. Display sign of the same totals is +548,062.15 live and +538,360.70 draft (JJ owes the owners, in aggregate).
+
+**Total (6)** — Liron and Alon, Ofri, Tamir, Tom, Uriel, Yogev; same read; view sign — is −396,391.49 live and −386,690.04 draft. Display sign of that Total (6) is +396,391.49 live and +386,690.04 draft. The other ten contribute 0 to the draft-minus-live delta. 1,400 − 1,385 = 15.
 
 ## (b) The 15 removed rows
 
@@ -93,9 +117,52 @@ Group 1 by contact: Liron +450.00. Ofri +245.74 (56.27 + 189.47). Tamir −1,313
 
 `07859b5d` `deleted_by` on Production is `yossi (rollback pending manual review, via Cowork)`. The local fixture `supabase/tests/20260917224500_tamir_kiti_september/fixtures.sql` says `dedupe`. That fixture value is wrong for Production. The date 2026-06-16 and `deleted_at` 2026-07-11 19:12:09 UTC do match.
 
-### Finding (i) — draft view and the Uriel Kamares certification disagree by 1,800
+### Finding (i) — Uriel Kamares 1,800 is a documented inclusion
 
-Certification `ad2ba8fd-d3b1-4877-8cbf-38770aa1c8bf`, line `c28551e0-cf07-44b3-aec9-22f2e1206e93` (Uriel Kamares, −7,343.22) **counts Group 1 row `ba646d2d` (1,800.00) as received.** Its metadata has `additional_receipt_id = ba646d2d-…`, `source_row_is_deleted = true`, and `soft_delete_is_not_non_receipt = true`, from Yossi's 2026-09-23 decision that a soft-delete is not a non-receipt. The draft view drops `ba646d2d` because Group 1 stays out of the certified ledger. For that 1,800.00 the draft view and the certification disagree.
+Certification `ad2ba8fd-d3b1-4877-8cbf-38770aa1c8bf` (cert v3), line `c28551e0-cf07-44b3-aec9-22f2e1206e93` (Uriel Kamares, −7,343.22) counts `ba646d2d-9122-4909-ae02-8a67739a0172` (1,800.00, 2026-06-16) as received. JJ Evidence passed: that id is the line's `additional_receipt_id`. Yossi's 2026-09-23 decision stands and is not reopened: it is an extra rent receipt, and a soft-delete is not evidence of non-receipt.
+
+The confirmed plan counts it **once**, through the shared mechanism, as a future append-only decision row. The view does not contain the id. Evidence ref: `uriel-kamares-1800-additional-receipt-yossi-2026-09-23`. The row stays `is_deleted = true`. No exclusion flag is cleared. The other nine Group 1 rows stay out. `src/lib/ledger/certifiedLedger.ts` still rejects a soft-deleted row that has no documented inclusion; the test passes this id in the documented-inclusion set and expects it once.
+
+### The 975 Kamares tenant payment is not included
+
+Report only. The active 975 tenant payment of 2026-08-13 is not a decision row in this plan.
+
+Repo evidence for the certification's scope: `finance.client_settlement_certifications` has `as_of date` and no period columns (`supabase/migrations/20260919160000_client_settlement_certifications.sql`). The 2026-10-03 read recorded `ad2ba8fd` as applied, `as_of` 2026-08-31, `total_due_to_jj` 117,901.54. This task calls that certification v3; the same note calls `6cbafde3` the v2 predecessor of its Duplex line. A reader period, when the report type is `period_account`, must end on that `as_of` (`composeCertifiedAccount.ts`). The header itself is not a period.
+
+2026-08-13 is on or before 2026-08-31, so the payment date is inside the `as_of` cutoff. `inForce` keeps a row dated on or before `as_of` when the row is active and not deleted (`composeCertifiedAccount.ts`). That is the date window. It does not mean a certification line cites the payment.
+
+A repo text search does not find a 975 Kamares tenant payment, and it does not find that amount on a line of `ad2ba8fd`. The only additional receipt named on the Kamares line is `ba646d2d`. Whether any line metadata cites the 975 payment is not in the repo. This draft does not query Production. The read-only check is:
+
+```sql
+SELECT id, as_of, certification_type, status, version, total_due_to_jj
+FROM finance.client_settlement_certifications
+WHERE id = 'ad2ba8fd-d3b1-4877-8cbf-38770aa1c8bf';
+
+SELECT id, date, property_name, category, subcategory, payer, payee,
+       amount_eur, is_deleted, review_status
+FROM public.transactions
+WHERE property_name = 'Uriel Kamares'
+  AND date = DATE '2026-08-13'
+  AND amount_eur = 975
+  AND subcategory = 'Tenant Payment';
+
+SELECT l.id, l.property_name, l.component_code, l.amount_due_to_jj, l.metadata
+FROM finance.client_settlement_certification_lines l
+WHERE l.certification_id = 'ad2ba8fd-d3b1-4877-8cbf-38770aa1c8bf'
+  AND (
+    l.metadata::text ILIKE '%975%'
+    OR l.amount_due_to_jj IN (975, -975)
+    OR l.metadata::text ILIKE '%2026-08-13%'
+    OR l.metadata::text ILIKE '%' || (
+      SELECT t.id::text FROM public.transactions t
+      WHERE t.property_name = 'Uriel Kamares'
+        AND t.date = DATE '2026-08-13'
+        AND t.amount_eur = 975
+        AND t.subcategory = 'Tenant Payment'
+      LIMIT 1
+    ) || '%'
+  );
+```
 
 ### Finding (ii) — side B is out only by `review_status`
 
@@ -109,45 +176,68 @@ Certification `ad2ba8fd-d3b1-4877-8cbf-38770aa1c8bf`, line `c28551e0-cf07-44b3-a
 
 Side B is excluded **only** by `review_status = 'confirmed_duplicate'`. The 2026-06-29 dedup exclusions are inactive. Pair 2's side B never had an exclusion row. Both the live view and the certified ledger omit side B today. A later write that sets side B back to `active` or NULL would admit it again, with no active exclusion to stop it.
 
-## (c) Pairs 1–5 against the approved treatment
+## (c) Balances under the shared-inclusion plan
 
-Approved, and **not** implemented by migration `20261003120000`: restore side A of pairs **1, 2, 4, and 5** and count each once. Pair **3** (Tamir Dekelia, `82c8ee31`, Platform Income 3,404.03 on 2026-04-30) is **held** and stays out. Group 1 stays out of this view: a restore was recorded earlier and the write was not approved. Finding (i) is the place the certification already counts one of those Group 1 rows.
+Yossi 2026-10-03 18:10, option 1: each transaction is counted once, across every consumer, through one shared mechanism. The mechanism is drafted in migration `20261003120000` as `public.v_canonical_transaction_inclusion` and `public.canonical_inclusion_decided(uuid)`. The view contains no transaction id. A later migration, separately approved, creates the append-only table `finance.canonical_inclusion_decisions` and writes the rows. This draft does not create that table and does not write a row. Flags stay as they are.
 
-The draft today counts **neither** side of every pair. Side B stays out either way, and only because of `confirmed_duplicate`.
+| Item | Status | Amount | Effect if counted | In the confirmed balance? |
+|---|---|---:|---|---|
+| Pair 1 Ofri side A `cfb1b60c` | canonical side A, confirmed include. Side B `eb5256c8` stays out | 3,917.49 | REDUCES −3,917.49 | yes |
+| Pair 2 Ofri side A `20eaeb18` | canonical side A, confirmed include. Side B `49a6d8b5` stays out | 3,322.37 | INCREASES +3,322.37 | yes |
+| Pair 4 Tom side A `dc3d60fb` | canonical side A, confirmed include. Side B `6a24ba8c` stays out | 1,553.96 | REDUCES −1,553.96 | yes |
+| Uriel `ba646d2d` | confirmed include. Evidence ref `uriel-kamares-1800-additional-receipt-yossi-2026-09-23` | 1,800.00 | REDUCES −1,800.00 | yes |
+| Pair 3 Tamir `82c8ee31` | held | 3,404.03 | REDUCES −3,404.03 | no |
+| Pair 5 Uriel side A `10622dde` | canonical side A, held pending proof. Side B `9a5fdde0` stays out. The canonical label does not add the amount | 1,900.52 | REDUCES −1,900.52 | no |
+| Other Group 1 (9 rows) | out. The 1,800 above is the only Group 1 include | contribution −447.82 | see (b) | no |
+| Kamares tenant payment 2026-08-13 | report only, not an include | 975.00 | not in this plan | no |
 
-| Pair | Approved | What the draft does today |
-|---|---|---|
-| 1 Ofri `cfb1b60c` 3,917.49 REDUCES | count side A once | drops it |
-| 2 Ofri `20eaeb18` 3,322.37 INCREASES | count side A once | drops it |
-| 3 Tamir `82c8ee31` 3,404.03 REDUCES | held, do not count | drops it; matches the hold |
-| 4 Tom `dc3d60fb` 1,553.96 REDUCES | count side A once | drops it |
-| 5 Uriel `10622dde` 1,900.52 REDUCES | count side A once in the view | drops it |
+**Pair 5 is canonical and held.** Certification `ad2ba8fd` (applied, as_of 2026-08-31, total_due_to_jj 117,901.54; read 2026-10-03 18:00 Europe/Bucharest) line `e55e4b35` is Uriel Duplex `opening_property_obligation` 16,555.43, metadata `str_credit` 6,983.10, with no source transaction id. Nothing is counted on top of that certification until inclusion is proven. The 1,900.52 is not in the confirmed balance.
 
-**Pair 5 is not determinable from the database.** Certification `ad2ba8fd-d3b1-4877-8cbf-38770aa1c8bf` (applied, as_of 2026-08-31, total_due_to_jj 117,901.54) line `e55e4b35-507b-4b62-ac25-7012fc74b263` is Uriel Duplex `opening_property_obligation` 16,555.43, with metadata `str_credit` 6,983.10. That line stores no source transaction id. A text search did not find `10622dde`, `9a5fdde0`, or `1900.52` outside `transaction_exclusions`. `6983.1` appears only on that line, its v2 predecessor `6cbafde3-ebc2-4026-afe0-d3fb15b77201`, and their audit rows. **The rule stands: do not add 1,900.52 on top of `ad2ba8fd` until JJ Evidence verifies it.**
+Side B stays out because `review_status = 'confirmed_duplicate'`. The draft does not change that flag.
 
-Approved view = draft, plus side A of pairs 1, 2, 4, and 5 counted once, pair 3 still out, Group 1 still out. Unchanged contacts stay at the live figure.
+Confirmed plan = draft SQL, plus pair 1 side A, pair 2 side A, pair 4 side A, and `ba646d2d`. Amounts in this table are the view sign unless the display column says otherwise. Read: 2026-10-03 18:00 Europe/Bucharest.
 
-| Contact | Live | Draft today | Approved view | Approved − live |
-|---|---:|---:|---:|---:|
-| Liron and Alon | −46,915.74 | −47,365.74 | −47,365.74 | −450.00 |
-| Ofri | −6,074.15 | −5,724.77 | −6,319.89 | −245.74 |
-| Tamir | −97,015.66 | −92,298.59 | −92,298.59 | +4,717.07 |
-| Tom | −65,323.88 | −63,808.26 | −65,362.22 | −38.34 |
-| Uriel | −126,931.23 | −123,230.71 | −125,131.23 | +1,800.00 |
-| Yogev | −54,130.83 | −54,261.97 | −54,261.97 | −131.14 |
-| Other 10 | see (a) | same as live | same as live | 0.00 |
+| Contact | Live view | Draft SQL view | Confirmed view | Confirmed display (−view) | Confirmed view − live view |
+|---|---:|---:|---:|---:|---:|
+| Liron and Alon | −46,915.74 | −47,365.74 | −47,365.74 | +47,365.74 | −450.00 |
+| Ofri | −6,074.15 | −5,724.77 | −6,319.89 | +6,319.89 | −245.74 |
+| Tamir | −97,015.66 | −92,298.59 | −92,298.59 | +92,298.59 | +4,717.07 |
+| Tom | −65,323.88 | −63,808.26 | −65,362.22 | +65,362.22 | −38.34 |
+| Uriel | −126,931.23 | −123,230.71 | −125,030.71 | +125,030.71 | +1,900.52 |
+| Yogev | −54,130.83 | −54,261.97 | −54,261.97 | +54,261.97 | −131.14 |
+| **Total (6)** | **−396,391.49** | **−386,690.04** | **−390,639.12** | **+390,639.12** | **+5,752.37** |
+| Other 10 | see (a) | same as live | same as live | −(live view) | 0.00 |
+| **All 16** | **−548,062.15** | **−538,360.70** | **−542,309.78** | **+542,309.78** | **+5,752.37** |
 
-Ofri approved: −5,724.77 + (−595.12) = −6,319.89. Tom: −63,808.26 + (−1,553.96) = −65,362.22. Uriel: −123,230.71 + (−1,900.52) = −125,131.23. That Uriel view figure counts pair 5 once inside the view. It still omits Group 1 `ba646d2d` (1,800), which certification line `c28551e0` already counts as received. It does not answer whether 1,900.52 is already inside `str_credit` 6,983.10.
+Total (6) is Liron and Alon, Ofri, Tamir, Tom, Uriel, Yogev. All 16 is the list under Source. Both totals are the read of 2026-10-03 18:00 Europe/Bucharest. Display positive means JJ owes the owner.
+
+Ofri confirmed view: −5,724.77 + (−3,917.49) + 3,322.37 = −6,319.89. Tom: −63,808.26 + (−1,553.96) = −65,362.22. Uriel: −123,230.71 + (−1,800.00) = −125,030.71. Pair 5's 1,900.52 is not in the Uriel figure.
+
+Left out of the confirmed balance, same read, view sign:
+
+| Contact | Item | Amount left out |
+|---|---|---:|
+| Tamir | pair 3 held | 3,404.03 REDUCES |
+| Tamir | Group 1 four rows | contribution −1,313.04 |
+| Tom | Group 1 `98a46392` | contribution +38.34 |
+| Uriel | pair 5 canonical, held pending proof | 1,900.52 REDUCES |
+| Ofri | Group 1 `7acdcebd` + `07859b5d` | contribution +245.74 |
+| Liron and Alon | Group 1 `886b710b` | contribution +450.00 |
+| Yogev | Group 1 `b18d427d` | contribution +131.14 |
+
+Check, All 16, view sign, read 2026-10-03 18:00 Europe/Bucharest: rows left out contribute −3,404.03 − 1,900.52 − 447.82 = −5,752.37. −548,062.15 − (−5,752.37) = −542,309.78. The −447.82 is Group 1's −2,247.82 without the included −1,800.00. Total (6) moves by the same −5,752.37 because every left-out row is one of those six contacts: −396,391.49 − (−5,752.37) = −390,639.12.
 
 ## (d) Reconciliation
 
-| | EUR |
+Scope of this reconciliation: All 16 (the list under Source), view sign, read 2026-10-03 18:00 Europe/Bucharest. These are draft-SQL figures, before the planned decision rows. Display sign of the live total is +548,062.15 and of the draft total is +538,360.70.
+
+| | View EUR |
 |---|---:|
-| Live, all 16 contacts | −548,062.15 |
-| Draft, all 16 contacts | −538,360.70 |
-| Σ deltas (draft − live) | +9,701.45 |
-| Σ contributions of the 15 removed rows | −9,701.45 |
-| Σ deltas + Σ contributions | 0.00 |
+| Live, All 16 | −548,062.15 |
+| Draft SQL, All 16 | −538,360.70 |
+| Σ deltas (draft − live), All 16 | +9,701.45 |
+| Σ contributions of the 15 removed rows, All 16 | −9,701.45 |
+| Σ deltas + Σ contributions, All 16 | 0.00 |
 
 By bucket: pairs 1, 2, 4, 5 side A −4,049.60 (−3,917.49 + 3,322.37 − 1,553.96 − 1,900.52). Pair 3 −3,404.03. Group 1 −2,247.82. Total −9,701.45.
 
@@ -162,12 +252,13 @@ By bucket: pairs 1, 2, 4, 5 side A −4,049.60 (−3,917.49 + 3,322.37 − 1,553
 | Uriel | −1,900.52 − 1,800.00 = −3,700.52 | +3,700.52 |
 | Yogev | +131.14 | −131.14 |
 | Other 10 | 0 | 0.00 |
-| **Total** | **−9,701.45** | **+9,701.45** |
+| **Total, All 16, same read** | **−9,701.45** | **+9,701.45** |
 
 ## Still open
 
-1. Pair 5: whether 1,900.52 sits inside `str_credit` 6,983.10 on line `e55e4b35`. Not determinable from the database. JJ Evidence still has to verify it. Until then, do not add 1,900.52 on top of certification `ad2ba8fd`.
-2. Group 1 write is still not approved. The draft leaves all ten rows out. Certification line `c28551e0` already treats Uriel `ba646d2d` (1,800) as received, so those two consumers disagree by 1,800 until Yossi decides.
-3. Side B returns if its `review_status` is set back to `active` or NULL. The old exclusions will not stop it: four are inactive, and pair 2 never had one.
+1. Pair 5: `10622dde` is the canonical side A, and it still adds nothing. Whether 1,900.52 sits inside `str_credit` 6,983.10 on line `e55e4b35` is unproven. Until inclusion is decided, do not add 1,900.52 on top of certification `ad2ba8fd`.
+3. The 975 Kamares tenant payment of 2026-08-13: date is inside `as_of` 2026-08-31. Repo evidence does not show it on a certification line. It is not an include. The SELECT above is the check.
+4. Side B returns if its `review_status` is set back to `active` or NULL. The old exclusions will not stop it: four are inactive, and pair 2 never had one.
+5. Other consumers still use their own copies of the predicate. The switch plan is `docs/planning/canonical_transaction_inclusion_2026-10-03.md`.
 
 Do not merge. Do not apply. Do not deploy.

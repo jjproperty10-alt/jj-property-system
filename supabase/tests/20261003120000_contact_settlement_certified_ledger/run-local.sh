@@ -36,6 +36,7 @@ grep -v '^CREATE ROLE' "$HERE/00_bootstrap.sql" | "${PSQL[@]}" -d "$DB" -q
 "${PSQL[@]}" -d "$DB" -q -f "$HERE/10_fixtures.sql"
 "${PSQL[@]}" -d "$DB" -q -f "$ROOT/supabase/migrations/20261003120000_contact_settlement_certified_ledger.sql"
 "${PSQL[@]}" -d "$DB" -At -F '|' -f "$HERE/99_matrix.sql" >> /tmp/jj_cs_matrix.out
+"${PSQL[@]}" -d "$DB" -At -F '|' -f "$HERE/96_shared_inclusion.sql" >> /tmp/jj_cs_matrix.out
 # Re-running the migration must abort on the pre-check and leave the view unchanged.
 if "${PSQL[@]}" -d "$DB" -q -f "$ROOT/supabase/migrations/20261003120000_contact_settlement_certified_ledger.sql" 2>/dev/null; then
   echo "migration_rerun_aborts|f" >> /tmp/jj_cs_matrix.out; else echo "migration_rerun_aborts|t" >> /tmp/jj_cs_matrix.out; fi

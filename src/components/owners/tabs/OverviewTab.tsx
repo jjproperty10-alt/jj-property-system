@@ -12,6 +12,7 @@
 
 import { KpiCard, MoneyValue, AttentionBanner, EmptyState, UnknownValue } from '@/components/ds'
 import type { OwnerOverviewDTO } from '@/lib/owners/ownerWorkspaceTypes'
+import { mapContactSettlementToDisplay } from '@/lib/owners/contactSettlementDisplay'
 import { CertifiedSettlementSection } from '@/components/report/CertifiedSettlementSection'
 
 export interface OverviewTabProps {
@@ -44,6 +45,9 @@ const ACTIVITY_ICONS: Record<string, string> = {
 
 export function OverviewTab({ dto, ownerName }: OverviewTabProps) {
   const { financial, openItems, nextAction, upcomingPreview, contractRenewalAlert, recentActivity, certifiedSettlement } = dto
+  const contactDisplay = financial.balanceSource === 'contact_settlement' && financial.contactSettlementViewNet != null
+    ? mapContactSettlementToDisplay(Number(financial.contactSettlementViewNet), ownerName)
+    : null
 
   return (
     <div className="space-y-6">
@@ -73,9 +77,16 @@ export function OverviewTab({ dto, ownerName }: OverviewTabProps) {
           <KpiCard
             label="Balance"
             value={
-              financial.balanceEur != null
-                ? <MoneyValue amount={parseFloat(financial.balanceEur)} size="lg" />
-                : <UnknownValue reason="Opening balance pending" />
+              contactDisplay
+                ? (
+                  <span className="block text-right" dir="rtl">
+                    <MoneyValue amount={contactDisplay.displayAmount} size="lg" />
+                    <span className="block text-xs font-medium text-gray-600 mt-1">{contactDisplay.directionText}</span>
+                  </span>
+                )
+                : financial.balanceEur != null
+                  ? <MoneyValue amount={parseFloat(financial.balanceEur)} size="lg" />
+                  : <UnknownValue reason="Opening balance pending" />
             }
           />
           <KpiCard

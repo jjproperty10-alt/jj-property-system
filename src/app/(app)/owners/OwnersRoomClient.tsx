@@ -17,6 +17,7 @@ import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { StatusBadge } from '@/components/ds'
 import type { OwnersRoomDTO, OwnerRoomItemDTO, ConfigHealthState } from '@/lib/owners/ownerWorkspaceTypes'
+import { mapContactSettlementToDisplay } from '@/lib/owners/contactSettlementDisplay'
 
 // ─────────────────────────────────────────────────────────────
 // Config
@@ -200,6 +201,9 @@ function OwnerCard({ item }: { item: OwnerRoomItemDTO }) {
   const statusCfg = STATUS_CONFIG[item.statementStatus]
   const balanceCfg = BALANCE_CONFIG[item.balanceDirection]
   const healthBadge = HEALTH_BADGE_MAP[item.configHealth.state]
+  const contactDisplay = item.balanceSource === 'contact_settlement' && item.contactSettlementViewNet != null
+    ? mapContactSettlementToDisplay(Number(item.contactSettlementViewNet), item.identity.name)
+    : null
 
   return (
     <li>
@@ -247,12 +251,17 @@ function OwnerCard({ item }: { item: OwnerRoomItemDTO }) {
           <span className="text-xs text-gray-500 hidden sm:block">{statusCfg.label}</span>
         </div>
 
-        {/* Balance */}
-        {item.balanceEur != null && (
+        {/* Balance. Contact settlement uses the display mapping. Certified closing stays on its own labels. */}
+        {contactDisplay ? (
+          <div className="text-sm font-semibold flex-shrink-0 text-right" dir="rtl">
+            <div dir="ltr">€{contactDisplay.displayAmount.toLocaleString('en-IE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="text-xs font-medium text-gray-600">{contactDisplay.directionText}</div>
+          </div>
+        ) : item.balanceEur != null ? (
           <div className={`text-sm font-semibold flex-shrink-0 ${balanceCfg.className}`} dir="ltr">
             €{parseFloat(item.balanceEur).toLocaleString()}
           </div>
-        )}
+        ) : null}
 
         {/* Correction badge */}
         {item.openCorrectionCount > 0 && (

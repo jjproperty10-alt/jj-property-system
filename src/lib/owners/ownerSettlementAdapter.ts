@@ -6,10 +6,12 @@
  * Responsibility:
  * - Reads settlement balances from v_contact_settlement_summary (sole authority)
  * - Reads temporal transition status from settlement_temporal_transitions
- * - Derives balance direction from sign convention:
- *     positive net_jj_settlement = Client owes JJ
- *     negative net_jj_settlement = JJ owes Client
- *     zero = Settled
+ * - Keeps net_jj_settlement in the view sign:
+ *     positive = the owner owes JJ
+ *     negative = JJ owes the owner
+ *     zero = settled
+ *   The approved display rule is the reverse. Screens call
+ *   mapContactSettlementToDisplay. This adapter does not flip the number.
  * - Returns OwnerSettlementDTO — UI renders only, no recalculation
  *
  * Boundary rules:

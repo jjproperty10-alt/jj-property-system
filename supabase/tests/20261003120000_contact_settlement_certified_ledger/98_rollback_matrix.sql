@@ -2,4 +2,6 @@ SELECT 'rollback_restores_live_md5' AS check_name, md5(pg_get_viewdef('public.v_
 UNION ALL SELECT 'rollback_restores_before_totals', NOT EXISTS (
   (SELECT contact_id,total_rows,net_jj_settlement,net_deal_balance FROM public._snap WHERE phase='before')
   EXCEPT (SELECT contact_id,total_rows,net_jj_settlement,net_deal_balance FROM public.v_contact_settlement_summary))
-UNION ALL SELECT 'rollback_acl_unchanged', (SELECT relacl::text='{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}' FROM pg_class WHERE oid='public.v_contact_settlement'::regclass);
+UNION ALL SELECT 'rollback_acl_unchanged', (SELECT relacl::text='{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}' FROM pg_class WHERE oid='public.v_contact_settlement'::regclass)
+UNION ALL SELECT 'rollback_drops_shared_view', to_regclass('public.v_canonical_transaction_inclusion') IS NULL
+UNION ALL SELECT 'rollback_drops_shared_function', to_regprocedure('public.canonical_inclusion_decided(uuid)') IS NULL;

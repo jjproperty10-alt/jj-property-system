@@ -1,9 +1,11 @@
 -- ============================================================
 -- ROLLBACK for 20261003120000_contact_settlement_certified_ledger.sql
 -- Restores the exact captured Production definition of
--- public.v_contact_settlement. Do not run without a separate approval.
--- Does not touch data. public.v_contact_settlement_summary was not changed by
--- the migration; its captured definition is kept below as a reference only.
+-- public.v_contact_settlement, then drops the shared inclusion view and
+-- function this migration created. Do not run without a separate approval.
+-- Does not touch data and does not drop finance.canonical_inclusion_decisions
+-- (this migration does not create it). public.v_contact_settlement_summary was
+-- not changed; its captured definition is kept below as a reference only.
 --
 -- Captured read-only from Production vsiiprzjrstjcmjpwcrd (PostgreSQL 17.6) on
 -- 2026-10-03 (Bucharest) via pg_get_viewdef(oid, true) inside
@@ -38,8 +40,12 @@ BEGIN
             FROM pg_attribute a WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped)
     INTO v_smd5, v_scols
     FROM pg_class c WHERE c.oid = 'public.v_contact_settlement_summary'::regclass;
-  IF v_md5 IS DISTINCT FROM '3376f921ff58cfbdc2406bdb17fc2fd0' THEN
-    RAISE EXCEPTION 'rollback pre-check: v_contact_settlement definition md5 % <> expected 3376f921ff58cfbdc2406bdb17fc2fd0', v_md5;
+  IF v_md5 IS DISTINCT FROM '5858d732fc385d506a81d8de6ef7ad9b' THEN
+    RAISE EXCEPTION 'rollback pre-check: v_contact_settlement definition md5 % <> expected 5858d732fc385d506a81d8de6ef7ad9b', v_md5;
+  END IF;
+  IF to_regclass('public.v_canonical_transaction_inclusion') IS NULL
+     OR to_regprocedure('public.canonical_inclusion_decided(uuid)') IS NULL THEN
+    RAISE EXCEPTION 'rollback pre-check: shared inclusion objects missing';
   END IF;
   IF v_owner IS DISTINCT FROM 'postgres' OR v_acl IS DISTINCT FROM '{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}' OR v_opts IS NOT NULL THEN
     RAISE EXCEPTION 'rollback pre-check: owner/ACL/reloptions drift (owner %, acl %, opts %)', v_owner, v_acl, v_opts;
@@ -158,6 +164,9 @@ UNION ALL
      JOIN transactions t ON t.id = sa.transaction_id
      JOIN contacts c ON c.id = sa.contact_id
   WHERE sa.voided_at IS NULL AND (t.review_status = 'active'::text OR t.review_status IS NULL) AND t.property_name IS NULL;
+
+DROP VIEW public.v_canonical_transaction_inclusion;
+DROP FUNCTION public.canonical_inclusion_decided(uuid);
 
 -- Post-check: byte-identical to the captured Production definition.
 DO $guard$

@@ -15,38 +15,53 @@
 -- Bug: the live view admits rows on review_status only ('active' or NULL).
 -- It still counts soft-deleted rows (is_deleted = true) and rows that have an
 -- active public.transaction_exclusions entry. On 2026-10-03 that is 15 rows
--- across 6 contacts; excluding them moves net_jj_settlement by +9,701.45 in
--- total (Liron and Alon, Ofri, Tamir, Tom, Uriel, Yogev).
+-- across 6 contacts.
 --
--- Fix: both branches of the view (property_mapped and settlement_allocation)
--- read public.v_certified_ledger_transactions (migration 20260917090000)
--- instead of public.transactions. That view applies the canonical certified
--- predicate:
---   COALESCE(is_deleted, false) = false
---   AND (review_status = 'active' OR review_status IS NULL)
---   AND NOT EXISTS (active transaction_exclusions row)
--- The two review_status filters are removed because the certified predicate
--- already contains them. Every classification CASE, settlement_amount, join,
--- and column name/order/type is identical to the captured definition.
+-- Yossi 2026-10-03 18:10, option 1: one transaction is counted once across every
+-- consumer, through one shared inclusion mechanism. This draft creates that
+-- mechanism and points v_contact_settlement at it. It does not retarget any
+-- other consumer. The inventory and the later switch plan are in
+-- docs/planning/canonical_transaction_inclusion_2026-10-03.md.
+--
+-- Shared mechanism (no transaction id is written into either object):
+--   public.v_canonical_transaction_inclusion
+--     one row per transaction that is certified
+--       COALESCE(is_deleted, false) = false
+--       AND (review_status = 'active' OR review_status IS NULL)
+--       AND no active public.transaction_exclusions row
+--     OR that public.canonical_inclusion_decided(id) accepts.
+--   public.canonical_inclusion_decided(uuid)
+--     returns false until a future append-only table
+--     finance.canonical_inclusion_decisions exists. This draft does not create
+--     that table and does not insert any decision row. The column contract is
+--     described only in the planning doc. A later, separately approved
+--     migration creates the table. Inclusion of a soft-deleted or excluded row
+--     happens by a row in that table, not by clearing is_deleted, review_status,
+--     or transaction_exclusions, and not by an allowlist in this view.
+--
+-- Both branches of v_contact_settlement read the shared view. The two
+-- review_status filters are removed because the shared view already applies
+-- them. Every classification CASE, settlement_amount, join, and column
+-- name/order/type is identical to the captured definition.
 --
 -- public.v_contact_settlement_summary is NOT recreated. Its body reads only
 -- public.v_contact_settlement, so it inherits the fix with an unchanged
 -- definition. The guards below assert that it is unchanged.
 --
--- Planned inputs are deliberately NOT allowlisted in this view:
---   twin pairs 1, 2, 4 side A (cfb1b60c, 20eaeb18, dc3d60fb; DS-016, DS-008,
---   STR recon 2026-08-15), pair 5 side A (10622dde; Yossi 03.10 13:18 by ID,
---   twin 9a5fdde0 stays excluded), and Group 1 batch 2509d3ad (10 rows). All are soft-deleted; the pair rows
---   also carry an active transaction_exclusions entry. An allowlist would make
---   this view disagree with the certified ledger. Their impact is reported by
---   the read-only docs/planning/contact_settlement_planned_inputs_2026-10-03.sql.
---   They enter this view only after a separately approved data change makes
---   them certified (is_deleted = false AND exclusion deactivated).
--- Pair 3 (82c8ee31/e4a8a01c Tamir 3,404.03) is UNKNOWN and not counted.
+-- What is not written into this view (see the planning doc):
+--   Side A of pairs 1, 2, and 4, and the Uriel 1,800 receipt, are planned
+--   include rows in the future decision table. Naming a canonical id is not
+--   itself an include. Pair 5 side A is the canonical id and stays held:
+--   no include row, and nothing is added on top of certification ad2ba8fd.
+--   Side B stays out. Pair 3 stays held. The 975 Kamares tenant payment of
+--   2026-08-13 is not an include row. No transaction id is written here.
+--   Uriel 1,800 evidence ref:
+--   uriel-kamares-1800-additional-receipt-yossi-2026-09-23.
 --
--- Owner/grants: CREATE OR REPLACE VIEW keeps the owner (postgres) and the ACL.
--- No WITH (...) clause, so reloptions stay NULL as on Production. No GRANT or
--- REVOKE is issued. The DO blocks abort the transaction on any drift.
+-- Owner/grants: CREATE OR REPLACE VIEW keeps the owner (postgres) and the ACL
+-- of v_contact_settlement. No WITH (...) clause on that view, so its reloptions
+-- stay NULL as on Production. GRANT/REVOKE below apply only to the two new
+-- objects, which are not granted to PUBLIC. The DO blocks abort on any drift.
 --
 -- Rollback: supabase/rollbacks/20261003120000_contact_settlement_certified_ledger_rollback.sql
 -- ============================================================
@@ -88,6 +103,57 @@ BEGIN
   END IF;
 END
 $guard$;
+
+-- One inclusion decision for every consumer. No transaction id is hardcoded.
+-- The future decision table is not created here.
+CREATE OR REPLACE FUNCTION public.canonical_inclusion_decided(p_transaction_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SET search_path = pg_catalog
+AS $$
+DECLARE
+  v_hit boolean;
+BEGIN
+  IF p_transaction_id IS NULL
+     OR to_regclass('finance.canonical_inclusion_decisions') IS NULL THEN
+    RETURN false;
+  END IF;
+  EXECUTE
+    'SELECT EXISTS (
+       SELECT 1
+       FROM finance.canonical_inclusion_decisions AS d
+       WHERE d.transaction_id = $1
+         AND d.decision = ''include''
+         AND d.voided_at IS NULL
+     )'
+    INTO v_hit
+    USING p_transaction_id;
+  RETURN COALESCE(v_hit, false);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.canonical_inclusion_decided(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.canonical_inclusion_decided(uuid) TO service_role;
+
+CREATE OR REPLACE VIEW public.v_canonical_transaction_inclusion
+WITH (security_invoker = true) AS
+SELECT t.*
+FROM public.transactions t
+WHERE (
+    COALESCE(t.is_deleted, false) = false
+    AND (t.review_status = 'active' OR t.review_status IS NULL)
+    AND NOT EXISTS (
+      SELECT 1
+      FROM public.transaction_exclusions te
+      WHERE te.transaction_id = t.id
+        AND te.is_active = true
+    )
+  )
+  OR public.canonical_inclusion_decided(t.id);
+
+REVOKE ALL ON public.v_canonical_transaction_inclusion FROM PUBLIC;
+GRANT SELECT ON public.v_canonical_transaction_inclusion TO service_role;
 
 CREATE OR REPLACE VIEW public.v_contact_settlement AS
  WITH classified AS (
@@ -140,7 +206,7 @@ CREATE OR REPLACE VIEW public.v_contact_settlement AS
                     WHEN (t.payer = ANY (ARRAY['Yossi'::text, 'Jacob'::text, 'JJ'::text, 'Anastasia'::text])) AND (t.payee <> ALL (ARRAY['Yossi'::text, 'Jacob'::text, 'JJ'::text, 'Anastasia'::text])) AND t.property_name IS NOT NULL AND (t.subcategory <> ALL (ARRAY['Purchase Contract'::text, 'Sale Contract'::text, 'Renovation Contract'::text])) AND t.category <> 'Transfer'::text AND NOT ((t.subcategory = ANY (ARRAY['Cleaning'::text, 'Management Fee'::text])) AND t.category = 'Airbnb'::text) AND (t.subcategory <> ALL (ARRAY['Third-Party Payment'::text, 'Bank Payment to Owner'::text, 'Platform Income'::text, 'Rent'::text, 'Tenant Payment'::text, 'Staff Accommodation Rent'::text, 'Client Sale Expenses'::text, 'Sale Tax'::text])) AND NOT (t.category = 'Purchase'::text AND t.subcategory <> 'Purchase Contract'::text AND (COALESCE(t.payer, ''::text) <> ALL (ARRAY['Client'::text, 'Owner'::text]))) THEN COALESCE(t.client_charge, t.amount_eur)
                     ELSE t.amount_eur
                 END AS settlement_amount
-           FROM v_certified_ledger_transactions t
+           FROM v_canonical_transaction_inclusion t
         )
  SELECT c.id AS contact_id,
     c.name AS contact_name,
@@ -190,7 +256,7 @@ UNION ALL
     t.description,
     'settlement_allocation'::text AS source
    FROM settlement_allocation sa
-     JOIN v_certified_ledger_transactions t ON t.id = sa.transaction_id
+     JOIN v_canonical_transaction_inclusion t ON t.id = sa.transaction_id
      JOIN contacts c ON c.id = sa.contact_id
   WHERE sa.voided_at IS NULL AND t.property_name IS NULL;
 
@@ -215,8 +281,15 @@ BEGIN
             FROM pg_attribute a WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped)
     INTO v_smd5, v_scols
     FROM pg_class c WHERE c.oid = 'public.v_contact_settlement_summary'::regclass;
-  IF v_md5 IS DISTINCT FROM '3376f921ff58cfbdc2406bdb17fc2fd0' THEN
-    RAISE EXCEPTION 'post-check: v_contact_settlement definition md5 % <> expected 3376f921ff58cfbdc2406bdb17fc2fd0', v_md5;
+  IF v_md5 IS DISTINCT FROM '5858d732fc385d506a81d8de6ef7ad9b' THEN
+    RAISE EXCEPTION 'post-check: v_contact_settlement definition md5 % <> expected 5858d732fc385d506a81d8de6ef7ad9b', v_md5;
+  END IF;
+  IF to_regclass('public.v_canonical_transaction_inclusion') IS NULL
+     OR to_regprocedure('public.canonical_inclusion_decided(uuid)') IS NULL THEN
+    RAISE EXCEPTION 'post-check: shared inclusion objects missing';
+  END IF;
+  IF to_regclass('finance.canonical_inclusion_decisions') IS NOT NULL THEN
+    RAISE EXCEPTION 'post-check: this draft must not create the decision table';
   END IF;
   IF v_owner IS DISTINCT FROM 'postgres' OR v_acl IS DISTINCT FROM '{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}' OR v_opts IS NOT NULL THEN
     RAISE EXCEPTION 'post-check: owner/ACL/reloptions drift (owner %, acl %, opts %)', v_owner, v_acl, v_opts;

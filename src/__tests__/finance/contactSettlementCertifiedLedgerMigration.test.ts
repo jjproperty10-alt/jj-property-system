@@ -4,7 +4,7 @@ import { join } from 'path'
 const MIGRATION = '20261003120000_contact_settlement_certified_ledger.sql'
 const ROLLBACK = '20261003120000_contact_settlement_certified_ledger_rollback.sql'
 const LIVE_MD5 = '84b5a9448d4b8547b361602406bcf7e6'
-const NEW_MD5 = '3376f921ff58cfbdc2406bdb17fc2fd0'
+const NEW_MD5 = '5858d732fc385d506a81d8de6ef7ad9b'
 
 const strip = (s: string) =>
   s
@@ -23,33 +23,48 @@ const viewBody = (s: string) => {
 }
 
 describe('20261003120000 v_contact_settlement certified ledger', () => {
-  test('replaces only v_contact_settlement, never the summary', () => {
-    expect(ddl.match(/CREATE OR REPLACE VIEW/g)).toHaveLength(1)
+  test('replaces v_contact_settlement and adds the shared view, never the summary', () => {
+    expect(ddl.match(/CREATE OR REPLACE VIEW/g)).toHaveLength(2)
+    expect(ddl).toMatch(/CREATE OR REPLACE VIEW public\.v_canonical_transaction_inclusion/)
     expect(ddl).toMatch(/CREATE OR REPLACE VIEW public\.v_contact_settlement AS/)
     expect(ddl).not.toMatch(/CREATE OR REPLACE VIEW public\.v_contact_settlement_summary/)
     expect(ddl).not.toMatch(/DROP\s+VIEW/i)
+    expect(ddl).not.toMatch(/CREATE TABLE/i)
   })
 
-  test('both branches read the certified ledger, not raw transactions', () => {
+  test('both branches read the shared inclusion view, not raw transactions', () => {
     const body = viewBody(ddl)
-    expect(body.match(/v_certified_ledger_transactions t/g)).toHaveLength(2)
+    expect(body.match(/v_canonical_transaction_inclusion t/g)).toHaveLength(2)
+    expect(body).not.toMatch(/v_certified_ledger_transactions/)
     expect(body).not.toMatch(/\btransactions t\b(?! ON)/)
     expect(body).not.toMatch(/FROM transactions t/)
     expect(body).not.toMatch(/JOIN transactions t/)
     expect(body).not.toMatch(/review_status/)
   })
 
-  test('keeps owner, grants, and options; no security_invoker, no data writes', () => {
-    expect(ddl).not.toMatch(/\bGRANT\b|\bREVOKE\b|ALTER\s+VIEW|OWNER TO/i)
-    expect(ddl).not.toMatch(/security_invoker/i)
+  test('grants only the new objects; contact settlement keeps its options; no data writes', () => {
+    const body = viewBody(ddl)
+    expect(body).not.toMatch(/\bGRANT\b|\bREVOKE\b|security_invoker/i)
+    expect(ddl).not.toMatch(/ALTER\s+VIEW|OWNER TO/i)
+    expect(ddl).toMatch(/GRANT SELECT ON public\.v_canonical_transaction_inclusion TO service_role/)
+    expect(ddl).toMatch(/GRANT EXECUTE ON FUNCTION public\.canonical_inclusion_decided\(uuid\) TO service_role/)
     expect(ddl).not.toMatch(/\b(INSERT\s+INTO|UPDATE\s+public|DELETE\s+FROM|TRUNCATE)\b/i)
     expect(ddl).not.toMatch(/is_deleted\s*=\s*false\s*,|SET\s+is_deleted/i)
+    expect(ddl).toMatch(/to_regclass\('finance\.canonical_inclusion_decisions'\)/)
+    expect(ddl).not.toMatch(/CREATE\s+TABLE[\s\S]*canonical_inclusion_decisions/i)
   })
 
-  test('no planned-input allowlist inside the view', () => {
+  test('no planned-input allowlist inside the view or the function', () => {
     const body = viewBody(ddl)
-    for (const id of ['cfb1b60c', '20eaeb18', 'dc3d60fb', '10622dde', '82c8ee31', '2509d3ad', '7acdcebd']) {
+    const fnStart = ddl.indexOf('CREATE OR REPLACE FUNCTION public.canonical_inclusion_decided')
+    const fnEnd = ddl.indexOf('$$;', fnStart)
+    const fn = ddl.slice(fnStart, fnEnd)
+    for (const id of [
+      'cfb1b60c', 'eb5256c8', '20eaeb18', 'dc3d60fb', '10622dde', '82c8ee31',
+      '2509d3ad', '7acdcebd', 'ba646d2d',
+    ]) {
       expect(body).not.toContain(id)
+      expect(fn).not.toContain(id)
     }
   })
 
@@ -74,8 +89,8 @@ describe('20261003120000 v_contact_settlement certified ledger', () => {
       "WHERE sa.voided_at IS NULL AND (t.review_status = 'active'::text OR t.review_status IS NULL) AND t.property_name IS NULL",
     ])
     expect(added.map((l) => l.trim())).toEqual([
-      'FROM v_certified_ledger_transactions t',
-      'JOIN v_certified_ledger_transactions t ON t.id = sa.transaction_id',
+      'FROM v_canonical_transaction_inclusion t',
+      'JOIN v_canonical_transaction_inclusion t ON t.id = sa.transaction_id',
       'WHERE sa.voided_at IS NULL AND t.property_name IS NULL',
     ])
   })

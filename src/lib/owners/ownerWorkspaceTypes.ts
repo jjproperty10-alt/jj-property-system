@@ -325,6 +325,13 @@ export interface OwnerRoomItemDTO {
   isDraft: boolean
   /** Settlement temporal certification. Yellow = balance not fully certified due to ownership transition. */
   temporalStatus?: 'green' | 'yellow'
+  /**
+   * Where the headline balance came from.
+   * contact_settlement uses v_contact_settlement_summary and the display mapping.
+   */
+  balanceSource?: 'contact_settlement' | 'certified_closing' | 'unknown'
+  /** Raw view net_jj_settlement. Present only for contact_settlement. Not a display amount. */
+  contactSettlementViewNet?: string | null
 }
 
 export interface OwnersRoomDTO {
@@ -377,6 +384,10 @@ export interface OwnerOverviewDTO {
     balanceDirection: 'jj_owes_owner' | 'owner_owes_jj' | 'balanced'
     balanceEur: EuroAmount
     pendingEur: EuroAmount
+    /** contact_settlement headlines use mapContactSettlementToDisplay. */
+    balanceSource?: 'contact_settlement' | 'certified_closing' | 'unknown'
+    /** Raw view net. Set only when balanceSource is contact_settlement. */
+    contactSettlementViewNet?: string | null
     /** Last payment received date */
     lastPaymentAt: ISODate | null
     /** Next expected payment date */

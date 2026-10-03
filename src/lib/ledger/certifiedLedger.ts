@@ -19,14 +19,25 @@ export interface CertifiedLedgerRowInput {
   readonly review_status?: string | null
 }
 
+const NO_DOCUMENTED_INCLUSIONS: ReadonlySet<string> = new Set()
+
+/**
+ * Admission is the certified predicate, or one documented inclusion.
+ * A documented inclusion is an id supplied by the caller from the future
+ * append-only decision record. This function does not embed those ids.
+ * A row that satisfies both is still one admission: the result is a boolean.
+ * Flags on the row are not cleared.
+ */
 export function isCertifiedLedgerRow(
   row: CertifiedLedgerRowInput,
   activeExcludedIds: ReadonlySet<string>,
+  documentedInclusionIds: ReadonlySet<string> = NO_DOCUMENTED_INCLUSIONS,
 ): boolean {
-  if (row.is_deleted === true) return false
-  if (row.review_status != null && row.review_status !== 'active') return false
-  if (activeExcludedIds.has(row.id)) return false
-  return true
+  const byPredicate =
+    row.is_deleted !== true
+    && (row.review_status == null || row.review_status === 'active')
+    && !activeExcludedIds.has(row.id)
+  return byPredicate || documentedInclusionIds.has(row.id)
 }
 
 export type CertifiedLedgerAssembly<T> =

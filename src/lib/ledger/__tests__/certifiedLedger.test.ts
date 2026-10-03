@@ -58,7 +58,20 @@ describe('certified ledger predicate', () => {
     }), excluded)).toBe(false)
   })
 
-  it('excludes Uriel Kamares deleted €1,800', () => {
+  it('includes Uriel Kamares €1,800 exactly once via the documented inclusion', () => {
+    // JJ Evidence passed: cert v3 ad2ba8fd line c28551e0 additional_receipt_id.
+    // Yossi 2026-09-23: an extra rent receipt. Soft-delete is not evidence of non-receipt.
+    // The planned decision record carries this id. Evidence ref below.
+    // The SQL view does not hardcode the id. Without the record, the predicate still excludes it.
+    const evidenceRef = 'uriel-kamares-1800-additional-receipt-yossi-2026-09-23'
+    const documented = new Set([URIEL_1800])
+    const feed = [
+      row({ id: URIEL_1800, is_deleted: true, review_status: 'active' }),
+      row({ id: URIEL_1800, is_deleted: true, review_status: 'active' }),
+    ]
+    const once = [...new Set(feed.filter(r => isCertifiedLedgerRow(r, EMPTY, documented)).map(r => r.id))]
+    expect(evidenceRef).toBe('uriel-kamares-1800-additional-receipt-yossi-2026-09-23')
+    expect(once).toEqual([URIEL_1800])
     expect(isCertifiedLedgerRow(row({ id: URIEL_1800, is_deleted: true, review_status: 'active' }), EMPTY)).toBe(false)
   })
 })

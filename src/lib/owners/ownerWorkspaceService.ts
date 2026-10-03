@@ -169,6 +169,8 @@ export async function getOwnersRoom(asOf?: string): Promise<OwnersRoomDTO> {
       if (!isCertifiedAvailable(certified)) return
       item.balanceDirection = certifiedToOwnerBalanceDirection(certified.closingDueToJj)
       item.balanceEur = String(Math.abs(certified.closingDueToJj))
+      item.balanceSource = 'certified_closing'
+      item.contactSettlementViewNet = null
     }))
   }
 
@@ -210,6 +212,8 @@ function buildRoomItemsFromIdentities(owners: readonly ResolvedManagedIdentityDT
       statementStatus: FIXTURE_STATEMENT_STATUS,
       balanceDirection: settlement?.balanceDirection ?? FIXTURE_BALANCE_DIRECTION,
       balanceEur: settlement?.balanceEur ?? FIXTURE_OWNER_BALANCE_EUR,
+      balanceSource: settlement ? 'contact_settlement' : 'unknown',
+      contactSettlementViewNet: settlement?.netJjSettlement ?? null,
       lastStatementSentAt: null,
       nextActionSummary: null,
       openCorrectionCount: FIXTURE_OPEN_CORRECTIONS,
@@ -359,6 +363,8 @@ export async function getOwnerOverview(
       financial: {
         balanceDirection: certifiedToOwnerBalanceDirection(certified.closingDueToJj),
         balanceEur: String(Math.abs(certified.closingDueToJj)),
+        balanceSource: 'certified_closing',
+        contactSettlementViewNet: null,
         pendingEur: null,
         lastPaymentAt: null,
         nextPaymentAt: null,
@@ -373,10 +379,12 @@ export async function getOwnerOverview(
   }
 
   return {
-    financial: {
-      balanceDirection: settlement?.balanceDirection ?? 'balanced',
-      balanceEur: settlement?.balanceEur ?? null,
-      pendingEur: null,
+      financial: {
+        balanceDirection: settlement?.balanceDirection ?? 'balanced',
+        balanceEur: settlement?.balanceEur ?? null,
+        balanceSource: settlement ? 'contact_settlement' : 'unknown',
+        contactSettlementViewNet: settlement?.netJjSettlement ?? null,
+        pendingEur: null,
       lastPaymentAt: null,
       nextPaymentAt: null,
     },

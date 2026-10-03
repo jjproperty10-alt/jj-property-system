@@ -3,6 +3,16 @@
 Draft only. Not applied. No data, rows, flags, or exclusions change. Apply,
 merge, and any data restore each need their own explicit approval from Yossi.
 
+The current plan is `docs/planning/canonical_transaction_inclusion_2026-10-03.md`
+and the balances are in `docs/planning/v_contact_settlement_per_owner_impact_2026-10-03.md`.
+`v_contact_settlement` reads `public.v_canonical_transaction_inclusion`.
+Transaction ids are not written into that view. Pair 5 side A is canonical and
+held: naming it does not add 1,900.52 on top of certification `ad2ba8fd`.
+The view sign is the reverse of the approved display sign. The total is
+`net_jj_settlement`. Sections below that still say
+the view reads `v_certified_ledger_transactions` directly are the earlier draft
+and are superseded by the two notes above.
+
 ## What changes
 
 `public.v_contact_settlement` reads `public.v_certified_ledger_transactions`
@@ -18,7 +28,7 @@ Captured Production definitions (read-only, 2026-10-03, PostgreSQL 17.6):
 `postgres`, reloptions NULL, ACL `postgres` + `service_role` only. The migration
 aborts unless the live definition matches that md5, and checks after the
 replace that owner, ACL, options, columns, and the summary are unchanged.
-New definition md5 `3376f921ff58cfbdc2406bdb17fc2fd0`.
+New definition md5 `5858d732fc385d506a81d8de6ef7ad9b` (shared inclusion view; the earlier `3376f921…` hash was the direct certified-ledger draft).
 
 ## Why planned inputs are not in the view
 
