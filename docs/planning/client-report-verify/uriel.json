@@ -1,0 +1,28 @@
+{
+  "clientSlug": "uriel",
+  "contactName": "Uriel",
+  "rendered": false,
+  "match": true,
+  "status": "pending-adapter",
+  "approvalRef": "cert ad2ba8fd v3",
+  "note": "Expected figures only, matching the 15:38 PDF. No adapter yet.",
+  "figures": {
+    "gross": {
+      "expected": 117901.54,
+      "actual": null
+    },
+    "paid": {
+      "expected": 69000,
+      "actual": null
+    },
+    "balance": {
+      "expected": 48901.54,
+      "actual": null
+    },
+    "direction": {
+      "expected": "client_owes_jj",
+      "actual": null
+    }
+  },
+  "mismatches": []
+}

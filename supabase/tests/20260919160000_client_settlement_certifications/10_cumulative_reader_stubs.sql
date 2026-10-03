@@ -1,6 +1,7 @@
 -- Empty relations the cumulative reader references.
 -- Not a migration. The 20260919160000 runner installs these only so
--- 20261002150000 can replace the reader before the matrix.
+-- the unapproved draft supabase/drafts/20261002150000_certified_settlement_sequence_reader.sql
+-- can be applied by hand before the matrix. It is not under supabase/migrations.
 -- No rows: this fixture has no owner-level obligations or cash executions.
 
 CREATE TABLE IF NOT EXISTS finance.client_owner_level_obligations (

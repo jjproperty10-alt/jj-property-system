@@ -1,0 +1,54 @@
+{
+  "clientSlug": "orit-rob",
+  "contactName": "Orit Rob",
+  "rendered": true,
+  "match": true,
+  "status": "renderable",
+  "approvalRef": "0129011a119924d0b45b45f7482a88fef266977c0694e712397fa9d6cb916e4e",
+  "figures": {
+    "gross": {
+      "expected": 3322.52,
+      "actual": 3322.52
+    },
+    "paid": {
+      "expected": 2770,
+      "actual": 2770
+    },
+    "balance": {
+      "expected": 552.52,
+      "actual": 552.52
+    },
+    "direction": {
+      "expected": "client_owes_jj",
+      "actual": "client_owes_jj"
+    }
+  },
+  "text": {
+    "propertyLine": "יתרת הנכס לפני תשלומים כלליים",
+    "heroDirection": "אורית רוב חייבת ל־JJ.",
+    "jjOwesDirection": "JJ חייבת לאורית רוב.",
+    "bridge": [
+      {
+        "label": "יתרת הנכס לפני תשלומים כלליים",
+        "signedDueToJj": 3322.52
+      },
+      {
+        "label": "תשלום אפריל 2026",
+        "signedDueToJj": -1770
+      },
+      {
+        "label": "תשלום מאי 2026",
+        "signedDueToJj": -1000
+      },
+      {
+        "label": "יתרה לתשלום ל־JJ",
+        "signedDueToJj": 552.52
+      }
+    ],
+    "plainTextMissing": []
+  },
+  "mismatches": [],
+  "pdf": {
+    "missing": []
+  }
+}

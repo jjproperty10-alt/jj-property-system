@@ -1,4 +1,7 @@
 -- ============================================================
+-- UNAPPROVED DRAFT. Not a migration.
+-- This file was moved out of supabase/migrations into supabase/drafts so
+-- a pull request or `supabase db push` cannot apply it.
 -- finance.read_certified_client_settlement — cumulative applied openings
 -- LOCAL IMPLEMENTATION ONLY. Do not apply to Production, staging, or any
 -- remote database from this branch. Separate Yossi authorization required.

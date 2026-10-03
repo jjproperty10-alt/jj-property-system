@@ -12,6 +12,7 @@
     "test:coverage": "jest --coverage",
     "typecheck": "tsc --noEmit",
     "lint:report": "eslint --no-eslintrc --config .eslintrc.report.json --ext .ts,.tsx src/lib/report src/__tests__/report src/app/client-report-rc3 src/lib/pdf",
+    "report:verify": "tsx scripts/report-verify.ts",
     "check:whitelist": "node scripts/check-client-display-whitelist.mjs"
   },
   "dependencies": {
@@ -37,12 +38,14 @@
     "eslint": "^8",
     "eslint-config-next": "14.2.5",
     "jest": "^29",
+    "pdfjs-dist": "^4.10.38",
     "pg": "^8",
     "postcss": "^8",
     "react-test-renderer": "18.3.1",
     "tailwindcss": "^3.4.1",
     "ts-jest": "^29",
     "ts-node": "^10",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }

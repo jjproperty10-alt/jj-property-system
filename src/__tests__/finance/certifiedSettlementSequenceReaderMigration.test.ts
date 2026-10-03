@@ -1,8 +1,9 @@
-import { readFileSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 
 const MIGRATION = '20261002150000_certified_settlement_sequence_reader.sql'
-const sql = readFileSync(join(process.cwd(), 'supabase', 'migrations', MIGRATION), 'utf8')
+const DRAFT = join(process.cwd(), 'supabase', 'drafts', MIGRATION)
+const sql = readFileSync(DRAFT, 'utf8')
 
 function stripComments(source: string): string {
   return source
@@ -15,6 +16,13 @@ const executable = stripComments(sql)
 const rollback = sql.slice(sql.indexOf('-- ROLLBACK-BEGIN'), sql.indexOf('-- ROLLBACK-END'))
 
 describe('20261002150000 certified settlement sequence reader', () => {
+  test('stays in drafts so a migration runner cannot apply it', () => {
+    expect(existsSync(DRAFT)).toBe(true)
+    expect(existsSync(join(process.cwd(), 'supabase', 'migrations', MIGRATION))).toBe(false)
+    expect(sql).toMatch(/UNAPPROVED DRAFT/)
+    expect(sql).toMatch(/supabase\/drafts/)
+  })
+
   test('replaces only the finance reader and keeps its security contract', () => {
     expect(executable).toMatch(
       /CREATE OR REPLACE FUNCTION finance\.read_certified_client_settlement\(\s*p_entity_id UUID,\s*p_as_of\s+DATE\s*\)/,

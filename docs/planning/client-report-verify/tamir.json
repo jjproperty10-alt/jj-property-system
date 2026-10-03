@@ -1,0 +1,21 @@
+{
+  "clientSlug": "tamir",
+  "contactName": "Tamir",
+  "rendered": false,
+  "match": true,
+  "status": "pending-decision",
+  "note": "Pending a decision on cumulative vs separate. The unapproved draft reader is not used.",
+  "certs": [
+    {
+      "certPrefix": "280b7fbf",
+      "asOf": "2026-08-31",
+      "balance": -13248.75
+    },
+    {
+      "certPrefix": "890e86f9",
+      "asOf": "2026-09-17",
+      "balance": -720
+    }
+  ],
+  "mismatches": []
+}

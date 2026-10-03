@@ -107,7 +107,7 @@ const runtimeFiles = (): string[] => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name)
       if (entry.isDirectory()) {
-        if (entry.name !== '__tests__') walk(full)
+        if (entry.name !== '__tests__' && entry.name !== '__fixtures__') walk(full)
       } else if (/\.tsx?$/.test(entry.name)) {
         out.push(full)
       }

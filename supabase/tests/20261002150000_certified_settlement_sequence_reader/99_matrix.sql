@@ -1,4 +1,5 @@
--- Assertions after 20261002150000 replaces the finance reader.
+-- Assertions for the unapproved draft reader under supabase/drafts/20261002150000_certified_settlement_sequence_reader.sql.
+-- This file is a test, not a migration, and db push does not run the draft.
 -- Fail closed: any failed row is reported by the runner.
 
 CREATE TEMP TABLE matrix_result (
