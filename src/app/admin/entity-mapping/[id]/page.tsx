@@ -13,7 +13,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Building2, AlertTriangle } from 'lucide-react'
-import { getEntity, getAliases, getOwnership, EntityRegistry, EntityAlias, PartnershipOwnership, ENTITY_TYPE_LABELS, ENTITY_TYPE_COLORS, STATUS_LABELS, STATUS_COLORS } from '@/lib/entity-registry'
+import { EntityRegistry, EntityAlias, PartnershipOwnership, ENTITY_TYPE_LABELS, ENTITY_TYPE_COLORS, STATUS_LABELS, STATUS_COLORS } from '@/lib/entity-registry'
+import { getStaffEntity, listStaffAliases, listStaffOwnership } from '@/lib/staff/restrictedStaffActions'
 
 import IdentityPanel       from './components/IdentityPanel'
 import AliasPanel          from './components/AliasPanel'
@@ -38,14 +39,17 @@ export default function EntityDetailPage() {
     setLoading(true); setError(null)
     try {
       const [e, a, o] = await Promise.all([
-        getEntity(id),
-        getAliases(id),
-        getOwnership(id),
+        getStaffEntity(id),
+        listStaffAliases(id),
+        listStaffOwnership(id),
       ])
-      if (!e) { setError('Entity not found.'); return }
-      setEntity(e)
-      setAliases(a)
-      setOwnership(o)
+      if (!e.ok) throw new Error(e.error)
+      if (!a.ok) throw new Error(a.error)
+      if (!o.ok) throw new Error(o.error)
+      if (!e.entity) { setError('Entity not found.'); return }
+      setEntity(e.entity)
+      setAliases(a.aliases)
+      setOwnership(o.rows)
     } catch (err) {
       setError(String(err))
     } finally {

@@ -1,6 +1,15 @@
 'use server'
 
-import type { Contact, ContactLink } from '@/lib/entity-registry'
+import type {
+  AccountingRule,
+  ConfirmationStatus,
+  Contact,
+  ContactLink,
+  EntityAlias,
+  EntityRegistry,
+  EntityType,
+  PartnershipOwnership,
+} from '@/lib/entity-registry'
 import { authenticateStatementUser } from '@/lib/statements/statementAuthService'
 import { createServiceClient } from '@/lib/supabase'
 
@@ -39,6 +48,31 @@ async function openStaffDb(): Promise<{ ok: true; db: ReturnType<typeof createSe
   const auth = await authenticateStatementUser()
   if (!auth.ok) return { ok: false, error: 'not authorized' }
   return { ok: true, db: createServiceClient() }
+}
+
+/**
+ * File 3 writes partnership_capital only when finance.is_active_jj_admin() is true:
+ * an active jj_staff_config ceo, or an active user_roles superadmin.
+ * finance_admin and statement_operator are staff, and they are not admins.
+ */
+async function openAdminDb(): Promise<{ ok: true; db: ReturnType<typeof createServiceClient> } | Failure> {
+  const auth = await authenticateStatementUser()
+  if (!auth.ok) return { ok: false, error: 'not authorized' }
+  if (auth.staffRole === 'ceo' || auth.staffRole === 'superadmin') {
+    return { ok: true, db: createServiceClient() }
+  }
+  const db = createServiceClient()
+  const { data, error } = await db
+    .from('user_roles')
+    .select('role, is_active')
+    .eq('user_id', auth.userId)
+    .limit(1)
+  if (error) return { ok: false, error: 'not authorized' }
+  const row = Array.isArray(data) ? data[0] as { role?: string; is_active?: boolean } | undefined : undefined
+  if (!row || row.role !== 'superadmin' || row.is_active !== true) {
+    return { ok: false, error: 'not authorized' }
+  }
+  return { ok: true, db }
 }
 
 export type StaffContactRow = {
@@ -210,7 +244,7 @@ export async function upsertPartnershipCapital(row: {
     return { ok: false, error: 'invalid input' }
   }
 
-  const gate = await openStaffDb()
+  const gate = await openAdminDb()
   if (!gate.ok) return gate
   const { error } = await gate.db.from('partnership_capital').upsert(
     {
@@ -290,4 +324,216 @@ export async function readContactOpeningBalances(input: {
     }
   }
   return { ok: true, entries }
+}
+
+const ENTITY_TYPES: readonly EntityType[] = [
+  'client_property', 'partnership_property', 'jj_property', 'jj_internal',
+  'person', 'transfer_account', 'special_case',
+]
+const CONFIRMATION_STATUSES: readonly ConfirmationStatus[] = [
+  'confirmed', 'likely', 'needs_review', 'special_case',
+]
+const ALIAS_SOURCES: readonly EntityAlias['source'][] = ['case_variant', 'typo', 'historical', 'manual']
+
+function asNumber(value: unknown): number {
+  const parsed = Number.parseFloat(String(value ?? 0))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function nullableNumber(value: unknown): number | null | undefined {
+  if (value == null || value === '') return null
+  const parsed = typeof value === 'number' ? value : Number.parseFloat(String(value))
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+export async function getStaffEntity(id: string): Promise<{ ok: true; entity: EntityRegistry | null } | Failure> {
+  const entityId = cleanText(id, 80)
+  if (!entityId) return { ok: false, error: 'invalid input' }
+  const gate = await openStaffDb()
+  if (!gate.ok) return gate
+  const { data, error } = await gate.db.from('entity_registry').select('*').eq('id', entityId).limit(1)
+  if (error) return { ok: false, error: error.message }
+  const rows = (data ?? []) as EntityRegistry[]
+  return { ok: true, entity: rows[0] ?? null }
+}
+
+export async function listStaffEntities(filters?: {
+  entity_type?: EntityType[]
+  confirmation_status?: ConfirmationStatus[]
+  is_active?: boolean
+  search?: string
+}): Promise<{ ok: true; entities: EntityRegistry[] } | Failure> {
+  const types = filters?.entity_type ?? []
+  const statuses = filters?.confirmation_status ?? []
+  if (types.some(type => !ENTITY_TYPES.includes(type))) return { ok: false, error: 'invalid input' }
+  if (statuses.some(status => !CONFIRMATION_STATUSES.includes(status))) return { ok: false, error: 'invalid input' }
+  if (filters?.is_active != null && typeof filters.is_active !== 'boolean') return { ok: false, error: 'invalid input' }
+  const search = filters?.search == null || filters.search.trim() === '' ? null : cleanText(filters.search, 100)
+  if (filters?.search != null && filters.search.trim() !== '' && !search) return { ok: false, error: 'invalid input' }
+
+  const gate = await openStaffDb()
+  if (!gate.ok) return gate
+  let query = gate.db.from('entity_registry').select('*').order('canonical_name') as any
+  if (types.length) query = query.in('entity_type', types)
+  if (statuses.length) query = query.in('confirmation_status', statuses)
+  if (filters?.is_active !== undefined) query = query.eq('is_active', filters.is_active)
+  if (search) query = query.ilike('canonical_name', `%${search}%`)
+  const { data, error } = await query
+  if (error) return { ok: false, error: error.message }
+  return { ok: true, entities: (data ?? []) as EntityRegistry[] }
+}
+
+export async function updateStaffEntity(
+  id: string,
+  updates: Partial<Pick<EntityRegistry, 'display_name' | 'entity_type' | 'confirmation_status' | 'notes' | 'is_active'>>,
+): Promise<{ ok: true } | Failure> {
+  const entityId = cleanText(id, 80)
+  if (!entityId) return { ok: false, error: 'invalid input' }
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if ('display_name' in updates) {
+    const displayName = optionalText(updates.display_name)
+    if (displayName === undefined) return { ok: false, error: 'invalid input' }
+    patch.display_name = displayName
+  }
+  if ('notes' in updates) {
+    const notes = optionalText(updates.notes, 2000)
+    if (notes === undefined) return { ok: false, error: 'invalid input' }
+    patch.notes = notes
+  }
+  if ('entity_type' in updates) {
+    if (!updates.entity_type || !ENTITY_TYPES.includes(updates.entity_type)) return { ok: false, error: 'invalid input' }
+    patch.entity_type = updates.entity_type
+  }
+  if ('confirmation_status' in updates) {
+    if (!updates.confirmation_status || !CONFIRMATION_STATUSES.includes(updates.confirmation_status)) {
+      return { ok: false, error: 'invalid input' }
+    }
+    patch.confirmation_status = updates.confirmation_status
+  }
+  if ('is_active' in updates) {
+    if (typeof updates.is_active !== 'boolean') return { ok: false, error: 'invalid input' }
+    patch.is_active = updates.is_active
+  }
+  if (Object.keys(patch).length === 1) return { ok: false, error: 'invalid input' }
+
+  const gate = await openStaffDb()
+  if (!gate.ok) return gate
+  const { error } = await gate.db.from('entity_registry').update(patch).eq('id', entityId)
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
+export async function listStaffAliases(entityId: string): Promise<{ ok: true; aliases: EntityAlias[] } | Failure> {
+  const id = cleanText(entityId, 80)
+  if (!id) return { ok: false, error: 'invalid input' }
+  const gate = await openStaffDb()
+  if (!gate.ok) return gate
+  const { data, error } = await gate.db.from('entity_aliases').select('*').eq('entity_id', id).order('created_at')
+  if (error) return { ok: false, error: error.message }
+  return { ok: true, aliases: (data ?? []) as EntityAlias[] }
+}
+
+export async function addStaffAlias(
+  entityId: string,
+  aliasName: string,
+  source: EntityAlias['source'],
+): Promise<{ ok: true } | Failure> {
+  const id = cleanText(entityId, 80)
+  const name = cleanText(aliasName)
+  if (!id || !name || !ALIAS_SOURCES.includes(source)) return { ok: false, error: 'invalid input' }
+  const gate = await openStaffDb()
+  if (!gate.ok) return gate
+  const { error } = await gate.db.from('entity_aliases').insert({ entity_id: id, alias_name: name, source })
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
+export async function deactivateStaffAlias(aliasId: string): Promise<{ ok: true } | Failure> {
+  const id = cleanText(aliasId, 80)
+  if (!id) return { ok: false, error: 'invalid input' }
+  const gate = await openStaffDb()
+  if (!gate.ok) return gate
+  const { error } = await gate.db.from('entity_aliases').update({ is_active: false }).eq('id', id)
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
+export async function listStaffOwnership(
+  entityId: string,
+): Promise<{ ok: true; rows: PartnershipOwnership[] } | Failure> {
+  const id = cleanText(entityId, 80)
+  if (!id) return { ok: false, error: 'invalid input' }
+  const gate = await openStaffDb()
+  if (!gate.ok) return gate
+  const { data, error } = await gate.db
+    .from('partnership_ownership')
+    .select('*')
+    .eq('entity_id', id)
+    .order('effective_from')
+  if (error) return { ok: false, error: error.message }
+  const rows = ((data ?? []) as PartnershipOwnership[]).map(row => ({
+    ...row,
+    ownership_pct: asNumber(row.ownership_pct),
+  }))
+  return { ok: true, rows }
+}
+
+export async function insertStaffOwnership(row: Omit<PartnershipOwnership, 'id' | 'created_at'>): Promise<{ ok: true } | Failure> {
+  const entityId = cleanText(row.entity_id, 80)
+  const partnerName = cleanText(row.partner_name)
+  const status = cleanText(row.confirmation_status, 40)
+  const ownershipPct = nullableNumber(row.ownership_pct)
+  const capital = nullableNumber(row.capital_contribution_eur)
+  const profit = nullableNumber(row.profit_share_pct)
+  const loss = nullableNumber(row.loss_share_pct)
+  const from = optionalText(row.effective_from, 40)
+  const to = optionalText(row.effective_to, 40)
+  const settlement = optionalText(row.settlement_notes, 2000)
+  const notes = optionalText(row.notes, 2000)
+  if (
+    !entityId || !partnerName || !status
+    || ownershipPct == null
+    || capital === undefined || profit === undefined || loss === undefined
+    || from === undefined || to === undefined || settlement === undefined || notes === undefined
+  ) {
+    return { ok: false, error: 'invalid input' }
+  }
+  const gate = await openStaffDb()
+  if (!gate.ok) return gate
+  const { error } = await gate.db.from('partnership_ownership').insert({
+    entity_id: entityId,
+    partner_name: partnerName,
+    ownership_pct: ownershipPct,
+    capital_contribution_eur: capital,
+    profit_share_pct: profit,
+    loss_share_pct: loss,
+    settlement_notes: settlement,
+    effective_from: from,
+    effective_to: to,
+    confirmation_status: status,
+    notes,
+  })
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
+export async function closeStaffOwnership(id: string): Promise<{ ok: true } | Failure> {
+  const rowId = cleanText(id, 80)
+  if (!rowId) return { ok: false, error: 'invalid input' }
+  const gate = await openStaffDb()
+  if (!gate.ok) return gate
+  const { error } = await gate.db
+    .from('partnership_ownership')
+    .update({ effective_to: new Date().toISOString().split('T')[0] })
+    .eq('id', rowId)
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
+export async function listStaffAccountingRules(): Promise<{ ok: true; rules: AccountingRule[] } | Failure> {
+  const gate = await openStaffDb()
+  if (!gate.ok) return gate
+  const { data, error } = await gate.db.from('accounting_rules').select('*').order('entity_type')
+  if (error) return { ok: false, error: error.message }
+  return { ok: true, rules: (data ?? []) as AccountingRule[] }
 }

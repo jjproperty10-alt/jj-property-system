@@ -8,7 +8,10 @@ import {
   createStaffContact,
   deleteStaffContact,
   listContactLinks,
+  getStaffEntity,
+  listStaffAccountingRules,
   listStaffContacts,
+  listStaffEntities,
   readContactOpeningBalances,
   removeContactLink,
   searchStaffContacts,
@@ -169,11 +172,74 @@ describe('restricted staff actions', () => {
     expect(await upsertPartnershipCapital(row)).toEqual({ ok: false, error: 'not authorized' })
     expect(serviceMock).not.toHaveBeenCalled()
 
-    authMock.mockResolvedValue(staff)
+    authMock.mockResolvedValue({ ...staff, staffRole: 'ceo' })
     const saved = clientFor({})
     expect(await upsertPartnershipCapital(row)).toEqual({ ok: true })
     expect(saved.from).toHaveBeenCalledWith('partnership_capital')
+    expect(saved.from).not.toHaveBeenCalledWith('user_roles')
     expect(saved.query.upsert).toHaveBeenCalled()
+  })
+
+  test('non-admin staff cannot upsert partnership capital', async () => {
+    authMock.mockResolvedValue(staff)
+    const row = {
+      property_name: 'Villa Mazotos',
+      partner_name: 'Avi',
+      ownership_percent: 50,
+      entry_date: null,
+      jj_original_acquisition_cost: null,
+      partner_entry_valuation: 100,
+      amount_paid_by_partner: 10,
+      notes: null,
+    }
+    const query = builder({ data: [{ role: 'employee', is_active: true }] })
+    const from = jest.fn(() => query)
+    serviceMock.mockReturnValue({ from } as never)
+
+    expect(await upsertPartnershipCapital(row)).toEqual({ ok: false, error: 'not authorized' })
+    expect(from).toHaveBeenCalledWith('user_roles')
+    expect(from).not.toHaveBeenCalledWith('partnership_capital')
+    expect(query.upsert).not.toHaveBeenCalled()
+  })
+
+  test('an active superadmin can upsert partnership capital without a ceo staff role', async () => {
+    authMock.mockResolvedValue(staff)
+    const row = {
+      property_name: 'Villa Mazotos',
+      partner_name: 'Avi',
+      ownership_percent: 50,
+      entry_date: null,
+      jj_original_acquisition_cost: null,
+      partner_entry_valuation: 100,
+      amount_paid_by_partner: 10,
+      notes: null,
+    }
+    const query = builder({ data: [{ role: 'superadmin', is_active: true }] })
+    const from = jest.fn(() => query)
+    serviceMock.mockReturnValue({ from } as never)
+
+    expect(await upsertPartnershipCapital(row)).toEqual({ ok: true })
+    expect(query.upsert).toHaveBeenCalled()
+  })
+
+  test('staff can read the entity tables that file 5 restricts', async () => {
+    authMock.mockResolvedValue({ ok: false, error: 'NO_SESSION' })
+    expect(await getStaffEntity('entity-1')).toEqual({ ok: false, error: 'not authorized' })
+    expect(serviceMock).not.toHaveBeenCalled()
+
+    authMock.mockResolvedValue(staff)
+    const entity = clientFor({ data: [{ id: 'entity-1', canonical_name: 'Villa Mazotos' }] })
+    const loaded = await getStaffEntity('entity-1')
+    expect(loaded.ok).toBe(true)
+    expect(entity.from).toHaveBeenCalledWith('entity_registry')
+
+    const listed = clientFor({ data: [] })
+    expect((await listStaffEntities({ is_active: true })).ok).toBe(true)
+    expect(listed.from).toHaveBeenCalledWith('entity_registry')
+
+    const rules = clientFor({ data: [] })
+    expect((await listStaffAccountingRules()).ok).toBe(true)
+    expect(rules.from).toHaveBeenCalledWith('accounting_rules')
   })
 
   test('staff opening-balance read fills defaults and a guest gets nothing', async () => {
@@ -242,26 +308,11 @@ describe('anon singleton does not touch the restricted tables', () => {
     })
   }
 
-  test('the anon singleton remains only in entity-registry, off the locked tables', () => {
+  test('no application file imports the anon singleton', () => {
     const importers = files(root).filter(file =>
       fs.readFileSync(file, 'utf8').includes("import { supabase } from '@/lib/supabase'"),
     )
-    expect(importers.map(file => path.relative(process.cwd(), file))).toEqual(['src/lib/entity-registry.ts'])
-
-    const body = fs.readFileSync(importers[0], 'utf8')
-    const tables: string[] = []
-    const pattern = /\.from\('([^']+)'\)/g
-    let match: RegExpExecArray | null
-    while ((match = pattern.exec(body)) !== null) {
-      if (!tables.includes(match[1])) tables.push(match[1])
-    }
-    tables.sort()
-    expect(tables).toEqual([
-      'accounting_rules',
-      'entity_aliases',
-      'entity_registry',
-      'partnership_ownership',
-    ])
+    expect(importers).toEqual([])
   })
 
   test('no application file writes user_roles', () => {
@@ -269,8 +320,11 @@ describe('anon singleton does not touch the restricted tables', () => {
     for (const file of files(root)) {
       const body = fs.readFileSync(file, 'utf8')
       if (body.includes('admin_manage_user_role')) offenders.push(file)
-      if (!body.includes("from('user_roles')") && !body.includes('from("user_roles")')) continue
-      if (/\.(insert|update|delete|upsert)\(/.test(body)) offenders.push(file)
+      const chunks = body.split("from('user_roles')").slice(1)
+      for (const chunk of chunks) {
+        const untilNextFrom = chunk.split('.from(')[0]
+        if (/\.(insert|update|delete|upsert)\(/.test(untilNextFrom)) offenders.push(file)
+      }
     }
     expect(offenders).toEqual([])
   })

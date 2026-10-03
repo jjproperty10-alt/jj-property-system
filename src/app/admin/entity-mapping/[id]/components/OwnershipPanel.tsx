@@ -15,11 +15,10 @@ import { AlertTriangle, Info, ChevronDown, ChevronUp, Save, Pencil, X } from 'lu
 import {
   PartnershipOwnership,
   PartnershipCapital,
-  closeOwnershipRow,
   getPartnershipCapital,
   EUR,
 } from '@/lib/entity-registry'
-import { upsertPartnershipCapital } from '@/lib/staff/restrictedStaffActions'
+import { closeStaffOwnership, upsertPartnershipCapital } from '@/lib/staff/restrictedStaffActions'
 
 interface Props {
   entityId: string
@@ -125,7 +124,8 @@ export default function OwnershipPanel({ entityId, canonicalName, ownershipRows,
     if (!confirm('Close this ownership row? This records its end date as today.')) return
     setClosing(id); setOwnerErr(null)
     try {
-      await closeOwnershipRow(id)
+      const closed = await closeStaffOwnership(id)
+      if (!closed.ok) throw new Error(closed.error)
       onChanged()
     } catch (e) {
       setOwnerErr(extractError(e))
