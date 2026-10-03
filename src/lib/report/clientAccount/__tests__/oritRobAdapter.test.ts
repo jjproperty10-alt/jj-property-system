@@ -23,6 +23,7 @@ import { ClientAccountBlock } from '../composeCertifiedAccount'
 
 const readCertifiedClientSettlement = jest.fn()
 const transactionsQuery = jest.fn()
+const mockLedgerRows: { data: unknown[] } = { data: [] }
 
 jest.mock('@/lib/finance/certifiedClientSettlementAdapter', () => ({
   readCertifiedClientSettlement: (...args: unknown[]) => readCertifiedClientSettlement(...args),
@@ -52,7 +53,7 @@ jest.mock('@/lib/supabase', () => ({
               order: () => ({
                 range: async () => {
                   transactionsQuery()
-                  return { data: [], error: null }
+                  return { data: mockLedgerRows.data, error: null }
                 },
               }),
             }),
@@ -129,6 +130,7 @@ describe('Orit Rob adapter — fail closed', () => {
   beforeEach(() => {
     readCertifiedClientSettlement.mockReset()
     transactionsQuery.mockReset()
+    mockLedgerRows.data = []
   })
 
   test('the adapter carries identity and scope only — no amounts, ids or internal terms', () => {
@@ -204,6 +206,11 @@ describe('Orit Rob adapter — fail closed', () => {
 
   test('a certified settlement whose rows do not reconcile is blocked through the loader, never forced', async () => {
     readCertifiedClientSettlement.mockResolvedValue(FIXTURE_CERTIFIED)
+    mockLedgerRows.data = [
+      ledgerRow('bbdaca28-734d-43b5-88b8-4b7ff61390dc', '2026-05-15', 1, 'Management', 'Repairs', 'הכנה'),
+      ledgerRow('2e5dcf81-edaa-4e7a-81b6-869f0c132892', '2026-05-27', 1, 'Management', 'Repairs', 'ניקיון'),
+      ledgerRow('dc4e1b6f-18fe-4c79-a5d2-5c90573bf6f9', '2026-08-11', 1, 'Management', 'Electricity', 'חשמל'),
+    ]
     const result = await loadClientAccountReport(oritRobAdapter)
     expect(result.status).toBe('blocked')
     if (result.status === 'blocked') expect(result.code).toBe('BLOCKED_ACCOUNTING')

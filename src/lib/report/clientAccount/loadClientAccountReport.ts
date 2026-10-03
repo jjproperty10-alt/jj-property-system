@@ -114,6 +114,7 @@ export async function loadClientAccountReport(adapter: ClientReportAdapter): Pro
     const composition = compositionFromCertifiedSettlement({
       settlement,
       rows,
+      clientSlug: adapter.clientSlug,
       clientDisplayName: adapter.clientDisplayName,
       reportTitle: adapter.reportTitle,
       reportLanguage: adapter.reportLanguage,

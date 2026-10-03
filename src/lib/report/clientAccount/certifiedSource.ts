@@ -7,6 +7,7 @@
 
 import type { CertifiedClientSettlementAvailable, CertifiedClientSettlementDto } from '../../finance/certifiedClientSettlementTypes'
 import { ClientAccountBlock } from './composeCertifiedAccount'
+import { applyPresentationTags } from './presentationTags'
 import type {
   CertifiedStrMonthlySection,
   CertifiedStrMonthlyUnavailable,
@@ -86,6 +87,8 @@ export interface ClientEvidenceOverrides {
 export interface CertifiedCompositionRequest {
   readonly settlement: CertifiedClientSettlementDto
   readonly rows: readonly RawTransactionRow[]
+  /** Adapter client slug. Presentation tags apply only to this client. */
+  readonly clientSlug?: string
   readonly clientDisplayName: string
   readonly reportTitle: string
   readonly reportLanguage?: 'he' | 'en'
@@ -97,7 +100,7 @@ export interface CertifiedCompositionRequest {
 
 export type CertifiedCompositionResult =
   | { readonly status: 'ready'; readonly input: CompositionInput; readonly settlement: CertifiedClientSettlementAvailable }
-  | { readonly status: 'blocked'; readonly code: 'NO_CERTIFIED_SOURCE' | 'BLOCKED_ACCOUNTING'; readonly reason: string }
+  | { readonly status: 'blocked'; readonly code: 'NO_CERTIFIED_SOURCE' | 'BLOCKED_ACCOUNTING' | 'BLOCKED_PRESENTATION'; readonly reason: string }
 
 /** Property names the certification covers; rows outside them never enter the composition. */
 export function certifiedPropertyNames(settlement: CertifiedClientSettlementAvailable): string[] {
@@ -121,10 +124,16 @@ export function compositionFromCertifiedSettlement(request: CertifiedComposition
   const names = new Set(certifiedPropertyNames(settlement))
   let rows: LedgerRow[]
   try {
-    rows = request.rows
-      .filter((row) => row.property_name != null && names.has(row.property_name))
-      .map(toLedgerRow)
+    rows = applyPresentationTags(
+      request.rows
+        .filter((row) => row.property_name != null && names.has(row.property_name))
+        .map(toLedgerRow),
+      request.clientSlug,
+    )
   } catch (err) {
+    if (err instanceof ClientAccountBlock && err.code === 'BLOCKED_PRESENTATION') {
+      return { status: 'blocked', code: 'BLOCKED_PRESENTATION', reason: err.message }
+    }
     return { status: 'blocked', code: 'BLOCKED_ACCOUNTING', reason: err instanceof Error ? err.message : String(err) }
   }
   const evidence = request.evidence || {}

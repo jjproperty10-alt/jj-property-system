@@ -2,6 +2,7 @@
  * Orit Rob — period account through the universal engine.
  * Identity, scope, and Hebrew gender only. No amounts, balances, or transaction ids.
  * Display groups are row tags (displayGroupKey), not ids stored in this adapter.
+ * Reviewed presentation tags are applied for this client slug by the certified source.
  * The report stays blocked until a certified client settlement exists for this entity.
  */
 
