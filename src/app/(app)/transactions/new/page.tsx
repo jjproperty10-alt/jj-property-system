@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { createSupabaseBrowserClient } from '@/lib/supabase'
+import { createSupabaseBrowserClient } from '@/lib/supabaseBrowser'
 import { createAgentTransactionDraft } from '@/lib/transactions/agentDraftActions'
 import { DRAFT_NOT_POSTED_MESSAGE } from '@/lib/ledger/agentDraft'
 import {

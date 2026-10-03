@@ -22,9 +22,9 @@
  * Classification: Mechanical Refactor — no logic changes.
  */
 
-import { requireStaffCompanyPermission } from '@/lib/auth/requireStaffCompanyPermission'
 import { computeFinancialPosition } from '@/lib/finance/computeFinancialPosition'
 import { evaluateDecision } from '@/lib/finance/evaluateDecision'
+import { loadFinanceDecision, requireDecisionSessionUser } from '@/lib/finance/loadFinanceDecision'
 import { logDecision } from '@/lib/finance/logDecision'
 import { FinancialPositionCard } from '@/components/finance/FinancialPositionCard'
 import { ClaimBreakdown } from '@/components/finance/ClaimBreakdown'
@@ -52,26 +52,6 @@ function capitalize(s: string) {
 }
 
 // ── Server Action — logDecision on execute ───────────────────────────────────
-
-export async function requireDecisionSessionUser() {
-  const { userId } = await requireStaffCompanyPermission()
-  return { id: userId }
-}
-
-export async function loadFinanceDecision(params: {
-  entityId: string
-  entityType: string
-  periodStart: Date
-  periodEnd: Date
-  decisionType: string
-}) {
-  await requireStaffCompanyPermission()
-  const [position, decision] = await Promise.all([
-    computeFinancialPosition(params),
-    evaluateDecision(params),
-  ])
-  return { position, decision }
-}
 
 async function executeDecision(
   partner: string,

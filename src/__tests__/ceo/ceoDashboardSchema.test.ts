@@ -2,18 +2,20 @@ import { readFileSync } from 'fs'
 import { resolve } from 'path'
 
 const page = readFileSync(resolve(__dirname, '../../app/(app)/page.tsx'), 'utf8')
+const data = readFileSync(resolve(__dirname, '../../lib/ceo/fetchCeoDashboard.ts'), 'utf8')
 
 describe('CEO dashboard schema and phone layout', () => {
   it('does not query the missing settlement view or the missing profit column', () => {
-    expect(page).not.toContain("from('v_settlement_verification')")
-    expect(page).not.toContain('total_cash_position_profit,total_contract_profit')
-    expect(page).toContain("from('v_ceo_summary').select('*')")
+    const source = `${page}\n${data}`
+    expect(source).not.toContain("from('v_settlement_verification')")
+    expect(source).not.toContain('total_cash_position_profit,total_contract_profit')
+    expect(data).toContain("from('v_ceo_summary').select('*')")
     expect(page).toContain('UNAVAILABLE_METRIC')
     expect(page).toContain('<SettlementSection')
-    expect(page).toContain('settlement: null')
-    expect(page).not.toContain('Official Result')
-    expect(page).not.toContain('Delta:')
-    expect(page).not.toContain("?? 'Jacob pays Yossi'")
+    expect(data).toContain('settlement: null')
+    expect(source).not.toContain('Official Result')
+    expect(source).not.toContain('Delta:')
+    expect(source).not.toContain("?? 'Jacob pays Yossi'")
   })
 
   it('stacks cards below the sm breakpoint instead of forcing five columns', () => {
