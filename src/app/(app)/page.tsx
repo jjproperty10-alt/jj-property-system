@@ -20,7 +20,7 @@
 // Net company P&L: €10,719.61
 // ============================================================
 
-import { createClient } from '@supabase/supabase-js'
+import { createServiceClient } from '@/lib/supabase'
 import { UNAVAILABLE_METRIC } from '@/lib/legacy/staffMetricLabel'
 import { SettlementSection, type Settlement } from '@/components/ceo/SettlementSection'
 
@@ -128,28 +128,42 @@ function bgColor(val: unknown): string {
 }
 
 // ---- Supabase (server-side only) ----
+// Company-verified service client. These company-wide views are read only
+// after the company gate resolves a verified company; a refused context
+// (for example, two active companies) fails closed and no view is read.
 
-function getSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY!
-  )
-}
+const COMPANY_CONTEXT_BLOCKED = 'BLOCKED_BY_COMPANY_CONTEXT'
 
 // ---- Data Fetching ----
 
 async function fetchAll() {
-  const sb = getSupabase()
+  const sb = createServiceClient()
 
   // Production exposes v_ceo_summary, but not total_cash_position_profit and not
   // public.v_settlement_verification. select('*') keeps every column the view
   // actually returns. Missing keys stay unavailable; they are not replaced.
-  const [cashboxRes, anastasiaRes, summaryRes, plRes] = await Promise.all([
-    sb.from('v_cashbox_audit').select('*').order('cash_box_name'),
-    sb.from('v_anastasia_clearing').select('*').single(),
-    sb.from('v_ceo_summary').select('*').single(),
-    sb.from('v_jj_company_pl').select('*').single(),
-  ])
+  let results
+  try {
+    results = await Promise.all([
+      sb.from('v_cashbox_audit').select('*').order('cash_box_name'),
+      sb.from('v_anastasia_clearing').select('*').single(),
+      sb.from('v_ceo_summary').select('*').single(),
+      sb.from('v_jj_company_pl').select('*').single(),
+    ])
+  } catch (error) {
+    if (error instanceof Error && error.message === COMPANY_CONTEXT_BLOCKED) {
+      return {
+        cashboxes: [] as CashboxRow[],
+        settlement: null as Settlement | null,
+        anastasia: null as AnastasiaClearing | null,
+        summary: null as CeoSummary | null,
+        pl: null as CompanyPL | null,
+        errors: [COMPANY_CONTEXT_BLOCKED],
+      }
+    }
+    throw error
+  }
+  const [cashboxRes, anastasiaRes, summaryRes, plRes] = results
 
   return {
     cashboxes: (cashboxRes.data ?? []) as CashboxRow[],

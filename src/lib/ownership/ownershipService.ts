@@ -19,7 +19,7 @@
  *   Unit tests target resolveOwnership directly; no DB mock required.
  */
 
-import { createClient } from '@supabase/supabase-js'
+import { createServiceClient } from '@/lib/supabase'
 import type {
   EntityType,
   OwnershipStructureRow,
@@ -27,14 +27,9 @@ import type {
 } from './types'
 
 // ─── Supabase client ──────────────────────────────────────────────────────────
-// Uses the same env vars as the rest of the app.
-// Server-side only — never called from the browser.
-
-function getSupabaseClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  return createClient(url, key)
-}
+// Server-side only. Uses the company-gated service client from '@/lib/supabase'.
+// There is no anon-key fallback: a missing service key or a refused company
+// context fails visibly (BLOCKED_BY_COMPANY_CONTEXT is thrown, not swallowed).
 
 // ─── Raw DB row shapes (private to this module) ───────────────────────────────
 
@@ -129,8 +124,10 @@ export function resolveOwnership(
  * Queries entity_registry + partnership_ownership only.
  * Never reads property_owners.
  *
- * On any DB error or entity-not-found: returns a safe 100% passthrough record
+ * On a DB error or entity-not-found: returns a safe 100% passthrough record
  * so the report renders even without ownership data (graceful degradation).
+ * A refused company context is NOT a DB error: the gate rejects the read and
+ * this function rethrows, so no cross-company or unverified read is returned.
  *
  * @param propertyName  - canonical_name to look up in entity_registry
  * @param selectedOwner - partner name to resolve
@@ -142,7 +139,7 @@ export async function fetchOwnershipForProperty(
   referenceDate?: string,
 ): Promise<PropertyOwnershipRecord> {
   const refDate = referenceDate ?? new Date().toISOString().slice(0, 10)
-  const supabase = getSupabaseClient()
+  const supabase = createServiceClient()
 
   // ── 1. Look up entity in entity_registry ──────────────────────────────────
   const { data: entityData, error: entityError } = await supabase

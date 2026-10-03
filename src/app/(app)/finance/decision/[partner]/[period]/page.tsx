@@ -23,8 +23,7 @@
  */
 
 import { redirect } from 'next/navigation'
-import { cookies } from 'next/headers'
-import { createServerClient } from '@supabase/ssr'
+import { createSupabaseServerClient } from '@/lib/supabaseServer'
 import { computeFinancialPosition } from '@/lib/finance/computeFinancialPosition'
 import { evaluateDecision } from '@/lib/finance/evaluateDecision'
 import { logDecision } from '@/lib/finance/logDecision'
@@ -66,15 +65,12 @@ async function executeDecision(
 ): Promise<void> {
   'use server'
 
-  // Get current staff session for decidedBy
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } },
-  )
+  // Get current staff session for decidedBy.
+  // Session identity only: the cookie-aware anon-key client. No service key here;
+  // every data read below goes through createServiceClient() and its company gate.
+  const sessionClient = createSupabaseServerClient()
 
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await sessionClient.auth.getUser()
   if (!user) throw new Error('Not authenticated')
 
   // Re-compute position + evaluate decision at execution time

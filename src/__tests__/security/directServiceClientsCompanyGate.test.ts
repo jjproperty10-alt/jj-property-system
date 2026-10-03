@@ -1,0 +1,222 @@
+/**
+ * The three direct service-key clients (CEO dashboard, finance decision page,
+ * ownershipService) must go through the company-verified path:
+ *   - no service key outside src/lib/supabase.ts,
+ *   - company-wide reads wait for the verified company resolver and are never
+ *     sent when it refuses (cross-company / ambiguous context),
+ *   - no anon-key fallback in ownershipService.
+ */
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import path from 'node:path'
+import {
+  gateServiceReads,
+  SERVICE_ROLE_COMPANY_TABLES,
+  SERVICE_ROLE_COMPANY_WIDE_RELATIONS,
+} from '@/lib/auth/serviceRoleCompanyGate'
+
+const root = path.resolve(__dirname, '..', '..', '..')
+const read = (file: string) => readFileSync(path.join(root, file), 'utf8')
+
+const CEO_PAGE = 'src/app/(app)/page.tsx'
+const DECISION_PAGE = 'src/app/(app)/finance/decision/[partner]/[period]/page.tsx'
+const OWNERSHIP = 'src/lib/ownership/ownershipService.ts'
+
+type Filter = {
+  sent: number
+  eqs: string[]
+  eq: (column: string, value: string) => Filter
+  order: (column: string) => Filter
+  single: () => Filter
+  maybeSingle: () => Filter
+  then: (
+    onFulfilled?: ((value: unknown) => unknown) | null,
+    onRejected?: ((reason: unknown) => unknown) | null,
+  ) => Promise<unknown>
+}
+
+function mockClient(rows: Record<string, unknown>, log: Filter[]) {
+  const make = (relation: string): Filter => {
+    const filter: Filter = {
+      sent: 0,
+      eqs: [],
+      eq(column, value) {
+        filter.eqs.push(`${column}=${value}`)
+        return filter
+      },
+      order() {
+        return filter
+      },
+      single() {
+        return filter
+      },
+      maybeSingle() {
+        return filter
+      },
+      then(onFulfilled, onRejected) {
+        filter.sent += 1
+        return Promise.resolve({ data: rows[relation] ?? null, error: null }).then(onFulfilled, onRejected)
+      },
+    }
+    log.push(filter)
+    return filter
+  }
+  const client = {
+    from(relation: string) {
+      return { select: (..._args: unknown[]) => make(relation) }
+    },
+    schema() {
+      return client
+    },
+  }
+  return client
+}
+
+function listSourceFiles(dir: string, out: string[] = []): string[] {
+  for (const entry of readdirSync(path.join(root, dir))) {
+    const rel = path.join(dir, entry)
+    if (statSync(path.join(root, rel)).isDirectory()) {
+      if (entry === '__tests__' || entry === 'node_modules') continue
+      listSourceFiles(rel, out)
+    } else if (/\.(ts|tsx)$/.test(entry)) {
+      out.push(rel)
+    }
+  }
+  return out
+}
+
+describe('direct service-key clients use the company gate', () => {
+  test('no service key is read outside src/lib/supabase.ts', () => {
+    const offenders = listSourceFiles('src').filter((file) => {
+      if (file === path.join('src', 'lib', 'supabase.ts')) return false
+      return /process\.env\.SUPABASE_SERVICE/.test(read(file))
+    })
+    expect(offenders).toEqual([])
+  })
+
+  test('the three former direct clients no longer build their own client', () => {
+    for (const file of [CEO_PAGE, DECISION_PAGE, OWNERSHIP]) {
+      const source = read(file)
+      expect(source).not.toMatch(/process\.env\.SUPABASE_SERVICE/)
+      expect(source).not.toContain("from '@supabase/supabase-js'")
+      expect(source).not.toMatch(/\bcreateClient\(/)
+      expect(source).not.toMatch(/\bcreateServerClient\(/)
+    }
+    expect(read(CEO_PAGE)).toContain("import { createServiceClient } from '@/lib/supabase'")
+    expect(read(CEO_PAGE)).toContain('const sb = createServiceClient()')
+    expect(read(OWNERSHIP)).toContain("import { createServiceClient } from '@/lib/supabase'")
+    expect(read(OWNERSHIP)).not.toContain('NEXT_PUBLIC_SUPABASE_ANON_KEY')
+    expect(read(DECISION_PAGE)).toContain("import { createSupabaseServerClient } from '@/lib/supabaseServer'")
+    expect(read(DECISION_PAGE)).toContain('sessionClient.auth.getUser()')
+  })
+
+  test('every relation the CEO page and ownershipService read is gated', () => {
+    const ceo = read(CEO_PAGE)
+    const ownership = read(OWNERSHIP)
+    const relations = Array.from(`${ceo}\n${ownership}`.matchAll(/\.from\('([a-z_]+)'\)/g)).map((m) => m[1])
+    expect(relations.length).toBeGreaterThan(0)
+    for (const relation of relations) {
+      expect(
+        SERVICE_ROLE_COMPANY_TABLES.has(relation) || SERVICE_ROLE_COMPANY_WIDE_RELATIONS.has(relation),
+      ).toBe(true)
+    }
+  })
+
+  test('the company-wide set and the filtered set do not overlap', () => {
+    for (const relation of Array.from(SERVICE_ROLE_COMPANY_WIDE_RELATIONS)) {
+      expect(SERVICE_ROLE_COMPANY_TABLES.has(relation)).toBe(false)
+    }
+    expect(SERVICE_ROLE_COMPANY_TABLES.has('transactions')).toBe(false)
+  })
+
+  test('a company-wide read waits for the verified company and adds no filter', async () => {
+    const log: Filter[] = []
+    let resolved = 0
+    const db = gateServiceReads(mockClient({ v_cashbox_audit: [{ cash_box_name: 'JJ' }] }, log), async () => {
+      resolved += 1
+      return 'company-a'
+    })
+    const result = (await db.from('v_cashbox_audit').select('*')) as { data: unknown }
+    expect(result.data).toEqual([{ cash_box_name: 'JJ' }])
+    expect(resolved).toBe(1)
+    expect(log[0].eqs).toEqual([])
+    expect(log[0].sent).toBe(1)
+  })
+
+  test('a refused company context never sends a company-wide read', async () => {
+    const log: Filter[] = []
+    const db = gateServiceReads(mockClient({}, log), async () => {
+      throw new Error('BLOCKED_BY_COMPANY_CONTEXT')
+    })
+    for (const relation of Array.from(SERVICE_ROLE_COMPANY_WIDE_RELATIONS)) {
+      await expect(db.from(relation).select('*')).rejects.toThrow('BLOCKED_BY_COMPANY_CONTEXT')
+    }
+    expect(log.every((filter) => filter.sent === 0)).toBe(true)
+  })
+
+  test('ungated relations are unchanged', async () => {
+    const log: Filter[] = []
+    let resolved = 0
+    const db = gateServiceReads(mockClient({ user_roles: [] }, log), async () => {
+      resolved += 1
+      return 'company-a'
+    })
+    await db.from('user_roles').select('*')
+    expect(resolved).toBe(0)
+    expect(log[0].eqs).toEqual([])
+  })
+})
+
+describe('ownershipService fails closed on a refused company context', () => {
+  const log: Filter[] = []
+  let refuse = false
+  beforeEach(() => {
+    log.length = 0
+    refuse = false
+  })
+
+  jest.mock('@/lib/supabase', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { gateServiceReads: gate } = require('@/lib/auth/serviceRoleCompanyGate')
+    return {
+      createServiceClient: () =>
+        gate(
+          mockClient(
+            {
+              entity_registry: { id: 'entity-1', canonical_name: 'Unit 1', entity_type: 'client_property' },
+              partnership_ownership: [
+                {
+                  partner_name: 'Avi',
+                  ownership_pct: '50',
+                  effective_from: '2026-01-01',
+                  effective_to: null,
+                  confirmation_status: 'confirmed',
+                },
+              ],
+            },
+            log,
+          ),
+          async () => {
+            if (refuse) throw new Error('BLOCKED_BY_COMPANY_CONTEXT')
+            return 'company-a'
+          },
+        ),
+    }
+  })
+
+  test('verified context: reads entity_registry and partnership_ownership', async () => {
+    const { fetchOwnershipForProperty } = await import('@/lib/ownership/ownershipService')
+    const record = await fetchOwnershipForProperty('Unit 1', 'Avi', '2026-06-01')
+    expect(record.entityId).toBe('entity-1')
+    expect(record.ownershipPct).toBe(50)
+    expect(log.map((filter) => filter.sent)).toEqual([1, 1])
+  })
+
+  test('refused context: throws and sends nothing (no 100% passthrough)', async () => {
+    refuse = true
+    const { fetchOwnershipForProperty } = await import('@/lib/ownership/ownershipService')
+    await expect(fetchOwnershipForProperty('Unit 1', 'Avi', '2026-06-01')).rejects.toThrow(
+      'BLOCKED_BY_COMPANY_CONTEXT',
+    )
+    expect(log.every((filter) => filter.sent === 0)).toBe(true)
+  })
+})
