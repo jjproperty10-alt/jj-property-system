@@ -31,11 +31,16 @@ CALL test.expect_sqlstate(
 );
 CALL test.expect_eq(
   $$SELECT count(*)::text FROM public.case_audit_log$$,
-  '1',
-  'after: audit SELECT policy is still open to authenticated'
+  '0',
+  'after: non-staff reads 0 audit rows'
 );
 
 CALL test.assume('22222222-2222-4222-8222-222222222222', 'authenticated');
+CALL test.expect_eq(
+  $$SELECT count(*)::text FROM public.case_audit_log$$,
+  '1',
+  'after: staff reads case_audit_log'
+);
 CALL test.expect_eq(
   $$SELECT count(*)::text FROM public.contact_opening_balances$$,
   '1',

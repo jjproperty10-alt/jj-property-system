@@ -30,7 +30,7 @@ BEGIN
     IF NOT has_table_privilege('anon', format('public.%I', name), 'SELECT') THEN
       RAISE EXCEPTION 'anon lost SELECT on %', name;
     END IF;
-    FOREACH privilege IN ARRAY ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'] LOOP
+    FOREACH privilege IN ARRAY ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'MAINTAIN', 'REFERENCES', 'TRIGGER'] LOOP
       IF has_table_privilege('anon', format('public.%I', name), privilege) THEN
         RAISE EXCEPTION 'anon still has % on %', privilege, name;
       END IF;
@@ -62,6 +62,19 @@ BEGIN
       RAISE EXCEPTION 'service_role lost view access on %', name;
     END IF;
   END LOOP;
+  IF EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_class AS relation
+    JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    CROSS JOIN unnest(ARRAY[
+      'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'MAINTAIN', 'REFERENCES', 'TRIGGER'
+    ]) AS anon_privilege(privilege_name)
+    WHERE namespace.nspname = 'public'
+      AND relation.relkind IN ('r', 'p')
+      AND has_table_privilege('anon', relation.oid, anon_privilege.privilege_name)
+  ) THEN
+    RAISE EXCEPTION 'anon still has a write or maintenance privilege on a public table';
+  END IF;
   IF EXISTS (
     SELECT 1
     FROM pg_default_acl AS def
@@ -119,6 +132,7 @@ DO $probe$
 BEGIN
   IF has_table_privilege('anon', 'public.draft_default_probe', 'SELECT')
      OR has_table_privilege('anon', 'public.draft_default_probe', 'INSERT')
+     OR has_table_privilege('anon', 'public.draft_default_probe', 'MAINTAIN')
   THEN
     RAISE EXCEPTION 'new table still received anon privileges from defaults';
   END IF;

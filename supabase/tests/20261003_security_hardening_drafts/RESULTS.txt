@@ -11,12 +11,12 @@ contacts rollback_md5=c4a17c64eaf418f73066aade92eebe27
 contacts rollback_match=yes
 == capital_audit ==
 capital_audit before_md5=91e8717102675d660f2acaf4cf5bf887
-capital_audit after_md5=601f8eb3398f39dc8e67a54bced645d6
+capital_audit after_md5=a831f5009e6288f523ca3c1044f7fa29
 capital_audit rollback_md5=91e8717102675d660f2acaf4cf5bf887
 capital_audit rollback_match=yes
 == capital_audit_no_actor ==
 capital_audit_no_actor before_md5=91e8717102675d660f2acaf4cf5bf887
-capital_audit_no_actor after_md5=72bcfe14e1d7f9a4348e9d5c4e81b0dc
+capital_audit_no_actor after_md5=2d2b4c78b45b49a358c3d314fe4f9c77
 capital_audit_no_actor rollback_md5=91e8717102675d660f2acaf4cf5bf887
 capital_audit_no_actor rollback_match=yes
 == pms ==
@@ -26,9 +26,24 @@ pms rollback_md5=63b541018075d64edbe419c2308da8c3
 pms rollback_match=yes
 == grants ==
 grants before_md5=7e01a71802a4f5a2df31b751547507fe
-grants after_md5=4389746198e8a38e957c39916a55ac1d
+grants after_md5=855f59bb369d639527e784e403e8b8f5
 grants rollback_md5=7e01a71802a4f5a2df31b751547507fe
 grants rollback_match=yes
+== require_jj_staff ==
+require_jj_staff before_md5=d41d8cd98f00b204e9800998ecf8427e
+require_jj_staff after_md5=e001238fedfd46d1542286db723cd94e
+require_jj_staff rollback_md5=d41d8cd98f00b204e9800998ecf8427e
+require_jj_staff rollback_match=yes
+== require_jj_staff_drift ==
+require_jj_staff_drift=blocked
+== aliases ==
+aliases before_md5=b0b326e2a4cffb29668641525d48e8f2
+aliases after_md5=409367f844b2b92fba70cb4014538fb7
+aliases rollback_md5=b0b326e2a4cffb29668641525d48e8f2
+aliases rollback_match=yes
 == compose ==
 compose after_behaviors=pass
+== direct_db_matrix ==
+direct_db_matrix mismatches=0 rollback_drift=0
+direct_db_matrix=pass
 ALL_LOCAL_PROOFS_PASSED

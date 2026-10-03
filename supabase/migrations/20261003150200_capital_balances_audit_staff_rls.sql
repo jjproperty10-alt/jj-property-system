@@ -12,9 +12,7 @@
 --     audit_log_insert TO authenticated INSERT CHECK true
 --     audit_log_select TO authenticated SELECT USING true
 --
--- App writes of partnership_capital and contact link rows go through the anon-key
--- browser client, not only service_role, so this draft does not switch writes to
--- service_role-only. Authenticated writes become admin-only
+-- Authenticated writes of opening balances and partnership_capital become admin-only
 -- (finance.is_active_jj_admin()). Reads become staff or admin
 -- (finance.is_active_jj_staff() OR finance.is_active_jj_admin()).
 -- The service_role partnership_capital policy is left in place. service_role grants
@@ -24,7 +22,9 @@
 -- If a uuid column named actor, actor_id, created_by, or user_id exists, WITH CHECK
 -- also requires that column to equal auth.uid(). The repo has no CREATE TABLE for
 -- case_audit_log, so the column is detected at apply time and is not added here.
--- audit_log_select is unchanged (still USING true for authenticated).
+-- audit_log_select is replaced by the same staff-or-admin predicate. There is no
+-- reader of public.case_audit_log under src/, scripts/, or supabase/functions.
+-- The rollback recreates audit_log_select USING (true).
 
 BEGIN;
 
@@ -55,6 +55,11 @@ BEGIN
     WHERE schemaname = 'public'
       AND tablename = 'case_audit_log'
       AND policyname = 'audit_log_insert'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'case_audit_log'
+      AND policyname = 'audit_log_select'
   ) THEN
     RAISE EXCEPTION 'BLOCKED_BY_POLICY_DRIFT: opening balance, capital, or audit policy set changed';
   END IF;
@@ -133,6 +138,10 @@ BEGIN
     'CREATE POLICY staff_insert_case_audit_log ON public.case_audit_log AS PERMISSIVE FOR INSERT TO authenticated WITH CHECK (%s)',
     check_expr
   );
+
+  EXECUTE 'DROP POLICY audit_log_select ON public.case_audit_log';
+  EXECUTE
+    'CREATE POLICY staff_select_case_audit_log ON public.case_audit_log AS PERMISSIVE FOR SELECT TO authenticated USING (finance.is_active_jj_staff() OR finance.is_active_jj_admin())';
 END
 $case_audit$;
 
@@ -171,5 +180,12 @@ COMMIT;
 --   FOR INSERT
 --   TO authenticated
 --   WITH CHECK (true);
+-- DROP POLICY IF EXISTS staff_select_case_audit_log ON public.case_audit_log;
+-- CREATE POLICY audit_log_select
+--   ON public.case_audit_log
+--   AS PERMISSIVE
+--   FOR SELECT
+--   TO authenticated
+--   USING (true);
 -- COMMIT;
 -- ROLLBACK-END

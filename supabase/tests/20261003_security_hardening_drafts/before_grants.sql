@@ -24,6 +24,7 @@ BEGIN
   FOREACH name IN ARRAY tables LOOP
     IF NOT has_table_privilege('anon', format('public.%I', name), 'INSERT')
        OR NOT has_table_privilege('anon', format('public.%I', name), 'TRUNCATE')
+       OR NOT has_table_privilege('anon', format('public.%I', name), 'MAINTAIN')
        OR NOT has_table_privilege('authenticated', format('public.%I', name), 'TRUNCATE')
     THEN
       RAISE EXCEPTION 'before: expected live anon/authenticated grants missing on %', name;

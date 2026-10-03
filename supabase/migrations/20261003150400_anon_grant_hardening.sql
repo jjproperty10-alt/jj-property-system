@@ -13,8 +13,15 @@
 -- authenticated SELECT/INSERT/UPDATE/DELETE in place (RLS still applies).
 -- service_role grants are not modified.
 --
--- PostgreSQL 17 GRANT ALL also includes MAINTAIN. This draft does not revoke
--- MAINTAIN, because it was not in the requested privilege list. See the report.
+-- PostgreSQL 17 GRANT ALL includes MAINTAIN. This draft revokes MAINTAIN from anon
+-- on the same 44 tables. After that revoke, anon must have no INSERT, UPDATE,
+-- DELETE, TRUNCATE, MAINTAIN, REFERENCES, or TRIGGER on any ordinary public table.
+-- The closing check raises BLOCKED_BY_ANON_GRANT and rolls the transaction back
+-- if any public table still has one of those privileges. It does not revoke
+-- privileges from tables outside the attested 44; an unexpected table stops the
+-- draft instead of being stripped silently.
+-- The rollback re-grants MAINTAIN together with the other restored anon privileges
+-- on the 44 tables only.
 --
 -- anon SELECT is kept on the existing 44 tables. Grep of src/, scripts/, and
 -- supabase/functions:
@@ -122,7 +129,7 @@ BEGIN
   FROM unnest(views) AS name;
 
   EXECUTE format(
-    'REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE %s FROM anon',
+    'REVOKE INSERT, UPDATE, DELETE, TRUNCATE, MAINTAIN, REFERENCES, TRIGGER ON TABLE %s FROM anon',
     table_list
   );
   EXECUTE format(
@@ -158,6 +165,30 @@ BEGIN
   EXECUTE 'ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public REVOKE ALL ON SEQUENCES FROM anon';
 END
 $supabase_admin_defaults$;
+
+DO $assert_anon$
+DECLARE
+  leftovers text;
+BEGIN
+  SELECT string_agg(
+           format('%I.%I:%s', namespace.nspname, relation.relname, privilege),
+           ', ' ORDER BY relation.relname, privilege
+         )
+    INTO leftovers
+  FROM pg_catalog.pg_class AS relation
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  CROSS JOIN unnest(ARRAY[
+    'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'MAINTAIN', 'REFERENCES', 'TRIGGER'
+  ]) AS privilege
+  WHERE namespace.nspname = 'public'
+    AND relation.relkind IN ('r', 'p')
+    AND has_table_privilege('anon', relation.oid, privilege);
+
+  IF leftovers IS NOT NULL THEN
+    RAISE EXCEPTION 'BLOCKED_BY_ANON_GRANT: anon still has %', leftovers;
+  END IF;
+END
+$assert_anon$;
 
 COMMIT;
 
@@ -226,7 +257,7 @@ COMMIT;
 --   SELECT string_agg(format('public.%I', name), ', ' ORDER BY name) INTO table_list FROM unnest(tables) AS name;
 --   SELECT string_agg(format('public.%I', name), ', ' ORDER BY name) INTO view_list FROM unnest(views) AS name;
 --   EXECUTE format(
---     'GRANT INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE %s TO anon',
+--     'GRANT INSERT, UPDATE, DELETE, TRUNCATE, MAINTAIN, REFERENCES, TRIGGER ON TABLE %s TO anon',
 --     table_list
 --   );
 --   EXECUTE format(

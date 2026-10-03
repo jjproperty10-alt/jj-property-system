@@ -30,11 +30,12 @@
 --     jj_staff_config ceo OR an active user_roles superadmin.
 --   finance.is_active_jj_staff()  supabase/migrations/20260917090100_agent_transaction_drafts.sql
 --     SECURITY DEFINER, search_path ''. True when the caller has any active jj_staff_config row.
---   public.require_jj_staff(text[]) is NOT in supabase/migrations.
---     Test harnesses define it. The September bootstrap copies share one body
---     (jj_staff_config lookup, short exceptions). The August tamir harnesses share
---     a longer exception text. Those copies differ. This draft does not choose one
---     and does not CREATE OR REPLACE the function.
+--   public.require_jj_staff(text[]) is NOT created anywhere under supabase/migrations
+--     on main. Test harnesses define it. The September bootstrap copies share one
+--     body (jj_staff_config lookup, short exceptions). The August tamir harnesses
+--     share a longer exception text. The body is drafted separately in
+--     20261003150500_require_jj_staff.sql from that same staff predicate.
+--     This file does not create or replace the function.
 --   access.is_company_member(uuid) is in 20260924210000 and is not SECURITY DEFINER.
 --   access.grant_company_membership(uuid,uuid,text) is in the same file and is SECURITY DEFINER.
 --

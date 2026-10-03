@@ -44,11 +44,6 @@ CALL test.expect_eq(
   'false',
   'after: outsider is_active_jj_staff is false'
 );
-CALL test.expect_message(
-  $$SELECT public.require_jj_staff(NULL)$$,
-  '[jj_auth]',
-  'after: outsider require_jj_staff still rejects'
-);
 
 CALL test.assume('22222222-2222-4222-8222-222222222222', 'authenticated');
 CALL test.expect_eq(
@@ -66,22 +61,12 @@ CALL test.expect_eq(
   'false',
   'after: non-admin staff is_active_jj_admin is false'
 );
-CALL test.expect_eq(
-  $$SELECT public.require_jj_staff(NULL)::text$$,
-  '22222222-2222-4222-8222-222222222222',
-  'after: staff require_jj_staff still returns the caller'
-);
 
 CALL test.assume('11111111-1111-4111-8111-111111111111', 'authenticated');
 CALL test.expect_eq(
   $$SELECT finance.is_active_jj_admin()::text$$,
   'true',
   'after: real admin is_active_jj_admin stays true'
-);
-CALL test.expect_eq(
-  $$SELECT public.require_jj_staff(ARRAY['ceo'])::text$$,
-  '11111111-1111-4111-8111-111111111111',
-  'after: real admin require_jj_staff(ceo) stays true'
 );
 CALL test.expect_eq(
   $$SELECT role FROM public.admin_manage_user_role(

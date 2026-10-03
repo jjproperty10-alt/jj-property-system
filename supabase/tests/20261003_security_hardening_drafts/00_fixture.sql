@@ -83,6 +83,11 @@ CREATE TABLE public.jj_staff_config (
   is_active boolean NOT NULL DEFAULT true
 );
 ALTER TABLE public.jj_staff_config ENABLE ROW LEVEL SECURITY;
+-- Defaults grant anon ALL, including MAINTAIN. This table is not one of the 44.
+-- Strip the write and maintenance privileges here so the grant draft's closing
+-- scan has a clean fixture: only the attested 44 tables start with those grants.
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, MAINTAIN, REFERENCES, TRIGGER
+  ON TABLE public.jj_staff_config FROM anon;
 
 CREATE TABLE public.user_roles (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -96,9 +101,8 @@ CREATE TABLE public.user_roles (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
--- Bodies copied from the repo migrations. require_jj_staff is the repeated
--- September bootstrap body; it is not in supabase/migrations, and the August
--- tamir harness uses longer exception text.
+-- Bodies copied from the repo migrations. public.require_jj_staff is not created
+-- on main and is not created here. Draft 20261003150500 adds it.
 CREATE FUNCTION finance.is_active_jj_admin()
 RETURNS boolean
 LANGUAGE sql
@@ -138,46 +142,10 @@ AS $$
   );
 $$;
 
-CREATE FUNCTION public.require_jj_staff(p_allowed_roles text[] DEFAULT NULL::text[])
-RETURNS uuid
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path TO ''
-AS $$
-DECLARE
-  v_actor_id  uuid;
-  v_is_active boolean;
-  v_role      text;
-BEGIN
-  v_actor_id := auth.uid();
-  IF v_actor_id IS NULL THEN
-    RAISE EXCEPTION '[jj_auth] Authenticated session required.';
-  END IF;
-  SELECT is_active, staff_role
-    INTO v_is_active, v_role
-    FROM public.jj_staff_config
-   WHERE user_id = v_actor_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION '[jj_auth] User % is not in jj_staff_config.', v_actor_id;
-  END IF;
-  IF NOT v_is_active THEN
-    RAISE EXCEPTION '[jj_auth] User % is registered but is_active = false.', v_actor_id;
-  END IF;
-  IF p_allowed_roles IS NOT NULL AND NOT (v_role = ANY (p_allowed_roles)) THEN
-    RAISE EXCEPTION '[jj_auth] User % has role ''%'' which is not permitted. Allowed roles: %.',
-      v_actor_id, v_role, p_allowed_roles;
-  END IF;
-  RETURN v_actor_id;
-END;
-$$;
-
 REVOKE ALL ON FUNCTION finance.is_active_jj_admin() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION finance.is_active_jj_staff() FROM PUBLIC, anon, authenticated, service_role;
-REVOKE ALL ON FUNCTION public.require_jj_staff(text[]) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION finance.is_active_jj_admin() TO authenticated;
 GRANT EXECUTE ON FUNCTION finance.is_active_jj_staff() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.require_jj_staff(text[]) TO authenticated, service_role;
 
 CREATE TABLE access.company_memberships (
   company_id uuid,
@@ -203,6 +171,17 @@ $$;
 
 REVOKE ALL ON FUNCTION access.is_company_member(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION access.is_company_member(uuid) TO authenticated, service_role;
+
+-- The live function is SECURITY INVOKER. Callers need SELECT, and the live
+-- table lets an authenticated user read only their own active membership.
+REVOKE ALL ON TABLE access.company_memberships FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE access.company_memberships TO authenticated, service_role;
+ALTER TABLE access.company_memberships ENABLE ROW LEVEL SECURITY;
+CREATE POLICY read_own_active_company_membership
+  ON access.company_memberships
+  FOR SELECT
+  TO authenticated
+  USING (user_id = (SELECT auth.uid()) AND is_active);
 
 CREATE TABLE public.contacts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -429,6 +408,7 @@ CREATE POLICY company_member_read
   WITH CHECK (access.is_company_member(operating_company_id));
 
 CREATE TABLE public._view_base_ceo_summary (id integer);
+REVOKE ALL ON TABLE public._view_base_ceo_summary FROM PUBLIC, anon, authenticated, service_role;
 CREATE VIEW public.v_airbnb_summary AS SELECT 1::int AS id;
 CREATE VIEW public.v_ceo_kpis AS SELECT 1::int AS id;
 CREATE VIEW public.v_ceo_summary AS SELECT id FROM public._view_base_ceo_summary;

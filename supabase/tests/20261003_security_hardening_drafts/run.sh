@@ -151,6 +151,30 @@ run_case grants jj_sec_grants \
   "$GRANT_REL" "$NONE" "'postgres','supabase_admin'" \
   "$TEST_DIR/before_grants.sql" "$TEST_DIR/after_grants.sql"
 
+run_case require_jj_staff jj_sec_require_staff \
+  "$MIG_DIR/20261003150500_require_jj_staff.sql" \
+  "$NONE" "'public.require_jj_staff'" "$NO_OWNERS" \
+  "$TEST_DIR/before_require_jj_staff.sql" "$TEST_DIR/after_require_jj_staff.sql"
+
+echo "== require_jj_staff_drift ==" | tee -a "$RESULTS"
+recreate jj_sec_staff_drift
+"${PSQL[@]}" -d jj_sec_staff_drift -c 'CREATE FUNCTION public.require_jj_staff(p_allowed_roles text[] DEFAULT NULL::text[]) RETURNS uuid LANGUAGE sql AS $$ SELECT NULL::uuid $$;' >/dev/null
+set +e
+drift_out="$("${PSQL[@]}" -d jj_sec_staff_drift -f "$MIG_DIR/20261003150500_require_jj_staff.sql" 2>&1)"
+drift_status=$?
+set -e
+if [[ "$drift_status" -eq 0 ]] || [[ "$drift_out" != *BLOCKED_BY_FUNCTION_DRIFT* ]]; then
+  echo "require_jj_staff_drift FAILED" | tee -a "$RESULTS"
+  echo "$drift_out" | tee -a "$RESULTS"
+  exit 1
+fi
+echo "require_jj_staff_drift=blocked" | tee -a "$RESULTS"
+
+run_case aliases jj_sec_aliases \
+  "$MIG_DIR/20261003150600_property_name_aliases_staff_gate.sql" \
+  "'public.property_name_aliases'" "$NONE" "$NO_OWNERS" \
+  "$TEST_DIR/before_aliases.sql" "$TEST_DIR/after_aliases.sql"
+
 echo "== compose ==" | tee -a "$RESULTS"
 recreate jj_sec_compose
 run_file jj_sec_compose "$MIG_DIR/20261003150000_user_roles_self_escalation_lock.sql"
@@ -158,11 +182,60 @@ run_file jj_sec_compose "$MIG_DIR/20261003150100_contacts_staff_only_rls.sql"
 run_file jj_sec_compose "$MIG_DIR/20261003150200_capital_balances_audit_staff_rls.sql"
 run_file jj_sec_compose "$MIG_DIR/20261003150300_pms_rpc_revoke_authenticated.sql"
 run_file jj_sec_compose "$MIG_DIR/20261003150400_anon_grant_hardening.sql"
+run_file jj_sec_compose "$MIG_DIR/20261003150500_require_jj_staff.sql"
+run_file jj_sec_compose "$MIG_DIR/20261003150600_property_name_aliases_staff_gate.sql"
 run_file jj_sec_compose "$TEST_DIR/after_user_roles.sql"
 run_file jj_sec_compose "$TEST_DIR/after_contacts.sql"
 run_file jj_sec_compose "$TEST_DIR/after_capital_audit.sql"
 run_file jj_sec_compose "$TEST_DIR/after_pms.sql"
 run_file jj_sec_compose "$TEST_DIR/after_grants.sql"
+run_file jj_sec_compose "$TEST_DIR/after_require_jj_staff.sql"
+run_file jj_sec_compose "$TEST_DIR/after_aliases.sql"
 echo "compose after_behaviors=pass" | tee -a "$RESULTS"
+
+echo "== direct_db_matrix ==" | tee -a "$RESULTS"
+recreate jj_sec_matrix
+"${PSQL[@]}" -d jj_sec_matrix -v phase=before -f "$TEST_DIR/direct_db_matrix.sql"
+for migration in \
+  "$MIG_DIR/20261003150000_user_roles_self_escalation_lock.sql" \
+  "$MIG_DIR/20261003150100_contacts_staff_only_rls.sql" \
+  "$MIG_DIR/20261003150200_capital_balances_audit_staff_rls.sql" \
+  "$MIG_DIR/20261003150300_pms_rpc_revoke_authenticated.sql" \
+  "$MIG_DIR/20261003150400_anon_grant_hardening.sql" \
+  "$MIG_DIR/20261003150500_require_jj_staff.sql" \
+  "$MIG_DIR/20261003150600_property_name_aliases_staff_gate.sql"
+do
+  run_file jj_sec_matrix "$migration"
+done
+"${PSQL[@]}" -d jj_sec_matrix -v phase=after -f "$TEST_DIR/direct_db_matrix.sql"
+for migration in \
+  "$MIG_DIR/20261003150600_property_name_aliases_staff_gate.sql" \
+  "$MIG_DIR/20261003150500_require_jj_staff.sql" \
+  "$MIG_DIR/20261003150400_anon_grant_hardening.sql" \
+  "$MIG_DIR/20261003150300_pms_rpc_revoke_authenticated.sql" \
+  "$MIG_DIR/20261003150200_capital_balances_audit_staff_rls.sql" \
+  "$MIG_DIR/20261003150100_contacts_staff_only_rls.sql" \
+  "$MIG_DIR/20261003150000_user_roles_self_escalation_lock.sql"
+do
+  rollback="$(mktemp /tmp/jj-rollback.XXXXXX.sql)"
+  extract_rollback "$migration" > "$rollback"
+  chmod a+r "$rollback"
+  run_file jj_sec_matrix "$rollback"
+  rm -f "$rollback"
+done
+"${PSQL[@]}" -d jj_sec_matrix -v phase=rollback -f "$TEST_DIR/direct_db_matrix.sql"
+mismatch="$("${PSQL[@]}" -d jj_sec_matrix -tA -c "SELECT count(*) FROM test.direct_db_matrix WHERE expected IS DISTINCT FROM actual")"
+restored="$("${PSQL[@]}" -d jj_sec_matrix -tA -c "SELECT count(*) FROM (SELECT role_label, object_name, operation, actual FROM test.direct_db_matrix WHERE phase = 'before' EXCEPT SELECT role_label, object_name, operation, actual FROM test.direct_db_matrix WHERE phase = 'rollback') AS drift")"
+echo "direct_db_matrix mismatches=$mismatch rollback_drift=$restored" | tee -a "$RESULTS"
+if [[ "$mismatch" != "0" || "$restored" != "0" ]]; then
+  "${PSQL[@]}" -d jj_sec_matrix -c "SELECT phase, role_label, object_name, operation, expected, actual, detail FROM test.direct_db_matrix WHERE expected IS DISTINCT FROM actual ORDER BY 1, 2, 3, 4 LIMIT 40"
+  echo "direct_db_matrix FAILED" | tee -a "$RESULTS"
+  exit 1
+fi
+matrix_csv="$(mktemp /tmp/jj-matrix.XXXXXX.csv)"
+"${PSQL[@]}" -d jj_sec_matrix -c "COPY (SELECT phase, role_label, object_name, operation, expected, actual FROM test.direct_db_matrix ORDER BY object_name, role_label, operation, phase) TO STDOUT WITH CSV HEADER" > "$matrix_csv"
+python3 "$TEST_DIR/write_matrix_doc.py" "$matrix_csv" "$ROOT/docs/planning/security_direct_db_matrix_2026-10-03.md"
+rm -f "$matrix_csv"
+echo "direct_db_matrix=pass" | tee -a "$RESULTS"
 
 echo "ALL_LOCAL_PROOFS_PASSED" | tee -a "$RESULTS"
