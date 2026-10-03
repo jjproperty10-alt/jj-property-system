@@ -75,7 +75,7 @@ function toEvidence(propertyName: string, r: any, today: string): StatementReser
 
 export async function buildOwnerStrStatement(input: OwnerStrStatementInput): Promise<OwnerStrStatement> {
   const today = input.today ?? new Date().toISOString().slice(0, 10)
-  const sb = createServiceClient()
+  const sb = await createServiceClient()
   const audit = new PropertyAuditService(sb)
   const names = input.properties.map(p => p.name)
 

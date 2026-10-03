@@ -181,7 +181,7 @@ export async function fetchPropertyUtilityMeters(
   propertyId: string,
 ): Promise<readonly UtilityMeterDTO[]> {
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (sb as any)
@@ -210,7 +210,7 @@ export async function fetchMeterReadings(
   limit = 50,
 ): Promise<readonly MeterReadingDTO[]> {
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (sb as any)
@@ -239,7 +239,7 @@ export async function fetchTenantUtilityObligations(
   propertyId: string,
 ): Promise<readonly TenantUtilityObligationDTO[]> {
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (sb as any)
@@ -269,7 +269,7 @@ export async function fetchApplicableUtilityRates(
   asOfDate?: string,
 ): Promise<readonly UtilityRateDTO[]> {
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (sb as any)

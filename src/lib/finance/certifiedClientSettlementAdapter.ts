@@ -482,7 +482,7 @@ export async function readCertifiedClientSettlement(
   if (!day) return unavailable('missing_as_of', entityId, asOf ?? null)
 
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (sb as any).rpc(CLIENT_SETTLEMENT_CERTIFICATION_RPC.read, {
       p_entity_id: entityId,
@@ -541,7 +541,7 @@ export async function resolveCertifiedSettlementEntityFromProperty(
   if (property.status !== 'resolved') return { status: 'missing' }
 
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const financeDb = sb as any
     const [epaResult, mrResult] = await Promise.all([

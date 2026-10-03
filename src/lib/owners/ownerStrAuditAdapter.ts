@@ -31,7 +31,7 @@ function periodWindowLabel(startDate: string, endDate: string): string {
 }
 
 export async function getStrReconciliation(input: OwnerStrAuditInput): Promise<StrReconciliationDTO> {
-  const sb = createServiceClient();
+  const sb = await createServiceClient();
 
   // P2 certified effective-period resolution (as of endDate): expired/future ignored, overlap => fail closed.
   const { data: engRows } = await (sb as any).schema('lifecycle').from('service_engagements')
@@ -126,7 +126,7 @@ export async function getStrReconciliation(input: OwnerStrAuditInput): Promise<S
 export async function getStrReconciliationByName(
   propertyName: string, startDate: string, endDate: string,
 ): Promise<StrReconciliationDTO | null> {
-  const sb = createServiceClient();
+  const sb = await createServiceClient();
   const { data: pd } = await sb.from('property_definitions')
     .select('property_id')
     .or(`property_name.eq.${propertyName},canonical_name.eq.${propertyName}`)

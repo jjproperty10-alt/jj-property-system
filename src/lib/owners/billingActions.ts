@@ -85,7 +85,7 @@ export async function toggleDraftLineInclusionAction(
     return { ok: false, error: 'includeInStatement must be a boolean' }
   }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -125,7 +125,7 @@ export async function resolveOwnerSeriesIdAction(
     return { ok: false, error: 'Invalid owner party ID' }
   }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -186,7 +186,7 @@ export async function allocatePaymentAction(
     return { ok: false, error: 'Amount must be a positive number' }
   }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -243,7 +243,7 @@ export async function fifoAllocatePaymentAction(
     return { ok: false, error: 'Invalid payment transaction ID' }
   }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -546,7 +546,7 @@ export async function getReportPreferencesAction(
     return { ok: false, error: 'Invalid series ID' }
   }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -581,7 +581,7 @@ export async function setReportPreferencesAction(
     return { ok: false, error: 'Invalid series ID' }
   }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // Get current preferences first for merge

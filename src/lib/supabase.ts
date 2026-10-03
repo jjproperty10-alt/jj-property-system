@@ -40,6 +40,14 @@ export async function resolveSoleServiceCompany(): Promise<string> {
   return data
 }
 
-export function createServiceClient() {
+/**
+ * Company-data client. An authenticated caller with no active staff role,
+ * or no membership of the resolved company, never receives this client.
+ * The permission check runs before rawServiceClient(), so a refused caller
+ * does not open a service connection and does not read a relation.
+ */
+export async function createServiceClient() {
+  const { requireStaffCompanyPermission } = await import('@/lib/auth/requireStaffCompanyPermission')
+  await requireStaffCompanyPermission()
   return gateServiceReads(rawServiceClient(), resolveSoleServiceCompany)
 }

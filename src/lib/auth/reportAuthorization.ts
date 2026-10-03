@@ -106,7 +106,7 @@ async function resolveUserRole(
   | { ok: true; role: string; fullName: string }
   | { ok: false; error: AuthorizationError }
 > {
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   const { data, error } = await db
     .from('user_roles')
@@ -134,7 +134,7 @@ async function resolveUserRole(
 // ── Internal: load canonical reportable properties ───────────────────────────
 
 async function loadAllReportableProperties(): Promise<string[]> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const nameSet = new Set<string>()
 
   await Promise.all(
@@ -152,7 +152,7 @@ async function loadAllReportableProperties(): Promise<string[]> {
 }
 
 async function loadPartnerProperties(ownerName: string): Promise<string[]> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   // Get properties owned by this partner
   const { data: owned } = await db

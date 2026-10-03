@@ -61,7 +61,7 @@ async function fetchViewRows(
   fromDate?: string,
   toDate?: string,
 ): Promise<RC3Row[]> {
-  const client = createServiceClient()
+  const client = await createServiceClient()
   let q = (client as any)
     .from(view)
     .select('*')
@@ -90,7 +90,7 @@ async function computePrePeriodClosing(
   accountType: RC3AccountType,
   fromDate: string,
 ): Promise<number> {
-  const client = createServiceClient()
+  const client = await createServiceClient()
   const { data, error } = await (client as any)
     .from(view)
     .select('*')
@@ -192,7 +192,7 @@ export async function fetchRC3Report(params: FetchReportParams): Promise<RC3Prop
  */
 export async function fetchRC3PropertyList(): Promise<string[]> {
   const nameSet = new Set<string>()
-  const client = createServiceClient()
+  const client = await createServiceClient()
 
   await Promise.all(
     Object.values(RC3_VIEWS).map(async (view) => {

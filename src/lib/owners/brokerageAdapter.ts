@@ -97,7 +97,7 @@ export async function fetchPropertyBrokerages(
   propertyId: string,
 ): Promise<readonly BrokerageObligationDTO[]> {
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (sb as any)
@@ -125,7 +125,7 @@ export async function fetchContractBrokerage(
   rentalContractId: string,
 ): Promise<BrokerageObligationDTO | null> {
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (sb as any)

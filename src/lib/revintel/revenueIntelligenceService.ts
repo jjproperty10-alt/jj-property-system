@@ -106,9 +106,9 @@ export async function getRevenueRecommendations(
 ): Promise<readonly RevenueRecommendationDTO[]> {
   const { currentOnly = true, canonicalPropertyId } = query
 
-  let db: ReturnType<typeof createServiceClient>
+  let db: Awaited<ReturnType<typeof createServiceClient>>
   try {
-    db = createServiceClient()
+    db = await createServiceClient()
   } catch (err) {
     console.error('[revenueIntelligence] createServiceClient failed:', err)
     return []

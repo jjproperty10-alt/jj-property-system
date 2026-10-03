@@ -114,9 +114,9 @@ export async function getMoneyPosition(_period?: string): Promise<MoneyPositionD
     unsupportedCounterpartyTypes: UNSUPPORTED_COUNTERPARTY_TYPES,
   }
 
-  let db: ReturnType<typeof createServiceClient>
+  let db: Awaited<ReturnType<typeof createServiceClient>>
   try {
-    db = createServiceClient()
+    db = await createServiceClient()
   } catch (err) {
     console.error('[moneyPosition] createServiceClient failed:', err)
     return { receivableToJJ: emptyDirectionSummary(), payableByJJ: emptyDirectionSummary(), ...base, sourceUnavailable: true }

@@ -42,7 +42,7 @@ export async function readCertifiedStrMonthlySettlement(input: {
   }
 
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
     const { data, error } = await sb.rpc(STR_MONTHLY_SETTLEMENT_RPC.read, {
       p_entity_id: input.entityId,
       p_property_id: input.propertyId,

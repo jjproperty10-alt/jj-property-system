@@ -17,7 +17,7 @@ import {
 export type { PropertyRef } from '../scope'
 
 export async function readPartnerScopeProperties(): Promise<PropertyRef[]> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const { data } = await db
     .from('property_definitions')
     .select('canonical_name, reporting_name, relationship_type')
@@ -29,7 +29,7 @@ export async function readPartnerScopeProperties(): Promise<PropertyRef[]> {
  * Returns null on source failure so the caller can fail closed.
  */
 export async function readPropertyScopeSets(): Promise<PropertyScopeSets | null> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const { data, error } = await db
     .from('property_definitions')
     .select('canonical_name, reporting_name, relationship_type, aliases')

@@ -138,10 +138,10 @@ const COMPANY_CONTEXT_BLOCKED = 'BLOCKED_BY_COMPANY_CONTEXT'
 // ---- Data Fetching ----
 
 export async function fetchAll() {
-  let sb: ReturnType<typeof createServiceClient>
+  let sb: Awaited<ReturnType<typeof createServiceClient>>
   try {
     await requireStaffCompanyPermission()
-    sb = createServiceClient()
+    sb = await createServiceClient()
   } catch (error) {
     if (error instanceof Error && (error.message === COMPANY_CONTEXT_BLOCKED || error.message === MISSING_PERMISSION_BLOCK)) {
       return {

@@ -46,7 +46,7 @@ export default async function AddClientPage() {
   }
 
   // Check staff role
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const { data: roleData } = await db
     .from('user_roles')
     .select('role, is_active')

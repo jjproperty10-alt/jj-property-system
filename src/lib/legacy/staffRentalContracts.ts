@@ -60,7 +60,7 @@ export async function listStaffRentalContracts(purpose: 'list' | 'alerts'): Prom
   const blocked = await authorize()
   if (blocked) return blocked
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const select = purpose === 'alerts' ? ALERT_SELECT : LIST_SELECT
   let query = db.from('rental_contracts').select(select) as any
   if (purpose === 'alerts') query = query.eq('status', 'active')
@@ -78,7 +78,7 @@ export async function readStaffRentalContract(id: string): Promise<StaffContract
   const blocked = await authorize()
   if (blocked) return blocked
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const result = await db.from('rental_contracts').select(DETAIL_SELECT).eq('id', id).single()
   return {
     data: result.data ?? null,
@@ -93,7 +93,7 @@ export async function listStaffContractProperties(): Promise<StaffContractResult
   const blocked = await authorize()
   if (blocked) return blocked
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const result = await db
     .from('properties')
     .select('id, name, nickname')
@@ -111,7 +111,7 @@ export async function countStaffRentalContracts(): Promise<StaffContractResult> 
   const blocked = await authorize()
   if (blocked) return blocked
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const result = await db.from('rental_contracts').select('id', { count: 'exact', head: true })
   return {
     data: null,
@@ -140,7 +140,7 @@ export async function createStaffRentalContract(input: StaffContractInsert): Pro
   const blocked = await authorize()
   if (blocked) return blocked
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const result = await db.from('rental_contracts').insert({
     property_id: input.property_id,
     tenant_name: tenant,

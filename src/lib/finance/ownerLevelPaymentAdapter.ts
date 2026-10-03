@@ -119,7 +119,7 @@ export async function fetchOwnerLevelPaymentsForEntity(
   }
 
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
     const finance = sb.schema('finance')
 
     const [payments, conflicts] = await Promise.all([

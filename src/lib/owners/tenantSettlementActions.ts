@@ -72,7 +72,7 @@ export async function computeSettlementAction(
 
   // ── RPC call ──────────────────────────────────────────────────────────────
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -135,7 +135,7 @@ export async function updateSettlementStatusAction(
 
   // ── RPC call ──────────────────────────────────────────────────────────────
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -194,7 +194,7 @@ export async function createClosingStatementAction(
 
   // ── RPC call ──────────────────────────────────────────────────────────────
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -1,6 +1,7 @@
 /**
  * Active JJ staff and membership of the resolved company, before any
- * service-role relation read on the CEO, decision, and ownership paths.
+ * service-role relation read. createServiceClient() calls this, so every
+ * company-data path that builds a service client fails closed here.
  *
  * Session client only for the two checks:
  *   - public.require_jj_staff(text[]) — SECURITY DEFINER, public schema, so

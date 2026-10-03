@@ -134,7 +134,7 @@ export async function recordDepositEventAction(
 
   // ââ RPC call âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

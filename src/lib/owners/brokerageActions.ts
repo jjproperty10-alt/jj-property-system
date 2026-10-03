@@ -107,7 +107,7 @@ export async function createBrokerageAction(
 
   // ── RPC call ──────────────────────────────────────────────────────────────
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -175,7 +175,7 @@ export async function updateBrokerageStatusAction(
     return { ok: false, error: `Invalid status: ${input.newStatus}` }
   }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

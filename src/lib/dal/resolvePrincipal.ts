@@ -69,7 +69,7 @@ export async function resolvePrincipal(): Promise<PrincipalResolutionResult> {
   }
 
   // ── Step 2: Query user_roles (service-role — ONLY after auth succeeds) ─
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   const { data, error: roleError } = await db
     .from('user_roles')

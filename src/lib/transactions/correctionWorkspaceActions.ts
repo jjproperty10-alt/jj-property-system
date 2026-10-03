@@ -135,7 +135,7 @@ export async function fetchCanonicalTransaction(
   if (!transactionId || !isValidUUID(transactionId)) {
     return { ok: false, error: 'Invalid transaction ID' }
   }
-  const db = createServiceClient()
+  const db = await createServiceClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (db as any)
     .from('transactions')
@@ -171,7 +171,7 @@ export async function enrichTransactionRegisterMetaAction(
   }
   if (ids.length === 0) return { ok: true, meta }
 
-  const db = createServiceClient()
+  const db = await createServiceClient()
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const excl = await (db as any)
@@ -393,7 +393,7 @@ async function findCaseByIdempotencyKey(
   corrected_field_values: Record<string, unknown> | null
   applied_transaction_id: string | null
 } | null> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (db as any)
     .schema('statements')
@@ -420,7 +420,7 @@ async function findCaseByIdempotencyKey(
 }
 
 async function loadAppliedIds(caseId: string): Promise<string[]> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data } = await (db as any)
     .schema('statements')
@@ -640,7 +640,7 @@ export async function applyControlledCorrectionAction(
 
   // ── Fresh open → approve → apply ─────────────────────────────
   // Guard: another non-terminal case on this tx (different proposal) blocks concurrent apply.
-  const db = createServiceClient()
+  const db = await createServiceClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: openCases } = await (db as any)
     .schema('statements')

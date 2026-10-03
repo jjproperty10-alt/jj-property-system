@@ -152,7 +152,7 @@ export async function buildStatementPreview(
   input: BuildStatementInput,
 ): Promise<StatementBuilderOutput> {
   const { investorEntityId, investorName, propertyName, periodStart, periodEnd } = input
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   // ── 1. Fetch RC3 report for the property + period ─────────────────────────
   const rc3Report = await fetchRC3Report({

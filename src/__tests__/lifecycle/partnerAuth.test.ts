@@ -197,13 +197,13 @@ function makeQueryBuilder(result: { data: any; error: any }) {
  */
 function mockServiceClient(
   tables: Record<string, { data: any; error?: any }>,
-): ReturnType<typeof createServiceClient> {
+): Awaited<ReturnType<typeof createServiceClient>> {
   const fromImpl = (tableName: string) => {
     const entry = tables[tableName] ?? { data: null }
     return makeQueryBuilder({ data: entry.data, error: entry.error ?? null })
   }
-  return { schema: (_: string) => ({ from: fromImpl }) } as unknown as ReturnType<
-    typeof createServiceClient
+  return { schema: (_: string) => ({ from: fromImpl }) } as unknown as Awaited<
+    ReturnType<typeof createServiceClient>
   >
 }
 
@@ -224,7 +224,7 @@ function mockSessionClient(
 
 /** Avi: full resolver mock (investor_auth + entity_identity + optional partner_entry) */
 function setupAviMapping(withPartnerEntry = false) {
-  mockCreateServiceClient.mockReturnValue(
+  mockCreateServiceClient.mockResolvedValue(
     mockServiceClient({
       investor_auth:    { data: DB_AVI_AUTH_ACTIVE },
       entity_identity:  { data: DB_AVI_ENTITY },
@@ -237,7 +237,7 @@ function setupAviMapping(withPartnerEntry = false) {
 
 /** Oren: full resolver mock */
 function setupOrenMapping(withPartnerEntry = false) {
-  mockCreateServiceClient.mockReturnValue(
+  mockCreateServiceClient.mockResolvedValue(
     mockServiceClient({
       investor_auth:   { data: DB_OREN_AUTH_ACTIVE },
       entity_identity: { data: DB_OREN_ENTITY },
@@ -329,7 +329,7 @@ describe('resolveAuthorizedInvestorEntity', () => {
 
   // RES-01
   test('RES-01: active mapping → returns entityId, canonicalName, canonical slug', async () => {
-    mockCreateServiceClient.mockReturnValue(
+    mockCreateServiceClient.mockResolvedValue(
       mockServiceClient({
         investor_auth:   { data: DB_AVI_AUTH_ACTIVE },
         entity_identity: { data: DB_AVI_ENTITY },
@@ -348,7 +348,7 @@ describe('resolveAuthorizedInvestorEntity', () => {
 
   // RES-02
   test('RES-02: no investor_auth record → ok:false, error:NO_MAPPING', async () => {
-    mockCreateServiceClient.mockReturnValue(
+    mockCreateServiceClient.mockResolvedValue(
       mockServiceClient({ investor_auth: { data: null } }),
     )
 
@@ -360,7 +360,7 @@ describe('resolveAuthorizedInvestorEntity', () => {
 
   // RES-03
   test('RES-03: disabled mapping → ok:false, error:MAPPING_DISABLED', async () => {
-    mockCreateServiceClient.mockReturnValue(
+    mockCreateServiceClient.mockResolvedValue(
       mockServiceClient({ investor_auth: { data: DB_AVI_AUTH_DISABLED } }),
     )
 
@@ -372,7 +372,7 @@ describe('resolveAuthorizedInvestorEntity', () => {
 
   // RES-04
   test('RES-04: entity referenced in mapping does not exist → ok:false, error:ENTITY_NOT_FOUND', async () => {
-    mockCreateServiceClient.mockReturnValue(
+    mockCreateServiceClient.mockResolvedValue(
       mockServiceClient({
         investor_auth:   { data: DB_AVI_AUTH_ACTIVE },
         entity_identity: { data: null },
@@ -387,7 +387,7 @@ describe('resolveAuthorizedInvestorEntity', () => {
 
   // RES-05
   test('RES-05: DB error in investor_auth query → ok:false, fail-closed (NO_MAPPING)', async () => {
-    mockCreateServiceClient.mockReturnValue(
+    mockCreateServiceClient.mockResolvedValue(
       mockServiceClient({
         investor_auth: { data: null, error: { message: 'connection timeout', code: '08006' } },
       }),
@@ -472,7 +472,7 @@ describe('loadStatementForAuthenticatedPartner — 11 mandatory authorization ca
 
   // AUTH-05
   test('AUTH-05: auth user with no investor_auth record → NO_MAPPING', async () => {
-    mockCreateServiceClient.mockReturnValue(
+    mockCreateServiceClient.mockResolvedValue(
       mockServiceClient({ investor_auth: { data: null } }),
     )
 
@@ -487,7 +487,7 @@ describe('loadStatementForAuthenticatedPartner — 11 mandatory authorization ca
 
   // AUTH-06
   test('AUTH-06: disabled mapping → NO_MAPPING to route handler (MAPPING_DISABLED not leaked)', async () => {
-    mockCreateServiceClient.mockReturnValue(
+    mockCreateServiceClient.mockResolvedValue(
       mockServiceClient({ investor_auth: { data: DB_AVI_AUTH_DISABLED } }),
     )
 
@@ -614,7 +614,7 @@ describe('DB call ordering — no data query before authorization passes', () =>
       }
       return makeQueryBuilder({ data: null, error: null })
     })
-    mockCreateServiceClient.mockReturnValue(
+    mockCreateServiceClient.mockResolvedValue(
       { schema: (_: string) => ({ from: fromSpy }) } as any,
     )
 
@@ -727,7 +727,7 @@ describe('loadStatementForCurrentPartner — session binding (SESSION-01..11)', 
     mockCreateSupabaseServerClient.mockReturnValue(
       mockSessionClient({ id: UNKNOWN_AUTH_USER_ID }),
     )
-    mockCreateServiceClient.mockReturnValue(
+    mockCreateServiceClient.mockResolvedValue(
       mockServiceClient({ investor_auth: { data: null } }),
     )
 
@@ -743,7 +743,7 @@ describe('loadStatementForCurrentPartner — session binding (SESSION-01..11)', 
     mockCreateSupabaseServerClient.mockReturnValue(
       mockSessionClient({ id: AVI_AUTH_USER_ID }),
     )
-    mockCreateServiceClient.mockReturnValue(
+    mockCreateServiceClient.mockResolvedValue(
       mockServiceClient({ investor_auth: { data: DB_AVI_AUTH_DISABLED } }),
     )
 

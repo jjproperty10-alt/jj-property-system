@@ -103,7 +103,7 @@ export async function fetchEngagementRentalContracts(
   serviceEngagementId: string,
 ): Promise<readonly RentalContractDTO[]> {
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (sb as any)
@@ -132,7 +132,7 @@ export async function fetchPropertyRentalContracts(
   propertyId: string,
 ): Promise<readonly RentalContractDTO[]> {
   try {
-    const sb = createServiceClient()
+    const sb = await createServiceClient()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (sb as any)

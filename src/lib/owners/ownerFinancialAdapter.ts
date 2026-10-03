@@ -524,7 +524,7 @@ async function fetchOccupancyPosition(
   if (needsReview.length === 0) return null
 
   try {
-    const supabase = createServiceClient()
+    const supabase = await createServiceClient()
     const { data, error } = await supabase
       .schema('lifecycle')
       .from('v_occupancy_position')
@@ -926,7 +926,7 @@ export async function resolveBillingStates(
   seriesId: string,
   transactionIds: readonly string[],
 ): Promise<Map<string, BillingStateDTO>> {
-  const supabase = createServiceClient()
+  const supabase = await createServiceClient()
   const result = new Map<string, BillingStateDTO>()
 
   if (transactionIds.length === 0) return result
@@ -1029,7 +1029,7 @@ export async function resolveBillingStates(
 export async function fetchPaymentAllocationSummary(
   seriesId: string,
 ): Promise<PaymentAllocationSummaryDTO> {
-  const supabase = createServiceClient()
+  const supabase = await createServiceClient()
 
   const { data, error } = await supabase
     .schema('statements')
@@ -1089,7 +1089,7 @@ export async function fetchPaymentAllocationSummary(
 export async function fetchCorrectionCases(
   seriesId: string,
 ): Promise<readonly FinancialCorrectionCaseDTO[]> {
-  const supabase = createServiceClient()
+  const supabase = await createServiceClient()
 
   const { data: cases, error } = await supabase
     .schema('statements')
@@ -1348,7 +1348,7 @@ async function buildDefaultReportConfig(
   if (!seriesId) return defaults
 
   try {
-    const db = createServiceClient()
+    const db = await createServiceClient()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (db as any)
       .schema('statements')

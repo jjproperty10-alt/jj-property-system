@@ -34,7 +34,7 @@ export interface PartnerLedgerReadResult {
 }
 
 export async function readPartnerLedger(fromDate?: string, toDate?: string): Promise<PartnerLedgerReadResult> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   let q = db
     .from('transactions')

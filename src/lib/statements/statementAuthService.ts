@@ -71,7 +71,7 @@ export async function authenticateStatementUser(): Promise<
     }
 
     // Step 2: Verify JJ staff status (service-role for RLS bypass)
-    const db = createServiceClient()
+    const db = await createServiceClient()
     const { data: staffRecord, error: staffError } = await db
       .from('jj_staff_config')
       .select('staff_role, is_active')
@@ -120,7 +120,7 @@ export interface ResolvedStatementTarget {
 export async function resolveStatementTarget(
   investorSlug: string,
 ): Promise<ResolvedStatementTarget | null> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   // Load all investor-type entities
   const { data: entities } = await db

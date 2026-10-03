@@ -44,7 +44,7 @@ export interface ControlRoomSummaryDTO {
 }
 
 async function loadStrSummary(
-  db: ReturnType<typeof createServiceClient>,
+  db: Awaited<ReturnType<typeof createServiceClient>>,
 ): Promise<ControlRoomStrSummaryDTO> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -73,7 +73,7 @@ async function loadStrSummary(
 }
 
 async function loadActivePropertyCount(
-  db: ReturnType<typeof createServiceClient>,
+  db: Awaited<ReturnType<typeof createServiceClient>>,
 ): Promise<number | null> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -94,9 +94,9 @@ async function loadActivePropertyCount(
  * cashPosition is a current certified position (as-of), see MoneyPositionDTO.asOfDate.
  */
 export async function getControlRoomSummary(period?: string): Promise<ControlRoomSummaryDTO> {
-  let db: ReturnType<typeof createServiceClient>
+  let db: Awaited<ReturnType<typeof createServiceClient>>
   try {
-    db = createServiceClient()
+    db = await createServiceClient()
   } catch (err) {
     console.error('[controlRoom] createServiceClient failed:', err)
     // Still return a shaped, empty-but-honest contract.

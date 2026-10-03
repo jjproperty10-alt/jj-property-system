@@ -199,7 +199,7 @@ export async function resolveStatementContexts(
   // ── Step 1: Resolve entity identity (G1 pattern) ──────────────────────────
   let sb
   try {
-    sb = createServiceClient()
+    sb = await createServiceClient()
   } catch {
     return empty('source_unavailable')
   }

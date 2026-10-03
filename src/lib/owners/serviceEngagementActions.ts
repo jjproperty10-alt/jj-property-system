@@ -148,7 +148,7 @@ export async function createServiceEngagementAction(
   }
 
   // 3. Call RPC
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -225,7 +225,7 @@ export async function updateServiceEngagementAction(
   }
 
   // 3. Call RPC
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

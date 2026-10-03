@@ -87,7 +87,7 @@ async function resolveAuthenticatedUser(): Promise<
 }
 
 async function isActiveStaff(userId: string): Promise<boolean> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const { data, error } = await db
     .from('user_roles')
     .select('role, is_active')
@@ -210,7 +210,7 @@ export async function createOwnerAction(input: CreateOwnerInput): Promise<Create
   }
 
   // 5. Call RPC — atomic 3-table insert
-  const db = createServiceClient()
+  const db = await createServiceClient()
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

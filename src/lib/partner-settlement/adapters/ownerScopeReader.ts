@@ -18,7 +18,7 @@ import 'server-only'
 import { createServiceClient } from '@/lib/supabase'
 
 export async function readExternalOwnerPropertyNames(): Promise<Set<string> | null> {
-  const db = createServiceClient()
+  const db = await createServiceClient()
   const { data, error } = await db
     .from('contact_properties')
     .select('property_name, relationship_role, is_deleted')

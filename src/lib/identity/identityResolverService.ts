@@ -54,8 +54,8 @@ import { resolveEntityKind } from './identityTypes'
 // Supabase client (server-side only)
 // ─────────────────────────────────────────────────────────────
 
-function getServiceClient() {
-  return createServiceClient()
+async function getServiceClient() {
+  return await createServiceClient()
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -151,7 +151,7 @@ function mapRelationship(row: RelationshipRow): ManagementRelationshipDTO {
  * so existing Owner Room URLs stay byte-stable. Relationships remain lifecycle-sourced.
  */
 async function enrichIdentityWithParty(
-  sb: ReturnType<typeof createServiceClient>,
+  sb: Awaited<ReturnType<typeof createServiceClient>>,
   identity: CanonicalEntityIdentityDTO,
 ): Promise<CanonicalEntityIdentityDTO> {
   try {
@@ -229,9 +229,9 @@ export async function getAllVerifiedOwners(): Promise<{
   }
 }> {
   // Fail-closed: if client creation throws, return empty — never propagate exception
-  let sb: ReturnType<typeof createServiceClient>
+  let sb: Awaited<ReturnType<typeof createServiceClient>>
   try {
-    sb = getServiceClient()
+    sb = await getServiceClient()
   } catch (err) {
     console.error('[identityResolver] createServiceClient failed:', err)
     return { owners: [], pendingRelationships: [], draftOwners: [], counts: { verifiedRelationships: 0, distinctVerifiedEntities: 0, distinctVerifiedProperties: 0, pendingRelationships: 0, draftOwners: 0 } }
@@ -387,9 +387,9 @@ export async function resolveBySlug(slug: string): Promise<IdentityResolutionRes
   }
 
   // Fail-closed: if client creation throws, return source_unavailable — never propagate exception
-  let sb: ReturnType<typeof createServiceClient>
+  let sb: Awaited<ReturnType<typeof createServiceClient>>
   try {
-    sb = getServiceClient()
+    sb = await getServiceClient()
   } catch (err) {
     return {
       status: 'source_unavailable',
