@@ -65,3 +65,37 @@ today's live figure is Tamir (+3,404.03, the unknown pair 3 row).
 The 15 rows dropped by the fix: 10 Group 1 rows, side A of pairs 1, 2, 4, 5,
 and side A of pair 3 (82c8ee31). Side B of every pair is `confirmed_duplicate`
 and was already excluded.
+
+## Per-pair treatment (planning only; added 2026-10-03 14:30 Bucharest)
+
+The live view counts side A of pairs 1, 2, 4 and 5 once, because it ignores
+`is_deleted` and exclusions. This draft counts neither side, because the
+certified ledger excludes soft-deleted and actively excluded rows. Yossi's
+planning decision is to count side A once. **So this draft, on its own, would
+remove those amounts from the owners' balances.** The counting code is
+deliberately NOT changed here. The rows return only through a separately
+approved un-delete and exclusion plan. Until then, the draft must not be
+applied on its own without that plan, or without Yossi explicitly accepting
+the gap below.
+
+`net_jj_settlement`, EUR. Positive = owner owes JJ, negative = JJ owes owner
+(view convention). Each delta is the effect of dropping that row alone.
+
+| Pair | Row (side A) | Owner | Row | Live (counts A once) | Draft (counts neither) | Delta for owner | Owner-level certification covering it? | Planned treatment |
+|---|---|---|---|---:|---:|---:|---|---|
+| 1 | cfb1b60c-90f9-47c1-930f-6c7737ccf448 | Ofri | Platform Income 3,917.49 (30.05.2026, 1/3/26-31/5/26) | counted | dropped | +3,917.49 | None | Count once after an approved un-delete plus exclusion deactivation (DS-016) |
+| 2 | 20eaeb18-a457-4740-acb2-0fe446a01460 | Ofri | Bank Payment to Owner 3,322.37 (04.06.2026) | counted | dropped | −3,322.37 | None | Count once after an approved un-delete plus exclusion deactivation (DS-008; bank-sourced, not Hostaway) |
+| 4 | dc3d60fb-f3a3-4ca6-9fc4-46ef40e4bdb3 | Tom | Platform Income 1,553.96 (31.05.2026, 10/2/26-31/5/26) | counted | dropped | +1,553.96 | None | Count once after an approved un-delete plus exclusion deactivation (STR recon 15.08) |
+| 5 | 10622dde-dd02-464f-a6e1-d98cb25cde83 | Uriel | Platform Income 1,900.52 (30.05.2026, 1.1.26-31.5.26) | counted | dropped | +1,900.52 | **Likely yes**: certification ad2ba8fd, line e55e4b35 (Uriel Duplex, opening_property_obligation 16,555.43, str_credit 6,983.10) | **Do NOT add on top of the certification.** First prove whether 1,900.52 sits inside str_credit 6,983.10. If it does, a cert-based consumer counts it through the cert only, and the view row is a duplicate. |
+
+Owner totals for the pair rows alone:
+- Ofri: +595.12 (+3,917.49 − 3,322.37).
+- Tom: +1,553.96.
+- Uriel: +1,900.52 (subject to the certification check above).
+
+Full before/after per contact, including Group 1, is in the table above.
+
+Open checks, not done in this draft:
+- Pair 5: rebuild str_credit 6,983.10 for Uriel Duplex from its source rows, and confirm or deny that 10622dde is one of them. This is read-only, and JJ Evidence owns it. ("Likely" comes from JJ Evidence, 03.10 14:21. It has not been re-verified here.)
+- Pairs 1, 2, 4: no client settlement certification line covers them, so the view is their only route into the owner balance.
+- No restore, no exclusion change, no data write. Each needs separate approval from Yossi.
