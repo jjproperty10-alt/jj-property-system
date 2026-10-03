@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { createSupabaseBrowserClient } from '@/lib/supabase'
+import { createSupabaseBrowserClient } from '@/lib/supabaseBrowser'
 import { readStaffRentalContract } from '@/lib/legacy/staffRentalContracts'
 import type { RentalContract, Transaction } from '@/types'
 import { format, parseISO, differenceInDays, startOfMonth, endOfMonth, eachMonthOfInterval } from 'date-fns'

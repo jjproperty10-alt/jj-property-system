@@ -75,9 +75,9 @@ async function load() {
   const [{ createServiceClient, MISSING_SERVICE_KEY_BLOCK }, { fetchAll }, { fetchOwnershipForProperty }, { requireDecisionSessionUser }] =
     await Promise.all([
       import('@/lib/supabase'),
-      import('@/app/(app)/page'),
+      import('@/lib/ceo/fetchCeoDashboard'),
       import('@/lib/ownership/ownershipService'),
-      import('@/app/(app)/finance/decision/[partner]/[period]/page'),
+      import('@/lib/finance/loadFinanceDecision'),
     ])
   return { createServiceClient, MISSING_SERVICE_KEY_BLOCK, fetchAll, fetchOwnershipForProperty, requireDecisionSessionUser }
 }

@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { createSupabaseBrowserClient } from '@/lib/supabase'
+import { createSupabaseBrowserClient } from '@/lib/supabaseBrowser'
 import { sanitizeReturnPath } from '@/lib/auth/sanitizeReturnPath'
 import { isSupabaseConfigured } from '@/lib/supabaseConfig'
 import {
