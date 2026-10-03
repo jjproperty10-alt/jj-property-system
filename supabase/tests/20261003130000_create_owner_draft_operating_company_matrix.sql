@@ -1,6 +1,9 @@
 -- Throwaway-Postgres matrix for 20261003130000 (create_owner_draft company).
 -- Runner: scripts/run-throwaway-pg-matrix.cjs (refuses Supabase / non-local hosts).
--- Fixtures: throwaway_company_base.sql + 20261003130000_create_owner_draft_fixture.sql.
+-- Fixtures, in order: throwaway_company_base.sql,
+-- throwaway_slice_a_preconditions.sql,
+-- the real 20260930220000_client_entity_company_isolation.sql,
+-- then 20261003130000_create_owner_draft_fixture.sql.
 -- Everything runs inside one transaction that ends in ROLLBACK.
 
 CREATE TEMP TABLE ownerdraft_matrix (
@@ -20,7 +23,7 @@ BEGIN
 END
 $actor$;
 
--- 1. Live function + Slice A stand-in: today's RPC only gets a company through the trigger.
+-- 1. Live function + real Slice A trigger: today's RPC only gets a company through the trigger.
 DO $pre$
 DECLARE
   v_entity uuid;
@@ -35,7 +38,7 @@ BEGIN
     '01_pre_live_relies_on_slice_a_trigger',
     v_company = '00000000-0000-4000-8000-00000000000a'
       AND position('operating_company_id' in (SELECT prosrc FROM pg_proc WHERE proname = 'create_owner_draft')) = 0,
-    'live RPC omits the column; stand-in trigger filled ' || coalesce(v_company::text, 'NULL'));
+    'live RPC omits the column; Slice A trigger filled ' || coalesce(v_company::text, 'NULL'));
 END
 $pre$;
 
@@ -132,6 +135,27 @@ BEGIN
     INSERT INTO ownerdraft_matrix VALUES ('08_null_property_id_blocked', SQLERRM = 'BLOCKED_BY_PARENT_COMPANY', SQLERRM);
   END;
   RESET ROLE;
+
+  -- One active company, so Slice A's trigger accepts the armed sole company
+  -- and the identity check is what fails. The permit must not survive.
+  SELECT count(*) INTO v_before FROM lifecycle.entity_identity;
+  BEGIN
+    SET LOCAL ROLE service_role;
+    PERFORM lifecycle.create_owner_draft(
+      'Post Arm Check',
+      p_entity_type => 'not_a_type',
+      p_property_ids => ARRAY['00000000-0000-4000-8000-0000000000f1'::uuid]);
+    INSERT INTO ownerdraft_matrix VALUES ('08b_one_company_post_arm_check_disarms', false, 'returned');
+  EXCEPTION WHEN OTHERS THEN
+    SELECT count(*) INTO v_permits FROM access.internal_company_write_permit;
+    INSERT INTO ownerdraft_matrix VALUES (
+      '08b_one_company_post_arm_check_disarms',
+      v_permits = 0
+        AND (SELECT count(*) FROM lifecycle.entity_identity) = v_before
+        AND SQLERRM LIKE '%entity_identity_entity_type_check%',
+      SQLERRM || ' permits=' || v_permits::text);
+  END;
+  RESET ROLE;
 END
 $one_company$;
 
@@ -144,8 +168,6 @@ VALUES ('Throwaway B1', '00000000-0000-4000-8000-0000000000e1', '00000000-0000-4
 DO $two_companies$
 DECLARE
   company_b uuid := '00000000-0000-4000-8000-00000000000b';
-  v_entity uuid;
-  v_company uuid;
   v_before integer;
 BEGIN
   CALL pg_temp.ownerdraft_actor('service_role', NULL);
@@ -163,12 +185,14 @@ BEGIN
 
   BEGIN
     SET LOCAL ROLE service_role;
-    SELECT lifecycle.create_owner_draft('Two Companies Property B', p_property_ids => ARRAY['00000000-0000-4000-8000-0000000000e1'::uuid]) INTO v_entity;
-    RESET ROLE;
-    SELECT operating_company_id INTO v_company FROM lifecycle.entity_identity WHERE id = v_entity;
-    INSERT INTO ownerdraft_matrix VALUES ('10_two_companies_property_b_written_as_b', v_company = company_b, coalesce(v_company::text, 'NULL'));
+    PERFORM lifecycle.create_owner_draft('Two Companies Property B', p_property_ids => ARRAY['00000000-0000-4000-8000-0000000000e1'::uuid]);
+    INSERT INTO ownerdraft_matrix VALUES ('10_two_companies_property_b_blocked_by_real_slice_a', false, 'returned');
   EXCEPTION WHEN OTHERS THEN
-    INSERT INTO ownerdraft_matrix VALUES ('10_two_companies_property_b_written_as_b', false, SQLERRM);
+    INSERT INTO ownerdraft_matrix VALUES (
+      '10_two_companies_property_b_blocked_by_real_slice_a',
+      SQLERRM = 'BLOCKED_BY_COMPANY_CONTEXT'
+        AND (SELECT count(*) FROM lifecycle.entity_identity) = v_before,
+      SQLERRM);
   END;
   RESET ROLE;
 
@@ -181,8 +205,9 @@ BEGIN
   END;
   RESET ROLE;
 
-  -- A direct insert claiming company B without the RPC's permit is still refused
-  -- (Slice A stand-in + live resolver): only the RPC path can write B.
+  -- A direct insert claiming company B is refused by the real Slice A trigger,
+  -- which calls resolve_verified_operating_company(NULL, false) and does not
+  -- read the armed permit.
   BEGIN
     INSERT INTO lifecycle.entity_identity (canonical_name, entity_type, operating_company_id)
     VALUES ('Direct B', 'external', company_b);
@@ -221,8 +246,9 @@ BEGIN
 END
 $grants$;
 
--- Error after the permit is armed (invalid entity type fails the identity
--- insert). The caught error must leave no permit and no identity row.
+-- Two companies are active here. The real Slice A trigger rejects the insert
+-- with BLOCKED_BY_COMPANY_CONTEXT even though create_owner_draft armed company
+-- A first. The caught error must leave no permit and no identity row.
 DO $disarm_on_error$
 DECLARE
   v_before integer;
@@ -243,7 +269,7 @@ BEGIN
       '20_permit_disarmed_after_error',
       v_permits = 0
         AND (SELECT count(*) FROM lifecycle.entity_identity) = v_before
-        AND SQLERRM LIKE '%entity_identity_entity_type_check%',
+        AND SQLERRM = 'BLOCKED_BY_COMPANY_CONTEXT',
       SQLERRM || ' permits=' || v_permits::text);
   END;
   RESET ROLE;
@@ -262,7 +288,7 @@ BEGIN
       AND (SELECT proacl::text FROM pg_proc WHERE oid = fn) = '{postgres=X/postgres,service_role=X/postgres}',
     md5(pg_get_functiondef(fn)));
   INSERT INTO ownerdraft_matrix VALUES ('18_rollback_kept_rows',
-    (SELECT count(*) FROM lifecycle.entity_identity) = 4, (SELECT count(*) FROM lifecycle.entity_identity)::text);
+    (SELECT count(*) FROM lifecycle.entity_identity) = 30, (SELECT count(*) FROM lifecycle.entity_identity)::text);
 END
 $after_rollback$;
 

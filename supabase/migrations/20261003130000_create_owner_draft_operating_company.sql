@@ -15,11 +15,10 @@
 -- explicitly, and disarmed before returning.
 --
 -- APPLY GATE: this draft cannot be applied before the real Slice A migration
--- 20260930220000_client_entity_company_isolation. That migration is not in
--- this repository (it exists only on Yossi's laptop) and it is not live.
--- The throwaway matrix loads a labelled local Slice A STAND-IN fixture
--- (supabase/tests/fixtures/20261003130000_create_owner_draft_fixture.sql).
--- That stand-in is not Slice A and must not be applied anywhere else.
+-- supabase/migrations/20260930220000_client_entity_company_isolation.sql.
+-- That file is in this branch byte-identical to the owner's copy and is still
+-- a draft: do not apply it to Production or Staging from here.
+-- The throwaway matrix loads that real file. It does not load a stand-in.
 -- Signature, owner, SECURITY DEFINER and grants are unchanged.
 -- This migration does not insert or update a company, membership or business row.
 

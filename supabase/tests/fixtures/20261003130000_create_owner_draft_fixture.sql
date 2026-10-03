@@ -1,18 +1,16 @@
 -- Throwaway-only fixture for 20261003130000 (create_owner_draft company).
--- Load AFTER supabase/tests/fixtures/throwaway_company_base.sql.
+-- Load AFTER:
+--   1. supabase/tests/fixtures/throwaway_company_base.sql
+--   2. supabase/tests/fixtures/throwaway_slice_a_preconditions.sql
+--   3. supabase/migrations/20260930220000_client_entity_company_isolation.sql
+--      (the real Slice A file, unmodified)
 -- NEVER run against a Supabase project.
 --
--- 1. lifecycle tables used by create_owner_draft, with the live columns and
---    constraints (read-only capture of Production, 2026-10-03).
--- 2. lifecycle.create_owner_draft exactly as live today
---    (md5(prosrc) 6539a074de7e8bf4c85045c6f115f575).
--- 3. A STAND-IN for Slice A (20260930220000_client_entity_company_isolation),
---    whose files are only on Yossi's laptop. Per the 02.10 handoff, Slice A adds
---    lifecycle.entity_identity.operating_company_id NOT NULL with an FK and a
---    company trigger (trg_entity_identity_company). The stand-in below mimics
---    that contract with the same live helper pattern used for agent drafts
---    (access.resolve_verified_operating_company on INSERT, reassignment blocked
---    on UPDATE). It MUST be replaced by the real Slice A files when they arrive.
+-- This file does not recreate Slice A. It records that Slice A has been
+-- applied (schema_migrations version 20260930220000), then adds the property
+-- and association tables create_owner_draft needs, and installs the live
+-- function body (md5(prosrc) 6539a074de7e8bf4c85045c6f115f575).
+-- lifecycle.entity_identity already has operating_company_id from Slice A.
 
 CREATE TABLE public.property_definitions (
   property_name text PRIMARY KEY,
@@ -20,25 +18,6 @@ CREATE TABLE public.property_definitions (
   operating_company_id uuid NOT NULL REFERENCES registry.companies (company_id) ON DELETE RESTRICT
 );
 CREATE UNIQUE INDEX property_definitions_property_id_unique ON public.property_definitions USING btree (property_id);
-
-CREATE TABLE lifecycle.entity_identity (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  canonical_name text NOT NULL,
-  aliases text[] NOT NULL DEFAULT '{}'::text[],
-  entity_type text NOT NULL,
-  status text NOT NULL DEFAULT 'active'::text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  contact_email text,
-  contact_phone text,
-  preferred_language text,
-  country text,
-  entity_legal_name text,
-  internal_notes text,
-  CONSTRAINT entity_identity_entity_type_check CHECK ((entity_type = ANY (ARRAY['partner'::text, 'investor'::text, 'jj_company'::text, 'external'::text, 'managed_client'::text, 'ownership_group'::text]))),
-  CONSTRAINT entity_identity_preferred_language_check CHECK ((preferred_language = ANY (ARRAY['he'::text, 'en'::text, 'ru'::text]))),
-  CONSTRAINT entity_identity_status_check CHECK ((status = ANY (ARRAY['active'::text, 'inactive'::text, 'void'::text])))
-);
 
 CREATE TABLE lifecycle.jj_relationships (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -74,9 +53,8 @@ CREATE TABLE lifecycle.entity_property_associations (
   CONSTRAINT epa_status_check CHECK ((status = ANY (ARRAY['draft'::text, 'active'::text, 'inactive'::text])))
 );
 
-REVOKE ALL ON TABLE public.property_definitions, lifecycle.entity_identity, lifecycle.jj_relationships, lifecycle.entity_property_associations FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON TABLE public.property_definitions, lifecycle.jj_relationships, lifecycle.entity_property_associations FROM PUBLIC, anon, authenticated, service_role;
 
--- Synthetic property definitions in company A.
 INSERT INTO public.property_definitions (property_name, property_id, operating_company_id) VALUES
   ('Throwaway A1', '00000000-0000-4000-8000-0000000000f1', '00000000-0000-4000-8000-00000000000a'),
   ('Throwaway A2', '00000000-0000-4000-8000-0000000000f2', '00000000-0000-4000-8000-00000000000a');
@@ -129,34 +107,6 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION lifecycle.create_owner_draft(text, text, text, text, text, text, text, text, text, date, text, uuid[], text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION lifecycle.create_owner_draft(text, text, text, text, text, text, text, text, text, date, text, uuid[], text) TO service_role;
-
--- ---- Slice A STAND-IN (replace with the real 20260930220000 files) ----
-ALTER TABLE lifecycle.entity_identity
-  ADD COLUMN operating_company_id uuid NOT NULL
-  CONSTRAINT entity_identity_operating_company_fk REFERENCES registry.companies (company_id) ON DELETE RESTRICT;
-
-CREATE FUNCTION lifecycle.slice_a_standin_entity_identity_company()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = pg_catalog
-AS $standin$
-BEGIN
-  IF TG_OP = 'UPDATE' THEN
-    IF NEW.operating_company_id IS DISTINCT FROM OLD.operating_company_id THEN
-      RAISE EXCEPTION 'BLOCKED_BY_COMPANY_REASSIGNMENT';
-    END IF;
-    RETURN NEW;
-  END IF;
-  NEW.operating_company_id := access.resolve_verified_operating_company(NEW.operating_company_id, false);
-  RETURN NEW;
-END
-$standin$;
-REVOKE ALL ON FUNCTION lifecycle.slice_a_standin_entity_identity_company() FROM PUBLIC, anon, authenticated, service_role;
-
-CREATE TRIGGER trg_entity_identity_company
-  BEFORE INSERT OR UPDATE ON lifecycle.entity_identity
-  FOR EACH ROW EXECUTE FUNCTION lifecycle.slice_a_standin_entity_identity_company();
 
 INSERT INTO supabase_migrations.schema_migrations (version, name)
 VALUES ('20260930220000', 'client_entity_company_isolation');

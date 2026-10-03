@@ -44,15 +44,17 @@ const MIGRATION = 'supabase/migrations/20261003130000_create_owner_draft_operati
 const ROLLBACK = 'supabase/rollbacks/20261003130000_create_owner_draft_operating_company_rollback.sql'
 const MATRIX = 'supabase/tests/20261003130000_create_owner_draft_operating_company_matrix.sql'
 const FIXTURE = 'supabase/tests/fixtures/20261003130000_create_owner_draft_fixture.sql'
+const PRECONDITIONS = 'supabase/tests/fixtures/throwaway_slice_a_preconditions.sql'
 
 describe('20261003130000 migration files', () => {
   const migration = read(MIGRATION)
   const rollback = read(ROLLBACK)
   const matrix = read(MATRIX)
   const fixture = read(FIXTURE)
+  const preconditions = read(PRECONDITIONS)
 
   it('has no CRLF and no hard-coded Production company UUID', () => {
-    for (const file of [migration, rollback, matrix, fixture]) {
+    for (const file of [migration, rollback, matrix, fixture, preconditions]) {
       expect(file.includes('\r')).toBe(false)
       expect(file).not.toContain('10f6e9b3-c5b9-4d95-a318-48f20f89477f')
     }
@@ -60,7 +62,8 @@ describe('20261003130000 migration files', () => {
 
   it('cannot be applied before the real Slice A and pins the live function', () => {
     expect(migration).toContain('cannot be applied before the real Slice A')
-    expect(migration).toContain('STAND-IN')
+    expect(migration).toContain('20260930220000_client_entity_company_isolation.sql')
+    expect(fixture).not.toContain('slice_a_standin')
     expect(migration).toContain("version = '20260930220000') <> 1")
     expect(migration).toContain("version = '20261003130000') <> 0")
     expect(migration).toContain("md5(proc.prosrc) = '6539a074de7e8bf4c85045c6f115f575'")
@@ -93,7 +96,8 @@ describe('20261003130000 migration files', () => {
       '05_permit_disarmed_after_call',
       '07_unknown_property_blocked',
       '09_two_companies_no_property_blocked',
-      '10_two_companies_property_b_written_as_b',
+      '08b_one_company_post_arm_check_disarms',
+      '10_two_companies_property_b_blocked_by_real_slice_a',
       '11_cross_company_properties_blocked',
       '13_inactive_parent_company_blocked',
       '15_never_reads_property_name',

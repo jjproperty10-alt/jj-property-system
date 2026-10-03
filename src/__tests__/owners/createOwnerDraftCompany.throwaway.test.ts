@@ -17,6 +17,8 @@ maybe('20261003130000 matrix on throwaway Postgres', () => {
       [
         'scripts/run-throwaway-pg-matrix.cjs',
         '--fixture', 'supabase/tests/fixtures/throwaway_company_base.sql',
+        '--fixture', 'supabase/tests/fixtures/throwaway_slice_a_preconditions.sql',
+        '--fixture', 'supabase/migrations/20260930220000_client_entity_company_isolation.sql',
         '--fixture', 'supabase/tests/fixtures/20261003130000_create_owner_draft_fixture.sql',
         '--migration', 'supabase/migrations/20261003130000_create_owner_draft_operating_company.sql',
         '--rollback', 'supabase/rollbacks/20261003130000_create_owner_draft_operating_company_rollback.sql',
@@ -25,7 +27,7 @@ maybe('20261003130000 matrix on throwaway Postgres', () => {
       { cwd: root, encoding: 'utf8', env: process.env },
     )
     expect(result.stderr).toBe('')
-    expect(result.stdout).toContain('MATRIX 20/20 passed')
+    expect(result.stdout).toContain('MATRIX 21/21 passed')
     expect(result.status).toBe(0)
   })
 })
