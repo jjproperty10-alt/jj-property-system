@@ -18,7 +18,9 @@ const root = path.resolve(__dirname, '..', '..', '..')
 const read = (file: string) => readFileSync(path.join(root, file), 'utf8')
 
 const CEO_PAGE = 'src/app/(app)/page.tsx'
+const CEO_DATA = 'src/lib/ceo/fetchCeoDashboard.ts'
 const DECISION_PAGE = 'src/app/(app)/finance/decision/[partner]/[period]/page.tsx'
+const DECISION_LOAD = 'src/lib/finance/loadFinanceDecision.ts'
 const OWNERSHIP = 'src/lib/ownership/ownershipService.ts'
 
 type Filter = {
@@ -94,19 +96,19 @@ describe('direct service-key clients use the company gate', () => {
   })
 
   test('the three former direct clients no longer build their own client', () => {
-    for (const file of [CEO_PAGE, DECISION_PAGE, OWNERSHIP]) {
+    for (const file of [CEO_PAGE, CEO_DATA, DECISION_PAGE, DECISION_LOAD, OWNERSHIP]) {
       const source = read(file)
       expect(source).not.toMatch(/process\.env\.SUPABASE_SERVICE/)
       expect(source).not.toContain("from '@supabase/supabase-js'")
       expect(source).not.toMatch(/\bcreateClient\(/)
       expect(source).not.toMatch(/\bcreateServerClient\(/)
     }
-    expect(read(CEO_PAGE)).toContain("import { createServiceClient } from '@/lib/supabase'")
-    expect(read(CEO_PAGE)).toContain('sb = await createServiceClient()')
+    expect(read(CEO_DATA)).toContain("import { createServiceClient } from '@/lib/supabase'")
+    expect(read(CEO_DATA)).toContain('sb = await createServiceClient()')
     expect(read(OWNERSHIP)).toContain("import { createServiceClient } from '@/lib/supabase'")
     expect(read(OWNERSHIP)).not.toContain('NEXT_PUBLIC_SUPABASE_ANON_KEY')
-    expect(read(DECISION_PAGE)).toContain('requireStaffCompanyPermission')
-    expect(read(CEO_PAGE)).toContain('requireStaffCompanyPermission')
+    expect(read(DECISION_LOAD)).toContain('requireStaffCompanyPermission')
+    expect(read(CEO_DATA)).toContain('requireStaffCompanyPermission')
     expect(read(OWNERSHIP)).toContain('requireStaffCompanyPermission')
   })
 
@@ -156,7 +158,7 @@ describe('direct service-key clients use the company gate', () => {
   })
 
   test('every relation the CEO page and ownershipService read is gated', () => {
-    const ceo = read(CEO_PAGE)
+    const ceo = read(CEO_DATA)
     const ownership = read(OWNERSHIP)
     const decisionReads = [
       'src/lib/finance/computeFinancialPosition.ts',

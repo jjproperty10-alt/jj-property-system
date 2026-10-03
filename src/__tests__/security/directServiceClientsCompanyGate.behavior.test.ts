@@ -146,9 +146,9 @@ function decisionArgs() {
 
 async function loadComponents() {
   const [{ fetchAll }, { fetchOwnershipForProperty }, { loadFinanceDecision }] = await Promise.all([
-    import('@/app/(app)/page'),
+    import('@/lib/ceo/fetchCeoDashboard'),
     import('@/lib/ownership/ownershipService'),
-    import('@/app/(app)/finance/decision/[partner]/[period]/page'),
+    import('@/lib/finance/loadFinanceDecision'),
   ])
   return { fetchAll, fetchOwnershipForProperty, loadFinanceDecision }
 }

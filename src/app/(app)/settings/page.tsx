@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { createSupabaseBrowserClient } from '@/lib/supabase'
+import { createSupabaseBrowserClient } from '@/lib/supabaseBrowser'
 import { countStaffRentalContracts } from '@/lib/legacy/staffRentalContracts'
 import { countStaffContacts } from '@/lib/staff/restrictedStaffActions'
 import { PageShell, WorkspaceHeader } from '@/components/ds'

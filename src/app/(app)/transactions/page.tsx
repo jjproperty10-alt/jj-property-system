@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { createSupabaseBrowserClient } from '@/lib/supabase'
+import { createSupabaseBrowserClient } from '@/lib/supabaseBrowser'
 import type { Category } from '@/types'
 import { CATEGORIES, CATEGORY_COLORS } from '@/types'
 import { format } from 'date-fns'
@@ -33,7 +33,7 @@ function TruncateText({ value }: { value: string | null | undefined }) {
 }
 
 /** Register row — extends the base transaction shape with status columns used by M1. */
-export interface RegisterTransaction {
+interface RegisterTransaction {
   id: string
   date: string
   property_id: string | null

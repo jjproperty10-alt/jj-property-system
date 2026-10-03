@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
-import { createSupabaseBrowserClient } from '@/lib/supabase'
+import { createSupabaseBrowserClient } from '@/lib/supabaseBrowser'
 import { readStaffView } from '@/lib/legacy/staffViewActions'
 import {
   ArrowLeft, Building2, RefreshCw, TrendingUp, TrendingDown,

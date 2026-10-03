@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { createSupabaseBrowserClient } from '@/lib/supabase'
+import { createSupabaseBrowserClient } from '@/lib/supabaseBrowser'
 import { enrichTransactionRegisterMetaAction } from '@/lib/transactions/correctionWorkspaceActions'
 import {
   computeValidationQuality,
