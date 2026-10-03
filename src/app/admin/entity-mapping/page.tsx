@@ -18,10 +18,11 @@ import {
   Building2, Tag, ArrowRight, Filter
 } from 'lucide-react'
 import {
-  getUnmappedQueue, listEntities,
+  getUnmappedQueue,
   ENTITY_TYPE_LABELS, ENTITY_TYPE_COLORS, STATUS_LABELS, STATUS_COLORS, EUR,
   UnmappedQueueItem, EntityRegistry, EntityType, ConfirmationStatus,
 } from '@/lib/entity-registry'
+import { listStaffEntities } from '@/lib/staff/restrictedStaffActions'
 
 // ─── Badge helpers ────────────────────────────────────────────────────────────
 
@@ -139,9 +140,11 @@ function EntityRegistryTab() {
   const load = useCallback(async () => {
     setLoading(true); setError(null)
     try {
-      setEntities(await listEntities({
+      const result = await listStaffEntities({
         is_active: showInactive ? undefined : true,
-      }))
+      })
+      if (!result.ok) throw new Error(result.error)
+      setEntities(result.entities)
     }
     catch (e) { setError(String(e)) }
     finally { setLoading(false) }

@@ -8,7 +8,8 @@
 
 import { useState } from 'react'
 import { Edit2, Save, X, AlertTriangle } from 'lucide-react'
-import { EntityRegistry, EntityType, ConfirmationStatus, ENTITY_TYPE_LABELS, updateEntity } from '@/lib/entity-registry'
+import { EntityRegistry, EntityType, ConfirmationStatus, ENTITY_TYPE_LABELS } from '@/lib/entity-registry'
+import { updateStaffEntity } from '@/lib/staff/restrictedStaffActions'
 
 const ENTITY_TYPES: EntityType[] = [
   'client_property', 'partnership_property', 'jj_property',
@@ -52,13 +53,14 @@ export default function IdentityPanel({ entity, onSaved }: Props) {
   async function save() {
     setSaving(true); setError(null)
     try {
-      await updateEntity(entity.id, {
+      const result = await updateStaffEntity(entity.id, {
         display_name: displayName.trim() || null,
         entity_type: entityType,
         confirmation_status: status,
         notes: notes.trim() || null,
         is_active: isActive,
       })
+      if (!result.ok) throw new Error(result.error)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
       setEditing(false)

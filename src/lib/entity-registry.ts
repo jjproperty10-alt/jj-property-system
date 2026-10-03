@@ -6,7 +6,6 @@
 // No UI logic. Import from '@/lib/entity-registry'.
 // ============================================================
 
-import { supabase } from '@/lib/supabase'
 import { readStaffView } from '@/lib/legacy/staffViewActions'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -204,100 +203,8 @@ const parseNum = (v: unknown): number => {
   return isNaN(n) ? 0 : n
 }
 
-// ─── Registry ─────────────────────────────────────────────────────────────────
-
-export async function getEntity(id: string): Promise<EntityRegistry | null> {
-  const { data, error } = await supabase
-    .from('entity_registry')
-    .select('*')
-    .eq('id', id)
-    .single()
-  if (error) { if (error.code === 'PGRST116') return null; throw error }
-  return data
-}
-
-export async function listEntities(filters?: {
-  entity_type?: EntityType[]
-  confirmation_status?: ConfirmationStatus[]
-  is_active?: boolean
-  search?: string
-}): Promise<EntityRegistry[]> {
-  let q = supabase.from('entity_registry').select('*').order('canonical_name')
-  if (filters?.entity_type?.length)          q = q.in('entity_type', filters.entity_type)
-  if (filters?.confirmation_status?.length)  q = q.in('confirmation_status', filters.confirmation_status)
-  if (filters?.is_active !== undefined)      q = q.eq('is_active', filters.is_active)
-  if (filters?.search)                       q = q.ilike('canonical_name', `%${filters.search}%`)
-  const { data, error } = await q
-  if (error) throw error
-  return data ?? []
-}
-
-export async function updateEntity(
-  id: string,
-  updates: Partial<Omit<EntityRegistry, 'id' | 'created_at' | 'updated_at'>>
-): Promise<void> {
-  const { error } = await supabase
-    .from('entity_registry')
-    .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq('id', id)
-  if (error) throw error
-}
-
-// ─── Aliases ──────────────────────────────────────────────────────────────────
-
-export async function getAliases(entityId: string): Promise<EntityAlias[]> {
-  const { data, error } = await supabase
-    .from('entity_aliases')
-    .select('*')
-    .eq('entity_id', entityId)
-    .order('created_at')
-  if (error) throw error
-  return data ?? []
-}
-
-export async function addAlias(
-  entityId: string,
-  aliasName: string,
-  source: EntityAlias['source']
-): Promise<void> {
-  const { error } = await supabase
-    .from('entity_aliases')
-    .insert({ entity_id: entityId, alias_name: aliasName, source })
-  if (error) throw error
-}
-
-export async function deactivateAlias(aliasId: string): Promise<void> {
-  const { error } = await supabase
-    .from('entity_aliases')
-    .update({ is_active: false })
-    .eq('id', aliasId)
-  if (error) throw error
-}
-
-// ─── Ownership ────────────────────────────────────────────────────────────────
-
-export async function getOwnership(entityId: string): Promise<PartnershipOwnership[]> {
-  const { data, error } = await supabase
-    .from('partnership_ownership')
-    .select('*')
-    .eq('entity_id', entityId)
-    .order('effective_from')
-  if (error) throw error
-  return asRows(data).map((r: any) => ({ ...r, ownership_pct: parseNum(r.ownership_pct) }))
-}
-
-export async function insertOwnershipRow(row: Omit<PartnershipOwnership, 'id' | 'created_at'>): Promise<void> {
-  const { error } = await supabase.from('partnership_ownership').insert(row)
-  if (error) throw error
-}
-
-export async function closeOwnershipRow(id: string): Promise<void> {
-  const { error } = await supabase
-    .from('partnership_ownership')
-    .update({ effective_to: new Date().toISOString().split('T')[0] })
-    .eq('id', id)
-  if (error) throw error
-}
+// entity_registry, entity_aliases, partnership_ownership, and accounting_rules
+// are read and written in src/lib/staff/restrictedStaffActions.ts after a staff check.
 
 // ─── Financial views ──────────────────────────────────────────────────────────
 
@@ -406,61 +313,6 @@ export async function getEntityTransactionCount(entityId: string): Promise<numbe
   })
   if (error) throw error
   return count ?? 0
-}
-
-// ─── Contacts ─────────────────────────────────────────────────────────────────
-
-export async function getContactLinks(propertyName: string): Promise<ContactLink[]> {
-  const { data, error } = await supabase
-    .from('contact_properties')
-    .select('*, contact:contacts(id, name, type)')
-    .eq('property_name', propertyName)
-  if (error) throw error
-  return (data ?? []).filter((r: ContactLink) => r.is_deleted !== true)
-}
-
-export async function searchContacts(query: string): Promise<Contact[]> {
-  const { data, error } = await supabase
-    .from('contacts')
-    .select('id, name, type')
-    .ilike('name', `%${query}%`)
-    .limit(10)
-  if (error) throw error
-  return (data ?? []).filter((c: Contact & { is_deleted?: boolean }) => c.is_deleted !== true)
-}
-
-export async function addContactLink(
-  contactId: string,
-  propertyName: string,
-  role: string,
-  status: string
-): Promise<void> {
-  const { error } = await supabase
-    .from('contact_properties')
-    .insert({
-      contact_id: contactId,
-      property_name: propertyName,
-      relationship_role: role,
-      confirmation_status: status,
-    })
-  if (error) throw error
-}
-
-export async function removeContactLink(linkId: string): Promise<void> {
-  const { error } = await supabase
-    .from('contact_properties')
-    .update({ is_deleted: true })
-    .eq('id', linkId)
-  if (error) throw error
-}
-
-export async function getAccountingRules(): Promise<AccountingRule[]> {
-  const { data, error } = await supabase
-    .from('accounting_rules')
-    .select('*')
-    .order('entity_type')
-  if (error) throw error
-  return data ?? []
 }
 
 // ─── Partnership Capital ──────────────────────────────────────────────────────
@@ -703,21 +555,3 @@ export async function getJJPropertyNetPosition(
   }
 }
 
-export async function upsertPartnershipCapital(row: {
-  property_name: string
-  partner_name: string
-  ownership_percent: number
-  entry_date: string | null
-  jj_original_acquisition_cost: number | null
-  partner_entry_valuation: number | null
-  amount_paid_by_partner: number
-  notes: string | null
-}): Promise<void> {
-  const { error } = await supabase
-    .from('partnership_capital')
-    .upsert(
-      { ...row, updated_at: new Date().toISOString() },
-      { onConflict: 'property_name,partner_name' }
-    )
-  if (error) throw error
-}

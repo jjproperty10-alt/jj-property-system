@@ -8,7 +8,8 @@
 
 import { useState } from 'react'
 import { Plus, X, AlertTriangle, Info } from 'lucide-react'
-import { EntityAlias, addAlias, deactivateAlias } from '@/lib/entity-registry'
+import type { EntityAlias } from '@/lib/entity-registry'
+import { addStaffAlias, deactivateStaffAlias } from '@/lib/staff/restrictedStaffActions'
 
 const SOURCE_OPTIONS: { value: EntityAlias['source']; label: string }[] = [
   { value: 'case_variant', label: 'Case Variant (e.g. "villa mazotos 2")' },
@@ -40,7 +41,8 @@ export default function AliasPanel({ entityId, aliases, onChanged }: Props) {
     if (!trimmed) { setError('Alias name cannot be empty.'); return }
     setSaving(true); setError(null)
     try {
-      await addAlias(entityId, trimmed, newSource)
+      const result = await addStaffAlias(entityId, trimmed, newSource)
+      if (!result.ok) throw new Error(result.error)
       setNewAlias('')
       setNewSource('case_variant')
       setShowAdd(false)
@@ -59,7 +61,8 @@ export default function AliasPanel({ entityId, aliases, onChanged }: Props) {
   async function handleDeactivate(aliasId: string) {
     setDeactiId(aliasId); setError(null)
     try {
-      await deactivateAlias(aliasId)
+      const result = await deactivateStaffAlias(aliasId)
+      if (!result.ok) throw new Error(result.error)
       onChanged()
     } catch (e) {
       setError(String(e))

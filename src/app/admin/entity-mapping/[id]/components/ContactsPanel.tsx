@@ -8,11 +8,13 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { Plus, X, Search, AlertTriangle, User } from 'lucide-react'
+import type { ContactLink, Contact } from '@/lib/entity-registry'
 import {
-  getContactLinks, removeContactLink,
-  addContactLink, searchContacts,
-  ContactLink, Contact
-} from '@/lib/entity-registry'
+  listContactLinks,
+  removeContactLink,
+  addContactLink,
+  searchStaffContacts,
+} from '@/lib/staff/restrictedStaffActions'
 
 const ROLE_OPTIONS = [
   'owner', 'agent', 'manager', 'tenant', 'lawyer', 'accountant',
@@ -42,7 +44,11 @@ export default function ContactsPanel({ canonicalName }: Props) {
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
-    try { setLinks(await getContactLinks(canonicalName)) }
+    try {
+      const result = await listContactLinks(canonicalName)
+      if (!result.ok) throw new Error(result.error)
+      setLinks(result.links)
+    }
     catch (e) { setError(String(e)) }
     finally { setLoading(false) }
   }, [canonicalName])
@@ -55,8 +61,8 @@ export default function ContactsPanel({ canonicalName }: Props) {
     if (debounce.current) clearTimeout(debounce.current)
     debounce.current = setTimeout(async () => {
       try {
-        const r = await searchContacts(query)
-        setResults(r)
+        const result = await searchStaffContacts(query)
+        setResults(result.ok ? result.contacts : [])
       } catch { /* ignore */ }
     }, 300)
   }, [query])
@@ -65,7 +71,13 @@ export default function ContactsPanel({ canonicalName }: Props) {
     if (!selected) return
     setSaving(true); setError(null)
     try {
-      await addContactLink(selected.id, canonicalName, role, status)
+      const result = await addContactLink({
+        contactId: selected.id,
+        propertyName: canonicalName,
+        role,
+        status,
+      })
+      if (!result.ok) throw new Error(result.error)
       setShowAdd(false); setQuery(''); setResults([]); setSelected(null)
       setRole('owner'); setStatus('confirmed')
       await load()
@@ -76,7 +88,8 @@ export default function ContactsPanel({ canonicalName }: Props) {
   async function handleRemove(linkId: string) {
     setRemoving(linkId); setError(null)
     try {
-      await removeContactLink(linkId)
+      const result = await removeContactLink(linkId)
+      if (!result.ok) throw new Error(result.error)
       await load()
     } catch (e) { setError(String(e)) }
     finally { setRemoving(null) }

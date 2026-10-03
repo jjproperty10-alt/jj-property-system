@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { createStaffContact, deleteStaffContact, listStaffContacts } from '@/lib/staff/restrictedStaffActions'
 import { User, Phone, Mail, Plus, Trash2, Building2 } from 'lucide-react'
 
 type Contact = {
@@ -33,14 +33,21 @@ export default function ContactsPage() {
   const [search, setSearch]     = useState('')
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving]     = useState(false)
+  const [error, setError]       = useState<string | null>(null)
   const [form, setForm]         = useState({
     name: '', type: 'tenant', email: '', phone: '', property_name: '', notes: ''
   })
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('contacts').select('*').order('name')
-    setContacts((data ?? []) as Contact[])
+    const result = await listStaffContacts()
+    if (!result.ok) {
+      setContacts([])
+      setError(result.error)
+    } else {
+      setContacts(result.contacts)
+      setError(null)
+    }
     setLoading(false)
   }
   useEffect(() => { load() }, [])
@@ -48,23 +55,31 @@ export default function ContactsPage() {
   async function save() {
     if (!form.name.trim()) return
     setSaving(true)
-    await supabase.from('contacts').insert([{
+    const result = await createStaffContact({
       name: form.name,
       type: form.type,
       email: form.email || null,
       phone: form.phone || null,
       property_name: form.property_name || null,
       notes: form.notes || null,
-    }])
+    })
+    setSaving(false)
+    if (!result.ok) {
+      setError(result.error)
+      return
+    }
     setForm({ name: '', type: 'tenant', email: '', phone: '', property_name: '', notes: '' })
     setShowForm(false)
-    setSaving(false)
     load()
   }
 
   async function remove(id: string) {
     if (!confirm('Delete this contact?')) return
-    await supabase.from('contacts').delete().eq('id', id)
+    const result = await deleteStaffContact(id)
+    if (!result.ok) {
+      setError(result.error)
+      return
+    }
     load()
   }
 
@@ -87,6 +102,12 @@ export default function ContactsPage() {
           <Plus size={15} /> New Contact
         </button>
       </div>
+
+      {error && (
+        <div className="mb-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       {/* Add form */}
       {showForm && (

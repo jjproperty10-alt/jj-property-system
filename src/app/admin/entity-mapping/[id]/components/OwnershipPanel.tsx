@@ -15,11 +15,10 @@ import { AlertTriangle, Info, ChevronDown, ChevronUp, Save, Pencil, X } from 'lu
 import {
   PartnershipOwnership,
   PartnershipCapital,
-  closeOwnershipRow,
   getPartnershipCapital,
-  upsertPartnershipCapital,
   EUR,
 } from '@/lib/entity-registry'
+import { closeStaffOwnership, upsertPartnershipCapital } from '@/lib/staff/restrictedStaffActions'
 
 interface Props {
   entityId: string
@@ -125,7 +124,8 @@ export default function OwnershipPanel({ entityId, canonicalName, ownershipRows,
     if (!confirm('Close this ownership row? This records its end date as today.')) return
     setClosing(id); setOwnerErr(null)
     try {
-      await closeOwnershipRow(id)
+      const closed = await closeStaffOwnership(id)
+      if (!closed.ok) throw new Error(closed.error)
       onChanged()
     } catch (e) {
       setOwnerErr(extractError(e))
@@ -157,7 +157,7 @@ export default function OwnershipPanel({ entityId, canonicalName, ownershipRows,
     if (!draft) return
     setSaving(true); setCapitalErr(null)
     try {
-      await upsertPartnershipCapital({
+      const saved = await upsertPartnershipCapital({
         property_name:                canonicalName,
         partner_name:                 partnerName,
         ownership_percent:            ownershipPct,
@@ -167,6 +167,7 @@ export default function OwnershipPanel({ entityId, canonicalName, ownershipRows,
         amount_paid_by_partner:       toNumOrNull(draft.amount_paid_by_partner) ?? 0,
         notes:                        draft.notes || null,
       })
+      if (!saved.ok) throw new Error(saved.error)
       await loadCapital()
       setEditing(null); setDraft(null)
       setSavedPartner(partnerName)
