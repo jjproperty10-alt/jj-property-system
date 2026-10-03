@@ -227,3 +227,15 @@ Where the direct-test cell says "No direct test", the factory guard is the cover
 | `src/lib/statements/statementContextResolver.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
 | `src/lib/transactions/resolveBoundCorrectionSeries.ts` | No direct test. Factory scan (case 1) plus factory cases 2–5. |
 
+## Proven migration order
+
+Recorded only. Nothing in this list was applied. This branch is `cursor/isolation-a-nodep-plus-slice-b-merge-draft`, based on `cursor/isolation-direct-service-clients-a-nodep`. It is not based on `cursor/isolation-direct-service-clients-a`. The Slice B column map is in `src/lib/auth/serviceRoleCompanyGate.ts`. GateMode stays `filter` | `verify` | `refuse`. The wide set stays disjoint from the filtered map. A non-empty company id is still required. The factory still awaits staff and membership before `rawServiceClient()`. The typescript-eslint plugin is not on this branch.
+
+1. Slice A `20260930220000` (`client_entity_company_isolation`). The guard requires `supabase_migrations.schema_migrations` count exactly 193, version `20260930200000` present once, version `20260930220000` absent, no duplicate versions, and the sole-company checks in that file. That SQL is reference only. It is not under `supabase/migrations` on this branch.
+2. `create_owner_draft` `20261003130000`. This is not `lifecycle.create_owner_draft` in `supabase/migrations/20260810_001_pr4_wizard_foundation.sql`. The `20261003130000` file is not on this branch.
+3. `supabase/migrations/20261003170000_public_is_company_member_wrapper.sql`. Draft wrapper. Not applied.
+4. The Slice B app column map (`SERVICE_ROLE_COMPANY_COLUMNS`). Code only. Not a migration. `entity_identity` and `management_relationship` filter on `operating_company_id`. `parties` filters on `company_id`. Those columns are usable only after Slice A. This file does not apply Slice A.
+5. `PROPOSAL_20261003160000` only when a second company must be writable. That file is not on this branch. Not applied.
+
+The security branch is not combined. Waiting for a later head. On that branch, `restrictedStaffActions.ts` calls `createServiceClient()` after a staff-only check and will need company membership. That file is not edited here.
+
