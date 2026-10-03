@@ -4,8 +4,8 @@
 -- intended difference is the history guard: at least 193 rows and
 -- 20260930200000 present, and none of the Slice A objects yet, instead of
 -- count(*) exactly 193.
--- The owner has not chosen this. See
--- docs/planning/migration_order_slice_a_2026-10-03.md.
+-- Decided against. docs/planning/migration_order_slice_a_2026-10-03.md
+-- keeps Slice A's exact-193 check. This copy stays unapplied.
 
 -- Associates existing clients and management relationships with the sole active company.
 -- registry.parties.company_id already exists and is checked, not rewritten.
